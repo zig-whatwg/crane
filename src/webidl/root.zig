@@ -71,6 +71,7 @@ pub const constants = @import("types/constants.zig");
 pub const interfaces = @import("types/interfaces.zig");
 pub const extended_attrs = @import("extended_attrs.zig");
 pub const wrappers = @import("wrappers.zig");
+pub const overload_resolution = @import("overload_resolution.zig");
 
 // Re-export common types
 pub const DOMException = errors.DOMException;
