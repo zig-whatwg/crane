@@ -147,7 +147,7 @@ test "origin - http URL" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "http");
-    var segments = std.ArrayList([]const u8){};
+    var segments = std.ArrayList([]const u8).init(allocator);
     defer segments.deinit();
 
     const host = Host{ .domain = try allocator.dupe(u8, "example.com") };
@@ -182,7 +182,7 @@ test "origin - file returns opaque" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "file");
-    var segments = std.ArrayList([]const u8){};
+    var segments = std.ArrayList([]const u8).init(allocator);
     defer segments.deinit();
 
     var url = URLRecord{
