@@ -588,6 +588,9 @@ pub fn strictlySplit(allocator: Allocator, input: String, delimiter: u16) ![]Str
 }
 
 pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, length: usize) !String {
+    // Bounds validation assertions
+    std.debug.assert(start <= std.math.maxInt(usize) - length); // Prevent overflow in start + length
+
     var result = try std.ArrayList(u16).initCapacity(allocator, length * 2);
     errdefer result.deinit(allocator);
 
@@ -630,6 +633,8 @@ pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, le
 }
 
 pub fn codePointSubstringByPositions(allocator: Allocator, string: String, start: usize, end: usize) !String {
+    // Bounds validation: end must be >= start
+    std.debug.assert(end >= start);
     return codePointSubstring(allocator, string, start, end - start);
 }
 
