@@ -1,0 +1,80 @@
+//! iso-2022-jp-katakana Index
+//!
+//! WHATWG Encoding Standard
+//! https://encoding.spec.whatwg.org/#index-iso-2022-jp-katakana
+//!
+//! This index is used by the ISO-2022-JP encoder to convert
+//! halfwidth katakana to fullwidth katakana.
+
+/// iso-2022-jp-katakana index entry
+pub const Entry = struct {
+    pointer: u8,
+    code_point: u21,
+};
+
+/// iso-2022-jp-katakana index: pointer -> code point mapping
+pub const INDEX: [63]Entry = .{
+    .{ .pointer = 0x00, .code_point = 0x3002 },
+    .{ .pointer = 0x01, .code_point = 0x300C },
+    .{ .pointer = 0x02, .code_point = 0x300D },
+    .{ .pointer = 0x03, .code_point = 0x3001 },
+    .{ .pointer = 0x04, .code_point = 0x30FB },
+    .{ .pointer = 0x05, .code_point = 0x30F2 },
+    .{ .pointer = 0x06, .code_point = 0x30A1 },
+    .{ .pointer = 0x07, .code_point = 0x30A3 },
+    .{ .pointer = 0x08, .code_point = 0x30A5 },
+    .{ .pointer = 0x09, .code_point = 0x30A7 },
+    .{ .pointer = 0x0A, .code_point = 0x30A9 },
+    .{ .pointer = 0x0B, .code_point = 0x30E3 },
+    .{ .pointer = 0x0C, .code_point = 0x30E5 },
+    .{ .pointer = 0x0D, .code_point = 0x30E7 },
+    .{ .pointer = 0x0E, .code_point = 0x30C3 },
+    .{ .pointer = 0x0F, .code_point = 0x30FC },
+    .{ .pointer = 0x10, .code_point = 0x30A2 },
+    .{ .pointer = 0x11, .code_point = 0x30A4 },
+    .{ .pointer = 0x12, .code_point = 0x30A6 },
+    .{ .pointer = 0x13, .code_point = 0x30A8 },
+    .{ .pointer = 0x14, .code_point = 0x30AA },
+    .{ .pointer = 0x15, .code_point = 0x30AB },
+    .{ .pointer = 0x16, .code_point = 0x30AD },
+    .{ .pointer = 0x17, .code_point = 0x30AF },
+    .{ .pointer = 0x18, .code_point = 0x30B1 },
+    .{ .pointer = 0x19, .code_point = 0x30B3 },
+    .{ .pointer = 0x1A, .code_point = 0x30B5 },
+    .{ .pointer = 0x1B, .code_point = 0x30B7 },
+    .{ .pointer = 0x1C, .code_point = 0x30B9 },
+    .{ .pointer = 0x1D, .code_point = 0x30BB },
+    .{ .pointer = 0x1E, .code_point = 0x30BD },
+    .{ .pointer = 0x1F, .code_point = 0x30BF },
+    .{ .pointer = 0x20, .code_point = 0x30C1 },
+    .{ .pointer = 0x21, .code_point = 0x30C4 },
+    .{ .pointer = 0x22, .code_point = 0x30C6 },
+    .{ .pointer = 0x23, .code_point = 0x30C8 },
+    .{ .pointer = 0x24, .code_point = 0x30CA },
+    .{ .pointer = 0x25, .code_point = 0x30CB },
+    .{ .pointer = 0x26, .code_point = 0x30CC },
+    .{ .pointer = 0x27, .code_point = 0x30CD },
+    .{ .pointer = 0x28, .code_point = 0x30CE },
+    .{ .pointer = 0x29, .code_point = 0x30CF },
+    .{ .pointer = 0x2A, .code_point = 0x30D2 },
+    .{ .pointer = 0x2B, .code_point = 0x30D5 },
+    .{ .pointer = 0x2C, .code_point = 0x30D8 },
+    .{ .pointer = 0x2D, .code_point = 0x30DB },
+    .{ .pointer = 0x2E, .code_point = 0x30DE },
+    .{ .pointer = 0x2F, .code_point = 0x30DF },
+    .{ .pointer = 0x30, .code_point = 0x30E0 },
+    .{ .pointer = 0x31, .code_point = 0x30E1 },
+    .{ .pointer = 0x32, .code_point = 0x30E2 },
+    .{ .pointer = 0x33, .code_point = 0x30E4 },
+    .{ .pointer = 0x34, .code_point = 0x30E6 },
+    .{ .pointer = 0x35, .code_point = 0x30E8 },
+    .{ .pointer = 0x36, .code_point = 0x30E9 },
+    .{ .pointer = 0x37, .code_point = 0x30EA },
+    .{ .pointer = 0x38, .code_point = 0x30EB },
+    .{ .pointer = 0x39, .code_point = 0x30EC },
+    .{ .pointer = 0x3A, .code_point = 0x30ED },
+    .{ .pointer = 0x3B, .code_point = 0x30EF },
+    .{ .pointer = 0x3C, .code_point = 0x30F3 },
+    .{ .pointer = 0x3D, .code_point = 0x309B },
+    .{ .pointer = 0x3E, .code_point = 0x309C },
+};

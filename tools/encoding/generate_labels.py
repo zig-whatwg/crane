@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+Generate WHATWG label mappings for getEncoding() function.
+
+Based on: https://encoding.spec.whatwg.org/#names-and-labels
+"""
+
+# WHATWG Encoding Standard - Complete label mappings
+# Format: encoding_name -> (CONST_NAME, [labels])
+LABEL_MAPPINGS = {
+    "utf-8": ("UTF_8", ["unicode-1-1-utf-8", "unicode11utf8", "unicode20utf8", "utf-8", "utf8", "x-unicode20utf8"]),
+    
+    "ibm866": ("IBM866", ["866", "cp866", "csibm866", "ibm866"]),
+    
+    "iso-8859-2": ("ISO_8859_2", ["csisolatin2", "iso-8859-2", "iso-ir-101", "iso8859-2", "iso88592", "iso_8859-2", "iso_8859-2:1987", "l2", "latin2"]),
+    
+    "iso-8859-3": ("ISO_8859_3", ["csisolatin3", "iso-8859-3", "iso-ir-109", "iso8859-3", "iso88593", "iso_8859-3", "iso_8859-3:1988", "l3", "latin3"]),
+    
+    "iso-8859-4": ("ISO_8859_4", ["csisolatin4", "iso-8859-4", "iso-ir-110", "iso8859-4", "iso88594", "iso_8859-4", "iso_8859-4:1988", "l4", "latin4"]),
+    
+    "iso-8859-5": ("ISO_8859_5", ["csisolatincyrillic", "cyrillic", "iso-8859-5", "iso-ir-144", "iso8859-5", "iso88595", "iso_8859-5", "iso_8859-5:1988"]),
+    
+    "iso-8859-6": ("ISO_8859_6", ["arabic", "asmo-708", "csiso88596e", "csiso88596i", "csisolatinarabic", "ecma-114", "iso-8859-6", "iso-8859-6-e", "iso-8859-6-i", "iso-ir-127", "iso8859-6", "iso88596", "iso_8859-6", "iso_8859-6:1987"]),
+    
+    "iso-8859-7": ("ISO_8859_7", ["csisolatingreek", "ecma-118", "elot_928", "greek", "greek8", "iso-8859-7", "iso-ir-126", "iso8859-7", "iso88597", "iso_8859-7", "iso_8859-7:1987", "sun_eu_greek"]),
+    
+    "iso-8859-8": ("ISO_8859_8", ["csiso88598e", "csisolatinhebrew", "hebrew", "iso-8859-8", "iso-8859-8-e", "iso-ir-138", "iso8859-8", "iso88598", "iso_8859-8", "iso_8859-8:1988", "visual"]),
+    
+    "iso-8859-8-i": ("ISO_8859_8_I", ["csiso88598i", "iso-8859-8-i", "logical"]),
+    
+    "iso-8859-10": ("ISO_8859_10", ["csisolatin6", "iso-8859-10", "iso-ir-157", "iso8859-10", "iso885910", "l6", "latin6"]),
+    
+    "iso-8859-13": ("ISO_8859_13", ["iso-8859-13", "iso8859-13", "iso885913"]),
+    
+    "iso-8859-14": ("ISO_8859_14", ["iso-8859-14", "iso8859-14", "iso885914"]),
+    
+    "iso-8859-15": ("ISO_8859_15", ["csisolatin9", "iso-8859-15", "iso8859-15", "iso885915", "iso_8859-15", "l9"]),
+    
+    "iso-8859-16": ("ISO_8859_16", ["iso-8859-16"]),
+    
+    "koi8-r": ("KOI8_R", ["cskoi8r", "koi", "koi8", "koi8-r", "koi8_r"]),
+    
+    "koi8-u": ("KOI8_U", ["koi8-ru", "koi8-u"]),
+    
+    "macintosh": ("MACINTOSH", ["csmacintosh", "mac", "macintosh", "x-mac-roman"]),
+    
+    "windows-874": ("WINDOWS_874", ["dos-874", "iso-8859-11", "iso8859-11", "iso885911", "tis-620", "windows-874"]),
+    
+    "windows-1250": ("WINDOWS_1250", ["cp1250", "windows-1250", "x-cp1250"]),
+    
+    "windows-1251": ("WINDOWS_1251", ["cp1251", "windows-1251", "x-cp1251"]),
+    
+    "windows-1252": ("WINDOWS_1252", ["ansi_x3.4-1968", "ascii", "cp1252", "cp819", "csisolatin1", "ibm819", "iso-8859-1", "iso-ir-100", "iso8859-1", "iso88591", "iso_8859-1", "iso_8859-1:1987", "l1", "latin1", "us-ascii", "windows-1252", "x-cp1252"]),
+    
+    "windows-1253": ("WINDOWS_1253", ["cp1253", "windows-1253", "x-cp1253"]),
+    
+    "windows-1254": ("WINDOWS_1254", ["cp1254", "csisolatin5", "iso-8859-9", "iso-ir-148", "iso8859-9", "iso88599", "iso_8859-9", "iso_8859-9:1989", "l5", "latin5", "windows-1254", "x-cp1254"]),
+    
+    "windows-1255": ("WINDOWS_1255", ["cp1255", "windows-1255", "x-cp1255"]),
+    
+    "windows-1256": ("WINDOWS_1256", ["cp1256", "windows-1256", "x-cp1256"]),
+    
+    "windows-1257": ("WINDOWS_1257", ["cp1257", "windows-1257", "x-cp1257"]),
+    
+    "windows-1258": ("WINDOWS_1258", ["cp1258", "windows-1258", "x-cp1258"]),
+    
+    "x-mac-cyrillic": ("X_MAC_CYRILLIC", ["x-mac-cyrillic", "x-mac-ukrainian"]),
+}
+
+def generate_label_checks():
+    """Generate Zig code for label checking."""
+    for encoding_name, (const_name, labels) in LABEL_MAPPINGS.items():
+        label_array = ', '.join(f'"{label}"' for label in labels)
+        print(f"""    // {encoding_name} labels
+    const {const_name.lower()}_labels = [_][]const u8{{ {label_array} }};
+    for ({const_name.lower()}_labels) |lbl| {{
+        if (std.ascii.eqlIgnoreCase(trimmed, lbl)) return &{const_name};
+    }}
+""")
+
+if __name__ == '__main__':
+    print("/// Get encoding from a label (name).")
+    print("///")
+    print("/// WHATWG spec § 4.2: Labels are ASCII case-insensitive.")
+    print("/// https://encoding.spec.whatwg.org/#names-and-labels")
+    print("pub fn getEncoding(label: []const u8) ?*const Encoding {")
+    print("    const trimmed = std.mem.trim(u8, label, &std.ascii.whitespace);")
+    print()
+    generate_label_checks()
+    print("    return null;")
+    print("}")

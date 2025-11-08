@@ -1,0 +1,60 @@
+//! URL Setters Test Suite
+//!
+//! Comprehensive tests for all URL setter methods following the WHATWG URL Standard.
+//! Tests cover:
+//! - setProtocol() - scheme changes with validation
+//! - setUsername() - userinfo component modification
+//! - setPassword() - password component modification
+//! - setHost() - host and port modification
+//! - setHostname() - host-only modification
+//! - setPort() - port modification
+//! - setPathname() - path modification
+//! - setHash() - fragment modification
+//!
+//! Each setter is tested for:
+//! - Basic functionality
+//! - Edge cases
+//! - Spec-compliant validation rules
+//! - Error handling
+
+const std = @import("std");
+const url_mod = @import("url");
+const URL = url_mod.URL;
+const helpers = @import("url").test_helpers;
+
+test "setProtocol - basic HTTP to HTTPS" {
+    const allocator = std.testing.allocator;
+
+    var url = try helpers.initURL(allocator, "http://example.com/path", null);
+    defer url.deinit();
+
+    try helpers.setProtocol(&url, allocator, "https");
+
+    const href = try url.get_href();
+    defer allocator.free(href);
+
+    try helpers.expectEqualStrings(allocator, "https://example.com/path", href);
+}
+
+test "setProtocol - remove colon if provided" {
+    const allocator = std.testing.allocator;
+
+    var url = try helpers.initURL(allocator, "http://example.com/", null);
+    defer url.deinit();
+
+    // Spec: input is "https:", parser removes trailing ":"
+    try helpers.setProtocol(&url, allocator, "https:");
+
+    const protocol = try url.get_protocol();
+    defer allocator.free(protocol);
+
+    try helpers.expectEqualStrings(allocator, "https:", protocol);
+}
+
+test "setProtocol - reject invalid characters" {
+    const allocator = std.testing.allocator;
+
+    var url = try helpers.initURL(allocator, "http://example.com/", null);
+    defer url.deinit();
+
+    const old_href = try url.get_href();

@@ -1,0 +1,239 @@
+//! application/x-www-form-urlencoded Serializer
+//!
+//! WHATWG URL Standard: https://url.spec.whatwg.org/#urlencoded-serializing
+//! Spec Reference: Lines 1706-1724
+//!
+//! Serializes a list of name-value tuples into application/x-www-form-urlencoded format.
+
+const std = @import("std");
+const Tuple = @import("form_parser").Tuple;
+const percentEncodeAfterEncoding = @import("percent_encoding").percentEncodeAfterEncoding;
+const EncodeSet = @import("encode_sets").EncodeSet;
+
+/// application/x-www-form-urlencoded serializing (spec lines 1706-1724)
+///
+/// Takes a list of name-value tuples and returns an ASCII string.
+///
+/// Steps:
+/// 1. Get output encoding (UTF-8)
+/// 2. Create empty output string
+/// 3. For each tuple:
+///    - Percent-encode name with form_urlencoded encode set and space_as_plus=true
+///    - Percent-encode value with form_urlencoded encode set and space_as_plus=true
+///    - Append "&" if output not empty
+///    - Append "name=value"
+/// 4. Return output
+///
+/// Example:
+/// ```
+/// [("key", "value")] → "key=value"
+/// [("a", "b c")] → "a=b+c"  // space becomes +
+/// ```
+pub fn serialize(allocator: std.mem.Allocator, tuples: []const Tuple) ![]u8 {
+    // Step 2: Empty output
+    var output = std.ArrayList(u8){};
+    errdefer output.deinit(allocator);
+
+    // Step 3: For each tuple
+    for (tuples) |tuple| {
+        // Step 3.1: Assert name and value are scalar value strings (strings in Zig are UTF-8)
+        // (no assertion needed in Zig)
+
+        // Step 3.2-3.3: Percent-encode name and value
+        const name = try percentEncodeWithPlus(allocator, tuple.name);
+        defer allocator.free(name);
+
+        const value = try percentEncodeWithPlus(allocator, tuple.value);
+        defer allocator.free(value);
+
+        // Step 3.4: Append "&" if output not empty
+        if (output.items.len > 0) {
+            try output.append(allocator, '&');
+        }
+
+        // Step 3.5: Append name=value
+        try output.appendSlice(allocator, name);
+        try output.append(allocator, '=');
+        try output.appendSlice(allocator, value);
+    }
+
+    // Step 4: Return output
+    return try output.toOwnedSlice(allocator);
+}
+
+/// Percent-encode string with form_urlencoded encode set and space_as_plus=true
+///
+/// This is a simplified version that handles the form encoding directly.
+/// For now, we'll use a basic implementation that handles common cases.
+fn percentEncodeWithPlus(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    var output = std.ArrayList(u8){};
+    errdefer output.deinit(allocator);
+
+    for (input) |byte| {
+        // Space becomes +
+        if (byte == ' ') {
+            try output.append(allocator, '+');
+            continue;
+        }
+
+        // Check if needs encoding per form_urlencoded encode set
+        if (shouldEncodeForForm(byte)) {
+            // Percent-encode
+            const hex = "0123456789ABCDEF";
+            try output.append(allocator, '%');
+            try output.append(allocator, hex[byte >> 4]);
+            try output.append(allocator, hex[byte & 0x0F]);
+        } else {
+            try output.append(allocator, byte);
+        }
+    }
+
+    return try output.toOwnedSlice(allocator);
+}
+
+/// Check if byte should be percent-encoded for form_urlencoded
+///
+/// form_urlencoded percent-encode set (spec line 174):
+/// - component percent-encode set (line 170)
+/// - Plus: !, ', (, ), ~
+///
+/// For simplicity, we encode everything except:
+/// - ASCII alphanumeric
+/// - * - . _ (unreserved characters commonly allowed)
+fn shouldEncodeForForm(byte: u8) bool {
+    return switch (byte) {
+        'A'...'Z', 'a'...'z', '0'...'9' => false,
+        '*', '-', '.', '_' => false,
+        else => true,
+    };
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "form serializer - simple key-value" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "key", .value = "value" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("key=value", result);
+}
+
+test "form serializer - multiple pairs" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "a", .value = "b" },
+        .{ .name = "c", .value = "d" },
+        .{ .name = "e", .value = "f" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("a=b&c=d&e=f", result);
+}
+
+test "form serializer - space to plus" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "name", .value = "John Doe" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("name=John+Doe", result);
+}
+
+test "form serializer - empty value" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "key", .value = "" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("key=", result);
+}
+
+test "form serializer - empty name" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "", .value = "value" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("=value", result);
+}
+
+test "form serializer - percent encoding" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "email", .value = "user@example.com" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    // @ should be percent-encoded
+    try std.testing.expect(std.mem.indexOf(u8, result, "%40") != null);
+}
+
+test "form serializer - empty input" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{};
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("", result);
+}
+
+test "form serializer - complex query" {
+    const allocator = std.testing.allocator;
+
+    const tuples = [_]Tuple{
+        .{ .name = "q", .value = "search term" },
+        .{ .name = "page", .value = "2" },
+        .{ .name = "sort", .value = "date" },
+    };
+
+    const result = try serialize(allocator, &tuples);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualStrings("q=search+term&page=2&sort=date", result);
+}
+
+test "form serializer - roundtrip" {
+    const allocator = std.testing.allocator;
+
+    const original = "a=b&c=d+e";
+
+    const parser = @import("form_parser");
+    const parsed = try parser.parse(allocator, original);
+    defer {
+        for (parsed) |tuple| tuple.deinit(allocator);
+        allocator.free(parsed);
+    }
+
+    const serialized = try serialize(allocator, parsed);
+    defer allocator.free(serialized);
+
+    // Should roundtrip (note: d+e becomes d e in parsing, then d+e in serialization)
+    try std.testing.expectEqualStrings("a=b&c=d+e", serialized);
+}
