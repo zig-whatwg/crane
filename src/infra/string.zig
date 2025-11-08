@@ -650,6 +650,11 @@ pub fn codePointSubstringToEnd(allocator: Allocator, string: String, start: usiz
         code_point_length += 1;
     }
 
+    // Fix underflow: if start is beyond the end, return empty string
+    if (start >= code_point_length) {
+        return try allocator.dupe(u16, &[_]u16{});
+    }
+
     return codePointSubstring(allocator, string, start, code_point_length - start);
 }
 
@@ -1539,6 +1544,24 @@ test "codePointSubstringToEnd - basic" {
 
     const expected = [_]u16{ 'l', 'l', 'o' };
     try std.testing.expectEqualSlices(u16, &expected, result);
+}
+
+test "codePointSubstringToEnd - start beyond end returns empty" {
+    const allocator = std.testing.allocator;
+    const input = [_]u16{ 'h', 'i' };
+    const result = try codePointSubstringToEnd(allocator, &input, 10);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualSlices(u16, &[_]u16{}, result);
+}
+
+test "codePointSubstringToEnd - start at end returns empty" {
+    const allocator = std.testing.allocator;
+    const input = [_]u16{ 'h', 'i' };
+    const result = try codePointSubstringToEnd(allocator, &input, 2);
+    defer allocator.free(result);
+
+    try std.testing.expectEqualSlices(u16, &[_]u16{}, result);
 }
 
 test "isCodeUnitPrefix - valid prefix" {
