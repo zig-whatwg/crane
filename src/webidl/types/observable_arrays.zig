@@ -1,13 +1,37 @@
 //! WebIDL ObservableArray<T>
 //!
 //! Spec: https://webidl.spec.whatwg.org/#idl-observable-array
+//! Spec: https://webidl.spec.whatwg.org/#es-observable-array
 //!
 //! ObservableArray represents an array with change notifications. Observers
 //! are notified when elements are added, removed, or modified.
 //!
-//! IMPLEMENTATION: Uses infra.ListWithCapacity(T, 4) for inline storage
-//! optimization (70-80% of arrays have ≤4 items). This eliminates 90 LOC
-//! of custom inline storage code while maintaining identical performance.
+//! # JavaScript Binding (TODO)
+//!
+//! In browsers, ObservableArray<T> is backed by an "observable array exotic object",
+//! which is a JavaScript Proxy with internal slots:
+//!
+//! - [[Handler]] - The proxy handler
+//! - [[BackingList]] - The actual list storage (this implementation)
+//! - [[BackingObject]] - Reference to the platform object
+//!
+//! The Proxy intercepts array operations (get, set, deleteProperty) and calls
+//! the change handlers. This requires JS runtime integration.
+//!
+//! TODO(zig-js-runtime): Implement exotic object creation
+//! TODO(zig-js-runtime): Implement Proxy handler with proper traps
+//! TODO(zig-js-runtime): Wire up [[Handler]].[[Get]], [[Set]], [[Delete]]
+//! TODO(zig-js-runtime): Implement "set the length" algorithm from spec
+//! TODO(zig-js-runtime): Implement "set the indexed value" algorithm from spec
+//! TODO(zig-js-runtime): Implement "delete the indexed value" algorithm from spec
+//!
+//! # Current Implementation
+//!
+//! This provides the backing storage and notification system. Uses
+//! infra.ListWithCapacity(T, 4) for inline storage optimization
+//! (70-80% of arrays have ≤4 items).
+//!
+//! The exotic object/Proxy wrapper will be added when V8 integration is ready.
 
 const std = @import("std");
 const infra = @import("infra");
@@ -19,6 +43,15 @@ pub fn ObservableArray(comptime T: type) type {
 
         const Self = @This();
 
+        /// Observable array change handlers
+        ///
+        /// Spec: § 3.6 Observable array types
+        ///
+        /// These are invoked by the exotic object's Proxy traps when array
+        /// elements are modified. In browsers, this notifies the platform
+        /// object that owns the array.
+        ///
+        /// TODO(zig-js-runtime): Wire these up to Proxy handler traps
         pub const Handlers = struct {
             set_indexed_value: ?*const fn (index: usize, value: T) void = null,
             delete_indexed_value: ?*const fn (index: usize, old_value: T) void = null,
