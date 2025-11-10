@@ -45,4 +45,6 @@ pub const ReadableStreamBYOBRequest = webidl.interface(struct {
         _ = view;
         // Replace the view
     }
+}, .{
+    .exposed = &.{.all},
 });

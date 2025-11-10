@@ -496,4 +496,6 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         // For default controller, release steps are a no-op
         _ = self;
     }
+}, .{
+    .exposed = &.{.all},
 });

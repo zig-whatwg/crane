@@ -140,4 +140,6 @@ pub const TextDecoderStream = webidl.interface(struct {
         // 3. Handle fatal errors
         _ = controller;
     }
+}, .{
+    .exposed = &.{.all},
 });

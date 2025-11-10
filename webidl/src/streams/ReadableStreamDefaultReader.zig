@@ -169,4 +169,6 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
         // This delegates to the controller to actually pull data
         return stream.controller.pullSteps(self);
     }
+}, .{
+    .exposed = &.{.all},
 });

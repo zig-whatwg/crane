@@ -6,4 +6,6 @@ const webidl = @import("webidl");
 pub const Attr = webidl.interface(struct {
     name: []const u8,
     value: []const u8,
+}, .{
+    .exposed = &.{.Window},
 });

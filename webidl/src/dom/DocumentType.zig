@@ -24,4 +24,6 @@ pub const DocumentType = webidl.interface(struct {
     pub fn get_name(self: *const DocumentType) []const u8 {
         return self.name;
     }
+}, .{
+    .exposed = &.{.Window},
 });

@@ -201,4 +201,6 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         // Delegate to mixin's generic release
         self.genericRelease();
     }
+}, .{
+    .exposed = &.{.all},
 });

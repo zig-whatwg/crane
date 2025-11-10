@@ -31,4 +31,6 @@ pub const CharacterData = webidl.interface(struct {
     pub fn get_length(self: *const CharacterData) usize {
         return self.data.len;
     }
+}, .{
+    .exposed = &.{.Window},
 });

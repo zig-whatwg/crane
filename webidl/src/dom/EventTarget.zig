@@ -65,6 +65,8 @@ pub const EventTarget = webidl.interface(struct {
         // Dispatch the event and return whether it was canceled
         return true;
     }
+}, .{
+    .exposed = &.{.all},
 });
 
 const EventListener = struct {

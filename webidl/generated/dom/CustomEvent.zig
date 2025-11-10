@@ -20,12 +20,12 @@ pub const CustomEvent = struct {
     event: Event,
     detail: ?webidl.JSValue,
 
-    pub fn init_(allocator: std.mem.Allocator, event_type: []const u8, init_: ?CustomEventInit) !CustomEvent {
-        const custom_init = init_ orelse CustomEventInit{};
+    pub fn init(allocator: std.mem.Allocator, event_type: []const u8, event_init: ?CustomEventInit) !CustomEvent {
+        const custom_init = event_init orelse CustomEventInit{};
 
         return .{
             .allocator = allocator,
-            .event = try Event.init_(allocator, event_type, custom_init.event_init),
+            .event = try Event.init(allocator, event_type, custom_init.event_init),
             .detail = custom_init.detail,
         };
     }

@@ -27,4 +27,6 @@ pub const AbortController = webidl.interface(struct {
     pub fn get_signal(self: *const AbortController) *const AbortSignal {
         return &self.signal;
     }
+}, .{
+    .exposed = &.{.all},
 });

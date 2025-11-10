@@ -89,4 +89,7 @@ pub const TransformStream = webidl.interface(struct {
     pub fn get_writable(self: *const TransformStream) *WritableStream {
         return self.writableStream;
     }
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
 });

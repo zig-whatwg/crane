@@ -21,4 +21,6 @@ pub const Text = webidl.interface(struct {
     pub fn deinit(self: *Text) void {
         self.character_data.deinit();
     }
+}, .{
+    .exposed = &.{.Window},
 });

@@ -110,4 +110,6 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
         return self.strategyHwm - self.queue.queue_total_size;
     }
+}, .{
+    .exposed = &.{.all},
 });

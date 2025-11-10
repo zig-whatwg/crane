@@ -18,4 +18,6 @@ pub const Comment = webidl.interface(struct {
     pub fn deinit(self: *Comment) void {
         self.character_data.deinit();
     }
+}, .{
+    .exposed = &.{.Window},
 });

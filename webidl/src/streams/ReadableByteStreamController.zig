@@ -1102,4 +1102,6 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         // Step 2: Return the request
         return self.byobRequest;
     }
+}, .{
+    .exposed = &.{.all},
 });

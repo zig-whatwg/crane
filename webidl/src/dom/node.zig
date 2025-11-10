@@ -129,4 +129,6 @@ pub const Node = webidl.interface(struct {
     pub fn get_ownerDocument(self: *const Node) ?*Document {
         return self.owner_document;
     }
+}, .{
+    .exposed = &.{.Window},
 });

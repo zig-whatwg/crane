@@ -135,6 +135,8 @@ pub const Event = webidl.interface(struct {
     pub fn get_timeStamp(self: *const Event) f64 {
         return self.time_stamp;
     }
+}, .{
+    .exposed = &.{.all},
 });
 
 pub const EventInit = struct {

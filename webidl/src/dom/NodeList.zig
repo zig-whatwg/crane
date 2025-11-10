@@ -29,4 +29,6 @@ pub const NodeList = webidl.interface(struct {
     pub fn get_length(self: *const NodeList) u32 {
         return @intCast(self.nodes.items.len);
     }
+}, .{
+    .exposed = &.{.Window},
 });

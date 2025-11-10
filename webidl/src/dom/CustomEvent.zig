@@ -9,8 +9,8 @@ pub const CustomEvent = webidl.interface(struct {
     event: Event,
     detail: ?webidl.JSValue,
 
-    pub fn init(allocator: std.mem.Allocator, event_type: []const u8, init: ?CustomEventInit) !CustomEvent {
-        const custom_init = init orelse CustomEventInit{};
+    pub fn init(allocator: std.mem.Allocator, event_type: []const u8, event_init: ?CustomEventInit) !CustomEvent {
+        const custom_init = event_init orelse CustomEventInit{};
 
         return .{
             .allocator = allocator,
@@ -26,6 +26,8 @@ pub const CustomEvent = webidl.interface(struct {
     pub fn get_detail(self: *const CustomEvent) ?webidl.JSValue {
         return self.detail;
     }
+}, .{
+    .exposed = &.{.all},
 });
 
 pub const CustomEventInit = struct {

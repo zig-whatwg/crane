@@ -18,4 +18,6 @@ pub const DocumentFragment = webidl.interface(struct {
     pub fn deinit(self: *DocumentFragment) void {
         self.node.deinit();
     }
+}, .{
+    .exposed = &.{.Window},
 });

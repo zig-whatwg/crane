@@ -15,7 +15,11 @@ pub const URLSearchParams = struct {
     // ========================================================================
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) !URLSearchParams { return .{ .allocator = allocator }; }
-    pub fn deinit(self: *URLSearchParams) void { _ = self; }
+    pub fn init(allocator: std.mem.Allocator) !URLSearchParams {
+        return .{ .allocator = allocator };
+    }
+    pub fn deinit(self: *URLSearchParams) void {
+        _ = self;
+    }
 };
 

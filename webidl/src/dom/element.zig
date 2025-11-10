@@ -89,4 +89,6 @@ pub const Element = webidl.interface(struct {
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
         return self.namespace_uri;
     }
+}, .{
+    .exposed = &.{.Window},
 });

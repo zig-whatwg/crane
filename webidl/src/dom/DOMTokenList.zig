@@ -45,4 +45,6 @@ pub const DOMTokenList = webidl.interface(struct {
     pub fn get_length(self: *const DOMTokenList) u32 {
         return @intCast(self.tokens.items.len);
     }
+}, .{
+    .exposed = &.{.Window},
 });

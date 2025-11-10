@@ -36,4 +36,6 @@ pub const AbortSignal = webidl.interface(struct {
             return error.Aborted;
         }
     }
+}, .{
+    .exposed = &.{.all},
 });

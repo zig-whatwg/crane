@@ -698,6 +698,9 @@ pub const ReadableStream = webidl.interface(struct {
         // Spec step 20: Return the two branches
         return .{ .branch1 = branch1, .branch2 = branch2 };
     }
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
 });
 
 /// PipeState - Coordinates pipe operation between readable and writable streams

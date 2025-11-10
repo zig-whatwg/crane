@@ -31,4 +31,6 @@ pub const ByteLengthQueuingStrategy = webidl.interface(struct {
         // Should return chunk.byteLength, but simplified for now
         return 1.0;
     }
+}, .{
+    .exposed = &.{.all},
 });

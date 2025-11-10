@@ -30,4 +30,6 @@ pub const CountQueuingStrategy = webidl.interface(struct {
         // Always returns 1 for count-based strategy
         return 1.0;
     }
+}, .{
+    .exposed = &.{.all},
 });

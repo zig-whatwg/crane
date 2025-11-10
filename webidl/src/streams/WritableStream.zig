@@ -267,6 +267,9 @@ pub const WritableStream = webidl.interface(struct {
         self.state = .errored;
         self.storedError = e;
     }
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
 });
 
 const AbortRequest = struct {

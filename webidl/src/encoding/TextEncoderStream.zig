@@ -105,4 +105,6 @@ pub const TextEncoderStream = webidl.interface(struct {
         // 2. Finalize encoding
         _ = controller;
     }
+}, .{
+    .exposed = &.{.all},
 });

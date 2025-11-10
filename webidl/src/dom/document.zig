@@ -41,4 +41,6 @@ pub const Document = webidl.interface(struct {
     }
 
     const Text = @import("text").Text;
+}, .{
+    .exposed = &.{.Window},
 });

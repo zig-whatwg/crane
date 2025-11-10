@@ -167,6 +167,18 @@ const encoding_mod = @import("encoding");
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
 
+// ============================================================================
+// Helper Functions (Module-Level)
+// ============================================================================
+
+/// Check if byte slice is ASCII-only (fast path optimization)
+fn isAscii(bytes: []const u8) bool {
+    for (bytes) |byte| {
+        if (byte > 0x7F) return false;
+    }
+    return true;
+}
+
 /// TextDecoder errors map to WebIDL simple exceptions per WHATWG Encoding Standard
 ///
 /// Error Mapping (for JavaScript bindings):
@@ -557,79 +569,6 @@ pub const TextDecoder = webidl.interface(struct {
 
         return utf8_output;
     }
-
-    // ============================================================================
-    // Internal Helper Methods
-    // ============================================================================
-
-    /// Check if byte slice is ASCII-only (fast path optimization)
-    fn isAscii(bytes: []const u8) bool {
-        for (bytes) |byte| {
-            if (byte > 0x7F) return false;
-        }
-        return true;
-    }
-
-    /// Strip BOM from input bytes (if present)
-    ///
-    /// WHATWG Encoding Standard § 5.1.4
-    /// BOM handling per encoding type
-    fn stripBOM(self: *TextDecoder, bytes: []const u8) []const u8 {
-        // UTF-8 BOM: EF BB BF
-        if (std.mem.eql(u8, self.enc.whatwg_name, "utf-8")) {
-            if (bytes.len >= 3 and
-                bytes[0] == 0xEF and bytes[1] == 0xBB and bytes[2] == 0xBF)
-            {
-                self.bomSeen = true;
-                return bytes[3..];
-            }
-        }
-        // UTF-16BE BOM: FE FF
-        else if (std.mem.eql(u8, self.enc.whatwg_name, "UTF-16BE")) {
-            if (bytes.len >= 2 and bytes[0] == 0xFE and bytes[1] == 0xFF) {
-                self.bomSeen = true;
-                return bytes[2..];
-            }
-        }
-        // UTF-16LE BOM: FF FE
-        else if (std.mem.eql(u8, self.enc.whatwg_name, "UTF-16LE")) {
-            if (bytes.len >= 2 and bytes[0] == 0xFF and bytes[1] == 0xFE) {
-                self.bomSeen = true;
-                return bytes[2..];
-            }
-        }
-
-        return bytes;
-    }
-
-    /// Decode UTF-8 bytes (fast path for UTF-8 encoding)
-    fn decodeUtf8(self: *TextDecoder, bytes: []const u8) TextDecoderError![]const u8 {
-        // Validate UTF-8 in fatal mode
-        if (self.fatal) {
-            if (!std.unicode.utf8ValidateSlice(bytes)) {
-                return error.DecodingError;
-            }
-        }
-
-        // Allocate and copy (caller owns the result)
-        // In non-fatal mode, invalid sequences are preserved as-is
-        // (encoding infrastructure handles replacement with U+FFFD)
-        return self.allocator.dupe(u8, bytes);
-    }
-
-    /// Get or allocate UTF-16 buffer (reuse optimization)
-    fn getOrAllocUtf16Buffer(self: *TextDecoder, min_size: usize) TextDecoderError![]u16 {
-        if (self.reusableUtf16Buffer) |buf| {
-            if (buf.len >= min_size) {
-                return buf; // Reuse existing buffer
-            }
-            // Need larger buffer - grow it
-            self.reusableUtf16Buffer = try self.allocator.realloc(buf, min_size);
-            return self.reusableUtf16Buffer.?;
-        }
-
-        // First allocation
-        self.reusableUtf16Buffer = try self.allocator.alloc(u16, min_size);
-        return self.reusableUtf16Buffer.?;
-    }
+}, .{
+    .exposed = &.{.all},
 });

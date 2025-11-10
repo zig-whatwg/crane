@@ -1208,4 +1208,6 @@ pub const console = webidl.namespace(struct {
             printFn(formatted);
         }
     }
+}, .{
+    .exposed = &.{.all},
 });
