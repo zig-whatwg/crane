@@ -168,8 +168,7 @@ const infra = @import("infra");
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 
-// Import mixin
-const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
+// Import mixin (used in 'pub const includes' declaration)
 
 // Import encoding infrastructure
 const encoding_mod = @import("encoding");

@@ -27,7 +27,6 @@ const ReadRequest = @import("read_request").ReadRequest;
 
 // Import ReadableStream (circular dependency handled carefully)
 const ReadableStream = @import("readable_stream").ReadableStream;
-const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 /// ReadableStreamDefaultReader WebIDL interface
 /// 
 /// IDL:

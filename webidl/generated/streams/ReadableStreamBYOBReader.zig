@@ -21,7 +21,6 @@ const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 
 const ReadableStream = @import("readable_stream").ReadableStream;
-const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 
 // BYOB-specific imports
 const ReadIntoRequestModule = @import("read_into_request");

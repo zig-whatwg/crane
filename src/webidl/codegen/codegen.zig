@@ -1289,7 +1289,7 @@ fn stripTrailingDocComments(source: []const u8) []const u8 {
     return source[0..end];
 }
 
-fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8) ![]const u8 {
+fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_names: []const []const u8) ![]const u8 {
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
@@ -1300,7 +1300,8 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8) ![]const
         const line_end = std.mem.indexOfScalarPos(u8, source, pos, '\n') orelse source.len;
         const line = source[line_start..line_end];
 
-        const is_zoop_import = blk: {
+        const should_filter = blk: {
+            // Filter out webidl/zoop imports
             if (std.mem.indexOf(u8, line, "@import(\"zoop\")")) |_| {
                 const trimmed = std.mem.trim(u8, line, " \t\r");
                 if (std.mem.startsWith(u8, trimmed, "const ")) {
@@ -1309,10 +1310,23 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8) ![]const
                     }
                 }
             }
+
+            // Filter out mixin imports (they're now flattened, so import is unused)
+            for (mixin_names) |mixin_name| {
+                // Check if this line imports the mixin type
+                // Pattern: const MixinName = @import("...").MixinName;
+                const import_pattern = try std.fmt.allocPrint(allocator, "const {s} = @import", .{mixin_name});
+                defer allocator.free(import_pattern);
+
+                if (std.mem.indexOf(u8, line, import_pattern)) |_| {
+                    break :blk true;
+                }
+            }
+
             break :blk false;
         };
 
-        if (!is_zoop_import) {
+        if (!should_filter) {
             try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
         }
 
@@ -1351,6 +1365,26 @@ fn processSourceFileWithRegistry(
             &class_registry,
             &visited,
         );
+    }
+
+    // Collect all mixin names from all classes in this file
+    var all_mixin_names: std.ArrayList([]const u8) = .empty;
+    defer all_mixin_names.deinit(allocator);
+
+    for (file_info.classes.items) |class_info| {
+        for (class_info.mixin_names) |mixin_name| {
+            // Avoid duplicates
+            var found = false;
+            for (all_mixin_names.items) |existing| {
+                if (std.mem.eql(u8, existing, mixin_name)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                try all_mixin_names.append(allocator, mixin_name);
+            }
+        }
     }
 
     var output: std.ArrayList(u8) = .empty;
@@ -1409,7 +1443,7 @@ fn processSourceFileWithRegistry(
         const raw_segment = source[last_class_end..safe_start];
         // Strip trailing doc comments to avoid duplication (we emit them separately)
         const segment_no_docs = stripTrailingDocComments(raw_segment);
-        const segment = try filterWebIDLImport(allocator, segment_no_docs);
+        const segment = try filterWebIDLImport(allocator, segment_no_docs, all_mixin_names.items);
         defer allocator.free(segment);
         try output.appendSlice(allocator, segment);
 
@@ -1431,7 +1465,7 @@ fn processSourceFileWithRegistry(
         }
     }
 
-    const final_segment = try filterWebIDLImport(allocator, source[last_class_end..]);
+    const final_segment = try filterWebIDLImport(allocator, source[last_class_end..], all_mixin_names.items);
     defer allocator.free(final_segment);
     try output.appendSlice(allocator, final_segment);
 
