@@ -110,7 +110,7 @@ pub fn build(b: *std.Build) void {
     // DOM interface module for AbortSignal
     // DOM interface module for EventTarget (must be declared first)
     const event_target_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/event_target.zig"),
+        .root_source_file = b.path("webidl/generated/dom/EventTarget.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -120,7 +120,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Event (used by EventTarget)
     const event_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/event.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Event.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -131,7 +131,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for AbortSignal (extends EventTarget)
     const abort_signal_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/abort_signal.zig"),
+        .root_source_file = b.path("webidl/generated/dom/AbortSignal.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -142,7 +142,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for NodeList
     const node_list_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/node_list.zig"),
+        .root_source_file = b.path("webidl/generated/dom/NodeList.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -152,7 +152,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Node (depends on NodeList)
     const node_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/node.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Node.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -167,7 +167,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Element (depends on Node)
     const element_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/element.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Element.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -179,7 +179,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for CharacterData (depends on Node)
     const character_data_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/character_data.zig"),
+        .root_source_file = b.path("webidl/generated/dom/CharacterData.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -191,7 +191,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Text (depends on CharacterData)
     const text_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/text.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Text.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -202,7 +202,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for DOMTokenList
     const dom_token_list_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/dom_token_list.zig"),
+        .root_source_file = b.path("webidl/generated/dom/DOMTokenList.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -213,7 +213,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Attr
     const attr_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/attr.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Attr.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -225,7 +225,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Comment (extends CharacterData)
     const comment_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/comment.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Comment.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -236,7 +236,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for DocumentFragment (extends Node)
     const document_fragment_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/document_fragment.zig"),
+        .root_source_file = b.path("webidl/generated/dom/DocumentFragment.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -248,7 +248,7 @@ pub fn build(b: *std.Build) void {
 
     // DOM interface module for Document (extends Node)
     const document_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/document.zig"),
+        .root_source_file = b.path("webidl/generated/dom/Document.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -544,13 +544,13 @@ pub fn build(b: *std.Build) void {
 
     // URL interface modules
     const url_url_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/url/url.zig"),
+        .root_source_file = b.path("webidl/generated/url/URL.zig"),
         .target = target,
         .imports = &url_iface_imports,
     });
 
     const url_search_params_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/url/url_search_params.zig"),
+        .root_source_file = b.path("webidl/generated/url/URLSearchParams.zig"),
         .target = target,
         .imports = &url_iface_imports,
     });
@@ -606,7 +606,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const console_console_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/console/console.zig"),
+        .root_source_file = b.path("webidl/generated/console/Console.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },

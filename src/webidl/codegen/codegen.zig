@@ -205,12 +205,7 @@ pub fn generateAllClasses(
     var registry = GlobalRegistry.init(allocator);
     defer registry.deinit();
 
-    // Load cache manifest
-    const cache_path = ".zig-cache/zoop-manifest.json";
-    var cache_manifest = try CacheManifest.load(allocator, cache_path);
-    defer cache_manifest.deinit(allocator);
-
-    // Track which files need regeneration
+    // Track which files need regeneration (always regenerate all)
     var files_to_regenerate = std.StringHashMap(void).init(allocator);
     defer {
         var it = files_to_regenerate.keyIterator();
@@ -271,11 +266,8 @@ pub fn generateAllClasses(
 
             try registry.files.put(file_path_owned, file_info);
 
-            // Check if this file needs regeneration
-            const cache_entry = cache_manifest.entries.get(entry.path);
-            if (try needsRegeneration(allocator, source_path, source_content, cache_entry)) {
-                try files_to_regenerate.put(try allocator.dupe(u8, entry.path), {});
-            }
+            // Always regenerate all files (no caching)
+            try files_to_regenerate.put(try allocator.dupe(u8, entry.path), {});
         } else {
             allocator.free(source_content);
         }
@@ -348,10 +340,6 @@ pub fn generateAllClasses(
     var classes_generated: usize = 0;
     var file_it = registry.files.iterator();
 
-    // New cache manifest to save
-    var new_cache_manifest = CacheManifest.init(allocator);
-    defer new_cache_manifest.deinit(allocator);
-
     while (file_it.next()) |entry| {
         const file_path = entry.key_ptr.*;
         const file_info = entry.value_ptr.*;
@@ -391,43 +379,7 @@ pub fn generateAllClasses(
             classes_generated += 1;
             std.debug.print("  Generated: {s}\n", .{file_path});
         }
-
-        // Update cache entry for this file
-        const source_path = try std.fs.path.join(allocator, &.{ source_dir, file_path });
-        defer allocator.free(source_path);
-
-        const content_hash = computeContentHash(file_info.source_content);
-        const mtime_ns = try getFileMtime(source_path);
-
-        // Collect class names and parent names
-        const class_names = try allocator.alloc([]const u8, file_info.classes.items.len);
-        for (file_info.classes.items, 0..) |class_info, i| {
-            class_names[i] = try allocator.dupe(u8, class_info.name);
-        }
-
-        var parent_names_list = std.ArrayList([]const u8){};
-        defer parent_names_list.deinit(allocator);
-        for (file_info.classes.items) |class_info| {
-            if (class_info.parent_name) |parent| {
-                try parent_names_list.append(allocator, try allocator.dupe(u8, parent));
-            }
-        }
-        const parent_names = try parent_names_list.toOwnedSlice(allocator);
-
-        const cache_entry = CacheEntry{
-            .source_path = try allocator.dupe(u8, file_path),
-            .content_hash = content_hash,
-            .mtime_ns = mtime_ns,
-            .class_names = class_names,
-            .parent_names = parent_names,
-        };
-
-        const cache_key = try allocator.dupe(u8, file_path);
-        try new_cache_manifest.entries.put(cache_key, cache_entry);
     }
-
-    // Save updated cache manifest
-    try new_cache_manifest.save(allocator, cache_path);
 
     std.debug.print("\nProcessed {} files, generated {} class files\n", .{ files_processed, classes_generated });
 }
