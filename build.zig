@@ -44,6 +44,19 @@ fn createWebIDLModules(
     return modules;
 }
 
+/// Helper to get a module from the hashmap or exit with error
+fn getWebIDLModule(modules: std.StringHashMap(*std.Build.Module), name: []const u8) *std.Build.Module {
+    return modules.get(name) orelse {
+        std.debug.print("FATAL: WebIDL module '{s}' not found in auto-discovered modules\n", .{name});
+        std.debug.print("Available modules:\n", .{});
+        var it = modules.iterator();
+        while (it.next()) |entry| {
+            std.debug.print("  - {s}\n", .{entry.key_ptr.*});
+        }
+        std.process.exit(1);
+    };
+}
+
 /// Convert file path to module name: encoding/TextEncoder.zig -> encoding_text_encoder
 fn filePathToModuleName(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
     // Remove .zig extension
@@ -199,162 +212,46 @@ pub fn build(b: *std.Build) void {
         std.debug.print("Failed to create WebIDL modules: {}\n", .{err});
         std.process.exit(1);
     };
-    // TODO: Migrate to using auto-discovered modules from webidl_modules hashmap
-    // The manual module definitions below are redundant now that we have auto-discovery.
-    // They remain for backwards compatibility while we transition parent modules to use
-    // the hashmap lookups. Future work: replace these with webidl_modules.get() calls.
-    _ = webidl_modules; // Suppress unused warning - will be used when migration is complete
+    // ========================================================================
+    // DOM MODULE SETUP
+    // ========================================================================
+    // DOM interfaces are now auto-discovered. Extract commonly-used ones for
+    // convenience and add cross-module references.
 
-    // DOM interface module for AbortSignal
-    // DOM interface module for EventTarget (must be declared first)
-    const event_target_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/EventTarget.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
+    // Get auto-discovered modules
+    const event_target_mod = getWebIDLModule(webidl_modules, "dom_event_target");
+    const event_mod = getWebIDLModule(webidl_modules, "dom_event");
+    const abort_signal_mod = getWebIDLModule(webidl_modules, "dom_abort_signal");
+    const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
+    const node_mod = getWebIDLModule(webidl_modules, "dom_node");
+    const element_mod = getWebIDLModule(webidl_modules, "dom_element");
+    const character_data_mod = getWebIDLModule(webidl_modules, "dom_character_data");
+    const text_mod = getWebIDLModule(webidl_modules, "dom_text");
+    const comment_mod = getWebIDLModule(webidl_modules, "dom_comment");
+    const document_fragment_mod = getWebIDLModule(webidl_modules, "dom_document_fragment");
+    const document_mod = getWebIDLModule(webidl_modules, "dom_document");
+    const dom_token_list_mod = getWebIDLModule(webidl_modules, "dom_domtoken_list");
+    const attr_mod = getWebIDLModule(webidl_modules, "dom_attr");
 
-    // DOM interface module for Event (used by EventTarget)
-    const event_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Event.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "event_target", .module = event_target_mod },
-        },
-    });
-
-    // DOM interface module for AbortSignal (extends EventTarget)
-    const abort_signal_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/AbortSignal.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "event_target", .module = event_target_mod },
-        },
-    });
-
-    // DOM interface module for NodeList
-    const node_list_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/NodeList.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    // DOM interface module for Node (depends on NodeList)
-    const node_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Node.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "event_target", .module = event_target_mod },
-            .{ .name = "node_list", .module = node_list_mod },
-        },
-    });
-
-    // NodeList needs Node for its type (circular dependency handled by forward declarations)
-    node_list_mod.addImport("node", node_mod);
-
-    // DOM interface module for Element (depends on Node)
-    const element_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Element.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "node", .module = node_mod },
-            .{ .name = "event_target", .module = event_target_mod },
-        },
-    });
-
-    // DOM interface module for CharacterData (depends on Node)
-    const character_data_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/CharacterData.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "node", .module = node_mod },
-            .{ .name = "event_target", .module = event_target_mod },
-        },
-    });
-
-    // DOM interface module for Text (depends on CharacterData)
-    const text_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Text.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "character_data", .module = character_data_mod },
-        },
-    });
-
-    // DOM interface module for DOMTokenList
-    const dom_token_list_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/DOMTokenList.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "element", .module = element_mod },
-        },
-    });
-
-    // DOM interface module for Attr
-    const attr_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Attr.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "node", .module = node_mod },
-            .{ .name = "element", .module = element_mod },
-        },
-    });
-
-    // DOM interface module for Comment (extends CharacterData)
-    const comment_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Comment.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "character_data", .module = character_data_mod },
-        },
-    });
-
-    // DOM interface module for DocumentFragment (extends Node)
-    const document_fragment_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/DocumentFragment.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "node", .module = node_mod },
-            .{ .name = "element", .module = element_mod },
-        },
-    });
-
-    // DOM interface module for Document (extends Node)
-    const document_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/Document.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "node", .module = node_mod },
-            .{ .name = "element", .module = element_mod },
-        },
-    });
+    // Add cross-module imports (these aren't in the base auto-discovery)
+    event_mod.addImport("event_target", event_target_mod);
+    abort_signal_mod.addImport("event_target", event_target_mod);
+    node_mod.addImport("event_target", event_target_mod);
+    node_mod.addImport("node_list", node_list_mod);
+    node_list_mod.addImport("node", node_mod); // Circular dependency
+    element_mod.addImport("node", node_mod);
+    element_mod.addImport("event_target", event_target_mod);
+    character_data_mod.addImport("node", node_mod);
+    character_data_mod.addImport("event_target", event_target_mod);
+    text_mod.addImport("character_data", character_data_mod);
+    comment_mod.addImport("character_data", character_data_mod);
+    document_fragment_mod.addImport("node", node_mod);
+    document_fragment_mod.addImport("element", element_mod);
+    document_mod.addImport("node", node_mod);
+    document_mod.addImport("element", element_mod);
+    dom_token_list_mod.addImport("element", element_mod);
+    attr_mod.addImport("node", node_mod);
+    attr_mod.addImport("element", element_mod);
 
     // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, etc.)
     const dom_mod = b.addModule("dom", .{
