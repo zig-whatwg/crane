@@ -1897,6 +1897,116 @@ fn extractParamNames(allocator: std.mem.Allocator, signature: []const u8) ![]con
     return result.toOwnedSlice(allocator);
 }
 
+/// Substitute all occurrences of old_type_name with new_type_name in source code
+/// This is used when flattening mixin methods into an interface - we need to replace
+/// the mixin type name with the interface type name throughout the method.
+fn substituteTypeName(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    old_type_name: []const u8,
+    new_type_name: []const u8,
+) ![]const u8 {
+    // Simple but safe approach: use mem.replace
+    // This handles all occurrences in signatures and method bodies
+    var result = std.ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    var pos: usize = 0;
+    while (pos < source.len) {
+        if (std.mem.indexOfPos(u8, source, pos, old_type_name)) |found_pos| {
+            // Check if this is a whole-word match (not part of another identifier)
+            const is_start_ok = found_pos == 0 or !std.ascii.isAlphanumeric(source[found_pos - 1]) and source[found_pos - 1] != '_';
+            const is_end_ok = found_pos + old_type_name.len >= source.len or
+                !std.ascii.isAlphanumeric(source[found_pos + old_type_name.len]) and
+                    source[found_pos + old_type_name.len] != '_';
+
+            if (is_start_ok and is_end_ok) {
+                // This is a complete match - replace it
+                try result.appendSlice(source[pos..found_pos]);
+                try result.appendSlice(new_type_name);
+                pos = found_pos + old_type_name.len;
+            } else {
+                // Not a complete match - skip this character and continue
+                try result.append(source[found_pos]);
+                pos = found_pos + 1;
+            }
+        } else {
+            // No more matches - append the rest
+            try result.appendSlice(source[pos..]);
+            break;
+        }
+    }
+
+    return result.toOwnedSlice();
+}
+
+/// Detect conflicts between mixin members and interface members
+/// Returns an error with a helpful message if conflicts are found
+fn detectMixinConflicts(
+    allocator: std.mem.Allocator,
+    interface_name: []const u8,
+    mixin_infos: []const ClassInfo,
+    interface_fields: []const FieldDef,
+    _: []const MethodDef, // interface_methods - not needed (overriding is allowed)
+) !void {
+    // Track all field names across mixins
+    var field_names = std.StringHashMap(struct { mixin_name: []const u8, file_path: []const u8 }).init(allocator);
+    defer field_names.deinit();
+
+    // Track all method names across mixins
+    var method_names = std.StringHashMap(struct { mixin_name: []const u8, file_path: []const u8 }).init(allocator);
+    defer method_names.deinit();
+
+    // Check for conflicts between mixins
+    for (mixin_infos) |mixin_info| {
+        // Check mixin fields
+        for (mixin_info.fields) |field| {
+            const gop = try field_names.getOrPut(field.name);
+            if (gop.found_existing) {
+                // Field conflict between mixins
+                std.debug.print("error: Field name conflict in interface '{s}'\n", .{interface_name});
+                std.debug.print("  Field '{s}' is defined in multiple mixins:\n", .{field.name});
+                std.debug.print("    - {s} ({s})\n", .{ gop.value_ptr.mixin_name, gop.value_ptr.file_path });
+                std.debug.print("    - {s} ({s})\n", .{ mixin_info.name, mixin_info.file_path });
+                std.debug.print("\n  To fix: Remove duplicate field from one of the mixins\n", .{});
+                return error.MixinFieldConflict;
+            }
+            gop.value_ptr.* = .{ .mixin_name = mixin_info.name, .file_path = mixin_info.file_path };
+        }
+
+        // Check mixin methods
+        for (mixin_info.methods) |method| {
+            const gop = try method_names.getOrPut(method.name);
+            if (gop.found_existing) {
+                // Method conflict between mixins
+                std.debug.print("error: Method name conflict in interface '{s}'\n", .{interface_name});
+                std.debug.print("  Method '{s}' is defined in multiple mixins:\n", .{method.name});
+                std.debug.print("    - {s} ({s})\n", .{ gop.value_ptr.mixin_name, gop.value_ptr.file_path });
+                std.debug.print("    - {s} ({s})\n", .{ mixin_info.name, mixin_info.file_path });
+                std.debug.print("\n  To fix: Either:\n", .{});
+                std.debug.print("    1. Remove duplicate method from one mixin, OR\n", .{});
+                std.debug.print("    2. Override the method in the interface itself\n", .{});
+                return error.MixinMethodConflict;
+            }
+            gop.value_ptr.* = .{ .mixin_name = mixin_info.name, .file_path = mixin_info.file_path };
+        }
+    }
+
+    // Check for conflicts between mixins and interface
+    for (interface_fields) |field| {
+        if (field_names.get(field.name)) |mixin_source| {
+            std.debug.print("error: Field name conflict in interface '{s}'\n", .{interface_name});
+            std.debug.print("  Field '{s}' is defined in both:\n", .{field.name});
+            std.debug.print("    - Mixin: {s} ({s})\n", .{ mixin_source.mixin_name, mixin_source.file_path });
+            std.debug.print("    - Interface: {s}\n", .{interface_name});
+            std.debug.print("\n  To fix: Remove field from interface (it's inherited from mixin)\n", .{});
+            return error.InterfaceFieldConflict;
+        }
+    }
+
+    // Note: Interface methods CAN override mixin methods, so we don't check for method conflicts here
+}
+
 fn isStaticMethod(signature: []const u8) bool {
     // A method is static if it doesn't have a 'self' parameter
     // Signature format: (self: *Type, ...) or (self: *const Type, ...)
@@ -2748,6 +2858,38 @@ fn generateEnhancedClassWithRegistry(
     // Validate class name to prevent injection attacks
     if (!isValidTypeName(parsed.name)) return error.InvalidClassName;
 
+    // Resolve all mixins and detect conflicts early
+    var mixin_infos = std.ArrayList(ClassInfo).init(allocator);
+    defer mixin_infos.deinit();
+
+    for (parsed.mixin_names) |mixin_ref| {
+        // First try to get from mixins registry
+        if (registry.getMixin(mixin_ref)) |mixin_info| {
+            try mixin_infos.append(mixin_info);
+        } else if (try registry.resolveParentReference(mixin_ref, current_file)) |mixin_info| {
+            // Fallback to resolveParentReference for cross-file mixin references
+            try mixin_infos.append(mixin_info);
+        } else {
+            // Mixin not found
+            std.debug.print("error: Cannot resolve mixin '{s}' in interface '{s}'\n", .{ mixin_ref, parsed.name });
+            std.debug.print("  Mixin not found in registry.\n", .{});
+            std.debug.print("\n  Make sure:\n", .{});
+            std.debug.print("    1. The mixin is defined with webidl.mixin()\n", .{});
+            std.debug.print("    2. The mixin file is in the source directory\n", .{});
+            std.debug.print("    3. The mixin name matches exactly\n", .{});
+            return error.MixinNotFound;
+        }
+    }
+
+    // Detect conflicts between mixins and interface members
+    try detectMixinConflicts(
+        allocator,
+        parsed.name,
+        mixin_infos.items,
+        parsed.fields,
+        parsed.methods,
+    );
+
     var code: std.ArrayList(u8) = .empty;
     defer code.deinit(allocator);
 
@@ -2850,21 +2992,46 @@ fn generateEnhancedClassWithRegistry(
     }
 
     // Generate mixin fields (flattened - copy fields directly from mixin classes)
-    for (parsed.mixin_names) |mixin_ref| {
-        const mixin_info = (try registry.resolveParentReference(mixin_ref, current_file)) orelse continue;
+    for (mixin_infos.items) |mixin_info| {
+        // Add section header for mixin fields
+        if (mixin_info.fields.len > 0 or mixin_info.properties.len > 0) {
+            try writer.print("    // ========================================================================\n", .{});
+            try writer.print("    // Fields from {s} mixin\n", .{mixin_info.name});
+            try writer.print("    // ========================================================================\n", .{});
+        }
 
         // Copy all fields from mixin
         for (mixin_info.fields) |field| {
+            if (field.doc_comment) |doc| {
+                var doc_lines = std.mem.splitScalar(u8, doc, '\n');
+                while (doc_lines.next()) |line| {
+                    try writer.print("    /// {s}\n", .{line});
+                }
+            }
             try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
         }
 
         // Copy all property fields from mixin
         for (mixin_info.properties) |prop| {
+            if (prop.doc_comment) |doc| {
+                var doc_lines = std.mem.splitScalar(u8, doc, '\n');
+                while (doc_lines.next()) |line| {
+                    try writer.print("    /// {s}\n", .{line});
+                }
+            }
             try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
         }
+
+        if (mixin_info.fields.len > 0 or mixin_info.properties.len > 0) {
+            try writer.writeAll("\n");
+        }
     }
-    if (parsed.mixin_names.len > 0 and (parsed.properties.len > 0 or parsed.fields.len > 0)) {
-        try writer.writeAll("\n");
+
+    // Add section header for interface's own fields
+    if (parsed.properties.len > 0 or parsed.fields.len > 0) {
+        try writer.print("    // ========================================================================\n", .{});
+        try writer.print("    // {s} fields\n", .{parsed.name});
+        try writer.print("    // ========================================================================\n", .{});
     }
 
     for (parsed.properties) |prop| {
@@ -3394,11 +3561,26 @@ fn generateEnhancedClassWithRegistry(
     }
 
     // Generate mixin methods (flattened - copy method source directly into child)
-    if (parsed.mixin_names.len > 0) {
+    if (mixin_infos.items.len > 0) {
         if (parsed.methods.len > 0 or parsed.parent_name != null) try writer.writeAll("\n");
 
-        for (parsed.mixin_names) |mixin_ref| {
-            const mixin_info = (try registry.resolveParentReference(mixin_ref, current_file)) orelse continue;
+        for (mixin_infos.items) |mixin_info| {
+            // Check if this mixin has any methods to generate
+            var has_methods_to_generate = false;
+            for (mixin_info.methods) |method| {
+                if (child_method_names.contains(method.name)) continue;
+                const is_init_or_deinit = std.mem.eql(u8, method.name, "init") or std.mem.eql(u8, method.name, "deinit");
+                if (method.is_static and !is_init_or_deinit) continue;
+                has_methods_to_generate = true;
+                break;
+            }
+
+            if (has_methods_to_generate) {
+                try writer.print("    // ========================================================================\n", .{});
+                try writer.print("    // Methods from {s} mixin\n", .{mixin_info.name});
+                try writer.print("    // ========================================================================\n", .{});
+                try writer.writeAll("\n");
+            }
 
             for (mixin_info.methods) |method| {
                 // Skip if child already has this method (child overrides mixin)
@@ -3415,6 +3597,9 @@ fn generateEnhancedClassWithRegistry(
                         try writer.print("    /// {s}\n", .{line});
                     }
                 }
+                // Add annotation that this method is included from a mixin
+                try writer.print("    /// (Included from {s} mixin)\n", .{mixin_info.name});
+
                 // Copy all methods including init/deinit (with type rewriting)
                 const rewritten_method = try rewriteMixinMethod(allocator, method.source, mixin_info.name, parsed.name);
                 defer allocator.free(rewritten_method);
@@ -3422,6 +3607,23 @@ fn generateEnhancedClassWithRegistry(
                 try writer.print("    {s}\n", .{rewritten_method});
             }
         }
+    }
+
+    // Add section header for interface's own methods
+    const has_own_methods = blk: {
+        for (parsed.methods) |method| {
+            if (!std.mem.eql(u8, method.name, "init") and !std.mem.eql(u8, method.name, "deinit")) {
+                break :blk true;
+            }
+        }
+        break :blk false;
+    };
+
+    if (has_own_methods) {
+        try writer.print("    // ========================================================================\n", .{});
+        try writer.print("    // {s} methods\n", .{parsed.name});
+        try writer.print("    // ========================================================================\n", .{});
+        try writer.writeAll("\n");
     }
 
     // Emit other user methods (excluding init/deinit which were emitted earlier)
