@@ -130,14 +130,22 @@ pub fn constructView(
         },
 
         // BigInt arrays - note these use special types in webidl
-        .bigint64_array => {
-            // TODO: Implement when webidl provides BigInt64Array type
-            return error.NotImplemented;
+        .bigint64_array => blk: {
+            const typed = try webidl.BigInt64Array.init(
+                &webidl_buffer,
+                @intCast(byte_offset),
+                @intCast(length),
+            );
+            break :blk .{ .bigint64_array = typed };
         },
 
-        .biguint64_array => {
-            // TODO: Implement when webidl provides BigUint64Array type
-            return error.NotImplemented;
+        .biguint64_array => blk: {
+            const typed = try webidl.BigUint64Array.init(
+                &webidl_buffer,
+                @intCast(byte_offset),
+                @intCast(length),
+            );
+            break :blk .{ .biguint64_array = typed };
         },
     };
 }

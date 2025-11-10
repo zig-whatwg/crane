@@ -3,6 +3,7 @@
 //! Tests that console.print_fn can be configured to control output destination.
 
 const std = @import("std");
+const infra = @import("infra");
 const Console = @import("console").Console;
 const webidl = @import("webidl");
 
@@ -47,11 +48,11 @@ test "custom print_fn - capture output to buffer" {
     defer console_obj.deinit();
 
     // Set up custom printer that captures output
-    var output = std.ArrayList(u8).init(allocator);
+    var output = infra.List(u8).init(allocator);
     defer output.deinit();
 
     const CustomPrinter = struct {
-        var capture_buffer: *std.ArrayList(u8) = undefined;
+        var capture_buffer: *infra.List(u8) = undefined;
 
         fn print(comptime fmt: []const u8, args: anytype) void {
             capture_buffer.writer().print(fmt, args) catch {};
@@ -68,8 +69,8 @@ test "custom print_fn - capture output to buffer" {
     console_obj.call_log(args);
 
     // Verify output was captured
-    try std.testing.expect(output.items.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "Test message") != null);
+    try std.testing.expect(output.items().len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, output.items(), "Test message") != null);
 }
 
 test "switch print_fn at runtime" {
@@ -123,11 +124,11 @@ test "print_fn with format specifiers in messages" {
     defer console_obj.deinit();
 
     // Capture output
-    var output = std.ArrayList(u8).init(allocator);
+    var output = infra.List(u8).init(allocator);
     defer output.deinit();
 
     const CustomPrinter = struct {
-        var capture_buffer: *std.ArrayList(u8) = undefined;
+        var capture_buffer: *infra.List(u8) = undefined;
 
         fn print(comptime fmt: []const u8, args: anytype) void {
             capture_buffer.writer().print(fmt, args) catch {};
@@ -146,8 +147,8 @@ test "print_fn with format specifiers in messages" {
     console_obj.call_log(args);
 
     // Verify formatted output was captured
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "Alice") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "30") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items(), "Alice") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items(), "30") != null);
 }
 
 test "multiple console instances with different printers" {

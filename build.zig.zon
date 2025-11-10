@@ -32,10 +32,7 @@
     // Once all dependencies are fetched, `zig build` no longer requires
     // internet connectivity.
     .dependencies = .{
-        .zoop = .{
-            .url = "https://github.com/zig-whatwg/zoop/archive/refs/tags/v0.1.2.tar.gz",
-            .hash = "zoop-0.1.2-N02yon8IAwB7UFDD1BWSwKOYinAOq6zkmB-9YSBPAw_n",
-        },
+        // No external dependencies - webidl-codegen is built-in
     },
     .paths = .{
         "build.zig",

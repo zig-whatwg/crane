@@ -16,6 +16,7 @@ pub const buffer_pool = @import("buffer_pool.zig");
 // I/O Queue support (WHATWG Infra-based)
 pub const io_queue = @import("io_queue.zig");
 pub const processing = @import("processing.zig");
+pub const serialize_io_queue = @import("serialize_io_queue.zig");
 pub const html_encoding = @import("html_encoding.zig");
 pub const wrappers = @import("wrappers.zig");
 

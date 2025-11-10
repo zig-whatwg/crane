@@ -186,17 +186,37 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             return null;
         }
 
+        /// Compare two items for equality.
+        /// For slices (like []const u8), compares contents instead of pointers.
+        /// For other types, uses std.meta.eql.
+        inline fn itemsEqual(a: T, b: T) bool {
+            // Determine at compile time if T is a slice
+            const is_slice = comptime blk: {
+                const info = @typeInfo(T);
+                break :blk info == .pointer and info.pointer.size == .slice;
+            };
+
+            if (is_slice) {
+                // For slices, compare contents
+                const child = @typeInfo(T).pointer.child;
+                return std.mem.eql(child, a, b);
+            } else {
+                // For other types, use std.meta.eql
+                return std.meta.eql(a, b);
+            }
+        }
+
         pub fn contains(self: *const Self, item: T) bool {
             if (self.heap_storage) |heap| {
                 for (heap.items) |elem| {
-                    if (std.meta.eql(elem, item)) return true;
+                    if (itemsEqual(elem, item)) return true;
                 }
                 return false;
             }
 
             if (comptime inline_capacity > 0) {
                 for (self.inline_storage[0..self.len]) |elem| {
-                    if (std.meta.eql(elem, item)) return true;
+                    if (itemsEqual(elem, item)) return true;
                 }
             }
             return false;

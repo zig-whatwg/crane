@@ -520,7 +520,7 @@ skills/
 ├── dependency_mocking/      # ⭐ Creating temporary mocks
 │   ├── USAGE.md             # When to use (autodiscovery)
 │   └── SKILL.md             # Complete documentation
-└── zoop/                    # WebIDL code generation
+└── webidl_codegen/          # ⭐ WebIDL code generation
     ├── USAGE.md             # When to use (autodiscovery)
     └── SKILL.md             # Complete documentation
 
@@ -603,21 +603,22 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
 3. **Track in bd** - Create issue to implement the dependency
 
-### External Dependencies (Zig Packages)
+### Internal WebIDL Codegen
 
-External packages are listed in `build.zig.zon` and cached in `~/.cache/zig/p/`.
+The WebIDL code generation system is built-in to this monorepo at `src/webidl/codegen/`.
 
-**Current External Dependencies:**
-- **zoop** - WebIDL code generation system (generates Zig classes from `zoop_src/` with WebIDL type compliance)
+**How it works:**
+- Source files in `webidl/src/**/*.zig` use `webidl.interface()`, `webidl.namespace()`, or `webidl.mixin()`
+- Run `zig build codegen` to generate enhanced code in `webidl/generated/**/*.zig` (gitignored)
+- Generated files have flattened inheritance, optimized layouts, and property accessors
+- Uses SHA-256 hashing for fast incremental builds
 
-**Accessing External Dependency Source:**
-```bash
-# Find external dependency
-find ~/.cache/zig -name "zoop-*" -type d
+**Key APIs:**
+- `webidl.interface(struct { ... })` - WebIDL interface (can have instances, inheritance)
+- `webidl.namespace(struct { ... })` - WebIDL namespace (static-only operations)
+- `webidl.mixin(struct { ... })` - WebIDL interface mixin (reusable member bundles)
 
-# Read source
-cat ~/.cache/zig/p/zoop-*/src/main.zig
-```
+**See:** `skills/webidl_codegen/SKILL.md` for complete documentation
 
 ---
 

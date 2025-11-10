@@ -49,12 +49,11 @@ pub const host_serializer = @import("host_serializer");
 
 // Phase 6: Additional features
 pub const public_suffix = @import("public_suffix.zig");
-// TODO: Fix these modules for ArrayList API changes
-// pub const origin = @import("origin.zig");
-// pub const blob_url = @import("blob_url.zig");
-// pub const equivalence = @import("equivalence.zig");
+pub const origin = @import("origin");
+pub const blob_url = @import("blob_url");
+pub const equivalence = @import("equivalence");
 
-// Phase 7: Public WebIDL API (Zoop-generated from interfaces/)
+// Phase 7: Public WebIDL API (WebIDL-generated from interfaces/)
 pub const URL = @import("url").URL;
 pub const URLSearchParams = @import("url_search_params").URLSearchParams;
 

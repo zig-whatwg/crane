@@ -196,3 +196,31 @@ pub const symbol = primitives.symbol_type;
 test {
     std.testing.refAllDecls(@This());
 }
+
+// ============================================================================
+// Code Generation API
+// ============================================================================
+//
+// WebIDL interface/namespace/mixin markers for build-time code generation.
+// These functions are used in source files to declare WebIDL types that will
+// be enhanced by the codegen tool at build time.
+//
+// Usage:
+//   const EventTarget = webidl.interface(struct { ... });
+//   const Console = webidl.namespace(struct { ... });
+//   const Timestamped = webidl.mixin(struct { ... });
+
+/// WebIDL codegen API
+pub const codegen = @import("codegen/root.zig");
+
+/// Mark a struct as a WebIDL interface (supports inheritance, methods, properties)
+pub const interface = codegen.interface;
+
+/// Mark a struct as a WebIDL namespace (static-only API, no instances)
+pub const namespace = codegen.namespace;
+
+/// Mark a struct as a WebIDL mixin (reusable fields/methods for composition)
+pub const mixin = codegen.mixin;
+
+/// Configuration for generated method prefixes
+pub const CodegenConfig = codegen.ClassConfig;

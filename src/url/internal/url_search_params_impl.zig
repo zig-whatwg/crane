@@ -6,7 +6,7 @@
 //! URLSearchParams provides methods to work with query strings using the
 //! application/x-www-form-urlencoded format.
 //!
-//! This is the INTERNAL implementation (not the Zoop-generated WebIDL interface).
+//! This is the INTERNAL implementation (not the WebIDL-generated WebIDL interface).
 
 const std = @import("std");
 const Tuple = @import("form_parser").Tuple;

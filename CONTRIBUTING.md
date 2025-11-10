@@ -32,11 +32,11 @@ This project follows the Zig Community Code of Conduct. Please be respectful and
 git clone https://github.com/zig-whatwg/url.git
 cd url
 
-# Clone dependencies (if not using package manager)
-cd ..
-git clone https://github.com/zig-whatwg/infra.git
-git clone https://github.com/zig-whatwg/zoop.git
-cd url
+# No external dependencies needed
+# webidl-codegen is built-in at src/webidl/codegen/
+
+# Run code generation
+zig build codegen
 
 # Run tests
 zig build test

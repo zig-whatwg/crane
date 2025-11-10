@@ -6,6 +6,7 @@
 //! This module provides functions to determine if two URLs or hosts are equivalent.
 
 const std = @import("std");
+const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 const Host = @import("host").Host;
 const serialize = @import("url_serializer").serialize;
@@ -84,9 +85,9 @@ test "URL equals - identical URLs" {
 
     // Create two identical URLs
     const buffer1 = try allocator.dupe(u8, "https");
-    var segments1 = std.ArrayList([]const u8){};
+    var segments1 = infra.List([]const u8).init(allocator);
     defer segments1.deinit();
-    try segments1.append(allocator, try allocator.dupe(u8, ""));
+    try segments1.append(try allocator.dupe(u8, ""));
 
     const host1 = @import("host").Host{ .domain = try allocator.dupe(u8, "example.com") };
 
@@ -111,9 +112,9 @@ test "URL equals - identical URLs" {
     defer url1.deinit();
 
     const buffer2 = try allocator.dupe(u8, "https");
-    var segments2 = std.ArrayList([]const u8){};
+    var segments2 = infra.List([]const u8).init(allocator);
     defer segments2.deinit();
-    try segments2.append(allocator, try allocator.dupe(u8, ""));
+    try segments2.append(try allocator.dupe(u8, ""));
 
     const host2 = @import("host").Host{ .domain = try allocator.dupe(u8, "example.com") };
 
@@ -145,7 +146,7 @@ test "URL equals - different schemes" {
     const allocator = std.testing.allocator;
 
     const buffer1 = try allocator.dupe(u8, "https");
-    var segments1 = std.ArrayList([]const u8){};
+    var segments1 = infra.List([]const u8).init(allocator);
     defer segments1.deinit();
 
     const host1 = @import("host").Host{ .domain = try allocator.dupe(u8, "example.com") };
@@ -171,7 +172,7 @@ test "URL equals - different schemes" {
     defer url1.deinit();
 
     const buffer2 = try allocator.dupe(u8, "http");
-    var segments2 = std.ArrayList([]const u8){};
+    var segments2 = infra.List([]const u8).init(allocator);
     defer segments2.deinit();
 
     const host2 = @import("host").Host{ .domain = try allocator.dupe(u8, "example.com") };

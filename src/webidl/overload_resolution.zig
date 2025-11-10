@@ -5,7 +5,7 @@
 //! The overload resolution algorithm determines which overloaded operation,
 //! constructor, or callback to invoke based on the types of JavaScript arguments.
 //!
-//! This module provides the infrastructure for code generators (like zoop) to
+//! This module provides the infrastructure for code generators to
 //! generate correct overload dispatch logic.
 
 const std = @import("std");

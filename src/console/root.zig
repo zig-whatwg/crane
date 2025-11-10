@@ -12,7 +12,7 @@ const std = @import("std");
 pub const console = @import("console");
 pub const Console = console.Console;
 
-// Re-export supporting types (from zoop_src/console/types.zig)
+// Re-export supporting types (from webidl/src/console/types.zig)
 pub const types = @import("types");
 pub const Group = types.Group;
 pub const LogLevel = types.LogLevel;

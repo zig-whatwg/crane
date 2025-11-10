@@ -7,8 +7,8 @@ const std = @import("std");
 const webidl = @import("webidl");
 const testing = std.testing;
 
-// Import Console from zoop_src
-const Console = @import("../zoop_src/console.zig").Console;
+// Import Console from webidl/src
+const Console = @import("../webidl/src/console.zig").Console;
 
 test "clear - empty console (no-op)" {
     const allocator = testing.allocator;

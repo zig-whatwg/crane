@@ -10,6 +10,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const common = @import("common");
+const dom = @import("dom");
 
 // ============================================================================
 // UnderlyingSource Dictionary (specs/streams.idl lines 47-53)
@@ -29,13 +30,13 @@ const common = @import("common");
 /// ```
 pub const UnderlyingSource = struct {
     /// Start callback - called immediately during construction
-    start: ?*const fn (*anyopaque) common.Promise(void) = null,
+    start: ?webidl.GenericCallback = null,
 
     /// Pull callback - called when stream needs more data
-    pull: ?*const fn () common.Promise(void) = null,
+    pull: ?webidl.GenericCallback = null,
 
     /// Cancel callback - called when stream is canceled
-    cancel: ?*const fn (reason: ?common.JSValue) common.Promise(void) = null,
+    cancel: ?webidl.GenericCallback = null,
 
     /// Stream type - "bytes" for byte streams, undefined for default streams
     type: ?ReadableStreamType = null,
@@ -69,16 +70,16 @@ pub const ReadableStreamType = enum {
 /// ```
 pub const UnderlyingSink = struct {
     /// Start callback - called immediately during construction
-    start: ?*const fn (*anyopaque) common.Promise(void) = null,
+    start: ?webidl.GenericCallback = null,
 
     /// Write callback - called for each chunk
-    write: ?*const fn (chunk: common.JSValue) common.Promise(void) = null,
+    write: ?webidl.GenericCallback = null,
 
     /// Close callback - called when stream is closing
-    close: ?*const fn () common.Promise(void) = null,
+    close: ?webidl.GenericCallback = null,
 
     /// Abort callback - called when stream is aborted
-    abort: ?*const fn (reason: ?common.JSValue) common.Promise(void) = null,
+    abort: ?webidl.GenericCallback = null,
 
     /// Stream type - reserved for future use, must be undefined
     type: ?common.JSValue = null,
@@ -103,16 +104,16 @@ pub const UnderlyingSink = struct {
 /// ```
 pub const Transformer = struct {
     /// Start callback - called immediately during construction
-    start: ?*const fn (*anyopaque) common.Promise(void) = null,
+    start: ?webidl.GenericCallback = null,
 
     /// Transform callback - called for each chunk
-    transform: ?*const fn (common.JSValue, *anyopaque) common.Promise(void) = null,
+    transform: ?webidl.GenericCallback = null,
 
     /// Flush callback - called when writable side is closing
-    flush: ?*const fn (*anyopaque) common.Promise(void) = null,
+    flush: ?webidl.GenericCallback = null,
 
     /// Cancel callback - called when readable side is canceled
-    cancel: ?*const fn (common.JSValue) common.Promise(void) = null,
+    cancel: ?webidl.GenericCallback = null,
 
     /// Readable type - reserved for future use, must be undefined
     readable_type: ?common.JSValue = null,
@@ -139,7 +140,7 @@ pub const QueuingStrategy = struct {
     high_water_mark: ?f64 = null,
 
     /// Size function - calculates chunk size
-    size: ?*const fn (chunk: common.JSValue) f64 = null,
+    size: ?webidl.GenericCallback = null,
 };
 
 // ============================================================================
@@ -168,7 +169,7 @@ pub const StreamPipeOptions = struct {
     prevent_cancel: bool = false,
 
     /// Abort signal to abort the pipe operation
-    signal: ?*anyopaque = null, // TODO: AbortSignal type
+    signal: ?*dom.AbortSignal = null,
 };
 
 // ============================================================================

@@ -11,7 +11,7 @@ pub fn build(b: *std.Build) void {
     const spec_filter = b.option(
         []const u8,
         "spec",
-        "Run tests for a specific spec (infra, webidl, encoding, url, console, streams, mimesniff, or 'all')",
+        "Run tests for a specific spec (infra, webidl, dom, encoding, url, console, streams, mimesniff, or 'all')",
     );
 
     // Validate spec filter
@@ -20,6 +20,7 @@ pub fn build(b: *std.Build) void {
             "all",
             "infra",
             "webidl",
+            "dom",
             "encoding",
             "url",
             "console",
@@ -35,37 +36,45 @@ pub fn build(b: *std.Build) void {
         }
         if (!is_valid) {
             std.debug.print("Error: Invalid spec '{s}'\n", .{spec});
-            std.debug.print("Valid specs: all, infra, webidl, encoding, url, console, streams, mimesniff\n", .{});
+            std.debug.print("Valid specs: all, infra, webidl, dom, encoding, url, console, streams, mimesniff\n", .{});
             std.process.exit(1);
         }
     }
 
     // ========================================================================
-    // ZOOP CODEGEN STEP - UNIFIED
+    // WEBIDL CODEGEN STEP
     // ========================================================================
+    //
+    // Build webidl-codegen executable from our internal codegen implementation.
+    // This scans webidl/src/ for webidl.interface() and webidl.namespace()
+    // declarations and generates enhanced code in webidl/generated/.
 
-    const zoop_dep = b.dependency("zoop", .{
-        .target = target,
-        .optimize = optimize,
+    // Build webidl-codegen executable
+    const webidl_codegen_exe = b.addExecutable(.{
+        .name = "webidl-codegen",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/webidl/codegen/codegen_main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
-    const zoop_exe = zoop_dep.artifact("zoop-codegen");
-    const zoop = zoop_dep.module("zoop");
+    b.installArtifact(webidl_codegen_exe);
 
-    // Single codegen invocation - scans all of zoop_src/, outputs to interfaces/
-    const zoop_codegen = b.addRunArtifact(zoop_exe);
-    zoop_codegen.addArgs(&.{
+    // Run codegen: scan webidl/src/, output to webidl/generated/
+    const webidl_codegen = b.addRunArtifact(webidl_codegen_exe);
+    webidl_codegen.addArgs(&.{
         "--source-dir",
-        "zoop_src",
+        "webidl/src",
         "--output-dir",
-        "interfaces",
+        "webidl/generated",
         "--getter-prefix",
         "get_",
         "--setter-prefix",
         "set_",
     });
 
-    const codegen_step = b.step("codegen", "Run zoop code generation for all specs");
-    codegen_step.dependOn(&zoop_codegen.step);
+    const codegen_step = b.step("codegen", "Run WebIDL code generation for all specs");
+    codegen_step.dependOn(&webidl_codegen.step);
 
     // ========================================================================
     // LIBRARY MODULE
@@ -75,36 +84,13 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
-    whatwg_mod.addImport("zoop", zoop);
 
     // ========================================================================
     // GENERATED INTERFACE MODULES
     // ========================================================================
-
-    // Create modules for generated interfaces
-    const console_interface_mod = b.addModule("console_interface", .{
-        .root_source_file = b.path("interfaces/console/console.zig"),
-        .target = target,
-    });
-    console_interface_mod.addImport("zoop", zoop);
-
-    const encoding_interface_mod = b.addModule("encoding_interface", .{
-        .root_source_file = b.path("interfaces/encoding/text_encoder.zig"),
-        .target = target,
-    });
-    encoding_interface_mod.addImport("zoop", zoop);
-
-    const url_interface_mod = b.addModule("url_interface", .{
-        .root_source_file = b.path("interfaces/url/url.zig"),
-        .target = target,
-    });
-    url_interface_mod.addImport("zoop", zoop);
-
-    const streams_interface_mod = b.addModule("streams_interface", .{
-        .root_source_file = b.path("interfaces/streams/readable_stream.zig"),
-        .target = target,
-    });
-    streams_interface_mod.addImport("zoop", zoop);
+    //
+    // NOTE: Generated interfaces are imported directly by spec modules.
+    // Legacy standalone interface modules removed.
 
     // ========================================================================
     // INDIVIDUAL SPEC MODULES
@@ -121,60 +107,213 @@ pub fn build(b: *std.Build) void {
     });
     webidl_mod.addImport("infra", infra_mod);
 
+    // DOM interface module for AbortSignal
+    // DOM interface module for EventTarget (must be declared first)
+    const event_target_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/event_target.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        },
+    });
+
+    // DOM interface module for Event (used by EventTarget)
+    const event_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/event.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "event_target", .module = event_target_mod },
+        },
+    });
+
+    // DOM interface module for AbortSignal (extends EventTarget)
+    const abort_signal_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/abort_signal.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "event_target", .module = event_target_mod },
+        },
+    });
+
+    // DOM interface module for NodeList
+    const node_list_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/node_list.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        },
+    });
+
+    // DOM interface module for Node (depends on NodeList)
+    const node_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/node.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "event_target", .module = event_target_mod },
+            .{ .name = "node_list", .module = node_list_mod },
+        },
+    });
+
+    // NodeList needs Node for its type (circular dependency handled by forward declarations)
+    node_list_mod.addImport("node", node_mod);
+
+    // DOM interface module for Element (depends on Node)
+    const element_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/element.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "node", .module = node_mod },
+            .{ .name = "event_target", .module = event_target_mod },
+        },
+    });
+
+    // DOM interface module for CharacterData (depends on Node)
+    const character_data_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/character_data.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "node", .module = node_mod },
+            .{ .name = "event_target", .module = event_target_mod },
+        },
+    });
+
+    // DOM interface module for Text (depends on CharacterData)
+    const text_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/text.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "character_data", .module = character_data_mod },
+        },
+    });
+
+    // DOM interface module for DOMTokenList
+    const dom_token_list_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/dom_token_list.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "element", .module = element_mod },
+        },
+    });
+
+    // DOM interface module for Attr
+    const attr_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/attr.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "node", .module = node_mod },
+            .{ .name = "element", .module = element_mod },
+        },
+    });
+
+    // DOM interface module for Comment (extends CharacterData)
+    const comment_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/comment.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "character_data", .module = character_data_mod },
+        },
+    });
+
+    // DOM interface module for DocumentFragment (extends Node)
+    const document_fragment_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/document_fragment.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "node", .module = node_mod },
+            .{ .name = "element", .module = element_mod },
+        },
+    });
+
+    // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, etc.)
+    const dom_mod = b.addModule("dom", .{
+        .root_source_file = b.path("src/dom/root.zig"),
+        .target = target,
+    });
+    dom_mod.addImport("infra", infra_mod);
+    dom_mod.addImport("webidl", webidl_mod);
+    dom_mod.addImport("abort_signal", abort_signal_mod);
+    dom_mod.addImport("event_target", event_target_mod);
+    dom_mod.addImport("event", event_mod);
+    dom_mod.addImport("node", node_mod);
+    dom_mod.addImport("node_list", node_list_mod);
+    dom_mod.addImport("element", element_mod);
+    dom_mod.addImport("character_data", character_data_mod);
+    dom_mod.addImport("text", text_mod);
+    dom_mod.addImport("comment", comment_mod);
+    dom_mod.addImport("document_fragment", document_fragment_mod);
+    dom_mod.addImport("dom_token_list", dom_token_list_mod);
+    dom_mod.addImport("attr", attr_mod);
+
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
         .target = target,
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
-    encoding_mod.addImport("zoop", zoop);
 
     // Create interface modules with proper dependencies
     const text_encoder_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/encoding/text_encoder.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/text_encoder.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
         },
     });
 
     const text_encoder_result_mod = b.createModule(.{
-        .root_source_file = b.path("zoop_src/encoding/text_encoder_encode_into_result.zig"),
+        .root_source_file = b.path("webidl/src/encoding/text_encoder_encode_into_result.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
         },
     });
     text_encoder_mod.addImport("text_encoder_encode_into_result", text_encoder_result_mod);
 
     const text_decoder_options_mod = b.createModule(.{
-        .root_source_file = b.path("zoop_src/encoding/text_decoder_options.zig"),
+        .root_source_file = b.path("webidl/src/encoding/text_decoder_options.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
         },
     });
 
     const text_decode_options_mod = b.createModule(.{
-        .root_source_file = b.path("zoop_src/encoding/text_decode_options.zig"),
+        .root_source_file = b.path("webidl/src/encoding/text_decode_options.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
         },
     });
 
     const text_decoder_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/encoding/text_decoder.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/text_decoder.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
             .{ .name = "text_decoder_options", .module = text_decoder_options_mod },
             .{ .name = "text_decode_options", .module = text_decode_options_mod },
             .{ .name = "encoding", .module = encoding_mod },
@@ -326,6 +465,23 @@ pub fn build(b: *std.Build) void {
     const url_origin_mod_internal = b.createModule(.{
         .root_source_file = b.path("src/url/origin.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "url_record", .module = url_internal_url_record_mod },
+            .{ .name = "host", .module = url_internal_host_mod },
+            .{ .name = "host_serializer", .module = url_host_serializer_mod },
+            .{ .name = "path", .module = url_internal_path_mod },
+        },
+    });
+
+    const url_equivalence_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/equivalence.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "url_record", .module = url_internal_url_record_mod },
+            .{ .name = "host", .module = url_internal_host_mod },
+            .{ .name = "url_serializer", .module = url_serializer_mod },
+            .{ .name = "path", .module = url_internal_path_mod },
+        },
     });
 
     // Add dependencies for internal modules
@@ -335,12 +491,12 @@ pub fn build(b: *std.Build) void {
     url_ipv4_parser_mod.addImport("validation", url_validation_mod);
     url_ipv6_parser_mod.addImport("validation", url_validation_mod);
     url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
+    url_blob_url_mod.addImport("origin", url_origin_mod_internal);
 
     // Common imports for URL interface modules
     const url_iface_imports = [_]std.Build.Module.Import{
         .{ .name = "infra", .module = infra_mod },
         .{ .name = "webidl", .module = webidl_mod },
-        .{ .name = "zoop", .module = zoop },
         .{ .name = "url_record", .module = url_internal_url_record_mod },
         .{ .name = "host", .module = url_internal_host_mod },
         .{ .name = "path", .module = url_internal_path_mod },
@@ -371,13 +527,13 @@ pub fn build(b: *std.Build) void {
 
     // URL interface modules
     const url_url_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/url/url.zig"),
+        .root_source_file = b.path("webidl/generated/url/url.zig"),
         .target = target,
         .imports = &url_iface_imports,
     });
 
     const url_search_params_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/url/url_search_params.zig"),
+        .root_source_file = b.path("webidl/generated/url/url_search_params.zig"),
         .target = target,
         .imports = &url_iface_imports,
     });
@@ -394,7 +550,6 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("infra", infra_mod);
     url_mod.addImport("webidl", webidl_mod);
     url_mod.addImport("encoding", encoding_mod);
-    url_mod.addImport("zoop", zoop);
     url_mod.addImport("url", url_url_mod);
     url_mod.addImport("url_search_params", url_search_params_mod);
     url_mod.addImport("url_record", url_internal_url_record_mod);
@@ -414,31 +569,31 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
     url_mod.addImport("helpers", url_helpers_mod);
     url_mod.addImport("origin", url_origin_mod_internal);
+    url_mod.addImport("blob_url", url_blob_url_mod);
+    url_mod.addImport("equivalence", url_equivalence_mod);
     url_mod.addImport("path_serializer", url_path_serializer_mod);
 
     // Console supporting modules
     const console_types_mod = b.createModule(.{
-        .root_source_file = b.path("zoop_src/console/types.zig"),
+        .root_source_file = b.path("webidl/src/console/types.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
         },
     });
 
     const console_format_mod = b.createModule(.{
-        .root_source_file = b.path("zoop_src/console/format.zig"),
+        .root_source_file = b.path("webidl/src/console/format.zig"),
         .target = target,
     });
 
     const console_console_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/console/console.zig"),
+        .root_source_file = b.path("webidl/generated/console/console.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "zoop", .module = zoop },
             .{ .name = "types", .module = console_types_mod },
             .{ .name = "format", .module = console_format_mod },
         },
@@ -449,7 +604,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     console_mod.addImport("webidl", webidl_mod);
-    console_mod.addImport("zoop", zoop);
     // Add imports for generated files
     console_mod.addImport("console", console_console_mod);
     console_mod.addImport("types", console_types_mod);
@@ -530,6 +684,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
             .{ .name = "common", .module = streams_common_mod },
         },
     });
@@ -541,6 +696,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
             .{ .name = "common", .module = streams_common_mod },
             .{ .name = "dict_types", .module = streams_dict_types_mod },
         },
@@ -562,7 +718,7 @@ pub fn build(b: *std.Build) void {
     });
     streams_mod.addImport("infra", infra_mod);
     streams_mod.addImport("webidl", webidl_mod);
-    streams_mod.addImport("zoop", zoop);
+    streams_mod.addImport("dom", dom_mod);
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
     streams_mod.addImport("queue_with_sizes", streams_queue_mod);
@@ -576,7 +732,7 @@ pub fn build(b: *std.Build) void {
     const streams_iface_imports = [_]std.Build.Module.Import{
         .{ .name = "infra", .module = infra_mod },
         .{ .name = "webidl", .module = webidl_mod },
-        .{ .name = "zoop", .module = zoop },
+        .{ .name = "dom", .module = dom_mod },
         .{ .name = "common", .module = streams_common_mod },
         .{ .name = "queue_with_sizes", .module = streams_queue_mod },
         .{ .name = "read_request", .module = streams_read_request_mod },
@@ -590,79 +746,79 @@ pub fn build(b: *std.Build) void {
     };
 
     const byte_length_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/byte_length_queuing_strategy.zig"),
+        .root_source_file = b.path("webidl/generated/streams/byte_length_queuing_strategy.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const count_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/count_queuing_strategy.zig"),
+        .root_source_file = b.path("webidl/generated/streams/count_queuing_strategy.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_stream_default_controller.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/writable_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/writable_stream_default_controller.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const transform_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/transform_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/transform_stream_default_controller.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_byob_request_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_stream_byob_request.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_stream_byob_request.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_byte_stream_controller_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_byte_stream_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_byte_stream_controller.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_stream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_default_reader_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_stream_default_reader.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_stream_default_reader.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_byob_reader_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/readable_stream_byob_reader.zig"),
+        .root_source_file = b.path("webidl/generated/streams/readable_stream_byob_reader.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/writable_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/writable_stream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_default_writer_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/writable_stream_default_writer.zig"),
+        .root_source_file = b.path("webidl/generated/streams/writable_stream_default_writer.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const transform_stream_mod = b.createModule(.{
-        .root_source_file = b.path("interfaces/streams/transform_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/transform_stream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
@@ -735,6 +891,7 @@ pub fn build(b: *std.Build) void {
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
+    whatwg_mod.addImport("dom", dom_mod);
     whatwg_mod.addImport("encoding", encoding_mod);
     whatwg_mod.addImport("url", url_mod);
     whatwg_mod.addImport("console", console_mod);
@@ -750,6 +907,7 @@ pub fn build(b: *std.Build) void {
     const test_all = spec_filter == null or std.mem.eql(u8, spec_filter.?, "all");
     const test_infra = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "infra"));
     const test_webidl = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "webidl"));
+    const test_dom = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "dom"));
     const test_encoding = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "encoding"));
     const test_url = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "url"));
     const test_console = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "console"));
@@ -766,6 +924,12 @@ pub fn build(b: *std.Build) void {
         const webidl_tests = b.addTest(.{ .root_module = webidl_mod });
         const run_webidl_tests = b.addRunArtifact(webidl_tests);
         test_step.dependOn(&run_webidl_tests.step);
+    }
+
+    if (test_dom) {
+        const dom_tests = b.addTest(.{ .root_module = dom_mod });
+        const run_dom_tests = b.addRunArtifact(dom_tests);
+        test_step.dependOn(&run_dom_tests.step);
     }
 
     if (test_encoding) {
@@ -822,4 +986,31 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the WHATWG CLI tool");
     run_step.dependOn(&run_cmd.step);
+
+    // ========================================================================
+    // IDL PARSER TOOL
+    // ========================================================================
+
+    const parse_idls_exe = b.addExecutable(.{
+        .name = "parse-idls",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/webidl/parser/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "infra", .module = infra_mod },
+            },
+        }),
+    });
+
+    const install_parse_idls = b.addInstallArtifact(parse_idls_exe, .{});
+    const parse_idls_cmd = b.addRunArtifact(parse_idls_exe);
+    parse_idls_cmd.step.dependOn(&install_parse_idls.step);
+
+    // Add arguments to parse webref IDLs
+    parse_idls_cmd.addArg("/Users/bcardarella/projects/webref/ed/idl/");
+    parse_idls_cmd.addArg("webidl/idls/");
+
+    const parse_idls_step = b.step("parse-idls", "Parse WebIDL files from webref");
+    parse_idls_step.dependOn(&parse_idls_cmd.step);
 }

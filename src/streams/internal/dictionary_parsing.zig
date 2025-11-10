@@ -7,13 +7,13 @@
 //! Spec: https://streams.spec.whatwg.org/
 //! WebIDL: https://webidl.spec.whatwg.org/#idl-dictionaries
 //!
-//! CURRENT STATUS: Placeholder implementations that return default values.
-//! TODO: Implement actual parsing when webidl.JSValue supports object property access.
+//! Uses webidl's dictionary extraction utilities for proper parsing.
 
 const std = @import("std");
 const webidl = @import("webidl");
 const dict = @import("dict_types");
 const common = @import("common");
+const dom = @import("dom");
 
 // ============================================================================
 // UnderlyingSource Dictionary Parsing
@@ -53,20 +53,58 @@ pub fn parseUnderlyingSource(
 
     const js_value = value.?;
 
-    // TODO: Implement actual dictionary parsing when webidl.JSValue supports
-    // object property access. For now, return defaults.
-    //
-    // Expected implementation:
-    // 1. Check if value is an object
-    // 2. Get "start" property and convert to callback
-    // 3. Get "pull" property and convert to callback
-    // 4. Get "cancel" property and convert to callback
-    // 5. Get "type" property and convert to ReadableStreamType enum
-    // 6. Get "autoAllocateChunkSize" property and convert to u64 with EnforceRange
-    // 7. Validate autoAllocateChunkSize > 0 if present
-    _ = js_value;
+    // If value is undefined or null, return defaults
+    if (js_value == .undefined or js_value == .null) {
+        return .{};
+    }
 
-    return .{};
+    // Step 1: Extract callbacks using webidl.extractCallback
+    const start = try webidl.extractCallback(js_value, "start", false);
+    const pull = try webidl.extractCallback(js_value, "pull", false);
+    const cancel = try webidl.extractCallback(js_value, "cancel", false);
+
+    // Step 2: Extract type property (optional, "bytes" or undefined)
+    var stream_type: ?dict.ReadableStreamType = null;
+    if (js_value == .object) {
+        if (js_value.object.get("type")) |type_value| {
+            if (type_value == .string) {
+                const type_str = type_value.string;
+                if (std.mem.eql(u8, type_str, "bytes")) {
+                    stream_type = dict.ReadableStreamType.bytes;
+                } else {
+                    // Invalid type value - spec says to throw TypeError
+                    return error.TypeError;
+                }
+            } else if (type_value != .undefined and type_value != .null) {
+                return error.TypeError;
+            }
+        }
+    }
+
+    // Step 3: Extract autoAllocateChunkSize with [EnforceRange]
+    const auto_allocate = try webidl.extractDictionaryMemberWithAttrs(
+        ?u64,
+        js_value,
+        "autoAllocateChunkSize",
+        false, // optional
+        null, // no default
+        .{ .enforce_range = true },
+    );
+
+    // Step 4: Validate autoAllocateChunkSize > 0 if present
+    if (auto_allocate) |chunk_size| {
+        if (chunk_size == 0) {
+            return error.TypeError;
+        }
+    }
+
+    return .{
+        .start = start,
+        .pull = pull,
+        .cancel = cancel,
+        .type = stream_type,
+        .auto_allocate_chunk_size = auto_allocate,
+    };
 }
 
 // ============================================================================
@@ -106,20 +144,34 @@ pub fn parseUnderlyingSink(
 
     const js_value = value.?;
 
-    // TODO: Implement actual dictionary parsing when webidl.JSValue supports
-    // object property access. For now, return defaults.
-    //
-    // Expected implementation:
-    // 1. Check if value is an object
-    // 2. Get "start" property and convert to callback
-    // 3. Get "write" property and convert to callback
-    // 4. Get "close" property and convert to callback
-    // 5. Get "abort" property and convert to callback
-    // 6. Get "type" property - must be undefined
-    // 7. Throw TypeError if type is not undefined
-    _ = js_value;
+    // If value is undefined or null, return defaults
+    if (js_value == .undefined or js_value == .null) {
+        return .{};
+    }
 
-    return .{};
+    // Step 1: Extract callbacks using webidl.extractCallback
+    const start = try webidl.extractCallback(js_value, "start", false);
+    const write = try webidl.extractCallback(js_value, "write", false);
+    const close = try webidl.extractCallback(js_value, "close", false);
+    const abort = try webidl.extractCallback(js_value, "abort", false);
+
+    // Step 2: Extract type property (reserved for future use, must be undefined)
+    if (js_value == .object) {
+        if (js_value.object.get("type")) |type_value| {
+            // Type property must be undefined or null
+            if (type_value != .undefined and type_value != .null) {
+                return error.TypeError;
+            }
+        }
+    }
+
+    return .{
+        .start = start,
+        .write = write,
+        .close = close,
+        .abort = abort,
+        .type = null, // Reserved for future use
+    };
 }
 
 // ============================================================================
@@ -160,21 +212,39 @@ pub fn parseTransformer(
 
     const js_value = value.?;
 
-    // TODO: Implement actual dictionary parsing when webidl.JSValue supports
-    // object property access. For now, return defaults.
-    //
-    // Expected implementation:
-    // 1. Check if value is an object
-    // 2. Get "start" property and convert to callback
-    // 3. Get "transform" property and convert to callback
-    // 4. Get "flush" property and convert to callback
-    // 5. Get "cancel" property and convert to callback
-    // 6. Get "readableType" property - must be undefined
-    // 7. Get "writableType" property - must be undefined
-    // 8. Throw TypeError if readableType or writableType is not undefined
-    _ = js_value;
+    // If value is undefined or null, return defaults
+    if (js_value == .undefined or js_value == .null) {
+        return .{};
+    }
 
-    return .{};
+    // Step 1: Extract callbacks using webidl.extractCallback
+    const start = try webidl.extractCallback(js_value, "start", false);
+    const transform = try webidl.extractCallback(js_value, "transform", false);
+    const flush = try webidl.extractCallback(js_value, "flush", false);
+    const cancel = try webidl.extractCallback(js_value, "cancel", false);
+
+    // Step 2: Extract readableType and writableType (reserved for future use, must be undefined)
+    if (js_value == .object) {
+        if (js_value.object.get("readableType")) |readable_type| {
+            if (readable_type != .undefined and readable_type != .null) {
+                return error.TypeError;
+            }
+        }
+        if (js_value.object.get("writableType")) |writable_type| {
+            if (writable_type != .undefined and writable_type != .null) {
+                return error.TypeError;
+            }
+        }
+    }
+
+    return .{
+        .start = start,
+        .transform = transform,
+        .flush = flush,
+        .cancel = cancel,
+        .readable_type = null, // Reserved for future use
+        .writable_type = null, // Reserved for future use
+    };
 }
 
 // ============================================================================
@@ -210,16 +280,27 @@ pub fn parseQueuingStrategy(
 
     const js_value = value.?;
 
-    // TODO: Implement actual dictionary parsing when webidl.JSValue supports
-    // object property access. For now, return defaults.
-    //
-    // Expected implementation:
-    // 1. Check if value is an object
-    // 2. Get "highWaterMark" property and convert to f64 (unrestricted double)
-    // 3. Get "size" property and convert to callback
-    _ = js_value;
+    // If value is undefined or null, return defaults
+    if (js_value == .undefined or js_value == .null) {
+        return .{};
+    }
 
-    return .{};
+    // Step 1: Extract highWaterMark (unrestricted double - allows Infinity/NaN)
+    const high_water_mark = try webidl.extractDictionaryMember(
+        ?f64,
+        js_value,
+        "highWaterMark",
+        false, // optional
+        null, // no default
+    );
+
+    // Step 2: Extract size callback
+    const size = try webidl.extractCallback(js_value, "size", false);
+
+    return .{
+        .high_water_mark = high_water_mark,
+        .size = size,
+    };
 }
 
 /// Extract high water mark from QueuingStrategy, with default
@@ -240,12 +321,22 @@ pub fn extractHighWaterMark(
 
     const js_value = value.?;
 
-    // TODO: Implement actual property access when webidl.JSValue supports it
-    // For now, check if it's a number directly
-    switch (js_value) {
-        .number => |n| return n,
-        else => return default_hwm,
+    // If value is undefined or null, return default
+    if (js_value == .undefined or js_value == .null) {
+        return default_hwm;
     }
+
+    // Extract highWaterMark property from object (as optional)
+    const hwm_optional = try webidl.extractDictionaryMember(
+        ?f64,
+        js_value,
+        "highWaterMark",
+        false, // optional
+        null,
+    );
+
+    // Return extracted value or default
+    return hwm_optional orelse default_hwm;
 }
 
 /// Extract size algorithm from QueuingStrategy, with default
@@ -259,11 +350,29 @@ pub fn extractHighWaterMark(
 pub fn extractSizeAlgorithm(
     value: ?webidl.JSValue,
 ) common.SizeAlgorithm {
-    _ = value;
+    if (value == null) {
+        return common.defaultSizeAlgorithm();
+    }
 
-    // TODO: Implement actual property access and callback extraction
-    // For now, return default algorithm
-    return common.defaultSizeAlgorithm();
+    const js_value = value.?;
+
+    // If value is undefined or null, return default
+    if (js_value == .undefined or js_value == .null) {
+        return common.defaultSizeAlgorithm();
+    }
+
+    // Extract size callback from object
+    const size = webidl.extractCallback(js_value, "size", false) catch {
+        return common.defaultSizeAlgorithm();
+    };
+
+    // If no size callback provided, return default
+    if (size == null) {
+        return common.defaultSizeAlgorithm();
+    }
+
+    // Wrap callback in SizeAlgorithm
+    return common.wrapGenericSizeCallback(size.?);
 }
 
 // ============================================================================
@@ -333,10 +442,12 @@ pub fn parseStreamPipeOptions(
     }
 
     // Step 5: Get "signal" property if present (AbortSignal)
-    if (obj.get("signal")) |signal| {
-        // TODO: Unwrap AbortSignal when implemented
-        _ = signal;
-        // options.signal = ...
+    if (obj.get("signal")) |signal_value| {
+        // Extract AbortSignal interface instance using webidl unwrapping
+        // This validates the type and extracts the native Zig pointer
+        if (webidl.isInterface(signal_value)) {
+            options.signal = webidl.unwrapInterface(dom.AbortSignal, signal_value) catch null;
+        }
     }
 
     return options;
@@ -549,10 +660,22 @@ pub fn parseReadableStreamBYOBReaderReadOptions(
 
     const js_value = value.?;
 
-    // TODO: Implement actual dictionary parsing
-    _ = js_value;
+    // If value is undefined or null, return defaults
+    if (js_value == .undefined or js_value == .null) {
+        return .{};
+    }
 
-    return .{};
+    // Extract min property with [EnforceRange] attribute (default 1)
+    const min = try webidl.extractDictionaryMemberWithAttrs(
+        u64,
+        js_value,
+        "min",
+        false, // optional
+        1, // default value
+        .{ .enforce_range = true },
+    );
+
+    return .{ .min = min };
 }
 
 // ============================================================================
@@ -575,12 +698,16 @@ pub fn parseQueuingStrategyInit(
 ) !dict.QueuingStrategyInit {
     _ = allocator;
 
-    // TODO: Implement actual dictionary parsing
-    // For now, try to extract number directly
-    switch (value) {
-        .number => |n| return .{ .high_water_mark = n },
-        else => return error.TypeError,
-    }
+    // Extract required highWaterMark property (unrestricted double)
+    const high_water_mark = try webidl.extractDictionaryMember(
+        f64,
+        value,
+        "highWaterMark",
+        true, // required
+        null,
+    );
+
+    return .{ .high_water_mark = high_water_mark };
 }
 
 // ============================================================================

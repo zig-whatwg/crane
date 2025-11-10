@@ -4,6 +4,7 @@
 //! WHATWG Console Standard lines 52-72.
 
 const std = @import("std");
+const infra = @import("infra");
 const Console = @import("console").Console;
 const webidl = @import("webidl");
 
@@ -171,11 +172,11 @@ test "assert with custom printer - output captured" {
     defer console_obj.deinit();
 
     // Capture output
-    var output = std.ArrayList(u8).init(allocator);
+    var output = infra.List(u8).init(allocator);
     defer output.deinit();
 
     const CustomPrinter = struct {
-        var capture_buffer: *std.ArrayList(u8) = undefined;
+        var capture_buffer: *infra.List(u8) = undefined;
 
         fn print(comptime fmt: []const u8, args: anytype) void {
             capture_buffer.writer().print(fmt, args) catch {};
@@ -191,9 +192,9 @@ test "assert with custom printer - output captured" {
     });
 
     // Output should contain assertion message
-    try std.testing.expect(output.items.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "Assertion failed") != null);
-    try std.testing.expect(std.mem.indexOf(u8, output.items, "Custom printer test") != null);
+    try std.testing.expect(output.items().len > 0);
+    try std.testing.expect(std.mem.indexOf(u8, output.items(), "Assertion failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.items(), "Custom printer test") != null);
 }
 
 test "multiple assertions - all logged" {

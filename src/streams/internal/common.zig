@@ -133,29 +133,28 @@ pub const ReadResult = struct {
 };
 
 /// Algorithm function types for stream operations
-/// 
+///
 /// These use a VTable pattern (like std.mem.Allocator) to support context passing.
 /// This enables stateful algorithms (e.g., TeeState coordination, TransformStream transforms)
 /// while maintaining runtime polymorphism.
 ///
 /// Design: See ALGORITHM_CONTEXT_DESIGN.md
-
 /// Pull algorithm - called when controller needs data
 /// Spec: Abstract operation passed to SetUpReadableStreamDefaultController
 pub const PullAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     /// Call the pull algorithm
     pub fn call(self: PullAlgorithm) Promise(void) {
         return self.vtable.call(self.ptr);
     }
-    
+
     /// Cleanup resources (if needed)
     pub fn deinit(self: PullAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
@@ -169,16 +168,16 @@ pub const PullAlgorithm = struct {
 pub const CancelAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, reason: ?JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     pub fn call(self: CancelAlgorithm, reason: ?JSValue) Promise(void) {
         return self.vtable.call(self.ptr, reason);
     }
-    
+
     pub fn deinit(self: CancelAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr);
@@ -191,16 +190,16 @@ pub const CancelAlgorithm = struct {
 pub const SizeAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, chunk: JSValue) f64,
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     pub fn call(self: SizeAlgorithm, chunk: JSValue) f64 {
         return self.vtable.call(self.ptr, chunk);
     }
-    
+
     pub fn deinit(self: SizeAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr);
@@ -213,16 +212,16 @@ pub const SizeAlgorithm = struct {
 pub const WriteAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, chunk: JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     pub fn call(self: WriteAlgorithm, chunk: JSValue) Promise(void) {
         return self.vtable.call(self.ptr, chunk);
     }
-    
+
     pub fn deinit(self: WriteAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr);
@@ -235,16 +234,16 @@ pub const WriteAlgorithm = struct {
 pub const CloseAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     pub fn call(self: CloseAlgorithm) Promise(void) {
         return self.vtable.call(self.ptr);
     }
-    
+
     pub fn deinit(self: CloseAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr);
@@ -257,16 +256,16 @@ pub const CloseAlgorithm = struct {
 pub const AbortAlgorithm = struct {
     ptr: *anyopaque,
     vtable: *const VTable,
-    
+
     pub const VTable = struct {
         call: *const fn (ctx: *anyopaque, reason: ?JSValue) Promise(void),
         deinit: ?*const fn (ctx: *anyopaque) void,
     };
-    
+
     pub fn call(self: AbortAlgorithm, reason: ?JSValue) Promise(void) {
         return self.vtable.call(self.ptr, reason);
     }
-    
+
     pub fn deinit(self: AbortAlgorithm) void {
         if (self.vtable.deinit) |deinit_fn| {
             deinit_fn(self.ptr);
@@ -275,7 +274,6 @@ pub const AbortAlgorithm = struct {
 };
 
 /// Default algorithms that do nothing (for streams without custom behavior)
-
 pub fn defaultPullAlgorithm() PullAlgorithm {
     const impl = struct {
         fn call(ctx: *anyopaque) Promise(void) {
@@ -283,7 +281,7 @@ pub fn defaultPullAlgorithm() PullAlgorithm {
             return Promise(void).fulfilled({});
         }
     };
-    
+
     return .{
         .ptr = undefined, // No context needed for default
         .vtable = &.{
@@ -301,7 +299,7 @@ pub fn defaultCancelAlgorithm() CancelAlgorithm {
             return Promise(void).fulfilled({});
         }
     };
-    
+
     return .{
         .ptr = undefined,
         .vtable = &.{
@@ -319,7 +317,7 @@ pub fn defaultSizeAlgorithm() SizeAlgorithm {
             return 1.0;
         }
     };
-    
+
     return .{
         .ptr = undefined,
         .vtable = &.{
@@ -337,7 +335,7 @@ pub fn defaultWriteAlgorithm() WriteAlgorithm {
             return Promise(void).fulfilled({});
         }
     };
-    
+
     return .{
         .ptr = undefined,
         .vtable = &.{
@@ -354,7 +352,7 @@ pub fn defaultCloseAlgorithm() CloseAlgorithm {
             return Promise(void).fulfilled({});
         }
     };
-    
+
     return .{
         .ptr = undefined,
         .vtable = &.{
@@ -372,7 +370,7 @@ pub fn defaultAbortAlgorithm() AbortAlgorithm {
             return Promise(void).fulfilled({});
         }
     };
-    
+
     return .{
         .ptr = undefined,
         .vtable = &.{
@@ -384,7 +382,6 @@ pub fn defaultAbortAlgorithm() AbortAlgorithm {
 
 /// Helper functions to wrap bare function pointers from WebIDL dictionaries
 /// into algorithm structs
-
 pub fn wrapPullCallback(callback_fn: *const fn () Promise(void)) PullAlgorithm {
     const impl = struct {
         fn call(ctx: *anyopaque) Promise(void) {
@@ -392,9 +389,9 @@ pub fn wrapPullCallback(callback_fn: *const fn () Promise(void)) PullAlgorithm {
             return func();
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
@@ -409,9 +406,9 @@ pub fn wrapCancelCallback(callback_fn: *const fn (reason: ?JSValue) Promise(void
             return func(reason);
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
@@ -426,14 +423,28 @@ pub fn wrapSizeCallback(callback_fn: *const fn (chunk: JSValue) f64) SizeAlgorit
             return func(chunk);
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
         },
     };
+}
+
+/// Wrap webidl.GenericCallback as a SizeAlgorithm
+///
+/// This bridges webidl's callback system with the internal SizeAlgorithm abstraction.
+/// The GenericCallback will be invoked through its vtable when size calculation is needed.
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default algorithm (size 1) since we can't invoke JS callbacks yet.
+pub fn wrapGenericSizeCallback(callback: webidl.GenericCallback) SizeAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    // For now, store the callback but return size 1 (same as default)
+    _ = callback;
+    return defaultSizeAlgorithm();
 }
 
 pub fn wrapWriteCallback(callback_fn: *const fn (chunk: JSValue) Promise(void)) WriteAlgorithm {
@@ -443,9 +454,9 @@ pub fn wrapWriteCallback(callback_fn: *const fn (chunk: JSValue) Promise(void)) 
             return func(chunk);
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
@@ -460,9 +471,9 @@ pub fn wrapCloseCallback(callback_fn: *const fn () Promise(void)) CloseAlgorithm
             return func();
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
@@ -477,14 +488,64 @@ pub fn wrapAbortCallback(callback_fn: *const fn (reason: ?JSValue) Promise(void)
             return func(reason);
         }
     };
-    
+
     return .{
-        .ptr = @constCast(@ptrCast(callback_fn)),
+        .ptr = @ptrCast(@constCast(callback_fn)),
         .vtable = &.{
             .call = impl.call,
             .deinit = null,
         },
     };
+}
+
+/// Wrap webidl.GenericCallback as a CancelAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op cancel algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericCancelCallback(callback: webidl.GenericCallback) CancelAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultCancelAlgorithm();
+}
+
+/// Wrap webidl.GenericCallback as an AbortAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op abort algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericAbortCallback(callback: webidl.GenericCallback) AbortAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultAbortAlgorithm();
+}
+
+/// Wrap webidl.GenericCallback as a PullAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op pull algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericPullCallback(callback: webidl.GenericCallback) PullAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultPullAlgorithm();
+}
+
+/// Wrap webidl.GenericCallback as a CloseAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op close algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericCloseCallback(callback: webidl.GenericCallback) CloseAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultCloseAlgorithm();
+}
+
+/// Wrap webidl.GenericCallback as a WriteAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op write algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericWriteCallback(callback: webidl.GenericCallback) WriteAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultWriteAlgorithm();
 }
 
 // Tests
@@ -563,13 +624,13 @@ test "Default algorithms" {
 test "PullAlgorithm - custom context" {
     const Context = struct {
         pull_count: usize = 0,
-        
+
         pub fn pull(self: *@This()) Promise(void) {
             self.pull_count += 1;
             return Promise(void).fulfilled({});
         }
     };
-    
+
     var ctx = Context{};
     const algorithm = PullAlgorithm{
         .ptr = &ctx,
@@ -583,7 +644,7 @@ test "PullAlgorithm - custom context" {
             .deinit = null,
         },
     };
-    
+
     try std.testing.expectEqual(@as(usize, 0), ctx.pull_count);
     _ = algorithm.call();
     try std.testing.expectEqual(@as(usize, 1), ctx.pull_count);
@@ -595,14 +656,14 @@ test "CancelAlgorithm - custom context" {
     const Context = struct {
         canceled: bool = false,
         reason: ?JSValue = null,
-        
+
         pub fn cancel(self: *@This(), r: ?JSValue) Promise(void) {
             self.canceled = true;
             self.reason = r;
             return Promise(void).fulfilled({});
         }
     };
-    
+
     var ctx = Context{};
     const algorithm = CancelAlgorithm{
         .ptr = &ctx,
@@ -616,7 +677,7 @@ test "CancelAlgorithm - custom context" {
             .deinit = null,
         },
     };
-    
+
     try std.testing.expect(!ctx.canceled);
     _ = algorithm.call(.{ .string = "test reason" });
     try std.testing.expect(ctx.canceled);
@@ -626,7 +687,7 @@ test "CancelAlgorithm - custom context" {
 test "SizeAlgorithm - custom context" {
     const Context = struct {
         multiplier: f64,
-        
+
         pub fn size(self: *const @This(), chunk: JSValue) f64 {
             return switch (chunk) {
                 .number => |n| n * self.multiplier,
@@ -634,7 +695,7 @@ test "SizeAlgorithm - custom context" {
             };
         }
     };
-    
+
     const ctx = Context{ .multiplier = 2.5 };
     const algorithm = SizeAlgorithm{
         .ptr = @constCast(&ctx),
@@ -648,10 +709,10 @@ test "SizeAlgorithm - custom context" {
             .deinit = null,
         },
     };
-    
+
     const size1 = algorithm.call(.{ .number = 10.0 });
     try std.testing.expectEqual(@as(f64, 25.0), size1);
-    
+
     const size2 = algorithm.call(.{ .string = "test" });
     try std.testing.expectEqual(@as(f64, 1.0), size2);
 }
