@@ -839,3 +839,506 @@ Violating them:
 - Will require comprehensive fixes across all files
 
 **ALWAYS follow these rules. NO EXCEPTIONS.**
+
+## WebIDL Extended Attributes
+
+### Overview
+
+WebIDL extended attributes (defined in the [WebIDL spec](https://webidl.spec.whatwg.org/#idl-extended-attributes)) control how interfaces are exposed in JavaScript environments. Our codegen system parses these attributes from source files and emits them as metadata in generated files.
+
+### How to Define Extended Attributes
+
+Extended attributes are specified in the **options parameter** (second argument) to `webidl.interface()`, `webidl.namespace()`, and `webidl.mixin()`:
+
+```zig
+pub const MyInterface = webidl.interface(struct {
+    // fields and methods
+}, .{
+    // Extended attributes here
+    .exposed = &.{.all},
+    .transferable = true,
+});
+```
+
+### Complete Attribute Reference
+
+All available attributes from `InterfaceOptions`:
+
+| Attribute | Type | Purpose | Example |
+|-----------|------|---------|---------|
+| `.exposed` | `[]const ExposureScope` | **REQUIRED** - Which scopes this is available in | `.exposed = &.{.all}` |
+| `.transferable` | `bool` | Can be transferred via `postMessage()` | `.transferable = true` |
+| `.serializable` | `bool` | Can be serialized via `structuredClone()` | `.serializable = true` |
+| `.secure_context` | `bool` | Only available in HTTPS contexts | `.secure_context = true` |
+| `.cross_origin_isolated` | `bool` | Only available when cross-origin isolated | `.cross_origin_isolated = true` |
+| `.global` | `?[]const []const u8` | Interface is a global object | `.global = &.{"Window"}` |
+| `.legacy_factory_function` | `?[]const u8` | Legacy constructor | `.legacy_factory_function = "Image(unsigned long w, unsigned long h)"` |
+| `.legacy_no_interface_object` | `bool` | No interface object created | `.legacy_no_interface_object = true` |
+| `.legacy_window_alias` | `?[]const []const u8` | Alias on Window | `.legacy_window_alias = &.{"WebKitCSSMatrix"}` |
+| `.legacy_namespace` | `?[]const u8` | Place in namespace | `.legacy_namespace = "WebAssembly"` |
+| `.legacy_override_builtins` | `bool` | For legacy platform objects | `.legacy_override_builtins = true` |
+
+### Exposure Scopes
+
+The `.exposed` attribute accepts an array of `ExposureScope` enum values:
+
+```zig
+pub const ExposureScope = enum {
+    all,              // [Exposed=*] - All scopes
+    Window,           // [Exposed=Window] - Browser window only
+    Worker,           // [Exposed=Worker] - All workers
+    DedicatedWorker,  // [Exposed=DedicatedWorker] - Dedicated workers only
+    SharedWorker,     // [Exposed=SharedWorker] - Shared workers only
+    ServiceWorker,    // [Exposed=ServiceWorker] - Service workers only
+};
+```
+
+### Common Patterns
+
+#### 1. Interface Exposed Everywhere (Most Common)
+
+Used for APIs available in all contexts (Window, Workers, etc.):
+
+```zig
+// Streams interfaces - available everywhere
+pub const ReadableStream = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,  // Also transferable
+});
+
+// Encoding interfaces - available everywhere
+pub const TextEncoder = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+});
+```
+
+#### 2. Interface Exposed Only in Window
+
+Used for DOM APIs that only make sense in browser windows:
+
+```zig
+pub const Node = webidl.interface(struct {
+    pub const extends = EventTarget;
+    
+    node_type: u16,
+    node_name: []const u8,
+    // ... other fields
+}, .{
+    .exposed = &.{.Window},  // Only in browser window
+});
+
+pub const Element = webidl.interface(struct {
+    pub const extends = Node;
+    
+    tag_name: []const u8,
+    // ... other fields
+}, .{
+    .exposed = &.{.Window},
+});
+```
+
+#### 3. Namespace Exposed Everywhere
+
+Used for utility namespaces like console:
+
+```zig
+pub const console = webidl.namespace(struct {
+    countMap: infra.OrderedMap(webidl.DOMString, u32),
+    timerTable: infra.OrderedMap(webidl.DOMString, infra.Moment),
+    
+    pub fn call_log(self: *console, data: []const webidl.JSValue) void {
+        // ... implementation
+    }
+    
+    // ... other methods
+}, .{
+    .exposed = &.{.all},
+});
+```
+
+#### 4. Multiple Exposure Scopes
+
+For APIs available in multiple but not all contexts:
+
+```zig
+pub const MyAPI = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.Window, .Worker},  // Window and Workers, but not ServiceWorker
+});
+```
+
+#### 5. Transferable Streams
+
+The three stream interfaces that can be transferred between contexts:
+
+```zig
+pub const ReadableStream = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,  // Can be sent via postMessage()
+});
+
+pub const WritableStream = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
+});
+
+pub const TransformStream = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
+});
+```
+
+### Real-World Examples
+
+#### Example 1: ReadableStream (Interface, All Scopes, Transferable)
+
+From `webidl/src/streams/ReadableStream.zig`:
+
+```zig
+pub const ReadableStream = webidl.interface(struct {
+    allocator: std.mem.Allocator,
+    controller: Controller,
+    reader: Reader,
+    state: StreamState,
+    storedError: ?common.JSValue,
+    eventLoop: eventLoop.EventLoop,
+    
+    pub fn call_getReader(self: *ReadableStream, options: ?ReaderOptions) !ReaderUnion {
+        // ... implementation
+    }
+    
+    pub fn call_locked(self: *const ReadableStream) bool {
+        return self.reader != .none;
+    }
+    
+    // ... more methods
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
+});
+```
+
+#### Example 2: Node (Interface, Window Only)
+
+From `webidl/src/dom/Node.zig`:
+
+```zig
+pub const Node = webidl.interface(struct {
+    pub const extends = EventTarget;
+    
+    node_type: u16,
+    node_name: []const u8,
+    node_value: ?[]const u8,
+    owner_document: ?*Document,
+    parent_node: ?*Node,
+    children: std.ArrayList(*Node),
+    
+    pub fn get_nodeType(self: *const Node) u16 {
+        return self.node_type;
+    }
+    
+    pub fn get_nodeName(self: *const Node) []const u8 {
+        return self.node_name;
+    }
+    
+    // ... more methods
+}, .{
+    .exposed = &.{.Window},
+});
+```
+
+#### Example 3: console (Namespace, All Scopes)
+
+From `webidl/src/console/console.zig`:
+
+```zig
+pub const console = webidl.namespace(struct {
+    countMap: infra.OrderedMap(webidl.DOMString, u32),
+    timerTable: infra.OrderedMap(webidl.DOMString, infra.Moment),
+    groupStack: std.ArrayList([]const u8),
+    
+    pub fn call_log(self: *console, data: []const webidl.JSValue) void {
+        // ... implementation
+    }
+    
+    pub fn call_error(self: *console, data: []const webidl.JSValue) void {
+        // ... implementation
+    }
+    
+    // ... 16 more console methods
+}, .{
+    .exposed = &.{.all},
+});
+```
+
+### Generated Metadata
+
+The codegen parses these options and emits `__webidl__` metadata in generated files:
+
+**Source (`webidl/src/streams/ReadableStream.zig`):**
+```zig
+pub const ReadableStream = webidl.interface(struct {
+    // ... implementation
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
+});
+```
+
+**Generated (`webidl/generated/streams/ReadableStream.zig`):**
+```zig
+pub const ReadableStream = struct {
+    // ... flattened implementation
+    
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableStream",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = true,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+```
+
+### Runtime Usage of Metadata
+
+The `__webidl__` metadata enables runtime discovery and binding:
+
+```zig
+// Check if type has WebIDL metadata
+if (@hasDecl(ReadableStream, "__webidl__")) {
+    const meta = ReadableStream.__webidl__;
+    
+    // Check exposure scope
+    if (shouldBindInScope(meta.exposed, .Window)) {
+        try bindInterface(runtime, ReadableStream, meta);
+    }
+    
+    // Check if transferable
+    if (meta.transferable) {
+        try registerTransferable(runtime, ReadableStream);
+    }
+}
+```
+
+### Attribute Requirements by Spec
+
+#### WHATWG Streams Standard
+All stream interfaces: `.exposed = &.{.all}`
+
+Transferable interfaces:
+- `ReadableStream` - `.transferable = true`
+- `WritableStream` - `.transferable = true`
+- `TransformStream` - `.transferable = true`
+
+#### WHATWG Encoding Standard
+All encoding interfaces: `.exposed = &.{.all}`
+
+#### WHATWG URL Standard
+All URL interfaces: `.exposed = &.{.all}`
+
+#### WHATWG Console Standard
+The console namespace: `.exposed = &.{.all}`
+
+#### WHATWG DOM Standard
+EventTarget group: `.exposed = &.{.all}`
+- `EventTarget`, `Event`, `CustomEvent`, `AbortController`, `AbortSignal`
+
+Node group: `.exposed = &.{.Window}`
+- `Node`, `Document`, `Element`, `Attr`, `CharacterData`, `Text`, `Comment`, etc.
+
+### Rules and Best Practices
+
+#### Rule 1: Always Specify .exposed
+
+Every interface, namespace, and mixin **MUST** have an `.exposed` attribute:
+
+```zig
+// ✅ CORRECT
+pub const MyInterface = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},  // REQUIRED
+});
+
+// ❌ WRONG - Missing .exposed
+pub const MyInterface = webidl.interface(struct {
+    // ...
+}, .{
+    .transferable = true,  // ERROR: .exposed is required
+});
+```
+
+#### Rule 2: Match WHATWG Spec Attributes
+
+Always check the WebIDL definition in the WHATWG spec for correct attributes:
+
+```webidl
+// From WHATWG Streams spec:
+[Exposed=*, Transferable]
+interface ReadableStream { ... }
+```
+
+Translates to:
+```zig
+pub const ReadableStream = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},      // [Exposed=*]
+    .transferable = true,     // [Transferable]
+});
+```
+
+#### Rule 3: Use .all for Universal APIs
+
+Most WHATWG APIs are designed to work everywhere:
+
+```zig
+// Encoding, Streams, URL, Console - all use .all
+.exposed = &.{.all}
+```
+
+#### Rule 4: Use .Window for DOM APIs
+
+DOM nodes and elements only make sense in browser windows:
+
+```zig
+// Node, Element, Document, etc. - use .Window
+.exposed = &.{.Window}
+```
+
+#### Rule 5: Transferable Implies Structured Clone Semantics
+
+Only use `.transferable = true` for objects that:
+- Can be transferred between contexts (window ↔ worker)
+- Follow structured clone semantics
+- Are explicitly marked `[Transferable]` in WHATWG specs
+
+Currently only 3 interfaces:
+- `ReadableStream`
+- `WritableStream`  
+- `TransformStream`
+
+### Verification Checklist
+
+Before committing changes:
+
+- [ ] Every interface/namespace has `.exposed` attribute
+- [ ] Exposure scope matches WHATWG spec WebIDL definition
+- [ ] Transferable only on ReadableStream, WritableStream, TransformStream
+- [ ] Run `zig build codegen` to verify parsing succeeds
+- [ ] Check generated file has correct `__webidl__` metadata
+- [ ] Full build succeeds: `zig build`
+
+### Common Mistakes
+
+#### ❌ Mistake 1: Forgetting .exposed
+
+```zig
+// WRONG
+pub const MyInterface = webidl.interface(struct {
+    // ...
+}, .{
+    .transferable = true,  // Missing .exposed!
+});
+
+// CORRECT
+pub const MyInterface = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,
+});
+```
+
+#### ❌ Mistake 2: Wrong Exposure Scope
+
+```zig
+// WRONG - Node should be Window-only
+pub const Node = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},  // ERROR: Node is Window-only per spec
+});
+
+// CORRECT
+pub const Node = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.Window},
+});
+```
+
+#### ❌ Mistake 3: Incorrect Transferable
+
+```zig
+// WRONG - TextEncoder is not transferable
+pub const TextEncoder = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},
+    .transferable = true,  // ERROR: Not in spec
+});
+
+// CORRECT
+pub const TextEncoder = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},
+});
+```
+
+### Finding Extended Attributes in Specs
+
+When implementing a new interface, check the WebIDL definition in the WHATWG spec:
+
+**Example from Streams spec:**
+```webidl
+[Exposed=*, Transferable]
+interface ReadableStream {
+  constructor(optional object underlyingSource, optional QueuingStrategy strategy = {});
+  // ... methods
+};
+```
+
+Maps to:
+```zig
+pub const ReadableStream = webidl.interface(struct {
+    // ...
+}, .{
+    .exposed = &.{.all},      // [Exposed=*]
+    .transferable = true,     // [Transferable]
+});
+```
+
+**Example from DOM spec:**
+```webidl
+[Exposed=Window]
+interface Node : EventTarget {
+  // ... properties and methods
+};
+```
+
+Maps to:
+```zig
+pub const Node = webidl.interface(struct {
+    pub const extends = EventTarget;
+    // ...
+}, .{
+    .exposed = &.{.Window},   // [Exposed=Window]
+});
+```
