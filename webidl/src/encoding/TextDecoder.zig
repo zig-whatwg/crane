@@ -374,7 +374,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// ```
     /// readonly attribute boolean fatal;
     /// ```
-    pub inline fn getFatal(self: *const TextDecoder) webidl.boolean {
+    pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
         return self.mixin.fatal;
     }
 
@@ -387,7 +387,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// ```
     /// readonly attribute boolean ignoreBOM;
     /// ```
-    pub inline fn getIgnoreBOM(self: *const TextDecoder) webidl.boolean {
+    pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
         return self.mixin.ignoreBOM;
     }
 
@@ -495,7 +495,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// For JavaScript bindings:
     /// - Convert AllowSharedBufferSource → []const u8 before calling
     /// - Convert returned []const u8 → USVString (UTF-16) after calling
-    pub fn decode(
+    pub fn call_decode(
         self: *TextDecoder,
         input: []const u8,
         options: TextDecodeOptions,

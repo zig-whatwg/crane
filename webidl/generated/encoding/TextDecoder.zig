@@ -373,7 +373,7 @@ pub const TextDecoder = struct {
     /// ```
     /// readonly attribute boolean fatal;
     /// ```
-    pub inline fn getFatal(self: *const TextDecoder) webidl.boolean {
+    pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
         return self.mixin.fatal;
     }
     /// Get the ignoreBOM flag
@@ -385,7 +385,7 @@ pub const TextDecoder = struct {
     /// ```
     /// readonly attribute boolean ignoreBOM;
     /// ```
-    pub inline fn getIgnoreBOM(self: *const TextDecoder) webidl.boolean {
+    pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
         return self.mixin.ignoreBOM;
     }
     /// decode() - Decodes bytes to a string
@@ -492,7 +492,7 @@ pub const TextDecoder = struct {
     /// For JavaScript bindings:
     /// - Convert AllowSharedBufferSource → []const u8 before calling
     /// - Convert returned []const u8 → USVString (UTF-16) after calling
-    pub fn decode(
+    pub fn call_decode(
         self: *TextDecoder,
         input: []const u8,
         options: TextDecodeOptions,

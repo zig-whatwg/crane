@@ -124,14 +124,14 @@ pub const TextDecoderStream = webidl.interface(struct {
     /// Get the fatal flag
     ///
     /// TextDecoderCommon.fatal getter
-    pub inline fn getFatal(self: *const TextDecoderStream) webidl.boolean {
+    pub inline fn get_fatal(self: *const TextDecoderStream) webidl.boolean {
         return self.decoderMixin.fatal;
     }
 
     /// Get the ignoreBOM flag
     ///
     /// TextDecoderCommon.ignoreBOM getter
-    pub inline fn getIgnoreBOM(self: *const TextDecoderStream) webidl.boolean {
+    pub inline fn get_ignoreBOM(self: *const TextDecoderStream) webidl.boolean {
         return self.decoderMixin.ignoreBOM;
     }
 

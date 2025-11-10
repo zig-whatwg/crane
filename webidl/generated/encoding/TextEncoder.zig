@@ -297,7 +297,7 @@ pub const TextEncoder = struct {
     /// For JavaScript bindings:
     /// - Convert USVString (UTF-16) → UTF-8 before calling
     /// - Wrap returned []const u8 in Uint8Array after calling
-    pub fn encode(
+    pub fn call_encode(
         self: *TextEncoder,
         input: []const u8,
     ) ![]const u8 {
@@ -420,7 +420,7 @@ pub const TextEncoder = struct {
     /// For JavaScript bindings:
     /// - Convert USVString (UTF-16) → UTF-8 before calling
     /// - `result.read` should be adjusted to UTF-16 code units for JS
-    pub fn encodeInto(
+    pub fn call_encodeInto(
         self: *TextEncoder,
         source: []const u8,
         destination: []u8,
