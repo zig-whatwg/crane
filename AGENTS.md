@@ -344,10 +344,20 @@ Implementations must match browser behavior. Test against edge cases and boundar
 ### 6. **Performance Matters** (but spec compliance comes first)
 WHATWG specs underpin all web platform functionality. Optimize for performance where possible. But never sacrifice correctness for speed.
 
-### 7. **Use bd for Task Tracking** ⭐
+### 7. **Commit Frequently** ⭐⭐⭐
+**COMMIT AFTER EVERY LOGICAL UNIT OF WORK.** This is non-negotiable. Do not accumulate changes. Commit when you:
+- Complete a feature or fix
+- Finish refactoring a module
+- Add tests that pass
+- Update documentation
+- Make any working, tested change
+
+**Use descriptive commit messages** following the project's conventional commit style. See "Workflow" sections below for commit procedures.
+
+### 8. **Use bd for Task Tracking** ⭐
 All tasks, bugs, and features tracked in bd (beads). Always use `bd ready --json` to check for work. Link discovered issues with `discovered-from`. Never use markdown TODOs.
 
-### 8. **Handle Dependencies Correctly** ⭐
+### 9. **Handle Dependencies Correctly** ⭐
 When a spec depends on another spec, check `src/` for implementation. If not implemented, create a temporary mock with clear markers. Never skip dependency handling.
 
 ---
@@ -371,6 +381,21 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 - Zero tolerance for missing or incomplete documentation
 - Zero tolerance for deviating from Streams spec
 
+### ⚠️ CRITICAL: Commit After Every Logical Step
+
+**Before following any workflow below, internalize this rule:**
+
+**✅ COMMIT FREQUENTLY** - After every working, tested change:
+- Completed a feature → Commit
+- Fixed a bug → Commit  
+- Added tests that pass → Commit
+- Refactored a module → Commit
+- Updated documentation → Commit
+
+**DON'T accumulate changes.** Small, focused commits are better than large ones. See Golden Rule #7.
+
+---
+
 ### Workflow (New Features)
 
 1. **Check bd for issue** - `bd ready --json` or create new issue if needed
@@ -383,10 +408,15 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 8. **Write tests first** - Test all algorithm steps and edge cases
 9. **Implement precisely** - Follow spec steps exactly, numbered comments
 10. **Verify** - No leaks, all tests pass, pre-commit checks pass
-11. **Document** - Inline docs with spec references
-12. **Update CHANGELOG.md** - Document what was added
-13. **Update FEATURE_CATALOG.md** if user-facing API
-14. **Close issue** - `bd close bd-N --reason "Implemented" --json`
+11. **✅ COMMIT** - `git add -A && git commit` with descriptive message (see Golden Rule #7)
+12. **Document** - Inline docs with spec references
+13. **Update CHANGELOG.md** - Document what was added
+14. **✅ COMMIT** - Commit documentation changes
+15. **Update FEATURE_CATALOG.md** if user-facing API
+16. **✅ COMMIT** - Commit catalog update
+17. **Close issue** - `bd close bd-N --reason "Implemented" --json`
+
+**Remember:** Commit after EACH working step. Don't accumulate changes.
 
 ### Workflow (Bug Fixes)
 
@@ -394,11 +424,16 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 2. **Claim the issue** - `bd update bd-N --status in_progress --json`
 3. **Identify context** - Determine which spec has the bug
 4. **Write failing test** that reproduces the bug
-5. **Read spec** - Load relevant spec from `specs/` to verify expected behavior
-6. **Fix the bug** with minimal code change
-7. **Verify** all tests pass (including new test), pre-commit checks pass
-8. **Update** CHANGELOG.md if user-visible
-9. **Close issue** - `bd close bd-N --reason "Fixed" --json`
+5. **✅ COMMIT** - Commit the failing test
+6. **Read spec** - Load relevant spec from `specs/` to verify expected behavior
+7. **Fix the bug** with minimal code change
+8. **Verify** all tests pass (including new test), pre-commit checks pass
+9. **✅ COMMIT** - Commit the fix with clear description
+10. **Update** CHANGELOG.md if user-visible
+11. **✅ COMMIT** - Commit changelog update
+12. **Close issue** - `bd close bd-N --reason "Fixed" --json`
+
+**Remember:** Commit after EACH working step. Don't accumulate changes.
 
 ---
 
@@ -665,6 +700,7 @@ Before creating any markdown or script file:
 - **Incorrect cross-spec behavior** (dependencies must be handled correctly)
 - **Unmarked temporary mocks** (all mocks must have clear TODO markers)
 - **Generated files in project root** (must use `tmp/` unless explicitly requested otherwise)
+- **Accumulating uncommitted changes** (commit after every logical unit of work)
 
 ---
 
@@ -712,15 +748,16 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 
 1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
 2. **Check bd for existing issues** - `bd ready --json` - See if work is already tracked
-3. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
-4. **Identify context** - Which spec are you working on? (file path, imports)
-5. **Read the WHATWG spec** - Load complete spec from `specs/[spec-name].md`
-6. **Read the complete section** - Context matters, never rely on fragments
-7. **Check dependencies** - Use `monorepo_navigation` to find implementations
-8. **Load relevant skills** - Get specialized, context-aware guidance
-9. **Look at existing tests** - See patterns in similar specs
-10. **Check FEATURE_CATALOG.md** - See existing API patterns
-11. **Follow the Golden Rules** - Especially algorithm precision and dependency handling
+3. **Have you committed recently?** ⭐⭐⭐ - If you have working changes, commit them NOW
+4. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
+5. **Identify context** - Which spec are you working on? (file path, imports)
+6. **Read the WHATWG spec** - Load complete spec from `specs/[spec-name].md`
+7. **Read the complete section** - Context matters, never rely on fragments
+8. **Check dependencies** - Use `monorepo_navigation` to find implementations
+9. **Load relevant skills** - Get specialized, context-aware guidance
+10. **Look at existing tests** - See patterns in similar specs
+11. **Check FEATURE_CATALOG.md** - See existing API patterns
+12. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
 
 ---
 
