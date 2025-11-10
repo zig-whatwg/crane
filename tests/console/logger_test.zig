@@ -6,12 +6,12 @@
 const std = @import("std");
 const console_lib = @import("console");
 
-const Console = console_lib.Console;
+const console_type = console_lib.console;
 const JSValue = console_lib.JSValue;
 
 test "Console - enabled by default" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     try std.testing.expect(console_obj.enabled);
@@ -19,7 +19,7 @@ test "Console - enabled by default" {
 
 test "Console - can be disabled" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = false;
@@ -28,7 +28,7 @@ test "Console - can be disabled" {
 
 test "logger - empty args returns immediately" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Empty args should return immediately (no-op)
@@ -38,7 +38,7 @@ test "logger - empty args returns immediately" {
 
 test "logger - disabled console returns immediately" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = false;
@@ -52,7 +52,7 @@ test "logger - disabled console returns immediately" {
 
 test "logger - enabled console processes args" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = true;
@@ -66,7 +66,7 @@ test "logger - enabled console processes args" {
 
 test "printer - respects group indentation" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // No groups - indent level 0
@@ -87,7 +87,7 @@ test "printer - respects group indentation" {
 
 test "enabled flag - fast path performance" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = false;

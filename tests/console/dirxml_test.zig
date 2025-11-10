@@ -4,17 +4,17 @@
 //! https://console.spec.whatwg.org/#dirxml
 
 const std = @import("std");
-const console = @import("console");
+const console_mod = @import("console");
 const webidl = @import("webidl");
 const mock_runtime = @import("mock_runtime.zig");
 
-const Console = console.Console;
+const console_type = console.console;
 const JSValue = webidl.JSValue;
 
 test "dirxml - without runtime - logs simple values" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const data: []const JSValue = &.{
@@ -32,7 +32,7 @@ test "dirxml - without runtime - logs simple values" {
 test "dirxml - with runtime - converts DOM nodes" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -57,7 +57,7 @@ test "dirxml - with runtime - converts DOM nodes" {
 test "dirxml - with runtime - formats non-DOM values" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -83,7 +83,7 @@ test "dirxml - with runtime - formats non-DOM values" {
 test "dirxml - with runtime - mixed DOM and non-DOM" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -110,7 +110,7 @@ test "dirxml - with runtime - mixed DOM and non-DOM" {
 test "dirxml - empty data" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const data: []const JSValue = &.{};
@@ -122,7 +122,7 @@ test "dirxml - empty data" {
 test "dirxml - with runtime - empty data" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -139,7 +139,7 @@ test "dirxml - with runtime - empty data" {
 test "dirxml - null and undefined values" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -159,7 +159,7 @@ test "dirxml - null and undefined values" {
 test "dirxml - large DOM tree representation" {
     const allocator = std.testing.allocator;
 
-    var c = try Console.init(allocator);
+    var c = try console_mod.console.init(allocator);
     defer c.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);

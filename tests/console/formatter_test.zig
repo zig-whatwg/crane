@@ -6,12 +6,12 @@
 //! These tests verify Phase 3 (Lazy Formatting) and Phase 4 (Format Specifier Optimization).
 
 const std = @import("std");
-const Console = @import("console").Console;
+const console_mod = @import("console");
 const webidl = @import("webidl");
 
 test "Format specifier %s - string conversion" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: %s converts arguments to strings
@@ -34,7 +34,7 @@ test "Format specifier %s - string conversion" {
 
 test "Format specifier %d - integer conversion" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: %d converts numbers to integers
@@ -54,7 +54,7 @@ test "Format specifier %d - integer conversion" {
 
 test "Format specifier %i - integer conversion (same as %d)" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: %i also converts to integers
@@ -74,7 +74,7 @@ test "Format specifier %i - integer conversion (same as %d)" {
 
 test "Format specifier %f - float conversion" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: %f keeps float precision
@@ -94,7 +94,7 @@ test "Format specifier %f - float conversion" {
 
 test "Format specifier - multiple specifiers" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Multiple specifiers in one string
@@ -115,7 +115,7 @@ test "Format specifier - multiple specifiers" {
 
 test "Format specifier - extra args after substitution" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Extra args are preserved after substitution
@@ -137,7 +137,7 @@ test "Format specifier - extra args after substitution" {
 
 test "Format specifier - boolean conversion with %s" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: %s converts boolean to string
@@ -157,7 +157,7 @@ test "Format specifier - boolean conversion with %s" {
 
 test "Format specifier - no specifiers, args unchanged" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: No format specifiers means args are unchanged
@@ -178,7 +178,7 @@ test "Format specifier - no specifiers, args unchanged" {
 
 test "Phase 3 - Lazy formatting only when displayed" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Messages store raw args, format lazily

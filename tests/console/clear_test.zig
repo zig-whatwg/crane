@@ -12,7 +12,7 @@ const Console = @import("../webidl/src/console.zig").Console;
 
 test "clear - empty console (no-op)" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Clear empty console should be safe
@@ -25,7 +25,7 @@ test "clear - empty console (no-op)" {
 
 test "clear - removes all messages from buffer" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Add some messages
@@ -50,7 +50,7 @@ test "clear - removes all messages from buffer" {
 
 test "clear - empties group stack" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Create nested groups
@@ -74,7 +74,7 @@ test "clear - empties group stack" {
 
 test "clear - empties both groups and messages" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Create groups and add messages
@@ -100,7 +100,7 @@ test "clear - empties both groups and messages" {
 
 test "clear - console works after clearing" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Add messages, then clear
@@ -123,7 +123,7 @@ test "clear - console works after clearing" {
 
 test "clear - multiple clears are safe" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Clear multiple times
@@ -145,7 +145,7 @@ test "clear - multiple clears are safe" {
 
 test "clear - with deeply nested groups" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Create 10 nested groups
@@ -170,7 +170,7 @@ test "clear - with deeply nested groups" {
 test "clear - with full message buffer" {
     const allocator = testing.allocator;
     // Create console with small buffer
-    var console = try Console.initWithBufferSize(allocator, 5);
+    var console = try console_mod.console.initWithBufferSize(allocator, 5);
     defer console.deinit();
 
     // Fill buffer to capacity
@@ -197,7 +197,7 @@ test "clear - with full message buffer" {
 
 test "clear - memory leak verification" {
     const allocator = testing.allocator;
-    var console = try Console.init(allocator);
+    var console = try console_mod.console.init(allocator);
     defer console.deinit();
 
     // Add messages with allocated strings
@@ -218,7 +218,7 @@ test "clear - memory leak verification" {
 
 test "clear - preserves console configuration" {
     const allocator = testing.allocator;
-    var console = try Console.initWithBufferSize(allocator, 100);
+    var console = try console_mod.console.initWithBufferSize(allocator, 100);
     defer console.deinit();
 
     // Get initial buffer capacity

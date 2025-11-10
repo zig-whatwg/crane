@@ -10,7 +10,6 @@ const std = @import("std");
 
 // Re-export generated console module (from interfaces/console/console.zig)
 pub const console = @import("console");
-pub const Console = console.Console;
 
 // Re-export supporting types (from webidl/src/console/types.zig)
 pub const types = @import("types");

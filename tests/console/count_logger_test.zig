@@ -3,13 +3,13 @@
 //! Verifies that count() and countReset() use printer() instead of std.debug.print.
 
 const std = @import("std");
-const Console = @import("console").Console;
+const console_mod = @import("console");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
 test "count - uses printer for output" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Disable printer to verify it's being called (won't crash)
@@ -30,7 +30,7 @@ test "count - uses printer for output" {
 
 test "countReset - uses printer for warning when counter doesn't exist" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     // Disable printer
@@ -48,7 +48,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
 
 test "countReset - resets existing counter to zero" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
@@ -73,7 +73,7 @@ test "countReset - resets existing counter to zero" {
 
 test "count - message buffering works" {
     const allocator = std.testing.allocator;
-    var console_obj = try Console.init(allocator);
+    var console_obj = try console_mod.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
