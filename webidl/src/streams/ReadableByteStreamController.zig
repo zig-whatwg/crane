@@ -8,23 +8,23 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 
 // BYOB infrastructure imports
-const PullIntoDescriptorModule = @import("../../src/streams/internal/pull_into_descriptor.zig");
+const PullIntoDescriptorModule = @import("pull_into_descriptor");
 const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
 const ArrayBuffer = PullIntoDescriptorModule.ArrayBuffer;
 const ViewConstructor = PullIntoDescriptorModule.ViewConstructor;
 const ReaderType = PullIntoDescriptorModule.ReaderType;
 
-const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 
-const ViewConstruction = @import("../../src/streams/internal/view_construction.zig");
+const ViewConstruction = @import("view_construction");
 
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const ReadableStreamBYOBRequest = @import("ReadableStreamBYOBRequest").ReadableStreamBYOBRequest;
+const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2
 ///
@@ -160,7 +160,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
         // Step 2: If stream state is not "readable", throw TypeError
         const stream_ptr = self.stream orelse return error.NoStream;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         if (stream.state != .readable) {
@@ -193,7 +193,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
         // Step 4: If stream state is not "readable", throw TypeError
         const stream_ptr = self.stream orelse return error.NoStream;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         if (stream.state != .readable) {
@@ -480,7 +480,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     fn closeInternal(self: *ReadableByteStreamController) void {
         // Step 1: Get stream
         const stream_ptr = self.stream orelse return;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Step 2: If closeRequested or stream not readable, return
@@ -518,7 +518,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     fn enqueueInternal(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
         // Step 1: Get stream
         const stream_ptr = self.stream orelse return error.NoStream;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Step 2: If closeRequested or not readable, return
@@ -841,7 +841,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     ) !void {
         // Step 1: Get stream
         const stream_ptr = self.stream orelse return error.NoStream;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Step 3: Determine done flag
@@ -874,7 +874,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     fn shouldCallPull(self: *const ReadableByteStreamController) bool {
         // Step 1: Let stream be controller.[[stream]]
         const stream_ptr = self.stream orelse return false;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *const ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Step 2: If stream.[[state]] is not "readable", return false
@@ -999,7 +999,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             self.clearAlgorithms();
 
             const stream_ptr = self.stream orelse return;
-            const ReadableStreamModule = @import("ReadableStream");
+            const ReadableStreamModule = @import("readable_stream");
             const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
             stream.closeInternal();
         } else {
@@ -1014,7 +1014,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     pub fn processReadRequestsUsingQueue(self: *ReadableByteStreamController) !void {
         // Step 1: Get stream
         const stream_ptr = self.stream orelse return;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Step 3: Process all read requests
@@ -1053,7 +1053,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
         // Step 7: Fulfill the read request
         const stream_ptr = self.stream orelse return error.NoStream;
-        const ReadableStreamModule = @import("ReadableStream");
+        const ReadableStreamModule = @import("readable_stream");
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Convert view to JSValue

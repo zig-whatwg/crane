@@ -9,9 +9,9 @@ const webidl = @import("webidl");
 
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
-const ReadableStream = @import("ReadableStream").ReadableStream;
-const WritableStream = @import("WritableStream").WritableStream;
-const TransformStreamDefaultController = @import("TransformStreamDefaultController").TransformStreamDefaultController;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const WritableStream = @import("writable_stream").WritableStream;
+const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
 
 pub const TransformStream = webidl.interface(struct {
     allocator: std.mem.Allocator,

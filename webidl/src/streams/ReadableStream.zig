@@ -12,18 +12,18 @@ const webidl = @import("webidl");
 
 // Import stream infrastructure
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const TestEventLoop = @import("test_eventLoop").TestEventLoop;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const dict_parsing = @import("dict_parsing");
 
 // Import related stream types (will be fully linked after all types are defined)
 // NOTE: These will create circular dependencies that need careful handling
-const ReadableStreamDefaultController = @import("ReadableStreamDefaultController").ReadableStreamDefaultController;
-const ReadableStreamDefaultReader = @import("ReadableStreamDefaultReader").ReadableStreamDefaultReader;
-const ReadableStreamBYOBReader = @import("ReadableStreamBYOBReader").ReadableStreamBYOBReader;
-const WritableStream = @import("WritableStream").WritableStream;
-const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter").WritableStreamDefaultWriter;
+const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
+const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
+const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
+const WritableStream = @import("writable_stream").WritableStream;
+const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 
 /// Stream state enumeration
 ///
@@ -585,7 +585,7 @@ pub const ReadableStream = webidl.interface(struct {
 
                 // Execute the appropriate steps based on done flag
                 if (done) {
-                    const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+                    const ReadIntoRequestModule = @import("read_into_request");
                     // Convert chunk to ReadIntoRequest ArrayBufferView
                     const view = ReadIntoRequestModule.ArrayBufferView{
                         .data = chunk.getViewedArrayBuffer().data,
@@ -595,7 +595,7 @@ pub const ReadableStream = webidl.interface(struct {
                     request.executeCloseSteps();
                     _ = view; // TODO: Should pass view to close steps with done=true
                 } else {
-                    const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+                    const ReadIntoRequestModule = @import("read_into_request");
                     // Convert chunk to ReadIntoRequest ArrayBufferView
                     const view = ReadIntoRequestModule.ArrayBufferView{
                         .data = chunk.getViewedArrayBuffer().data,

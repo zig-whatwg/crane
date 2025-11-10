@@ -8,16 +8,16 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 
-const ReadableStream = @import("ReadableStream").ReadableStream;
-const ReadableStreamGenericReader = @import("ReadableStreamGenericReader").ReadableStreamGenericReader;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 
 // BYOB-specific imports
-const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
-const ReadableByteStreamController = @import("ReadableByteStreamController").ReadableByteStreamController;
+const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const DictionaryParsing = @import("dictionary_parsing");
 
 pub const ReadableStreamBYOBReader = webidl.interface(struct {

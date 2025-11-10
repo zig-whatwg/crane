@@ -156,10 +156,10 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 // Import dictionaries
-const TextDecoderOptions = @import("text_decoder_options").TextDecoderOptions;
-const TextDecodeOptions = @import("text_decode_options").TextDecodeOptions;
+const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 
-// Import mixin - file import since it's not a separate module
+// Import mixin
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 
 // Import encoding infrastructure

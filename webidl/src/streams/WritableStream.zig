@@ -10,13 +10,13 @@ const webidl = @import("webidl");
 // Import stream infrastructure
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const TestEventLoop = @import("test_eventLoop").TestEventLoop;
 
 // Import related types
-const WritableStreamDefaultController = @import("WritableStreamDefaultController").WritableStreamDefaultController;
-const WritableStreamDefaultWriter = @import("WritableStreamDefaultWriter").WritableStreamDefaultWriter;
+const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
+const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 
 /// Stream state enumeration
 ///
