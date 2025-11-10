@@ -63,19 +63,24 @@ pub const TransformStream = webidl.interface(struct {
             return error.RangeError;
         }
 
-        // Spec step 5-8: Extract high water marks and size algorithms
-        // TODO: Use these for proper stream initialization
-        _ = try dict_parsing.parseQueuingStrategy(allocator, readableStrategy);
-        // const readable_hwm = readable_strategy_dict.high_water_mark orelse 0.0;
+        // Spec step 5-6: Extract readable high water mark and size algorithm
+        const readable_strategy_dict = try dict_parsing.parseQueuingStrategy(allocator, readableStrategy);
+        const readable_hwm = readable_strategy_dict.high_water_mark orelse 0.0;
+        // Readable side default size algorithm (returns 1)
+        // TODO: Extract and use readable_strategy_dict.size when available
 
-        _ = try dict_parsing.parseQueuingStrategy(allocator, writableStrategy);
-        // const writable_hwm = writable_strategy_dict.high_water_mark orelse 1.0;
+        // Spec step 7-8: Extract writable high water mark and size algorithm
+        const writable_strategy_dict = try dict_parsing.parseQueuingStrategy(allocator, writableStrategy);
+        const writable_hwm = writable_strategy_dict.high_water_mark orelse 1.0;
+        // Writable side default size algorithm (returns 1)
+        // TODO: Extract and use writable_strategy_dict.size when available
 
         // Spec step 9: Let startPromise be a new promise
         // (We'll use a simplified synchronous initialization for now)
 
         // Spec step 10-11: Initialize transform stream and set up controller
-        // For now, we create a simple pass-through transform stream
+        // Note: We use simplified initialization here. Full spec requires InitializeTransformStream
+        // which creates streams with proper write/pull/close/abort algorithms linked to the controller
 
         const readable_stream = try allocator.create(ReadableStream);
         errdefer allocator.destroy(readable_stream);
@@ -89,13 +94,28 @@ pub const TransformStream = webidl.interface(struct {
         const ctrl = try allocator.create(TransformStreamDefaultController);
         errdefer allocator.destroy(ctrl);
 
-        // Use default algorithms for now
-        // TODO: Extract transform/flush/cancel from transformer_dict
+        // Spec: Extract transform, flush, and cancel algorithms from transformer
+        // If callbacks are provided, wrap them; otherwise use defaults
+        const transform_alg = if (transformer_dict.transform) |cb|
+            common.wrapGenericTransformCallback(cb)
+        else
+            common.defaultTransformAlgorithm();
+
+        const flush_alg = if (transformer_dict.flush) |cb|
+            common.wrapGenericFlushCallback(cb)
+        else
+            common.defaultFlushAlgorithm();
+
+        const cancel_alg = if (transformer_dict.cancel) |cb|
+            common.wrapGenericCancelCallback(cb)
+        else
+            common.defaultCancelAlgorithm();
+
         ctrl.* = TransformStreamDefaultController.init(
             allocator,
-            common.defaultTransformAlgorithm(),
-            common.defaultFlushAlgorithm(),
-            common.defaultCancelAlgorithm(),
+            transform_alg,
+            flush_alg,
+            cancel_alg,
         );
 
         var stream = TransformStream{
@@ -110,9 +130,19 @@ pub const TransformStream = webidl.interface(struct {
         readable_stream.controller.stream = @ptrCast(readable_stream);
         writable_stream.controller.stream = @ptrCast(writable_stream);
 
-        // Spec step 12-13: Call start() if it exists
-        // TODO: Invoke transformer_dict.start with controller
-        // TODO: Use readable_hwm and writable_hwm for stream initialization
+        // Spec step 12-13: If transformerDict["start"] exists, invoke it with controller
+        if (transformer_dict.start) |start_callback| {
+            // TODO: Invoke start_callback with controller argument when zig-js-runtime is available
+            // For now, we skip invocation since we can't call JavaScript callbacks yet
+            _ = start_callback;
+        }
+        // Otherwise, startPromise is resolved with undefined (no-op)
+
+        // Note: readable_hwm and writable_hwm are extracted but not yet applied
+        // TODO: Use these for stream initialization via CreateReadableStream/CreateWritableStream
+        // when InitializeTransformStream is fully implemented
+        _ = readable_hwm;
+        _ = writable_hwm;
 
         return stream;
     }

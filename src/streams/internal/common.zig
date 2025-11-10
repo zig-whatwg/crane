@@ -674,6 +674,26 @@ pub fn wrapGenericWriteCallback(callback: webidl.GenericCallback) WriteAlgorithm
     return defaultWriteAlgorithm();
 }
 
+/// Wrap webidl.GenericCallback as a TransformAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/pass-through transform algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericTransformCallback(callback: webidl.GenericCallback) TransformAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultTransformAlgorithm();
+}
+
+/// Wrap webidl.GenericCallback as a FlushAlgorithm
+///
+/// NOTE: This is a temporary stub until full zig-js-runtime integration.
+/// For now, it returns a default/no-op flush algorithm since we can't invoke JS callbacks yet.
+pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm {
+    // TODO: Implement actual callback invocation when zig-js-runtime is available
+    _ = callback;
+    return defaultFlushAlgorithm();
+}
+
 // Tests
 
 test "JSValue - basic types" {
