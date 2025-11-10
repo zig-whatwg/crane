@@ -93,7 +93,7 @@ pub const WritableStream = webidl.interface(struct {
         self.controller.deinit();
         self.allocator.destroy(self.controller);
 
-        self.writeRequests.deinit();
+        self.writeRequests.deinit(self.allocator);
 
         switch (self.writer) {
             .default => |w| {
@@ -121,7 +121,7 @@ pub const WritableStream = webidl.interface(struct {
         const sink_dict = try dict_parsing.parseUnderlyingSink(allocator, underlyingSink);
         const strategy_dict = try dict_parsing.parseQueuingStrategy(allocator, strategy);
 
-        const highWaterMark = strategy_dict.highWaterMark orelse 1.0;
+        const highWaterMark = strategy_dict.high_water_mark orelse 1.0;
         const size_algorithm = if (strategy_dict.size) |size_fn|
             common.wrapGenericSizeCallback(size_fn)
         else
@@ -327,7 +327,9 @@ pub const WritableStream = webidl.interface(struct {
             switch (self.writer) {
                 .none => {},
                 .default => |writer| {
-                    writer.readyPromise.fulfill({});
+                    if (writer.readyPromise) |ready| {
+                        ready.fulfill({});
+                    }
                 },
             }
         }
@@ -404,7 +406,7 @@ pub const WritableStream = webidl.interface(struct {
     /// WritableStreamStartErroring(stream, reason)
     ///
     /// Spec: § 5.3.8 "Start the erroring process"
-    fn startErroring(self: *WritableStream, reason: common.JSValue) void {
+    pub fn startErroring(self: *WritableStream, reason: common.JSValue) void {
         // Spec step 1: Assert: stream.[[storedError]] is undefined
         std.debug.assert(self.storedError == null);
 
@@ -422,7 +424,9 @@ pub const WritableStream = webidl.interface(struct {
             .none => {},
             .default => |writer| {
                 // Spec step 8: Perform ! WritableStreamDefaultWriterEnsureReadyPromiseRejected(writer, reason)
-                writer.readyPromise.reject(reason);
+                if (writer.readyPromise) |ready| {
+                    ready.reject(reason);
+                }
             },
         }
 

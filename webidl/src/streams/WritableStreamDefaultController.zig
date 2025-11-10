@@ -11,7 +11,7 @@ const common = @import("common");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const WritableStream = @import("WritableStream").WritableStream;
+const WritableStream = @import("writable_stream").WritableStream;
 
 pub const WritableStreamDefaultController = webidl.interface(struct {
     allocator: std.mem.Allocator,

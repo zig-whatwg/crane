@@ -200,14 +200,14 @@ pub const ReadableStreamDefaultController = struct {
     /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
     /// 
     /// Spec: § 4.6.4 "Check if controller can close or enqueue"
-    fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
+    pub fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
         // Cannot close or enqueue if already close requested
         return !self.closeRequested;
     }
     /// ReadableStreamDefaultControllerClose(controller)
     /// 
     /// Spec: § 4.6.4 "Close the controller"
-    fn closeInternal(self: *ReadableStreamDefaultController) void {
+    pub fn closeInternal(self: *ReadableStreamDefaultController) void {
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
         if (!self.canCloseOrEnqueue()) {
             return;
@@ -301,7 +301,7 @@ pub const ReadableStreamDefaultController = struct {
     /// ReadableStreamDefaultControllerError(controller, e)
     /// 
     /// Spec: § 4.6.4 "Error the controller"
-    fn errorInternal(self: *ReadableStreamDefaultController, e: webidl.JSValue) void {
+    pub fn errorInternal(self: *ReadableStreamDefaultController, e: webidl.JSValue) void {
         // Convert to internal JSValue
         const error_value = common.JSValue.fromWebIDL(e);
 
@@ -475,6 +475,23 @@ pub const ReadableStreamDefaultController = struct {
     pub fn releaseSteps(self: *ReadableStreamDefaultController) void {
         // For default controller, release steps are a no-op
         _ = self;
+    }
+    /// ReadableStreamDefaultControllerHasBackpressure(controller)
+    /// 
+    /// Spec: § 4.6.6 "Check if controller has backpressure"
+    pub fn hasBackpressure(self: *const ReadableStreamDefaultController) bool {
+        // Spec step 1: Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller)
+        const desired_size = self.calculateDesiredSize();
+
+        // Spec step 2: If desiredSize ≤ 0, return true
+        // Spec step 3: Return false
+        return if (desired_size) |size| size <= 0 else false;
+    }
+    /// ReadableStreamDefaultControllerGetDesiredSize(controller)
+    /// 
+    /// Spec: § 4.6.6 "Get desired size for controller"
+    pub fn getDesiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+        return self.calculateDesiredSize();
     }
 
     // WebIDL extended attributes metadata

@@ -189,7 +189,7 @@ pub const ReadableStream = webidl.interface(struct {
         const strategy_dict = try dict_parsing.parseQueuingStrategy(allocator, strategy);
 
         // Extract high water mark with default of 1.0
-        const highWaterMark = strategy_dict.highWaterMark orelse 1.0;
+        const highWaterMark = strategy_dict.high_water_mark orelse 1.0;
 
         // Extract size algorithm with default
         const size_algorithm = if (strategy_dict.size) |size_fn|
@@ -587,7 +587,7 @@ pub const ReadableStream = webidl.interface(struct {
     /// IsReadableStreamLocked(stream)
     ///
     /// Spec: § 4.2.1 "Returns true if stream has a reader."
-    fn isLocked(self: *const ReadableStream) bool {
+    pub fn isLocked(self: *const ReadableStream) bool {
         return self.reader != .none;
     }
 

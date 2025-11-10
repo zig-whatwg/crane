@@ -17,6 +17,8 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 pub const common = @import("common");
+pub const TransformStream = @import("transform_stream").TransformStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
 pub const TransformStreamDefaultController = struct {
     // ========================================================================
     // TransformStreamDefaultController fields
@@ -24,42 +26,151 @@ pub const TransformStreamDefaultController = struct {
     allocator: std.mem.Allocator,
     /// [[stream]]: The TransformStream instance controlled
     stream: ?*anyopaque,
+    /// [[transformAlgorithm]]: Algorithm to transform chunks
+    /// Spec: § 6.2.2 Internal slots
+    transformAlgorithm: common.TransformAlgorithm,
     /// [[flushAlgorithm]]: Algorithm to flush remaining data
-    flushAlgorithm: ?common.FlushAlgorithm,
+    /// Spec: § 6.2.2 Internal slots
+    flushAlgorithm: common.FlushAlgorithm,
+    /// [[cancelAlgorithm]]: Algorithm to handle cancellation
+    /// Spec: § 6.2.2 Internal slots
+    cancelAlgorithm: common.CancelAlgorithm,
 
-    pub fn init(allocator: std.mem.Allocator, flushAlgorithm: ?common.FlushAlgorithm) TransformStreamDefaultController {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        transformAlgorithm: common.TransformAlgorithm,
+        flushAlgorithm: common.FlushAlgorithm,
+        cancelAlgorithm: common.CancelAlgorithm,
+    ) TransformStreamDefaultController {
         return .{
             .allocator = allocator,
             .stream = null,
+            .transformAlgorithm = transformAlgorithm,
             .flushAlgorithm = flushAlgorithm,
+            .cancelAlgorithm = cancelAlgorithm,
         };
     }
-    pub fn deinit(_: *TransformStreamDefaultController) void {}
+    pub fn deinit(self: *TransformStreamDefaultController) void {
+        self.transformAlgorithm.deinit();
+        self.flushAlgorithm.deinit();
+        self.cancelAlgorithm.deinit();
+    }
     // ========================================================================
     // TransformStreamDefaultController methods
     // ========================================================================
 
+    /// desiredSize getter
+    /// 
+    /// Spec: § 6.2.3 "The desiredSize getter steps"
+    pub fn get_desiredSize(self: *const TransformStreamDefaultController) ?f64 {
+        // Spec step 1: Let readableController be this.[[stream]].[[readable]].[[controller]]
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+        const readable_controller = stream.readableStream.controller;
+
+        // Spec step 2: Return ! ReadableStreamDefaultControllerGetDesiredSize(readableController)
+        return readable_controller.getDesiredSize();
+    }
+    /// enqueue(chunk) method
+    /// 
+    /// Spec: § 6.2.3 "The enqueue(chunk) method steps"
     pub fn call_enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void {
         const chunk_value = if (chunk) |c| common.JSValue.fromWebIDL(c) else common.JSValue.undefined_value();
+        // Spec step 1: Perform ? TransformStreamDefaultControllerEnqueue(this, chunk)
         try self.enqueueInternal(chunk_value);
     }
-    pub fn call_terminate(self: *TransformStreamDefaultController) void {
-        _ = self;
-        // Terminate the stream
+    /// error(e) method
+    /// 
+    /// Spec: § 6.2.3 "The error(e) method steps"
+    pub fn call_error(self: *TransformStreamDefaultController, e: ?webidl.JSValue) !void {
+        const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
+        // Spec step 1: Perform ? TransformStreamDefaultControllerError(this, e)
+        self.errorInternal(error_value);
+    }
+    /// terminate() method
+    /// 
+    /// Spec: § 6.2.3 "The terminate() method steps"
+    pub fn call_terminate(self: *TransformStreamDefaultController) !void {
+        // Spec step 1: Perform ? TransformStreamDefaultControllerTerminate(this)
+        try self.terminateInternal();
     }
     pub fn errorStream(self: *TransformStreamDefaultController, e: ?webidl.JSValue) void {
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         self.errorInternal(error_value);
     }
+    /// TransformStreamDefaultControllerEnqueue(controller, chunk)
+    /// 
+    /// Spec: § 6.3.2 "Enqueue chunk to readable side"
     pub fn enqueueInternal(self: *TransformStreamDefaultController, chunk: common.JSValue) !void {
-        _ = self;
-        _ = chunk;
-        // Enqueue chunk to readable side
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Let readableController be stream.[[readable]].[[controller]]
+        const readable_controller = stream.readableStream.controller;
+
+        // Spec step 3: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(readableController) is false, throw TypeError
+        if (!readable_controller.canCloseOrEnqueue()) {
+            return error.TypeError;
+        }
+
+        // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
+        readable_controller.enqueueInternal(chunk) catch |err| {
+            // Spec step 5: If enqueueResult is an abrupt completion
+            // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
+            stream.errorWritableAndUnblockWrite(common.JSValue{ .string = "Enqueue failed" });
+            // Spec step 5.2: Throw stream.[[readable]].[[storedError]]
+            return err;
+        };
+
+        // Spec step 6: Let backpressure be ! ReadableStreamDefaultControllerHasBackpressure(readableController)
+        const backpressure = readable_controller.hasBackpressure();
+
+        // Spec step 7: If backpressure is not stream.[[backpressure]]
+        if (backpressure != stream.backpressure) {
+            // Spec step 7.1: Assert: backpressure is true
+            std.debug.assert(backpressure);
+            // Spec step 7.2: Perform ! TransformStreamSetBackpressure(stream, true)
+            stream.setBackpressure(true);
+        }
     }
+    /// TransformStreamDefaultControllerError(controller, e)
+    /// 
+    /// Spec: § 6.3.2 "Error both sides of transform stream"
     fn errorInternal(self: *TransformStreamDefaultController, error_value: common.JSValue) void {
-        _ = self;
-        _ = error_value;
-        // Error both sides of the transform stream
+        // Spec step 1: Perform ! TransformStreamError(controller.[[stream]], e)
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+        stream.errorStream(error_value);
+    }
+    /// TransformStreamDefaultControllerTerminate(controller)
+    /// 
+    /// Spec: § 6.3.2 "Terminate the transform stream"
+    fn terminateInternal(self: *TransformStreamDefaultController) !void {
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Let readableController be stream.[[readable]].[[controller]]
+        const readable_controller = stream.readableStream.controller;
+
+        // Spec step 3: Perform ! ReadableStreamDefaultControllerClose(readableController)
+        readable_controller.closeInternal();
+
+        // Spec step 4: Let error be a TypeError exception indicating that the stream has been terminated
+        const error_value = common.JSValue{ .string = "Stream has been terminated" };
+
+        // Spec step 5: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, error)
+        stream.errorWritableAndUnblockWrite(error_value);
+    }
+    /// Clear algorithms to allow garbage collection
+    /// 
+    /// Spec: § 6.3.2 TransformStreamDefaultControllerClearAlgorithms
+    pub fn clearAlgorithms(self: *TransformStreamDefaultController) void {
+        self.transformAlgorithm.deinit();
+        self.flushAlgorithm.deinit();
+        self.cancelAlgorithm.deinit();
+
+        // Replace with no-op algorithms
+        self.transformAlgorithm = common.defaultTransformAlgorithm();
+        self.flushAlgorithm = common.defaultFlushAlgorithm();
+        self.cancelAlgorithm = common.defaultCancelAlgorithm();
     }
 
     // WebIDL extended attributes metadata

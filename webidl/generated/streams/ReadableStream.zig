@@ -403,17 +403,149 @@ pub const ReadableStream = struct {
     /// 
     /// Spec: § 4.1.8 "The static from(asyncIterable) method steps are:"
     /// Creates a ReadableStream from an async iterable.
+    /// 
+    /// Spec steps:
+    /// 1. Return ? ReadableStreamFromIterable(asyncIterable).
     pub fn call_from(allocator: std.mem.Allocator, loop: eventLoop.EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream {
-        _ = asyncIterable;
+        // Convert webidl.JSValue to common.AsyncIterator
+        // In a full JavaScript runtime, this would call GetIterator(asyncIterable, async)
+        // For now, we expect asyncIterable to wrap an AsyncIterator
 
-        // Simplified implementation - create an empty stream
-        // Full implementation would iterate over asyncIterable
-        const stream = try allocator.create(ReadableStream);
-        errdefer allocator.destroy(stream);
+        // Extract iterator from the JSValue
+        // This is a simplified bridge - full implementation would need Symbol.asyncIterator support
+        const iterator = try extractAsyncIterator(asyncIterable);
 
-        stream.* = try initWithSource(allocator, loop, null, null);
+        // Call ReadableStreamFromIterable algorithm
+        return readableStreamFromIterable(allocator, loop, iterator);
+    }
+    /// Extract an AsyncIterator from a JSValue
+    /// This is a bridge function until full JavaScript runtime integration
+    fn extractAsyncIterator(value: webidl.JSValue) !common.AsyncIterator {
+        // TODO: In full implementation, this would:
+        // 1. Get value[Symbol.asyncIterator]
+        // 2. Call it to get the iterator
+        // 3. Wrap it in common.AsyncIterator
 
+        // For now, we expect the value to contain an iterator reference
+        // This will be properly implemented when zig-js-runtime is integrated
+        _ = value;
+        return error.NotImplemented;
+    }
+    /// ReadableStreamFromIterable algorithm
+    /// Spec: § 4.3.15 ReadableStreamFromIterable(asyncIterable)
+    /// 
+    /// Creates a ReadableStream that pulls from an async iterator.
+    fn readableStreamFromIterable(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        iterator: common.AsyncIterator,
+    ) !*ReadableStream {
+        // Spec step 1: Let stream be undefined (we'll create it at the end)
+
+        // Spec step 2: Let iteratorRecord be ? GetIterator(asyncIterable, async)
+        // (we already have the iterator)
+
+        // Create state object to hold iterator and stream reference
+        const state = try allocator.create(FromIterableState);
+        errdefer allocator.destroy(state);
+
+        state.* = .{
+            .allocator = allocator,
+            .iterator = iterator,
+            .stream = undefined, // Will be set after stream creation
+        };
+
+        // Spec step 3: Let startAlgorithm be an algorithm that returns undefined
+        // (no-op, controller starts immediately)
+
+        // Spec step 4: Let pullAlgorithm be the following steps:
+        const pullAlgorithm = common.PullAlgorithm{
+            .ptr = state,
+            .vtable = &.{
+                .call = FromIterableState.pullAlgorithmCall,
+                .deinit = FromIterableState.deinitVTable,
+            },
+        };
+
+        // Spec step 5: Let cancelAlgorithm be the following steps, given reason:
+        const cancelAlgorithm = common.CancelAlgorithm{
+            .ptr = state,
+            .vtable = &.{
+                .call = FromIterableState.cancelAlgorithmCall,
+                .deinit = null, // Already handled by pullAlgorithm deinit
+            },
+        };
+
+        // Spec step 6: Set stream to ! CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm, 0)
+        const stream = try createReadableStream(
+            allocator,
+            loop,
+            pullAlgorithm,
+            cancelAlgorithm,
+            0, // highWaterMark
+        );
+
+        // Link state to stream
+        state.stream = stream;
+
+        // Spec step 7: Return stream
         return stream;
+    }
+    /// CreateReadableStream abstract operation
+    /// Spec: § 4.3.4 CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm[, highWaterMark[, sizeAlgorithm]])
+    fn createReadableStream(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        pullAlgorithm: common.PullAlgorithm,
+        cancelAlgorithm: common.CancelAlgorithm,
+        highWaterMark: f64,
+    ) !*ReadableStream {
+        // Spec step 1: If highWaterMark was not passed, set it to 1
+        const hwm = if (highWaterMark == 0) 1.0 else highWaterMark;
+
+        // Spec step 2: If sizeAlgorithm was not passed, set it to an algorithm that returns 1
+        const sizeAlgorithm = common.defaultSizeAlgorithm();
+
+        // Spec step 3: Assert: ! IsNonNegativeNumber(highWaterMark) is true
+        std.debug.assert(hwm >= 0);
+
+        // Spec step 4: Let stream be a new ReadableStream
+        const stream_ptr = try allocator.create(ReadableStream);
+        errdefer allocator.destroy(stream_ptr);
+
+        // Spec step 5: Perform ! InitializeReadableStream(stream)
+        // Spec step 6: Let controller be a new ReadableStreamDefaultController
+        const controller = try allocator.create(ReadableStreamDefaultController);
+        errdefer allocator.destroy(controller);
+
+        // Spec step 7: Perform ? SetUpReadableStreamDefaultController(...)
+        controller.* = ReadableStreamDefaultController.init(
+            allocator,
+            cancelAlgorithm,
+            pullAlgorithm,
+            hwm,
+            sizeAlgorithm,
+            loop,
+        );
+
+        stream_ptr.* = .{
+            .allocator = allocator,
+            .controller = controller,
+            .detached = false,
+            .disturbed = false,
+            .reader = .none,
+            .state = .readable, // InitializeReadableStream sets state to "readable"
+            .storedError = null,
+            .eventLoop = loop,
+            .eventLoop_storage = null, // Borrowed event loop
+            .teeState = null,
+        };
+
+        // Mark controller as started
+        stream_ptr.controller.started = true;
+
+        // Spec step 8: Return stream
+        return stream_ptr;
     }
     /// values(options) method for async iteration
     /// 
@@ -443,28 +575,41 @@ pub const ReadableStream = struct {
     }
     /// ReadableStreamCancel(stream, reason)
     /// 
-    /// Spec: § 4.2.2 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
+    /// ReadableStreamCancel(stream, reason)
+    /// 
+    /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
     fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
-        // Step 1: Set stream.[[disturbed]] to true.
+        // Spec step 1: Set stream.[[disturbed]] to true
         self.disturbed = true;
 
-        // Step 2: If stream.[[state]] is "closed", return a promise fulfilled with undefined.
+        // Spec step 2: If stream.[[state]] is "closed", return a promise fulfilled with undefined
         if (self.state == .closed) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.fulfill({});
             return promise;
         }
 
-        // Step 3: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
+        // Spec step 3: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]]
         if (self.state == .errored) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(self.storedError orelse common.JSValue.undefined_value());
             return promise;
         }
 
-        // Step 4-6: Perform cancel on controller
-        // For now, we delegate to controller's cancel algorithm
-        return self.controller.cancelInternal(reason);
+        // Spec step 4: Perform ! ReadableStreamClose(stream)
+        self.closeInternal();
+
+        // Spec step 5: Let reader be stream.[[reader]]
+        // Spec step 6: If reader is not undefined and reader implements ReadableStreamBYOBReader
+        // TODO: Handle BYOB reader readIntoRequests (Phase 7)
+        // For now, we only have default readers which are handled in closeInternal()
+
+        // Spec step 7: Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
+        const cancel_promise = try self.controller.cancelInternal(reason);
+
+        // Spec step 8: Return the result of reacting to sourceCancelPromise with a fulfillment step that returns undefined
+        // For simplicity, we return the promise directly (equivalent behavior)
+        return cancel_promise;
     }
     /// AcquireReadableStreamDefaultReader(stream)
     /// 
@@ -587,14 +732,42 @@ pub const ReadableStream = struct {
     }
     /// ReadableStreamClose(stream)
     /// 
-    /// Spec: § 4.2.6 "Close the stream"
+    /// Spec: § 4.2.6 "ReadableStreamClose(stream)"
+    /// 
+    /// Close the stream and resolve any pending read requests.
     pub fn closeInternal(self: *ReadableStream) void {
-        // Step 1: Assert: stream.[[state]] is "readable".
-        // Step 2: Set stream.[[state]] to "closed".
+        // Spec step 1: Assert: stream.[[state]] is "readable"
+        std.debug.assert(self.state == .readable);
+
+        // Spec step 2: Set stream.[[state]] to "closed"
         self.state = .closed;
 
-        // Step 3-5: Resolve reader's closed promise
-        // (Full implementation would resolve reader's closed promise)
+        // Spec step 3: Let reader be stream.[[reader]]
+        // Spec step 4: If reader is undefined, return
+        switch (self.reader) {
+            .none => return,
+            .default => |reader| {
+                // Spec step 5: Resolve reader.[[closedPromise]] with undefined
+                reader.closedPromise.fulfill({});
+
+                // Spec step 6: If reader implements ReadableStreamDefaultReader
+                // Spec step 6.1: Let readRequests be reader.[[readRequests]]
+                // Spec step 6.2: Set reader.[[readRequests]] to an empty list
+                // Spec step 6.3: For each readRequest of readRequests, perform readRequest's close steps
+                while (reader.readRequests.items.len > 0) {
+                    const read_promise = reader.readRequests.orderedRemove(0);
+                    // Close steps: fulfill with { value: undefined, done: true }
+                    read_promise.fulfill(.{
+                        .value = null,
+                        .done = true,
+                    });
+                }
+            },
+            .byob => {
+                // TODO: BYOB reader close handling (Phase 7)
+                // This would handle readIntoRequests similar to default reader
+            },
+        }
     }
     /// ReadableStreamError(stream, e)
     /// 
@@ -1022,6 +1195,83 @@ pub const PipeState = struct {
         } else {
             self.promise.fulfill({});
         }
+    }
+};
+
+/// FromIterableState - State for ReadableStream.from() async iterator
+///
+/// Spec: § 4.3.15 ReadableStreamFromIterable
+///
+/// This structure holds the state for a stream created from an async iterable.
+/// It manages the iterator and implements pull/cancel algorithms.
+const FromIterableState = struct {
+    allocator: std.mem.Allocator,
+    iterator: common.AsyncIterator,
+    stream: *ReadableStream,
+
+    /// Pull algorithm for from() streams
+    /// Spec: § 4.3.15 step 4 pullAlgorithm
+    fn pullAlgorithmCall(ctx: *anyopaque) common.Promise(void) {
+        const self: *FromIterableState = @ptrCast(@alignCast(ctx));
+
+        // Spec step 4.1: Let nextResult be IteratorNext(iteratorRecord)
+        const nextPromise = self.iterator.next();
+
+        // Spec step 4.2: If nextResult is an abrupt completion, return a promise rejected with nextResult.[[Value]]
+        if (nextPromise.isRejected()) {
+            return common.Promise(void).rejected(nextPromise.error_value.?);
+        }
+
+        // Spec step 4.3-4: React to nextPromise
+        if (nextPromise.isFulfilled()) {
+            const iterResult = nextPromise.value.?;
+
+            // Spec step 4.4.2: Let done be ? IteratorComplete(iterResult)
+            if (iterResult.done) {
+                // Spec step 4.4.3: If done is true, perform ! ReadableStreamDefaultControllerClose(stream.[[controller]])
+                self.stream.controller.closeInternal();
+            } else {
+                // Spec step 4.4.4: Otherwise, let value be ? IteratorValue(iterResult)
+                // Spec step 4.4.4.2: Perform ! ReadableStreamDefaultControllerEnqueue(stream.[[controller]], value)
+                self.stream.controller.enqueueInternal(iterResult.value) catch {
+                    // If enqueue fails, error the stream
+                    self.stream.controller.errorInternal(common.JSValue{ .string = "Enqueue failed" });
+                };
+            }
+        }
+
+        return common.Promise(void).fulfilled({});
+    }
+
+    /// Cancel algorithm for from() streams
+    /// Spec: § 4.3.15 step 5 cancelAlgorithm
+    fn cancelAlgorithmCall(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(void) {
+        const self: *FromIterableState = @ptrCast(@alignCast(ctx));
+
+        // Spec step 5.1: Let iterator be iteratorRecord.[[Iterator]]
+        // Spec step 5.2: Let returnMethod be GetMethod(iterator, "return")
+        // Spec step 5.3-4: Handle abrupt completion or undefined
+
+        if (self.iterator.return_value(reason)) |returnPromise| {
+            // Spec step 5.5-8: Call return method and react to promise
+            if (returnPromise.isFulfilled()) {
+                // Spec step 5.8.1: If iterResult is not an Object, throw a TypeError
+                // Spec step 5.8.2: Return undefined
+                return common.Promise(void).fulfilled({});
+            } else if (returnPromise.isRejected()) {
+                return common.Promise(void).rejected(returnPromise.error_value.?);
+            }
+        }
+
+        // Spec step 5.4: If returnMethod.[[Value]] is undefined, return a promise resolved with undefined
+        return common.Promise(void).fulfilled({});
+    }
+
+    /// Cleanup function
+    fn deinitVTable(ctx: *anyopaque) void {
+        const self: *FromIterableState = @ptrCast(@alignCast(ctx));
+        self.iterator.deinit();
+        self.allocator.destroy(self);
     }
 };
 

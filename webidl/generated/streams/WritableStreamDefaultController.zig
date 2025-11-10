@@ -20,6 +20,7 @@ pub const common = @import("common");
 pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 pub const eventLoop = @import("event_loop");
 pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const WritableStream = @import("writable_stream").WritableStream;
 pub const WritableStreamDefaultController = struct {
     // ========================================================================
     // WritableStreamDefaultController fields
@@ -77,9 +78,21 @@ pub const WritableStreamDefaultController = struct {
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         self.errorInternal(error_value);
     }
+    /// WritableStreamDefaultControllerError(controller, error)
+    /// 
+    /// Spec: § 5.7.3 "Error the controller"
     fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
-        _ = error_value;
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Assert: stream.[[state]] is "writable"
+        std.debug.assert(stream_ptr.state == .writable);
+
+        // Spec step 3: Perform ! WritableStreamDefaultControllerClearAlgorithms(controller)
         self.clearAlgorithms();
+
+        // Spec step 4: Perform ! WritableStreamStartErroring(stream, error)
+        stream_ptr.startErroring(error_value);
     }
     fn clearAlgorithms(self: *WritableStreamDefaultController) void {
         self.abortAlgorithm = common.defaultAbortAlgorithm();
@@ -87,17 +100,59 @@ pub const WritableStreamDefaultController = struct {
         self.writeAlgorithm = common.defaultWriteAlgorithm();
         self.strategySizeAlgorithm = common.defaultSizeAlgorithm();
     }
-    pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) !*AsyncPromise(void) {
+    /// [[AbortSteps]](reason)
+    /// 
+    /// Spec: § 5.2.6 "Controller's abort steps"
+    pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) common.Promise(void) {
+        // Spec step 1: Let result be the result of performing this.[[abortAlgorithm]], passing reason
         const result = self.abortAlgorithm.call(reason);
+
+        // Spec step 2: Perform ! WritableStreamDefaultControllerClearAlgorithms(this)
         self.clearAlgorithms();
 
-        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-        if (result.isFulfilled()) {
-            promise.fulfill({});
-        } else if (result.isRejected()) {
-            promise.reject(result.error_value orelse common.JSValue{ .string = "Abort failed" });
+        // Spec step 3: Return result
+        return result;
+    }
+    /// [[ErrorSteps]]()
+    /// 
+    /// Spec: § 5.2.7 "Controller's error steps"
+    pub fn errorSteps(self: *WritableStreamDefaultController) void {
+        // Spec step 1: Perform ! ResetQueue(this)
+        self.queue.resetQueue();
+    }
+    /// WritableStreamDefaultControllerClose(controller)
+    /// 
+    /// Spec: § 5.7.2 "Close the controller"
+    pub fn closeInternal(self: *WritableStreamDefaultController) void {
+        // Spec step 1: Perform ! EnqueueValueWithSize(controller, close sentinel, 0)
+        self.queue.enqueueValueWithSize(common.JSValue.closeSentinel(), 0) catch {
+            // EnqueueValueWithSize should not fail for close sentinel
+            return;
+        };
+
+        // Spec step 2: Perform ! WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+        self.advanceQueueIfNeeded();
+    }
+    /// WritableStreamDefaultControllerErrorIfNeeded(controller, error)
+    /// 
+    /// Spec: § 5.7.4 "Error the controller if writable"
+    pub fn errorIfNeeded(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
+        // Spec step 1: If controller.[[stream]].[[state]] is "writable", perform ! WritableStreamDefaultControllerError(controller, error)
+        const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
+        if (stream_ptr.state == .writable) {
+            self.errorInternal(error_value);
         }
-        return promise;
+    }
+    /// WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+    /// 
+    /// Spec: § 5.7.1 "Process the next chunk in the queue if ready"
+    fn advanceQueueIfNeeded(self: *WritableStreamDefaultController) void {
+        // Simplified implementation - in full version, this would:
+        // 1. Check if controller is not started or queue is empty
+        // 2. Check if there's an in-flight write
+        // 3. Dequeue next chunk and process it
+        // For now, this is a no-op placeholder
+        _ = self;
     }
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
         return self.strategyHwm - self.queue.queue_total_size;

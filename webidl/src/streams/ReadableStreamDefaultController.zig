@@ -211,7 +211,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
     /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
     ///
     /// Spec: § 4.6.4 "Check if controller can close or enqueue"
-    fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
+    pub fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
         // Cannot close or enqueue if already close requested
         return !self.closeRequested;
     }
@@ -219,7 +219,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
     /// ReadableStreamDefaultControllerClose(controller)
     ///
     /// Spec: § 4.6.4 "Close the controller"
-    fn closeInternal(self: *ReadableStreamDefaultController) void {
+    pub fn closeInternal(self: *ReadableStreamDefaultController) void {
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
         if (!self.canCloseOrEnqueue()) {
             return;
@@ -315,7 +315,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
     /// ReadableStreamDefaultControllerError(controller, e)
     ///
     /// Spec: § 4.6.4 "Error the controller"
-    fn errorInternal(self: *ReadableStreamDefaultController, e: webidl.JSValue) void {
+    pub fn errorInternal(self: *ReadableStreamDefaultController, e: webidl.JSValue) void {
         // Convert to internal JSValue
         const error_value = common.JSValue.fromWebIDL(e);
 

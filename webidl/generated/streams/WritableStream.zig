@@ -90,7 +90,7 @@ pub const WritableStream = struct {
         self.controller.deinit();
         self.allocator.destroy(self.controller);
 
-        self.writeRequests.deinit();
+        self.writeRequests.deinit(self.allocator);
 
         switch (self.writer) {
             .default => |w| {
@@ -121,7 +121,7 @@ pub const WritableStream = struct {
         const sink_dict = try dict_parsing.parseUnderlyingSink(allocator, underlyingSink);
         const strategy_dict = try dict_parsing.parseQueuingStrategy(allocator, strategy);
 
-        const highWaterMark = strategy_dict.highWaterMark orelse 1.0;
+        const highWaterMark = strategy_dict.high_water_mark orelse 1.0;
         const size_algorithm = if (strategy_dict.size) |size_fn|
             common.wrapGenericSizeCallback(size_fn)
         else
@@ -215,24 +215,122 @@ pub const WritableStream = struct {
     fn isLocked(self: *const WritableStream) bool {
         return self.writer != .none;
     }
+    /// WritableStreamAbort(stream, reason)
+    /// 
+    /// Spec: § 5.3.3 "Abort the stream with given reason"
     fn abortInternal(self: *WritableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
+        // Spec step 1: If stream.[[state]] is "closed" or "errored", return fulfilled promise
         if (self.state == .closed or self.state == .errored) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.fulfill({});
             return promise;
         }
 
-        // Signal abort to controller
-        _ = reason;
+        // Spec step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
+        // TODO: Implement AbortSignal integration when AbortController is available
+        // For now, we skip this step (no user code to run)
+
+        // Spec step 3: Let state be stream.[[state]]
+        const state = self.state;
+
+        // Spec step 4: If state is "closed" or "errored", return fulfilled promise
+        // (Re-check because signaling abort runs author code and may change state)
+        if (state == .closed or state == .errored) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.fulfill({});
+            return promise;
+        }
+
+        // Spec step 5: If stream.[[pendingAbortRequest]] is not undefined, return its promise
+        if (self.pendingAbortRequest) |existing_abort| {
+            return existing_abort.promise;
+        }
+
+        // Spec step 6: Assert: state is "writable" or "erroring"
+        std.debug.assert(state == .writable or state == .erroring);
+
+        // Spec step 7: Let wasAlreadyErroring be false
+        var was_already_erroring = false;
+
+        // Spec step 8: If state is "erroring"
+        var abort_reason = reason;
+        if (state == .erroring) {
+            // Spec step 8.1: Set wasAlreadyErroring to true
+            was_already_erroring = true;
+            // Spec step 8.2: Set reason to undefined
+            abort_reason = null;
+        }
+
+        // Spec step 9: Let promise be a new promise
         const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-        promise.fulfill({});
+
+        // Spec step 10: Set stream.[[pendingAbortRequest]] to new abort request
+        self.pendingAbortRequest = AbortRequest{
+            .promise = promise,
+            .reason = abort_reason,
+            .wasAlreadyErroring = was_already_erroring,
+        };
+
+        // Spec step 11: If wasAlreadyErroring is false, perform ! WritableStreamStartErroring(stream, reason)
+        if (!was_already_erroring) {
+            self.startErroring(abort_reason orelse common.JSValue.undefined_value());
+        }
+
+        // Spec step 12: Return promise
         return promise;
     }
+    /// WritableStreamClose(stream)
+    /// 
+    /// Spec: § 5.3.4 "Close the writable stream"
     fn closeInternal(self: *WritableStream) !*AsyncPromise(void) {
-        self.state = .closed;
+        // Spec step 1: Let state be stream.[[state]]
+        const state = self.state;
+
+        // Spec step 2: If state is "closed" or "errored", return rejected promise with TypeError
+        if (state == .closed or state == .errored) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Cannot close a closed or errored stream" });
+            return promise;
+        }
+
+        // Spec step 3: Assert: state is "writable" or "erroring"
+        std.debug.assert(state == .writable or state == .erroring);
+
+        // Spec step 4: Assert: ! WritableStreamCloseQueuedOrInFlight(stream) is false
+        std.debug.assert(!self.closeQueuedOrInFlight());
+
+        // Spec step 5: Let promise be a new promise
         const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-        promise.fulfill({});
+
+        // Spec step 6: Set stream.[[closeRequest]] to promise
+        self.closeRequest = promise;
+
+        // Spec step 7: Let writer be stream.[[writer]]
+        // Spec step 8: If writer is not undefined, and stream.[[backpressure]] is true, and state is "writable",
+        //              resolve writer.[[readyPromise]] with undefined
+        if (state == .writable and self.backpressure) {
+            switch (self.writer) {
+                .none => {},
+                .default => |writer| {
+                    if (writer.readyPromise) |ready| {
+                        ready.fulfill({});
+                    }
+                },
+            }
+        }
+
+        // Spec step 9: Perform ! WritableStreamDefaultControllerClose(stream.[[controller]])
+        self.controller.closeInternal();
+
+        // Spec step 10: Return promise
         return promise;
+    }
+    /// WritableStreamCloseQueuedOrInFlight(stream)
+    /// 
+    /// Spec: § 5.3.9 "Check if close is queued or in flight"
+    fn closeQueuedOrInFlight(self: *const WritableStream) bool {
+        // Spec step 1-2: If closeRequest or inFlightCloseRequest is undefined, return false; else true
+        return self.closeRequest != null or self.inFlightCloseRequest != null;
     }
     fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
         const writer = try self.allocator.create(WritableStreamDefaultWriter);
@@ -250,6 +348,135 @@ pub const WritableStream = struct {
         self.state = .errored;
         self.storedError = e;
     }
+    /// WritableStreamHasOperationMarkedInFlight(stream)
+    /// 
+    /// Spec: § 5.3.6 "Check if stream has operation in flight"
+    fn hasOperationMarkedInFlight(self: *const WritableStream) bool {
+        // Spec step 1-2: If inFlightWriteRequest or inFlightCloseRequest is undefined, return false; else true
+        return self.inFlightWriteRequest != null or self.inFlightCloseRequest != null;
+    }
+    /// WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+    /// 
+    /// Spec: § 5.3.7 "Reject close request and writer's closed promise"
+    fn rejectCloseAndClosedPromiseIfNeeded(self: *WritableStream) void {
+        // Spec step 1: Assert: stream.[[state]] is "errored"
+        std.debug.assert(self.state == .errored);
+
+        const stored_error = self.storedError orelse common.JSValue.undefined_value();
+
+        // Spec step 2-3: Reject closeRequest if present
+        if (self.closeRequest) |close_req| {
+            std.debug.assert(self.inFlightCloseRequest == null);
+            close_req.reject(stored_error);
+            self.closeRequest = null;
+        }
+
+        // Spec step 4: If writer is not undefined
+        switch (self.writer) {
+            .none => {},
+            .default => |writer| {
+                // Spec step 4.1: Reject writer.[[closedPromise]] with storedError
+                writer.closedPromise.reject(stored_error);
+                // Spec step 4.2: Set writer.[[closedPromise]].[[PromiseIsHandled]] to true
+                // (In production, this prevents unhandled rejection warnings)
+            },
+        }
+    }
+    /// WritableStreamStartErroring(stream, reason)
+    /// 
+    /// Spec: § 5.3.8 "Start the erroring process"
+    pub fn startErroring(self: *WritableStream, reason: common.JSValue) void {
+        // Spec step 1: Assert: stream.[[storedError]] is undefined
+        std.debug.assert(self.storedError == null);
+
+        // Spec step 2: Assert: stream.[[state]] is "writable"
+        std.debug.assert(self.state == .writable);
+
+        // Spec step 5: Set stream.[[state]] to "erroring"
+        self.state = .erroring;
+
+        // Spec step 6: Set stream.[[storedError]] to reason
+        self.storedError = reason;
+
+        // Spec step 7-8: Reject writer's ready promise if writer exists
+        switch (self.writer) {
+            .none => {},
+            .default => |writer| {
+                // Spec step 8: Perform ! WritableStreamDefaultWriterEnsureReadyPromiseRejected(writer, reason)
+                if (writer.readyPromise) |ready| {
+                    ready.reject(reason);
+                }
+            },
+        }
+
+        // Spec step 9: If no operation in flight and controller is started, finish erroring immediately
+        if (!self.hasOperationMarkedInFlight() and self.controller.started) {
+            self.finishErroring();
+        }
+    }
+    /// WritableStreamFinishErroring(stream)
+    /// 
+    /// Spec: § 5.3.5 "Finish the erroring process"
+    fn finishErroring(self: *WritableStream) void {
+        // Spec step 1: Assert: stream.[[state]] is "erroring"
+        std.debug.assert(self.state == .erroring);
+
+        // Spec step 2: Assert: ! WritableStreamHasOperationMarkedInFlight(stream) is false
+        std.debug.assert(!self.hasOperationMarkedInFlight());
+
+        // Spec step 3: Set stream.[[state]] to "errored"
+        self.state = .errored;
+
+        // Spec step 4: Perform ! stream.[[controller]].[[ErrorSteps]]()
+        self.controller.errorSteps();
+
+        const stored_error = self.storedError orelse common.JSValue.undefined_value();
+
+        // Spec step 6-7: Reject all pending write requests
+        while (self.writeRequests.items.len > 0) {
+            const write_request = self.writeRequests.orderedRemove(0);
+            write_request.reject(stored_error);
+        }
+
+        // Spec step 8: If pendingAbortRequest is undefined
+        if (self.pendingAbortRequest == null) {
+            // Spec step 8.1-8.2: Reject close and return
+            self.rejectCloseAndClosedPromiseIfNeeded();
+            return;
+        }
+
+        // Spec step 9-10: Get and clear pendingAbortRequest
+        const abort_request = self.pendingAbortRequest.?;
+        self.pendingAbortRequest = null;
+
+        // Spec step 11: If wasAlreadyErroring is true
+        if (abort_request.wasAlreadyErroring) {
+            // Spec step 11.1: Reject abortRequest's promise
+            abort_request.promise.reject(stored_error);
+            // Spec step 11.2: Reject close and return
+            self.rejectCloseAndClosedPromiseIfNeeded();
+            return;
+        }
+
+        // Spec step 12: Let promise be ! stream.[[controller]].[[AbortSteps]](abortRequest's reason)
+        const abort_result = self.controller.abortSteps(abort_request.reason);
+
+        // Spec step 13: Upon fulfillment
+        if (abort_result.isFulfilled()) {
+            // Spec step 13.1: Resolve abortRequest's promise with undefined
+            abort_request.promise.fulfill({});
+            // Spec step 13.2: Reject close
+            self.rejectCloseAndClosedPromiseIfNeeded();
+        } else if (abort_result.isRejected()) {
+            // Spec step 14: Upon rejection with reason
+            // Spec step 14.1: Reject abortRequest's promise with reason
+            abort_request.promise.reject(abort_result.error_value orelse common.JSValue.undefined_value());
+            // Spec step 14.2: Reject close
+            self.rejectCloseAndClosedPromiseIfNeeded();
+        }
+        // Note: If promise is pending, we would need to add fulfillment/rejection handlers
+        // For simplicity, we handle synchronous completion here
+    }
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{
@@ -264,7 +491,10 @@ pub const WritableStream = struct {
 };
 
 
+/// Abort request record
+/// Spec: § 5.3.3 WritableStreamAbort step 10
 const AbortRequest = struct {
+    promise: *AsyncPromise(void),
     reason: ?common.JSValue,
     wasAlreadyErroring: bool,
 };
