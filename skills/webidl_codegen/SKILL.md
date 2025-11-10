@@ -21,15 +21,173 @@ The WebIDL codegen system transforms source files in `webidl/src/` into generate
 
 **Source Files (`webidl/src/`):**
 - Contain `webidl.interface(struct { ... })` wrappers
-- Define class hierarchies with inheritance
+- Define class hierarchies with inheritance via `pub const extends`
 - Specify properties and methods
+- Use `webidl.mixin()` for multiple inheritance
 
 **Generated Files (`webidl/generated/`):**
 - Strip `webidl.interface()` wrapper → plain `struct`
-- Flatten parent class fields directly into child
-- Copy inherited methods with type rewriting
+- **Flatten parent class fields directly into child** (no `.super` field)
+- **Copy inherited methods with type rewriting** (`*Parent` → `*Child`)
+- **Detect overrides** and skip copying overridden methods
 - Generate property getters/setters
 - Resolve cross-file inheritance
+
+## How Inheritance Works
+
+### The Key Principle: Flattened Fields
+
+Zoop/WebIDL uses **flattened field inheritance** - parent fields are copied directly into the child struct, NOT nested in a `.super` field.
+
+```zig
+// ❌ WRONG - Traditional OOP (other languages)
+child.parent.grandparent.field
+
+// ✅ CORRECT - WebIDL (flattened)
+child.field  // Direct access!
+```
+
+### What Gets Generated
+
+When you use `pub const extends = ParentInterface`, the codegen:
+
+1. **Flattens parent fields** directly into child struct (parent fields first, then child fields)
+2. **Copies parent methods** with type rewriting (`*Parent` → `*Child`)
+3. **Detects overrides** - If child defines same method name, parent version is NOT copied
+4. **Preserves method bodies** - Inherited methods are copied verbatim, just with type rewritten
+
+### Inheritance Example
+
+#### Source Code (`webidl/src/`)
+
+```zig
+pub const ReadableStreamGenericReader = webidl.mixin(struct {
+    allocator: std.mem.Allocator,
+    stream: ?*ReadableStream,
+    closed_promise: *AsyncPromise(void),
+    
+    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Implementation
+    }
+});
+
+pub const ReadableStreamDefaultReader = webidl.interface(struct {
+    pub const extends = ReadableStreamGenericReader;  // Inherit from mixin
+    
+    read_requests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    
+    pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
+        // Implementation
+    }
+});
+```
+
+#### Generated Code (`webidl/generated/`)
+
+```zig
+// ReadableStreamGenericReader - plain struct (mixin stripped)
+pub const ReadableStreamGenericReader = struct {
+    allocator: std.mem.Allocator,
+    stream: ?*ReadableStream,
+    closed_promise: *AsyncPromise(void),
+    
+    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Implementation (unchanged)
+    }
+};
+
+// ReadableStreamDefaultReader - inherits from GenericReader
+pub const ReadableStreamDefaultReader = struct {
+    // ===== FLATTENED PARENT FIELDS (from ReadableStreamGenericReader) =====
+    allocator: std.mem.Allocator,
+    stream: ?*ReadableStream,
+    closed_promise: *AsyncPromise(void),
+    
+    // ===== OWN FIELDS =====
+    read_requests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    
+    // ===== OWN METHOD =====
+    pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
+        // Implementation (unchanged)
+    }
+    
+    // ===== INHERITED METHOD (copied with type rewritten) =====
+    pub fn call_cancel(self: *ReadableStreamDefaultReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Implementation copied from parent
+        // Type changed: *ReadableStreamGenericReader → *ReadableStreamDefaultReader
+    }
+};
+```
+
+### Key Points About Inheritance
+
+1. **Field Access**: Always direct - `reader.stream`, never `reader.super.stream`
+2. **Method Copying**: Inherited methods are fully copied, not delegated
+3. **Type Rewriting**: Method signatures change to use child type
+4. **Override Detection**: If child defines `call_read()`, parent's `call_read()` is NOT copied
+5. **Zero Runtime Overhead**: No vtables, no indirection, just plain structs
+6. **Initialization**: Child's `init()` must initialize ALL fields (parent + own)
+
+### Multi-Level Inheritance
+
+Inheritance can be chained:
+
+```zig
+// Grandparent
+pub const Entity = webidl.interface(struct {
+    id: u64,
+});
+
+// Parent  
+pub const Character = webidl.interface(struct {
+    pub const extends = Entity;
+    name: []const u8,
+});
+
+// Child
+pub const Player = webidl.interface(struct {
+    pub const extends = Character;
+    username: []const u8,
+});
+```
+
+Generated `Player` will have ALL fields flattened:
+```zig
+pub const Player = struct {
+    id: u64,           // From Entity (flattened)
+    name: []const u8,  // From Character (flattened)
+    username: []const u8,
+};
+```
+
+### Mixins (Multiple Inheritance)
+
+Use mixins for code reuse without deep hierarchies:
+
+```zig
+pub const Timestamped = webidl.mixin(struct {
+    created_at: i64,
+    updated_at: i64,
+});
+
+pub const User = webidl.interface(struct {
+    pub const extends = Entity;  // Single parent
+    pub const mixins = .{ Timestamped };  // Multiple mixins
+    
+    email: []const u8,
+});
+```
+
+Generated:
+```zig
+pub const User = struct {
+    id: u64,           // From Entity (flattened)
+    created_at: i64,   // From Timestamped mixin (flattened)
+    updated_at: i64,   // From Timestamped mixin (flattened)
+    email: []const u8, // Own field
+    // All methods from Entity and Timestamped copied here
+};
+```
 
 ## Critical Naming Conventions
 
