@@ -369,13 +369,27 @@ pub const ReadableStream = webidl.interface(struct {
         transform: *TransformPair,
         options: ?PipeOptions,
     ) !*ReadableStream {
-        // Step 1: Validate transform has readable and writable
-        // (Already validated by TransformPair type)
+        // Spec step 1: If ! IsReadableStreamLocked(this) is true, throw a TypeError exception.
+        if (self.isLocked()) {
+            return error.TypeError;
+        }
 
-        // Step 2: Pipe this to transform.writable
+        // Spec step 2: If ! IsWritableStreamLocked(transform["writable"]) is true, throw a TypeError exception.
+        if (transform.writable.isLocked()) {
+            return error.TypeError;
+        }
+
+        // Spec step 3: Let signal be options["signal"] if it exists, or undefined otherwise.
+        // (Handled by PipeOptions structure)
+
+        // Spec step 4: Let promise be ! ReadableStreamPipeTo(this, transform["writable"], ...)
         _ = try self.pipeTo(transform.writable, options);
 
-        // Step 3: Return transform.readable
+        // Spec step 5: Set promise.[[PromiseIsHandled]] to true.
+        // (This means we intentionally don't await the promise - it runs in background)
+        // The promise continues running to pipe data through the transform
+
+        // Spec step 6: Return transform["readable"].
         return transform.readable;
     }
 
