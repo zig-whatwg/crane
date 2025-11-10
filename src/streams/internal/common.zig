@@ -295,6 +295,53 @@ pub const FlushAlgorithm = struct {
     }
 };
 
+/// Iterator result from async iteration
+/// Spec: ECMAScript IteratorResult interface { value, done }
+pub const IteratorResult = struct {
+    value: JSValue,
+    done: bool,
+};
+
+/// Async Iterator protocol interface
+/// Spec: ECMAScript Symbol.asyncIterator protocol
+///
+/// This represents the minimal interface for async iteration needed for ReadableStream.from()
+pub const AsyncIterator = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        /// next() method - returns a promise of IteratorResult
+        /// Spec: IteratorNext abstract operation
+        next: *const fn (ctx: *anyopaque) Promise(IteratorResult),
+        /// return() method - optional cleanup when iteration stops early
+        /// Spec: IteratorReturn abstract operation
+        return_fn: ?*const fn (ctx: *anyopaque, reason: ?JSValue) Promise(JSValue),
+        /// Cleanup function
+        deinit: ?*const fn (ctx: *anyopaque) void,
+    };
+
+    /// Call next() to get the next value
+    pub fn next(self: AsyncIterator) Promise(IteratorResult) {
+        return self.vtable.next(self.ptr);
+    }
+
+    /// Call return() to cleanup early termination
+    pub fn return_value(self: AsyncIterator, reason: ?JSValue) ?Promise(JSValue) {
+        if (self.vtable.return_fn) |return_fn| {
+            return return_fn(self.ptr, reason);
+        }
+        return null;
+    }
+
+    /// Cleanup resources
+    pub fn deinit(self: AsyncIterator) void {
+        if (self.vtable.deinit) |deinit_fn| {
+            deinit_fn(self.ptr);
+        }
+    }
+};
+
 /// Default algorithms that do nothing (for streams without custom behavior)
 pub fn defaultPullAlgorithm() PullAlgorithm {
     const impl = struct {
