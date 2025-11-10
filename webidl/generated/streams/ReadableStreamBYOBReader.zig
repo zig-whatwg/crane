@@ -45,6 +45,8 @@ pub const ReadableStreamBYOBReader = struct {
     /// [[readIntoRequests]]: List of pending read-into requests
     readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
+    pub const includes = .{ReadableStreamGenericReader};
+
     pub fn init(
         allocator: std.mem.Allocator,
         stream: *ReadableStream,

@@ -65,6 +65,8 @@ pub const ReadableStreamDefaultReader = struct {
     /// Changed from ArrayList(ReadRequest) to support async operations
     readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
+    pub const includes = .{ReadableStreamGenericReader};
+
     /// Initialize a new default reader (internal - not exposed via WebIDL)
     /// 
     /// Spec: § 4.3.4 "SetUpReadableStreamDefaultReader(reader, stream)"

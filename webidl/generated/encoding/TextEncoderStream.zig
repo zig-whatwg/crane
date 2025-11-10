@@ -66,6 +66,8 @@ pub const TextEncoderStream = struct {
     /// Pending high surrogate (for UTF-16 conversion)
     pendingHighSurrogate: ?u16,
 
+    pub const includes = .{
+
     /// Constructor - creates a new TextEncoderStream
     /// 
     /// WHATWG Encoding Standard § 6.4.1

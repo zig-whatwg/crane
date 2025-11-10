@@ -226,6 +226,8 @@ pub const TextEncoder = struct {
     // ========================================================================
     allocator: std.mem.Allocator,
 
+    pub const includes = .{TextEncoderCommon};
+
     /// Constructor - creates a new TextEncoder
     /// 
     /// WHATWG Encoding Standard § 5.2.1

@@ -89,6 +89,8 @@ pub const TextDecoderStream = struct {
     /// Internal decoder instance
     decoder: *Decoder,
 
+    pub const includes = .{
+
     /// Constructor - creates a new TextDecoderStream
     /// 
     /// WHATWG Encoding Standard § 6.3.1

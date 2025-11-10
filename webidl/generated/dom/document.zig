@@ -23,6 +23,8 @@ pub const Document = struct {
     allocator: Allocator,
     node: Node,
 
+    const Text = @import("text").Text;
+
     pub fn init(allocator: Allocator) !Document {
         return .{
             .allocator = allocator,

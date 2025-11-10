@@ -29,6 +29,7 @@ pub const Node = struct {
     child_nodes: std.ArrayList(*Node),
     owner_document: ?*Document,
 
+    const Document = @import("document").Document;
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
     pub const TEXT_NODE: u16 = 3;

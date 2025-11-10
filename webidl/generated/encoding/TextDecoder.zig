@@ -263,6 +263,8 @@ pub const TextDecoder = struct {
     /// Reusable buffer for UTF-8 intermediate results (performance optimization)
     reusableUtf8Buffer: ?[]u8,
 
+    pub const includes = .{TextDecoderCommon};
+
     /// Constructor - creates a new TextDecoder
     /// 
     /// WHATWG Encoding Standard § 5.1.3

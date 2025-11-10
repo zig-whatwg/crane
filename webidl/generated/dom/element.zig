@@ -27,6 +27,8 @@ pub const Element = struct {
     namespace_uri: ?[]const u8,
     attributes: std.ArrayList(Attr),
 
+    const Attr = @import("attr").Attr;
+
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         return .{
             .allocator = allocator,

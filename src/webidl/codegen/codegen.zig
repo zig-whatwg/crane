@@ -2327,14 +2327,24 @@ pub fn parseStructBody(
                 continue;
             }
 
-            // Check for pub const declarations with type annotations (constants)
+            // Check for pub const declarations (constants or type aliases)
             if (std.mem.startsWith(u8, line, "pub const ") and
-                std.mem.indexOf(u8, line, ":") != null and
                 !std.mem.startsWith(u8, line, "pub const extends") and
                 !std.mem.startsWith(u8, line, "pub const mixins") and
                 !std.mem.startsWith(u8, line, "pub const properties"))
             {
                 // This is a constant declaration like "pub const NONE: u16 = 0;"
+                try constants.append(allocator, try allocator.dupe(u8, line));
+                pos = line_end + 1;
+                continue;
+            }
+
+            // Check for const type aliases (they contain @import)
+            if (std.mem.startsWith(u8, line, "const ") and
+                !std.mem.startsWith(u8, line, "const Self") and
+                std.mem.indexOf(u8, line, "@import") != null)
+            {
+                // This is a type alias like "const EventTarget = @import("event_target").EventTarget;"
                 try constants.append(allocator, try allocator.dupe(u8, line));
                 pos = line_end + 1;
                 continue;
