@@ -8,7 +8,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 
 // BYOB infrastructure imports

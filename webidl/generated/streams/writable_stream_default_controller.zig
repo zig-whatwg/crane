@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 
 const common = @import("common");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 
 pub const WritableStreamDefaultController = webidl.interface(struct {

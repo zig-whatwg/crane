@@ -816,6 +816,12 @@ pub fn build(b: *std.Build) void {
         .imports = &streams_iface_imports,
     });
 
+    const readable_stream_generic_reader_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/streams/readable_stream_generic_reader.zig"),
+        .target = target,
+        .imports = &streams_iface_imports,
+    });
+
     const readable_stream_byob_reader_mod = b.createModule(.{
         .root_source_file = b.path("webidl/generated/streams/readable_stream_byob_reader.zig"),
         .target = target,
@@ -850,6 +856,7 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
     streams_mod.addImport("readable_stream", readable_stream_mod);
     streams_mod.addImport("readable_stream_default_reader", readable_stream_default_reader_mod);
+    streams_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
     streams_mod.addImport("readable_stream_byob_reader", readable_stream_byob_reader_mod);
     streams_mod.addImport("writable_stream", writable_stream_mod);
     streams_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
@@ -881,6 +888,7 @@ pub fn build(b: *std.Build) void {
 
     // Controllers need their parent streams
     readable_stream_default_controller_mod.addImport("readable_stream", readable_stream_mod);
+    readable_stream_default_controller_mod.addImport("readable_stream_default_reader", readable_stream_default_reader_mod);
     writable_stream_default_controller_mod.addImport("writable_stream", writable_stream_mod);
     writable_stream_default_controller_mod.addImport("transform_stream_default_controller", transform_stream_default_controller_mod);
     transform_stream_default_controller_mod.addImport("transform_stream", transform_stream_mod);
@@ -888,9 +896,14 @@ pub fn build(b: *std.Build) void {
 
     // Readers/writers need their parent streams
     readable_stream_default_reader_mod.addImport("readable_stream", readable_stream_mod);
+    readable_stream_default_reader_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
     readable_stream_byob_reader_mod.addImport("readable_stream", readable_stream_mod);
+    readable_stream_byob_reader_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
     readable_stream_byob_reader_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
     writable_stream_default_writer_mod.addImport("writable_stream", writable_stream_mod);
+
+    // Generic reader needs readable stream
+    readable_stream_generic_reader_mod.addImport("readable_stream", readable_stream_mod);
 
     // Byte stream controller needs BYOB request and readable stream
     readable_byte_stream_controller_mod.addImport("readable_stream", readable_stream_mod);

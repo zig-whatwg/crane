@@ -14,7 +14,7 @@ const webidl = @import("webidl");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const Value = @import("queue_with_sizes").Value;
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 
 // Import ReadableStream (will be defined elsewhere to avoid circular dependency)

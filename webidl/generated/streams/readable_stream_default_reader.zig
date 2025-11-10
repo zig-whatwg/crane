@@ -12,7 +12,7 @@ const webidl = @import("webidl");
 
 // Import stream infrastructure
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const ReadRequest = @import("read_request").ReadRequest;
 

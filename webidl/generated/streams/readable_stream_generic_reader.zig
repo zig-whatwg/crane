@@ -17,7 +17,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 const common = @import("common");
-const eventLoop = @import("eventLoop");
+const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 
 const ReadableStream = @import("readable_stream").ReadableStream;
