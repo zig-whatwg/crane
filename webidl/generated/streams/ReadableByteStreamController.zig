@@ -127,7 +127,7 @@ pub const ReadableByteStreamController = struct {
     /// Calculate desired size (internal helper)
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerGetDesiredSize(controller)"
-    pub fn desiredSize(self: *const ReadableByteStreamController) ?f64 {
+    pub fn call_desiredSize(self: *const ReadableByteStreamController) ?f64 {
         // If stream is closed, return 0
         if (self.closeRequested and self.byteQueue.items.len == 0) {
             return 0.0;
@@ -160,7 +160,7 @@ pub const ReadableByteStreamController = struct {
     /// Enqueue the given chunk in the controlled readable stream
     /// 
     /// Spec: § 4.7.3 "The enqueue(chunk) method steps are:"
-    pub fn enqueue(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
+    pub fn call_enqueue(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
         // Step 1: If chunk ByteLength is 0, throw TypeError
         if (chunk.getByteLength() == 0) {
             return error.TypeError;
@@ -649,7 +649,7 @@ pub const ReadableByteStreamController = struct {
     /// Respond with bytes written to BYOB buffer
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespond"
-    pub fn respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
+    pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
         // Step 1: Assert we have pending pull-intos
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;
@@ -676,7 +676,7 @@ pub const ReadableByteStreamController = struct {
     /// Respond with a new view (replacement buffer)
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondWithNewView"
-    pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
+    pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
         // Step 1: Assert we have pending pull-intos
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;

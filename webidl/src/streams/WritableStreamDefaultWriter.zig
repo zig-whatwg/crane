@@ -69,7 +69,7 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         }
     }
 
-    pub fn desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
+    pub fn call_desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
         if (self.stream == null) {
             return null;
         }
@@ -114,7 +114,7 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         return self.closeInternal();
     }
 
-    pub fn releaseLock(self: *WritableStreamDefaultWriter) void {
+    pub fn call_releaseLock(self: *WritableStreamDefaultWriter) void {
         if (self.stream == null) {
             return;
         }

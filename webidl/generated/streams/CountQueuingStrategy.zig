@@ -27,7 +27,7 @@ pub const CountQueuingStrategy = struct {
         };
     }
     pub fn deinit(_: *CountQueuingStrategy) void {}
-    pub fn size(_: *const CountQueuingStrategy, _: ?webidl.JSValue) f64 {
+    pub fn call_size(_: *const CountQueuingStrategy, _: ?webidl.JSValue) f64 {
         // Always returns 1 for count-based strategy
         return 1.0;
     }

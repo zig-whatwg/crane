@@ -67,7 +67,7 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
     /// Read data into the provided view
     ///
     /// Spec: § 4.5.3 "The read(view, options) method steps are:"
-    pub fn read(
+    pub fn call_read(
         self: *ReadableStreamBYOBReader,
         view: webidl.ArrayBufferView,
         options: ?webidl.JSValue,
@@ -208,7 +208,7 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         return promise;
     }
 
-    pub fn releaseLock(self: *ReadableStreamBYOBReader) void {
+    pub fn call_releaseLock(self: *ReadableStreamBYOBReader) void {
         if (self.mixin.stream == null) {
             return;
         }

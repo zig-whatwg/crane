@@ -127,7 +127,7 @@ pub const ReadableStreamDefaultController = struct {
     /// 
     /// Spec: § 4.6.3 "The desiredSize getter steps are:"
     /// Returns the desired size to fill the stream's internal queue.
-    pub fn desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+    pub fn call_desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
         // Step 1: Return ! ReadableStreamDefaultControllerGetDesiredSize(this).
         return self.calculateDesiredSize();
     }
@@ -153,7 +153,7 @@ pub const ReadableStreamDefaultController = struct {
     /// 
     /// Spec: § 4.6.3 "The enqueue(chunk) method steps are:"
     /// Enqueues the given chunk in the controlled readable stream.
-    pub fn enqueue(self: *ReadableStreamDefaultController, chunk: ?webidl.JSValue) !void {
+    pub fn call_enqueue(self: *ReadableStreamDefaultController, chunk: ?webidl.JSValue) !void {
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false,
         // throw a TypeError exception.
         if (!self.canCloseOrEnqueue()) {

@@ -32,12 +32,12 @@ pub const TransformStreamDefaultController = webidl.interface(struct {
     // WebIDL Interface Methods
     // ============================================================================
 
-    pub fn enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void {
+    pub fn call_enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void {
         const chunk_value = if (chunk) |c| common.JSValue.fromWebIDL(c) else common.JSValue.undefined_value();
         try self.enqueueInternal(chunk_value);
     }
 
-    pub fn terminate(self: *TransformStreamDefaultController) void {
+    pub fn call_terminate(self: *TransformStreamDefaultController) void {
         _ = self;
         // Terminate the stream
     }

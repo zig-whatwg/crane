@@ -56,7 +56,7 @@ pub const GenericTransformStream = webidl.mixin(struct {
     ///
     /// Spec: § 6.4.3.3 "The readable getter steps are to return
     /// this's transform.[[readable]]."
-    pub fn readable(self: *const GenericTransformStream) *ReadableStream {
+    pub fn get_readable(self: *const GenericTransformStream) *ReadableStream {
         return self.transform.readableStream;
     }
 
@@ -66,7 +66,7 @@ pub const GenericTransformStream = webidl.mixin(struct {
     ///
     /// Spec: § 6.4.3.3 "The writable getter steps are to return
     /// this's transform.[[writable]]."
-    pub fn writable(self: *const GenericTransformStream) *WritableStream {
+    pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
         return self.transform.writableStream;
     }
 });

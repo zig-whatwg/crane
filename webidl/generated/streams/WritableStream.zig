@@ -171,7 +171,7 @@ pub const WritableStream = struct {
         return stream;
     }
     /// locked attribute getter
-    pub fn locked(self: *const WritableStream) bool {
+    pub fn call_locked(self: *const WritableStream) bool {
         return self.isLocked();
     }
     /// abort(reason) method

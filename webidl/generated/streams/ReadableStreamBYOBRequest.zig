@@ -33,12 +33,12 @@ pub const ReadableStreamBYOBRequest = struct {
     pub fn viewAttr(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
         return self.view;
     }
-    pub fn respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
+    pub fn call_respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
         _ = self;
         _ = bytesWritten;
         // Indicate bytes were written
     }
-    pub fn respondWithNewView(self: *ReadableStreamBYOBRequest, view: ?webidl.JSValue) !void {
+    pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: ?webidl.JSValue) !void {
         _ = self;
         _ = view;
         // Replace the view

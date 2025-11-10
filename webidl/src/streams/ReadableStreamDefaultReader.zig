@@ -140,7 +140,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     ///
     /// Spec: § 4.3.3 "The releaseLock() method steps are:"
     /// Releases the reader's lock on the stream.
-    pub fn releaseLock(self: *ReadableStreamDefaultReader) void {
+    pub fn call_releaseLock(self: *ReadableStreamDefaultReader) void {
         // Step 1: If this.[[stream]] is undefined, return.
         if (self.mixin.stream == null) {
             return;
