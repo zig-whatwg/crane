@@ -53,28 +53,28 @@ fn filePathToModuleName(allocator: std.mem.Allocator, path: []const u8) ![]const
         path;
 
     // Replace / and convert PascalCase to snake_case
-    var result = std.ArrayList(u8).init(allocator);
-    defer result.deinit();
+    var result = std.ArrayList(u8){};
+    defer result.deinit(allocator);
 
     var prev_was_upper = false;
     for (without_ext, 0..) |c, i| {
         if (c == '/' or c == '\\') {
-            try result.append('_');
+            try result.append(allocator, '_');
             prev_was_upper = false;
         } else if (std.ascii.isUpper(c)) {
             // Add underscore before uppercase if previous wasn't uppercase (except at start or after separator)
             if (i > 0 and result.items.len > 0 and result.items[result.items.len - 1] != '_' and !prev_was_upper) {
-                try result.append('_');
+                try result.append(allocator, '_');
             }
-            try result.append(std.ascii.toLower(c));
+            try result.append(allocator, std.ascii.toLower(c));
             prev_was_upper = true;
         } else {
-            try result.append(c);
+            try result.append(allocator, c);
             prev_was_upper = false;
         }
     }
 
-    return result.toOwnedSlice();
+    return result.toOwnedSlice(allocator);
 }
 
 pub fn build(b: *std.Build) void {
@@ -183,6 +183,23 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     webidl_mod.addImport("infra", infra_mod);
+
+    // ========================================================================
+    // AUTO-DISCOVER WEBIDL GENERATED MODULES
+    // ========================================================================
+    // Automatically create modules for all .zig files in webidl/generated/
+    // This eliminates the need to manually register each generated interface.
+    const webidl_modules = createWebIDLModules(
+        b,
+        b.allocator,
+        target,
+        infra_mod,
+        webidl_mod,
+    ) catch |err| {
+        std.debug.print("Failed to create WebIDL modules: {}\n", .{err});
+        std.process.exit(1);
+    };
+    _ = webidl_modules; // Modules are created and registered, ready for use
 
     // DOM interface module for AbortSignal
     // DOM interface module for EventTarget (must be declared first)
