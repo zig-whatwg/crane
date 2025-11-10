@@ -46,11 +46,20 @@ const ReadableStreamGenericReader = @import("readable_stream_generic_reader").Re
 /// - readonly attribute Promise<undefined> closed;
 /// - Promise<undefined> cancel(optional any reason);
 pub const ReadableStreamDefaultReader = struct {
-    /// Mixin: ReadableStreamGenericReader (provides closed, cancel)
-    /// 
-    /// The generic reader mixin is embedded to provide shared functionality
-    /// between ReadableStreamDefaultReader and ReadableStreamBYOBReader
-    mixin: ReadableStreamGenericReader,
+    // ========================================================================
+    // Fields from ReadableStreamGenericReader mixin
+    // ========================================================================
+    allocator: std.mem.Allocator,
+    /// [[closedPromise]]: Promise that fulfills when stream closes
+    closedPromise: *AsyncPromise(void),
+    /// [[stream]]: The ReadableStream being read from (or undefined if released)
+    stream: ?*ReadableStream,
+    /// Event loop for async operations
+    eventLoop: eventLoop.EventLoop,
+
+    // ========================================================================
+    // ReadableStreamDefaultReader fields
+    // ========================================================================
     /// [[readRequests]]: List of pending read requests (async promises)
     /// 
     /// Spec: § 4.3.2 Internal slot [[readRequests]]
@@ -69,12 +78,10 @@ pub const ReadableStreamDefaultReader = struct {
         const closedPromise = try AsyncPromise(void).init(allocator, loop);
 
         return .{
-            .mixin = .{
-                .allocator = allocator,
-                .eventLoop = loop,
-                .closedPromise = closedPromise,
-                .stream = stream,
-            },
+            .allocator = allocator,
+            .eventLoop = loop,
+            .closedPromise = closedPromise,
+            .stream = stream,
             .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     }
@@ -85,24 +92,98 @@ pub const ReadableStreamDefaultReader = struct {
         // Note: readRequests promises are owned by callers, just clear the list
         self.readRequests.deinit();
     }
-    /// closed attribute getter (delegated to mixin)
+
+    // ========================================================================
+    // Methods from ReadableStreamGenericReader mixin
+    // ========================================================================
+
+    /// closed attribute getter
     /// 
     /// IDL: readonly attribute Promise<undefined> closed;
     /// 
     /// Spec: § 4.2.3 "The closed getter steps are:"
-    /// Returns a promise that fulfills when the stream closes or rejects if it errors.
+    /// (Included from ReadableStreamGenericReader mixin)
     pub fn closed(self: *const ReadableStreamDefaultReader) webidl.Promise(void) {
-        return self.mixin.closed();
+        if (self.closedPromise.isFulfilled()) {
+            return webidl.Promise(void).fulfilled({});
+        } else if (self.closedPromise.isRejected()) {
+            const err_str = switch (self.closedPromise.state.rejected) {
+                .string => |s| s,
+                else => "Unknown error",
+            };
+            return webidl.Promise(void).rejected(err_str);
+        } else {
+            return webidl.Promise(void).pending();
+        }
     }
-    /// cancel(reason) method (delegated to mixin)
+    /// cancel(reason) method
     /// 
     /// IDL: Promise<undefined> cancel(optional any reason);
     /// 
     /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
-    /// Cancels the stream with the given reason.
+    /// (Included from ReadableStreamGenericReader mixin)
     pub fn cancel(self: *ReadableStreamDefaultReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        return self.mixin.cancel(reason);
+        // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
+        if (self.stream == null) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Reader released" });
+            return promise;
+        }
+
+        const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
+
+        // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
+        return self.genericCancel(reason_value);
     }
+    /// ReadableStreamReaderGenericCancel(reader, reason)
+    /// 
+    /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
+    /// (Included from ReadableStreamGenericReader mixin)
+    fn genericCancel(self: *ReadableStreamDefaultReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream is not undefined.
+        std.debug.assert(stream != null);
+
+        // Step 3: Return ! ReadableStreamCancel(stream, reason).
+        return stream.cancelInternal(reason);
+    }
+    /// ReadableStreamReaderGenericRelease(reader)
+    /// 
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
+    /// (Included from ReadableStreamGenericReader mixin)
+    pub fn genericRelease(self: *ReadableStreamDefaultReader) void {
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream.[[reader]] is reader.
+        // (We can't directly assert this due to type differences, but logically true)
+
+        // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with a TypeError exception.
+        if (stream.state == .readable) {
+            self.closedPromise.reject(common.JSValue{ .string = "Reader released before stream closed" });
+        }
+
+        // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with a TypeError exception.
+        // (Already done in step 3 for readable state, and for other states the promise is already settled)
+
+        // Step 5: Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
+        // (Not applicable in our implementation - we don't track PromiseIsHandled)
+
+        // Step 6: Perform ! stream.[[controller]].[[ReleaseSteps]]().
+        stream.controller.releaseSteps();
+
+        // Step 7: Set stream.[[reader]] to undefined.
+        stream.reader = .none;
+
+        // Step 8: Set reader.[[stream]] to undefined.
+        self.stream = null;
+    }
+    // ========================================================================
+    // ReadableStreamDefaultReader methods
+    // ========================================================================
+
     /// read() method (ASYNC VERSION)
     /// 
     /// IDL: Promise<ReadableStreamReadResult> read();
@@ -116,10 +197,10 @@ pub const ReadableStreamDefaultReader = struct {
     /// **IMPORTANT**: Caller owns the returned promise and must call deinit()
     pub fn read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             const promise = try AsyncPromise(common.ReadResult).init(
-                self.mixin.allocator,
-                self.mixin.eventLoop,
+                self.allocator,
+                self.eventLoop,
             );
             promise.reject(common.JSValue{ .string = "Reader released" });
             return promise;
@@ -136,13 +217,13 @@ pub const ReadableStreamDefaultReader = struct {
     /// Releases the reader's lock on the stream.
     pub fn call_releaseLock(self: *ReadableStreamDefaultReader) void {
         // Step 1: If this.[[stream]] is undefined, return.
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             return;
         }
 
         // Step 2: Perform ! ReadableStreamDefaultReaderRelease(this).
         // Delegate to mixin's generic release
-        self.mixin.genericRelease();
+        self.genericRelease();
     }
     /// ReadableStreamDefaultReaderRead(reader) - ASYNC VERSION
     /// 
@@ -154,7 +235,7 @@ pub const ReadableStreamDefaultReader = struct {
     /// - Rejected promise if stream is errored
     fn readInternal(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
         // Step 1: Let stream be reader.[[stream]].
-        const stream = self.mixin.stream.?;
+        const stream = self.stream.?;
 
         // Step 2: Assert: stream.[[reader]] is reader.
         std.debug.assert(stream.reader == .default);
@@ -164,14 +245,14 @@ pub const ReadableStreamDefaultReader = struct {
 
         // Step 4: If stream.[[state]] is "closed", return a promise fulfilled with {value: undefined, done: true}.
         if (stream.state == .closed) {
-            const promise = try AsyncPromise(common.ReadResult).init(self.mixin.allocator, self.mixin.eventLoop);
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
             promise.fulfill(common.ReadResult{ .value = null, .done = true });
             return promise;
         }
 
         // Step 5: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
         if (stream.state == .errored) {
-            const promise = try AsyncPromise(common.ReadResult).init(self.mixin.allocator, self.mixin.eventLoop);
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
             promise.reject(stream.storedError orelse common.JSValue.undefined_value());
             return promise;
         }

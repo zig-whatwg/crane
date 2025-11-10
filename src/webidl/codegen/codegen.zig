@@ -2859,16 +2859,16 @@ fn generateEnhancedClassWithRegistry(
     if (!isValidTypeName(parsed.name)) return error.InvalidClassName;
 
     // Resolve all mixins and detect conflicts early
-    var mixin_infos = std.ArrayList(ClassInfo).init(allocator);
-    defer mixin_infos.deinit();
+    var mixin_infos: std.ArrayList(ClassInfo) = .empty;
+    defer mixin_infos.deinit(allocator);
 
     for (parsed.mixin_names) |mixin_ref| {
         // First try to get from mixins registry
         if (registry.getMixin(mixin_ref)) |mixin_info| {
-            try mixin_infos.append(mixin_info);
+            try mixin_infos.append(allocator, mixin_info);
         } else if (try registry.resolveParentReference(mixin_ref, current_file)) |mixin_info| {
             // Fallback to resolveParentReference for cross-file mixin references
-            try mixin_infos.append(mixin_info);
+            try mixin_infos.append(allocator, mixin_info);
         } else {
             // Mixin not found
             std.debug.print("error: Cannot resolve mixin '{s}' in interface '{s}'\n", .{ mixin_ref, parsed.name });
