@@ -160,34 +160,289 @@ pub const Player = struct {
 };
 ```
 
-### Mixins (Multiple Inheritance)
+### Mixins - WebIDL Includes Pattern
 
-Use mixins for code reuse without deep hierarchies:
+Mixins provide code reuse through the WebIDL `includes` mechanism. Unlike `extends` (single inheritance), an interface can include **multiple mixins**.
+
+#### Defining a Mixin
+
+Mixins are defined with `webidl.mixin()`:
 
 ```zig
-pub const Timestamped = webidl.mixin(struct {
-    created_at: i64,
-    updated_at: i64,
+pub const TextDecoderCommon = webidl.mixin(struct {
+    encoding: []const u8,
+    fatal: webidl.boolean,
+    ignoreBOM: webidl.boolean,
 });
 
-pub const User = webidl.interface(struct {
-    pub const extends = Entity;  // Single parent
-    pub const mixins = .{ Timestamped };  // Multiple mixins
+pub const GenericTransformStream = webidl.mixin(struct {
+    transform: *TransformStream,
     
-    email: []const u8,
+    pub fn get_readable(self: *const GenericTransformStream) *ReadableStream {
+        return self.transform.readableStream;
+    }
+    
+    pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
+        return self.transform.writableStream;
+    }
 });
 ```
 
-Generated:
+#### Including Mixins in an Interface
+
+Use `pub const includes` to declare which mixins to flatten into the interface:
+
 ```zig
-pub const User = struct {
-    id: u64,           // From Entity (flattened)
-    created_at: i64,   // From Timestamped mixin (flattened)
-    updated_at: i64,   // From Timestamped mixin (flattened)
-    email: []const u8, // Own field
-    // All methods from Entity and Timestamped copied here
+// Single mixin
+pub const TextDecoder = webidl.interface(struct {
+    pub const includes = .{TextDecoderCommon};
+    
+    allocator: std.mem.Allocator,
+    enc: *const Encoding,
+    // ... other fields
+});
+
+// Multiple mixins
+pub const TextDecoderStream = webidl.interface(struct {
+    pub const includes = .{
+        TextDecoderCommon,
+        GenericTransformStream,
+    };
+    
+    allocator: std.mem.Allocator,
+    decoder: *Decoder,
+    // ... other fields
+});
+```
+
+#### Generated Code - Complete Flattening
+
+The codegen **flattens all mixin members** directly into the interface:
+
+**Source (`webidl/src/encoding/TextDecoderStream.zig`):**
+```zig
+pub const TextDecoderStream = webidl.interface(struct {
+    pub const includes = .{
+        TextDecoderCommon,
+        GenericTransformStream,
+    };
+    
+    allocator: std.mem.Allocator,
+    decoder: *Decoder,
+    enc: *const Encoding,
+});
+```
+
+**Generated (`webidl/generated/encoding/TextDecoderStream.zig`):**
+```zig
+pub const TextDecoderStream = struct {
+    // ========================================================================
+    // Fields from TextDecoderCommon mixin
+    // ========================================================================
+    encoding: []const u8,
+    fatal: webidl.boolean,
+    ignoreBOM: webidl.boolean,
+
+    // ========================================================================
+    // Fields from GenericTransformStream mixin
+    // ========================================================================
+    transform: *TransformStream,
+
+    // ========================================================================
+    // TextDecoderStream fields
+    // ========================================================================
+    allocator: std.mem.Allocator,
+    decoder: *Decoder,
+    enc: *const Encoding,
+
+    // ========================================================================
+    // Methods from GenericTransformStream mixin
+    // ========================================================================
+    
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_readable(self: *const TextDecoderStream) *ReadableStream {
+        return self.transform.readableStream;
+    }
+    
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_writable(self: *const TextDecoderStream) *WritableStream {
+        return self.transform.writableStream;
+    }
+    
+    // ========================================================================
+    // TextDecoderStream methods
+    // ========================================================================
+    // ... interface's own methods
 };
 ```
+
+#### Key Features of Mixin Flattening
+
+1. **Complete Member Copying**: All fields and methods from mixins are copied directly into the interface
+2. **Type Substitution**: Mixin method signatures are rewritten to use the interface type instead of mixin type
+   - `*const TextDecoderCommon` → `*const TextDecoder`
+   - `*GenericTransformStream` → `*TextDecoderStream`
+3. **Section Headers**: Generated code has clear section headers for organization
+4. **Method Annotations**: `(Included from MixinName mixin)` annotations show mixin source
+5. **Doc Comment Preservation**: All doc comments from mixin members are preserved
+6. **No Manual Delegation**: The interface doesn't need to manually implement mixin methods
+7. **Import Filtering**: Mixin imports are automatically removed from generated files
+
+#### Conflict Detection
+
+The codegen enforces strict conflict rules:
+
+**Field Conflicts → ERROR:**
+```zig
+// ❌ ERROR: Two mixins define the same field
+pub const Mixin1 = webidl.mixin(struct {
+    allocator: std.mem.Allocator,
+});
+
+pub const Mixin2 = webidl.mixin(struct {
+    allocator: std.mem.Allocator,  // Conflicts with Mixin1
+});
+
+pub const MyInterface = webidl.interface(struct {
+    pub const includes = .{Mixin1, Mixin2};  // ERROR at codegen
+});
+```
+
+**Method Conflicts Between Mixins → ERROR:**
+```zig
+// ❌ ERROR: Two mixins define the same method
+pub const Mixin1 = webidl.mixin(struct {
+    pub fn get_value(self: *const Mixin1) i32 { }
+});
+
+pub const Mixin2 = webidl.mixin(struct {
+    pub fn get_value(self: *const Mixin2) i32 { }  // Conflicts with Mixin1
+});
+
+pub const MyInterface = webidl.interface(struct {
+    pub const includes = .{Mixin1, Mixin2};  // ERROR at codegen
+});
+```
+
+**Interface Overriding Mixin Methods → ALLOWED:**
+```zig
+// ✅ ALLOWED: Interface can override mixin methods
+pub const MyMixin = webidl.mixin(struct {
+    pub fn call_process(self: *MyMixin) void {
+        // Default implementation
+    }
+});
+
+pub const MyInterface = webidl.interface(struct {
+    pub const includes = .{MyMixin};
+    
+    // Override the mixin's method
+    pub fn call_process(self: *MyInterface) void {
+        // Custom implementation - this wins
+    }
+});
+```
+
+#### Member Ordering in Generated Code
+
+The codegen preserves a predictable order:
+
+**Fields:**
+1. Mixin1 fields (in declaration order)
+2. Mixin2 fields (in declaration order)
+3. ... (additional mixins in includes order)
+4. Interface's own fields (in declaration order)
+
+**Methods:**
+1. Mixin1 methods (in declaration order)
+2. Mixin2 methods (in declaration order)
+3. ... (additional mixins in includes order)
+4. Interface's own methods (in declaration order)
+
+**Note:** Only `pub` members from mixins are included. Private mixin members are not flattened.
+
+#### Real-World Example
+
+From WHATWG Streams Standard:
+
+```zig
+// Mixin definitions
+pub const ReadableStreamGenericReader = webidl.mixin(struct {
+    allocator: std.mem.Allocator,
+    closedPromise: *AsyncPromise(void),
+    stream: ?*ReadableStream,
+    eventLoop: eventLoop.EventLoop,
+    
+    pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
+        // Implementation
+    }
+    
+    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Implementation
+    }
+});
+
+// Interface including the mixin
+pub const ReadableStreamBYOBReader = webidl.interface(struct {
+    pub const includes = .{ReadableStreamGenericReader};
+    
+    readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    
+    pub fn call_read(self: *ReadableStreamBYOBReader, view: webidl.ArrayBufferView) !*AsyncPromise(common.ReadResult) {
+        // BYOB-specific implementation
+    }
+});
+```
+
+After codegen, `ReadableStreamBYOBReader` has:
+- All 4 fields from `ReadableStreamGenericReader`
+- The `readIntoRequests` field from itself
+- `get_closed()` method (with type rewritten to use `*ReadableStreamBYOBReader`)
+- `call_cancel()` method (with type rewritten)
+- `call_read()` method from itself
+
+#### Mixin Initialization Pattern
+
+When including mixins, you must initialize mixin fields directly in `init()`:
+
+```zig
+// ❌ WRONG - Don't do this anymore (old pattern)
+pub fn init(...) !MyInterface {
+    return .{
+        .mixin = .{  // NO! Mixin is not a field
+            .field1 = value1,
+        },
+        .ownField = value2,
+    };
+}
+
+// ✅ CORRECT - Initialize mixin fields directly
+pub fn init(...) !MyInterface {
+    return .{
+        .field1 = value1,      // From mixin
+        .field2 = value2,      // From mixin
+        .ownField = value3,    // Own field
+    };
+}
+```
+
+#### When to Use Mixins vs. Extends
+
+**Use `extends` for:**
+- True parent-child "is-a" relationships
+- Single inheritance hierarchies
+- Core type hierarchies (Node → Element → HTMLElement)
+
+**Use `includes` for:**
+- Shared behavior across unrelated interfaces
+- Readonly attributes that appear in multiple places
+- Multiple behavior composition
+- WebIDL interface mixins as defined in specs
+
+**Example from WHATWG specs:**
+- `ReadableStreamDefaultReader` and `ReadableStreamBYOBReader` both include `ReadableStreamGenericReader`
+- `TextDecoder` and `TextDecoderStream` both include `TextDecoderCommon`
+- `TextEncoderStream` includes both `TextEncoderCommon` and `GenericTransformStream`
 
 ## Critical Naming Conventions
 
