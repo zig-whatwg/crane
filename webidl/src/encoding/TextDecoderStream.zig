@@ -141,5 +141,5 @@ pub const TextDecoderStream = webidl.interface(struct {
         _ = controller;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

@@ -27,7 +27,7 @@ pub const CustomEvent = webidl.interface(struct {
         return self.detail;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 
 pub const CustomEventInit = struct {

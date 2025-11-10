@@ -9,5 +9,5 @@ pub const URL = webidl.interface(struct {
         _ = self;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

@@ -268,7 +268,7 @@ pub const WritableStream = webidl.interface(struct {
         self.storedError = e;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 

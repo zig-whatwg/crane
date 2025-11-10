@@ -32,5 +32,5 @@ pub const ByteLengthQueuingStrategy = webidl.interface(struct {
         return 1.0;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

@@ -111,5 +111,5 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
         return self.strategyHwm - self.queue.queue_total_size;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

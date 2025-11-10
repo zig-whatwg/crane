@@ -168,5 +168,5 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         }
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

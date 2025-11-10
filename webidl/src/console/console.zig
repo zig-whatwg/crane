@@ -1209,5 +1209,5 @@ pub const console = webidl.namespace(struct {
         }
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

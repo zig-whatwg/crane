@@ -497,5 +497,5 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         _ = self;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

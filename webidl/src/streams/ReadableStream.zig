@@ -699,7 +699,7 @@ pub const ReadableStream = webidl.interface(struct {
         return .{ .branch1 = branch1, .branch2 = branch2 };
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 

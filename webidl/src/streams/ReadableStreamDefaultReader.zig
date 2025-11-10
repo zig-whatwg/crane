@@ -170,5 +170,5 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
         return stream.controller.pullSteps(self);
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

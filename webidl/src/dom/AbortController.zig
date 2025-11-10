@@ -28,5 +28,5 @@ pub const AbortController = webidl.interface(struct {
         return &self.signal;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

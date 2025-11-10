@@ -474,7 +474,7 @@ const ParsedClass = struct {
 
 /// WebIDL exposure scope for [Exposed] attribute
 const ExposureScope = enum {
-    all, // [Exposed=*]
+    global, // [Exposed=*] - Global/everywhere
     Window,
     Worker,
     DedicatedWorker,
@@ -1699,8 +1699,8 @@ fn parseWebIDLOptions(allocator: std.mem.Allocator, options_area: []const u8) !W
                 var scope_it = std.mem.splitSequence(u8, scopes_text, ",");
                 while (scope_it.next()) |scope_part| {
                     const trimmed = std.mem.trim(u8, scope_part, " \t\r\n.");
-                    if (std.mem.eql(u8, trimmed, "all")) {
-                        try scopes.append(allocator, .all);
+                    if (std.mem.eql(u8, trimmed, "global")) {
+                        try scopes.append(allocator, .global);
                     } else if (std.mem.eql(u8, trimmed, "Window")) {
                         try scopes.append(allocator, .Window);
                     } else if (std.mem.eql(u8, trimmed, "Worker")) {
@@ -3904,7 +3904,7 @@ fn generateEnhancedClassWithRegistry(
         for (exposed_scopes, 0..) |scope, i| {
             if (i > 0) try writer.writeAll(", ");
             const scope_str = switch (scope) {
-                .all => ".all",
+                .global => ".global",
                 .Window => ".Window",
                 .Worker => ".Worker",
                 .DedicatedWorker => ".DedicatedWorker",

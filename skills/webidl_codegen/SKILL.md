@@ -855,7 +855,7 @@ pub const MyInterface = webidl.interface(struct {
     // fields and methods
 }, .{
     // Extended attributes here
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 ```
@@ -866,7 +866,7 @@ All available attributes from `InterfaceOptions`:
 
 | Attribute | Type | Purpose | Example |
 |-----------|------|---------|---------|
-| `.exposed` | `[]const ExposureScope` | **REQUIRED** - Which scopes this is available in | `.exposed = &.{.all}` |
+| `.exposed` | `[]const ExposureScope` | **REQUIRED** - Which scopes this is available in | `.exposed = &.{.global}` |
 | `.transferable` | `bool` | Can be transferred via `postMessage()` | `.transferable = true` |
 | `.serializable` | `bool` | Can be serialized via `structuredClone()` | `.serializable = true` |
 | `.secure_context` | `bool` | Only available in HTTPS contexts | `.secure_context = true` |
@@ -884,7 +884,7 @@ The `.exposed` attribute accepts an array of `ExposureScope` enum values:
 
 ```zig
 pub const ExposureScope = enum {
-    all,              // [Exposed=*] - All scopes
+    global,           // [Exposed=*] - Global/everywhere (all scopes)
     Window,           // [Exposed=Window] - Browser window only
     Worker,           // [Exposed=Worker] - All workers
     DedicatedWorker,  // [Exposed=DedicatedWorker] - Dedicated workers only
@@ -904,7 +904,7 @@ Used for APIs available in all contexts (Window, Workers, etc.):
 pub const ReadableStream = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,  // Also transferable
 });
 
@@ -912,7 +912,7 @@ pub const ReadableStream = webidl.interface(struct {
 pub const TextEncoder = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 ```
 
@@ -956,7 +956,7 @@ pub const console = webidl.namespace(struct {
     
     // ... other methods
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 ```
 
@@ -980,21 +980,21 @@ The three stream interfaces that can be transferred between contexts:
 pub const ReadableStream = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,  // Can be sent via postMessage()
 });
 
 pub const WritableStream = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 
 pub const TransformStream = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 ```
@@ -1024,7 +1024,7 @@ pub const ReadableStream = webidl.interface(struct {
     
     // ... more methods
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 ```
@@ -1078,7 +1078,7 @@ pub const console = webidl.namespace(struct {
     
     // ... 16 more console methods
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 ```
 
@@ -1091,7 +1091,7 @@ The codegen parses these options and emits `__webidl__` metadata in generated fi
 pub const ReadableStream = webidl.interface(struct {
     // ... implementation
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 ```
@@ -1105,7 +1105,7 @@ pub const ReadableStream = struct {
     pub const __webidl__ = .{
         .name = "ReadableStream",
         .kind = .interface,
-        .exposed = &.{.all},
+        .exposed = &.{.global},
         .transferable = true,
         .serializable = false,
         .secure_context = false,
@@ -1138,7 +1138,7 @@ if (@hasDecl(ReadableStream, "__webidl__")) {
 ### Attribute Requirements by Spec
 
 #### WHATWG Streams Standard
-All stream interfaces: `.exposed = &.{.all}`
+All stream interfaces: `.exposed = &.{.global}`
 
 Transferable interfaces:
 - `ReadableStream` - `.transferable = true`
@@ -1146,16 +1146,16 @@ Transferable interfaces:
 - `TransformStream` - `.transferable = true`
 
 #### WHATWG Encoding Standard
-All encoding interfaces: `.exposed = &.{.all}`
+All encoding interfaces: `.exposed = &.{.global}`
 
 #### WHATWG URL Standard
-All URL interfaces: `.exposed = &.{.all}`
+All URL interfaces: `.exposed = &.{.global}`
 
 #### WHATWG Console Standard
-The console namespace: `.exposed = &.{.all}`
+The console namespace: `.exposed = &.{.global}`
 
 #### WHATWG DOM Standard
-EventTarget group: `.exposed = &.{.all}`
+EventTarget group: `.exposed = &.{.global}`
 - `EventTarget`, `Event`, `CustomEvent`, `AbortController`, `AbortSignal`
 
 Node group: `.exposed = &.{.Window}`
@@ -1172,7 +1172,7 @@ Every interface, namespace, and mixin **MUST** have an `.exposed` attribute:
 pub const MyInterface = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},  // REQUIRED
+    .exposed = &.{.global},  // REQUIRED
 });
 
 // ❌ WRONG - Missing .exposed
@@ -1198,18 +1198,18 @@ Translates to:
 pub const ReadableStream = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},      // [Exposed=*]
+    .exposed = &.{.global},      // [Exposed=*]
     .transferable = true,     // [Transferable]
 });
 ```
 
-#### Rule 3: Use .all for Universal APIs
+#### Rule 3: Use .global for Universal APIs
 
 Most WHATWG APIs are designed to work everywhere:
 
 ```zig
-// Encoding, Streams, URL, Console - all use .all
-.exposed = &.{.all}
+// Encoding, Streams, URL, Console - all use .global
+.exposed = &.{.global}
 ```
 
 #### Rule 4: Use .Window for DOM APIs
@@ -1260,7 +1260,7 @@ pub const MyInterface = webidl.interface(struct {
 pub const MyInterface = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });
 ```
@@ -1272,7 +1272,7 @@ pub const MyInterface = webidl.interface(struct {
 pub const Node = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},  // ERROR: Node is Window-only per spec
+    .exposed = &.{.global},  // ERROR: Node is Window-only per spec
 });
 
 // CORRECT
@@ -1290,7 +1290,7 @@ pub const Node = webidl.interface(struct {
 pub const TextEncoder = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,  // ERROR: Not in spec
 });
 
@@ -1298,7 +1298,7 @@ pub const TextEncoder = webidl.interface(struct {
 pub const TextEncoder = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 ```
 
@@ -1320,7 +1320,7 @@ Maps to:
 pub const ReadableStream = webidl.interface(struct {
     // ...
 }, .{
-    .exposed = &.{.all},      // [Exposed=*]
+    .exposed = &.{.global},      // [Exposed=*]
     .transferable = true,     // [Transferable]
 });
 ```

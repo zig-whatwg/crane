@@ -136,7 +136,7 @@ pub const Event = webidl.interface(struct {
         return self.time_stamp;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 
 pub const EventInit = struct {

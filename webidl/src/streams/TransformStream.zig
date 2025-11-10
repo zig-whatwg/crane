@@ -90,6 +90,6 @@ pub const TransformStream = webidl.interface(struct {
         return self.writableStream;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
     .transferable = true,
 });

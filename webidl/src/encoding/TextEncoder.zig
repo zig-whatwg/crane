@@ -518,5 +518,5 @@ pub const TextEncoder = webidl.interface(struct {
         };
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

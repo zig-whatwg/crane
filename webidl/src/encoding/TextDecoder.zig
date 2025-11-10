@@ -570,5 +570,5 @@ pub const TextDecoder = webidl.interface(struct {
         return utf8_output;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

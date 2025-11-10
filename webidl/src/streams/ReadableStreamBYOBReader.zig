@@ -202,5 +202,5 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         self.genericRelease();
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });

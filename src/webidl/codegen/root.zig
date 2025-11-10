@@ -8,7 +8,7 @@ const std = @import("std");
 
 /// Exposure scope for WebIDL constructs ([Exposed] extended attribute)
 pub const ExposureScope = enum {
-    all, // [Exposed=*] - Available in all scopes
+    global, // [Exposed=*] - Available in all scopes (global/everywhere)
     Window, // [Exposed=Window] - Browser window context only
     Worker, // [Exposed=Worker] - Web Workers
     DedicatedWorker, // [Exposed=DedicatedWorker] - Dedicated Workers only
@@ -22,7 +22,7 @@ pub const ExposureScope = enum {
 /// https://webidl.spec.whatwg.org/#idl-extended-attributes
 pub const InterfaceOptions = struct {
     /// [Exposed] - Which global scopes this interface is available in (REQUIRED)
-    /// Examples: .exposed = &.{.all}, .exposed = &.{.Window}, .exposed = &.{.Window, .Worker}
+    /// Examples: .exposed = &.{.global}, .exposed = &.{.Window}, .exposed = &.{.Window, .Worker}
     exposed: ?[]const ExposureScope = null,
 
     /// [Transferable] - Can be transferred between contexts (postMessage)
@@ -69,7 +69,7 @@ pub const InterfaceOptions = struct {
 /// pub const MyInterface = webidl.interface(struct {
 ///     // fields and methods
 /// }, .{
-///     .exposed = &.{.all},
+///     .exposed = &.{.global},
 ///     .transferable = true,
 /// });
 /// ```
@@ -85,7 +85,7 @@ pub fn interface(comptime T: type, comptime options: InterfaceOptions) type {
 /// pub const MyNamespace = webidl.namespace(struct {
 ///     // static methods only
 /// }, .{
-///     .exposed = &.{.all},
+///     .exposed = &.{.global},
 /// });
 /// ```
 pub fn namespace(comptime T: type, comptime options: InterfaceOptions) type {
@@ -103,7 +103,7 @@ pub fn namespace(comptime T: type, comptime options: InterfaceOptions) type {
 /// pub const MyMixin = webidl.mixin(struct {
 ///     // mixin members
 /// }, .{
-///     .exposed = &.{.all},
+///     .exposed = &.{.global},
 /// });
 /// ```
 pub fn mixin(comptime T: type, comptime options: InterfaceOptions) type {

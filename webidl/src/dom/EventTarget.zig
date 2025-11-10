@@ -66,7 +66,7 @@ pub const EventTarget = webidl.interface(struct {
         return true;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
 
 const EventListener = struct {

@@ -9,5 +9,5 @@ pub const URLSearchParams = webidl.interface(struct {
         _ = self;
     }
 }, .{
-    .exposed = &.{.all},
+    .exposed = &.{.global},
 });
