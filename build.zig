@@ -763,85 +763,85 @@ pub fn build(b: *std.Build) void {
     };
 
     const byte_length_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/byte_length_queuing_strategy.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ByteLengthQueuingStrategy.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const count_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/count_queuing_strategy.zig"),
+        .root_source_file = b.path("webidl/generated/streams/CountQueuingStrategy.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStreamDefaultController.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/writable_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/WritableStreamDefaultController.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const transform_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/transform_stream_default_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/TransformStreamDefaultController.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_byob_request_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream_byob_request.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStreamBYOBRequest.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_byte_stream_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_byte_stream_controller.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableByteStreamController.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_default_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream_default_reader.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStreamDefaultReader.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_generic_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream_generic_reader.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStreamGenericReader.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const readable_stream_byob_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/readable_stream_byob_reader.zig"),
+        .root_source_file = b.path("webidl/generated/streams/ReadableStreamBYOBReader.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/writable_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/WritableStream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const writable_stream_default_writer_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/writable_stream_default_writer.zig"),
+        .root_source_file = b.path("webidl/generated/streams/WritableStreamDefaultWriter.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
 
     const transform_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/transform_stream.zig"),
+        .root_source_file = b.path("webidl/generated/streams/TransformStream.zig"),
         .target = target,
         .imports = &streams_iface_imports,
     });
