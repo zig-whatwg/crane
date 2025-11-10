@@ -917,10 +917,135 @@ const TextDecoder = @import("TextDecoder.zig").TextDecoder;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 ```
 
-### Checklist for WebIDL Interfaces
+### WebIDL Mixins
 
-When creating or modifying WebIDL interfaces:
+**Interface mixins define reusable member bundles that can be included in multiple interfaces.**
 
+#### What are Mixins?
+
+From WebIDL spec:
+> An interface mixin is a definition (matching `InterfaceMixin`) that declares a set of members that can be included by one or more interfaces.
+
+Mixins are used to share common attributes and methods across multiple interfaces without inheritance.
+
+#### When to Use `webidl.mixin()`
+
+Use `webidl.mixin()` when implementing an `interface mixin` from the WebIDL spec:
+
+```zig
+// IDL:
+// interface mixin TextDecoderCommon {
+//   readonly attribute DOMString encoding;
+//   readonly attribute boolean fatal;
+//   readonly attribute boolean ignoreBOM;
+// };
+
+pub const TextDecoderCommon = webidl.mixin(struct {
+    encoding: []const u8,
+    fatal: webidl.boolean,
+    ignoreBOM: webidl.boolean,
+});
+```
+
+**Key differences from `webidl.interface()`:**
+- Mixins **cannot be instantiated** directly
+- Mixins **define shared members** that are included in other interfaces
+- Mixins **do not have constructors**
+- Mixins are **included** using the WebIDL `includes` statement
+
+#### Mixin Inclusion Pattern
+
+```zig
+// IDL:
+// interface TextDecoder {
+//   constructor(...);
+//   // ... TextDecoder-specific members
+// };
+// TextDecoder includes TextDecoderCommon;
+
+pub const TextDecoder = webidl.interface(struct {
+    // Include mixin fields directly
+    encoding: []const u8,       // From TextDecoderCommon
+    fatal: webidl.boolean,      // From TextDecoderCommon
+    ignoreBOM: webidl.boolean,  // From TextDecoderCommon
+    
+    // TextDecoder-specific fields
+    doNotFlush: bool,
+    bomSeen: bool,
+    // ...
+    
+    pub fn init(...) !TextDecoder {
+        // Initialize all fields including mixin members
+    }
+});
+```
+
+#### File Naming for Mixins
+
+Mixin files follow the same PascalCase naming as interfaces:
+
+```
+❌ WRONG: text_decoder_common.zig
+✅ CORRECT: TextDecoderCommon.zig
+```
+
+#### Common WebIDL Mixins
+
+From the WHATWG specs:
+- **TextDecoderCommon**: Shared by `TextDecoder` and `TextDecoderStream`
+- **TextEncoderCommon**: Shared by `TextEncoder` and `TextEncoderStream`
+- **WindowOrWorkerGlobalScope**: Shared by `Window` and `WorkerGlobalScope`
+- **Body**: Shared by `Request` and `Response` (Fetch API)
+
+#### Complete Mixin Example
+
+**Mixin Definition (`TextEncoderCommon.zig`):**
+```zig
+pub const TextEncoderCommon = webidl.mixin(struct {
+    /// The encoding name (always "utf-8")
+    encoding: []const u8,
+});
+```
+
+**Interface Including Mixin (`TextEncoder.zig`):**
+```zig
+pub const TextEncoder = webidl.interface(struct {
+    allocator: Allocator,
+    
+    // Include mixin member
+    encoding: []const u8,  // From TextEncoderCommon
+    
+    pub fn init(allocator: Allocator) TextEncoder {
+        return .{
+            .allocator = allocator,
+            .encoding = "utf-8",  // Initialize mixin member
+        };
+    }
+    
+    pub fn deinit(self: *TextEncoder) void {
+        _ = self;
+    }
+    
+    pub fn encode(self: *TextEncoder, input: []const u8) ![]const u8 {
+        // Implementation
+    }
+});
+```
+
+**Key Points:**
+1. Mixin members are **copied** into the including interface
+2. The including interface **must initialize** all mixin members
+3. Mixins provide **compile-time member reuse**, not runtime inheritance
+4. Use `webidl.mixin()` for IDL `interface mixin`, `webidl.interface()` for IDL `interface`
+
+### Checklist for WebIDL Interfaces and Mixins
+
+When creating or modifying WebIDL interfaces or mixins:
+
+- [ ] **Identify the WebIDL type**:
+  - [ ] Use `webidl.interface()` for IDL `interface` definitions
+  - [ ] Use `webidl.namespace()` for IDL `namespace` definitions
+  - [ ] Use `webidl.mixin()` for IDL `interface mixin` definitions
 - [ ] **File named in PascalCase** (e.g., `TextDecoder.zig`, not `text_decoder.zig`)
 - [ ] **All attributes use camelCase** (e.g., `encodingName`, not `encoding_name`)
 - [ ] **All methods use camelCase without prefixes** (e.g., `decode()`, not `call_decode()`)
@@ -929,6 +1054,8 @@ When creating or modifying WebIDL interfaces:
 - [ ] **Import statements use PascalCase filenames**
 - [ ] **Tests updated to use camelCase method names**
 - [ ] **Documentation uses correct naming**
+- [ ] **For mixins**: Include mixin members in implementing interfaces
+- [ ] **For mixins**: Do not add constructors or instance methods to mixin definitions
 
 ---
 
