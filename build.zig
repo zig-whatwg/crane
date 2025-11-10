@@ -199,7 +199,11 @@ pub fn build(b: *std.Build) void {
         std.debug.print("Failed to create WebIDL modules: {}\n", .{err});
         std.process.exit(1);
     };
-    _ = webidl_modules; // Modules are created and registered, ready for use
+    // TODO: Migrate to using auto-discovered modules from webidl_modules hashmap
+    // The manual module definitions below are redundant now that we have auto-discovery.
+    // They remain for backwards compatibility while we transition parent modules to use
+    // the hashmap lookups. Future work: replace these with webidl_modules.get() calls.
+    _ = webidl_modules; // Suppress unused warning - will be used when migration is complete
 
     // DOM interface module for AbortSignal
     // DOM interface module for EventTarget (must be declared first)
