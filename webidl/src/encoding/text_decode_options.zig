@@ -1,7 +1,21 @@
 const std = @import("std");
 const webidl = @import("webidl");
-pub const TextDecodeOptions = webidl.interface(struct {
-    allocator: std.mem.Allocator,
-    pub fn init(allocator: std.mem.Allocator) !TextDecodeOptions { return .{ .allocator = allocator }; }
-    pub fn deinit(self: *TextDecodeOptions) void { _ = self; }
-});
+
+/// TextDecodeOptions dictionary
+///
+/// WHATWG Encoding Standard § 5
+/// https://encoding.spec.whatwg.org/#dictdef-textdecodeoptions
+///
+/// IDL:
+/// ```
+/// dictionary TextDecodeOptions {
+///   boolean stream = false;
+/// };
+/// ```
+///
+/// Used by TextDecoder.decode() to control streaming behavior.
+pub const TextDecodeOptions = struct {
+    /// If true, additional data is expected in subsequent calls.
+    /// If false (default), end-of-queue will be pushed to the stream.
+    stream: webidl.boolean = false,
+};
