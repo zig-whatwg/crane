@@ -18,8 +18,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import mixins
-const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
-const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 
 // Import streams
 const streams = @import("streams");
@@ -42,12 +40,28 @@ const WritableStream = streams.WritableStream;
 /// ```
 pub const TextEncoderStream = struct {
     // ========================================================================
+    // Fields from TextEncoderCommon mixin
+    // ========================================================================
+    /// The encoding name (always "utf-8")
+    /// 
+    /// TextEncoder and TextEncoderStream only support UTF-8 encoding,
+    /// so this attribute always returns "utf-8".
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    encoding: []const u8,
+
+    // ========================================================================
+    // Fields from GenericTransformStream mixin
+    // ========================================================================
+    /// [[transform]]: The actual TransformStream backing this object
+    /// 
+    /// Spec: "Any platform object that includes the GenericTransformStream
+    /// mixin has an associated transform, which is an actual TransformStream."
+    transform: *TransformStream,
+
+    // ========================================================================
     // TextEncoderStream fields
     // ========================================================================
-    /// Mixin: TextEncoderCommon (encoding)
-    encoderMixin: TextEncoderCommon,
-    /// Mixin: GenericTransformStream (readable, writable)
-    transformMixin: GenericTransformStream,
     allocator: std.mem.Allocator,
     /// Pending high surrogate (for UTF-16 conversion)
     pendingHighSurrogate: ?u16,
@@ -67,43 +81,46 @@ pub const TextEncoderStream = struct {
         });
 
         return .{
-            .encoderMixin = .{
-                .encoding = "utf-8",
-            },
-            .transformMixin = .{
-                .transform = transform,
-            },
+            .encoding = "utf-8",
+            .transform = transform,
             .allocator = allocator,
             .pendingHighSurrogate = null,
         };
     }
     /// Cleanup resources
     pub fn deinit(self: *TextEncoderStream) void {
-        self.transformMixin.transform.deinit();
-        self.allocator.destroy(self.transformMixin.transform);
+        self.transform.deinit();
+        self.allocator.destroy(self.transform);
+    }
+
+    // ========================================================================
+    // Methods from GenericTransformStream mixin
+    // ========================================================================
+
+    /// readable attribute getter
+    /// 
+    /// IDL: readonly attribute ReadableStream readable;
+    /// 
+    /// Spec: § 6.4.3.3 "The readable getter steps are to return
+    /// this's transform.[[readable]]."
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_readable(self: *const TextEncoderStream) *ReadableStream {
+        return self.transform.readableStream;
+    }
+    /// writable attribute getter
+    /// 
+    /// IDL: readonly attribute WritableStream writable;
+    /// 
+    /// Spec: § 6.4.3.3 "The writable getter steps are to return
+    /// this's transform.[[writable]]."
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_writable(self: *const TextEncoderStream) *WritableStream {
+        return self.transform.writableStream;
     }
     // ========================================================================
     // TextEncoderStream methods
     // ========================================================================
 
-    /// Get the encoding name (always "utf-8")
-    /// 
-    /// TextEncoderCommon.encoding getter
-    pub inline fn get_encoding(self: *const TextEncoderStream) []const u8 {
-        return self.encoderMixin.encoding;
-    }
-    /// Get the readable stream
-    /// 
-    /// GenericTransformStream.readable getter
-    pub inline fn get_readable(self: *const TextEncoderStream) *ReadableStream {
-        return self.transformMixin.readable();
-    }
-    /// Get the writable stream
-    /// 
-    /// GenericTransformStream.writable getter
-    pub inline fn get_writable(self: *const TextEncoderStream) *WritableStream {
-        return self.transformMixin.writable();
-    }
     /// Transform algorithm - encode chunk and enqueue
     /// 
     /// WHATWG Encoding Standard § 6.4.2

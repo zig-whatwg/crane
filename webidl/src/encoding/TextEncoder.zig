@@ -150,8 +150,11 @@ const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 /// Note: TextEncoder only supports UTF-8 encoding (no label argument).
 /// Note: TextEncoder offers no stream option (no buffering needed).
 pub const TextEncoder = webidl.interface(struct {
-    /// Mixin: TextEncoderCommon (encoding)
-    mixin: TextEncoderCommon,
+    /// WebIDL includes: TextEncoderCommon (encoding)
+    ///
+    /// The TextEncoderCommon mixin is flattened into this interface by the codegen
+    /// to provide the readonly encoding attribute
+    pub const includes = .{TextEncoderCommon};
 
     allocator: std.mem.Allocator,
 
@@ -191,9 +194,7 @@ pub const TextEncoder = webidl.interface(struct {
     /// - Stateless (safe to share across threads if allocator is thread-safe)
     pub fn init(allocator: std.mem.Allocator) TextEncoder {
         return .{
-            .mixin = .{
-                .encoding = "utf-8",
-            },
+            .encoding = "utf-8",
             .allocator = allocator,
         };
     }
@@ -216,7 +217,7 @@ pub const TextEncoder = webidl.interface(struct {
     ///
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextEncoder) []const u8 {
-        return self.mixin.encoding;
+        return self.encoding;
     }
 
     /// encode() - Encodes a string into UTF-8 bytes

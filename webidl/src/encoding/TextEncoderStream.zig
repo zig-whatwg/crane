@@ -33,11 +33,15 @@ const WritableStream = streams.WritableStream;
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
 pub const TextEncoderStream = webidl.interface(struct {
-    /// Mixin: TextEncoderCommon (encoding)
-    encoderMixin: TextEncoderCommon,
-
-    /// Mixin: GenericTransformStream (readable, writable)
-    transformMixin: GenericTransformStream,
+    /// WebIDL includes: TextEncoderCommon and GenericTransformStream
+    ///
+    /// The mixins are flattened into this interface by the codegen:
+    /// - TextEncoderCommon provides: encoding
+    /// - GenericTransformStream provides: transform, get_readable(), get_writable()
+    pub const includes = .{
+        TextEncoderCommon,
+        GenericTransformStream,
+    };
 
     allocator: std.mem.Allocator,
 
@@ -59,12 +63,8 @@ pub const TextEncoderStream = webidl.interface(struct {
         });
 
         return .{
-            .encoderMixin = .{
-                .encoding = "utf-8",
-            },
-            .transformMixin = .{
-                .transform = transform,
-            },
+            .encoding = "utf-8",
+            .transform = transform,
             .allocator = allocator,
             .pendingHighSurrogate = null,
         };
@@ -72,37 +72,8 @@ pub const TextEncoderStream = webidl.interface(struct {
 
     /// Cleanup resources
     pub fn deinit(self: *TextEncoderStream) void {
-        self.transformMixin.transform.deinit();
-        self.allocator.destroy(self.transformMixin.transform);
-    }
-
-    // ============================================================================
-    // TextEncoderCommon Mixin Methods
-    // ============================================================================
-
-    /// Get the encoding name (always "utf-8")
-    ///
-    /// TextEncoderCommon.encoding getter
-    pub inline fn get_encoding(self: *const TextEncoderStream) []const u8 {
-        return self.encoderMixin.encoding;
-    }
-
-    // ============================================================================
-    // GenericTransformStream Mixin Methods
-    // ============================================================================
-
-    /// Get the readable stream
-    ///
-    /// GenericTransformStream.readable getter
-    pub inline fn get_readable(self: *const TextEncoderStream) *ReadableStream {
-        return self.transformMixin.readable();
-    }
-
-    /// Get the writable stream
-    ///
-    /// GenericTransformStream.writable getter
-    pub inline fn get_writable(self: *const TextEncoderStream) *WritableStream {
-        return self.transformMixin.writable();
+        self.transform.deinit();
+        self.allocator.destroy(self.transform);
     }
 
     // ============================================================================

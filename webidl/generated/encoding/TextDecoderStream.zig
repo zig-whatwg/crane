@@ -18,8 +18,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import mixins
-const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
-const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 
 // Import dictionaries
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
@@ -50,12 +48,41 @@ const Decoder = encoding_mod.Decoder;
 /// ```
 pub const TextDecoderStream = struct {
     // ========================================================================
+    // Fields from TextDecoderCommon mixin
+    // ========================================================================
+    /// The encoding name (WHATWG canonical name, lowercase ASCII)
+    /// 
+    /// Examples: "utf-8", "windows-1252", "iso-8859-1"
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    encoding: []const u8,
+    /// Fatal error mode flag
+    /// 
+    /// - `true`: Throw TypeError on invalid byte sequences
+    /// - `false`: Use U+FFFD replacement character (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    fatal: webidl.boolean,
+    /// Byte Order Mark (BOM) handling flag
+    /// 
+    /// - `true`: Keep BOM in output as U+FEFF (ZERO WIDTH NO-BREAK SPACE)
+    /// - `false`: Strip BOM from output (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    ignoreBOM: webidl.boolean,
+
+    // ========================================================================
+    // Fields from GenericTransformStream mixin
+    // ========================================================================
+    /// [[transform]]: The actual TransformStream backing this object
+    /// 
+    /// Spec: "Any platform object that includes the GenericTransformStream
+    /// mixin has an associated transform, which is an actual TransformStream."
+    transform: *TransformStream,
+
+    // ========================================================================
     // TextDecoderStream fields
     // ========================================================================
-    /// Mixin: TextDecoderCommon (encoding, fatal, ignoreBOM)
-    decoderMixin: TextDecoderCommon,
-    /// Mixin: GenericTransformStream (readable, writable)
-    transformMixin: GenericTransformStream,
     allocator: std.mem.Allocator,
     /// The encoding used by this stream decoder
     enc: *const Encoding,
@@ -96,14 +123,10 @@ pub const TextDecoderStream = struct {
         decoder.* = enc.newDecoder();
 
         return .{
-            .decoderMixin = .{
-                .encoding = enc.whatwg_name,
-                .fatal = options.fatal,
-                .ignoreBOM = options.ignoreBOM,
-            },
-            .transformMixin = .{
-                .transform = transform,
-            },
+            .encoding = enc.whatwg_name,
+            .fatal = options.fatal,
+            .ignoreBOM = options.ignoreBOM,
+            .transform = transform,
             .allocator = allocator,
             .enc = enc,
             .decoder = decoder,
@@ -112,43 +135,38 @@ pub const TextDecoderStream = struct {
     /// Cleanup resources
     pub fn deinit(self: *TextDecoderStream) void {
         self.allocator.destroy(self.decoder);
-        self.transformMixin.transform.deinit();
-        self.allocator.destroy(self.transformMixin.transform);
+        self.transform.deinit();
+        self.allocator.destroy(self.transform);
+    }
+
+    // ========================================================================
+    // Methods from GenericTransformStream mixin
+    // ========================================================================
+
+    /// readable attribute getter
+    /// 
+    /// IDL: readonly attribute ReadableStream readable;
+    /// 
+    /// Spec: § 6.4.3.3 "The readable getter steps are to return
+    /// this's transform.[[readable]]."
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_readable(self: *const TextDecoderStream) *ReadableStream {
+        return self.transform.readableStream;
+    }
+    /// writable attribute getter
+    /// 
+    /// IDL: readonly attribute WritableStream writable;
+    /// 
+    /// Spec: § 6.4.3.3 "The writable getter steps are to return
+    /// this's transform.[[writable]]."
+    /// (Included from GenericTransformStream mixin)
+    pub fn get_writable(self: *const TextDecoderStream) *WritableStream {
+        return self.transform.writableStream;
     }
     // ========================================================================
     // TextDecoderStream methods
     // ========================================================================
 
-    /// Get the encoding name
-    /// 
-    /// TextDecoderCommon.encoding getter
-    pub inline fn get_encoding(self: *const TextDecoderStream) []const u8 {
-        return self.decoderMixin.encoding;
-    }
-    /// Get the fatal flag
-    /// 
-    /// TextDecoderCommon.fatal getter
-    pub inline fn get_fatal(self: *const TextDecoderStream) webidl.boolean {
-        return self.decoderMixin.fatal;
-    }
-    /// Get the ignoreBOM flag
-    /// 
-    /// TextDecoderCommon.ignoreBOM getter
-    pub inline fn get_ignoreBOM(self: *const TextDecoderStream) webidl.boolean {
-        return self.decoderMixin.ignoreBOM;
-    }
-    /// Get the readable stream
-    /// 
-    /// GenericTransformStream.readable getter
-    pub inline fn get_readable(self: *const TextDecoderStream) *ReadableStream {
-        return self.transformMixin.readable();
-    }
-    /// Get the writable stream
-    /// 
-    /// GenericTransformStream.writable getter
-    pub inline fn get_writable(self: *const TextDecoderStream) *WritableStream {
-        return self.transformMixin.writable();
-    }
     /// Transform algorithm - decode chunk and enqueue
     /// 
     /// WHATWG Encoding Standard § 6.3.2

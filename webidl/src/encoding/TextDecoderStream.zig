@@ -41,11 +41,15 @@ const Decoder = encoding_mod.Decoder;
 /// TextDecoderStream includes GenericTransformStream;
 /// ```
 pub const TextDecoderStream = webidl.interface(struct {
-    /// Mixin: TextDecoderCommon (encoding, fatal, ignoreBOM)
-    decoderMixin: TextDecoderCommon,
-
-    /// Mixin: GenericTransformStream (readable, writable)
-    transformMixin: GenericTransformStream,
+    /// WebIDL includes: TextDecoderCommon and GenericTransformStream
+    ///
+    /// The mixins are flattened into this interface by the codegen:
+    /// - TextDecoderCommon provides: encoding, fatal, ignoreBOM
+    /// - GenericTransformStream provides: transform, get_readable(), get_writable()
+    pub const includes = .{
+        TextDecoderCommon,
+        GenericTransformStream,
+    };
 
     allocator: std.mem.Allocator,
 
@@ -89,14 +93,10 @@ pub const TextDecoderStream = webidl.interface(struct {
         decoder.* = enc.newDecoder();
 
         return .{
-            .decoderMixin = .{
-                .encoding = enc.whatwg_name,
-                .fatal = options.fatal,
-                .ignoreBOM = options.ignoreBOM,
-            },
-            .transformMixin = .{
-                .transform = transform,
-            },
+            .encoding = enc.whatwg_name,
+            .fatal = options.fatal,
+            .ignoreBOM = options.ignoreBOM,
+            .transform = transform,
             .allocator = allocator,
             .enc = enc,
             .decoder = decoder,
@@ -106,51 +106,8 @@ pub const TextDecoderStream = webidl.interface(struct {
     /// Cleanup resources
     pub fn deinit(self: *TextDecoderStream) void {
         self.allocator.destroy(self.decoder);
-        self.transformMixin.transform.deinit();
-        self.allocator.destroy(self.transformMixin.transform);
-    }
-
-    // ============================================================================
-    // TextDecoderCommon Mixin Methods
-    // ============================================================================
-
-    /// Get the encoding name
-    ///
-    /// TextDecoderCommon.encoding getter
-    pub inline fn get_encoding(self: *const TextDecoderStream) []const u8 {
-        return self.decoderMixin.encoding;
-    }
-
-    /// Get the fatal flag
-    ///
-    /// TextDecoderCommon.fatal getter
-    pub inline fn get_fatal(self: *const TextDecoderStream) webidl.boolean {
-        return self.decoderMixin.fatal;
-    }
-
-    /// Get the ignoreBOM flag
-    ///
-    /// TextDecoderCommon.ignoreBOM getter
-    pub inline fn get_ignoreBOM(self: *const TextDecoderStream) webidl.boolean {
-        return self.decoderMixin.ignoreBOM;
-    }
-
-    // ============================================================================
-    // GenericTransformStream Mixin Methods
-    // ============================================================================
-
-    /// Get the readable stream
-    ///
-    /// GenericTransformStream.readable getter
-    pub inline fn get_readable(self: *const TextDecoderStream) *ReadableStream {
-        return self.transformMixin.readable();
-    }
-
-    /// Get the writable stream
-    ///
-    /// GenericTransformStream.writable getter
-    pub inline fn get_writable(self: *const TextDecoderStream) *WritableStream {
-        return self.transformMixin.writable();
+        self.transform.deinit();
+        self.allocator.destroy(self.transform);
     }
 
     // ============================================================================

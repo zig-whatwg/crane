@@ -134,7 +134,6 @@ const infra = @import("infra");
 const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
 
 // Import mixin
-const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 /// TextEncoder - encodes strings to UTF-8 bytes
 /// 
 /// WHATWG Encoding Standard § 5.2
@@ -159,10 +158,19 @@ const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 /// Note: TextEncoder offers no stream option (no buffering needed).
 pub const TextEncoder = struct {
     // ========================================================================
+    // Fields from TextEncoderCommon mixin
+    // ========================================================================
+    /// The encoding name (always "utf-8")
+    /// 
+    /// TextEncoder and TextEncoderStream only support UTF-8 encoding,
+    /// so this attribute always returns "utf-8".
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    encoding: []const u8,
+
+    // ========================================================================
     // TextEncoder fields
     // ========================================================================
-    /// Mixin: TextEncoderCommon (encoding)
-    mixin: TextEncoderCommon,
     allocator: std.mem.Allocator,
 
     /// Constructor - creates a new TextEncoder
@@ -201,9 +209,7 @@ pub const TextEncoder = struct {
     /// - Stateless (safe to share across threads if allocator is thread-safe)
     pub fn init(allocator: std.mem.Allocator) TextEncoder {
         return .{
-            .mixin = .{
-                .encoding = "utf-8",
-            },
+            .encoding = "utf-8",
             .allocator = allocator,
         };
     }
@@ -212,6 +218,7 @@ pub const TextEncoder = struct {
         _ = self;
         // No resources to clean up (stateless)
     }
+
     // ========================================================================
     // TextEncoder methods
     // ========================================================================
@@ -228,7 +235,7 @@ pub const TextEncoder = struct {
     /// 
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextEncoder) []const u8 {
-        return self.mixin.encoding;
+        return self.encoding;
     }
     /// encode() - Encodes a string into UTF-8 bytes
     /// 
