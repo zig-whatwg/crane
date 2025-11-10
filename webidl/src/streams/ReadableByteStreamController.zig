@@ -149,23 +149,67 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         return self.strategyHwm - self.queueTotalSize;
     }
 
+    /// Close the controlled readable stream
+    ///
+    /// Spec: § 4.7.3 "The close() method steps are:"
     pub fn close(self: *ReadableByteStreamController) !void {
+        // Step 1: If closeRequested is true, throw TypeError
         if (self.closeRequested) {
-            return error.AlreadyClosing;
+            return error.TypeError;
         }
-        self.closeRequested = true;
+
+        // Step 2: If stream state is not "readable", throw TypeError
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        if (stream.state != .readable) {
+            return error.TypeError;
+        }
+
+        // Step 3: Perform ReadableByteStreamControllerClose
+        self.closeInternal();
     }
 
-    pub fn enqueue(self: *ReadableByteStreamController, chunk: ?webidl.JSValue) !void {
-        _ = self;
-        _ = chunk;
-        // Enqueue byte chunk
+    /// Enqueue the given chunk in the controlled readable stream
+    ///
+    /// Spec: § 4.7.3 "The enqueue(chunk) method steps are:"
+    pub fn enqueue(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
+        // Step 1: If chunk ByteLength is 0, throw TypeError
+        if (chunk.getByteLength() == 0) {
+            return error.TypeError;
+        }
+
+        // Step 2: If buffer ByteLength is 0, throw TypeError
+        const buffer = chunk.getViewedArrayBuffer();
+        if (buffer.byteLength() == 0) {
+            return error.TypeError;
+        }
+
+        // Step 3: If closeRequested is true, throw TypeError
+        if (self.closeRequested) {
+            return error.TypeError;
+        }
+
+        // Step 4: If stream state is not "readable", throw TypeError
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        if (stream.state != .readable) {
+            return error.TypeError;
+        }
+
+        // Step 5: Perform ReadableByteStreamControllerEnqueue
+        try self.enqueueInternal(chunk);
     }
 
-    pub fn errorStream(self: *ReadableByteStreamController, e: ?webidl.JSValue) void {
-        _ = self;
-        _ = e;
-        // Error the stream
+    /// Error the controlled readable stream
+    ///
+    /// Spec: § 4.7.3 "The error(e) method steps are:"
+    pub fn errorStream(self: *ReadableByteStreamController, e: webidl.JSValue) void {
+        const error_value = common.JSValue.fromWebIDL(e);
+        self.errorInternal(error_value);
     }
 
     // ============================================================================
@@ -428,6 +472,142 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         // Reset algorithms to defaults to allow GC
         self.cancelAlgorithm = common.defaultCancelAlgorithm();
         self.pullAlgorithm = common.defaultPullAlgorithm();
+    }
+
+    /// Close the controller
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerClose"
+    fn closeInternal(self: *ReadableByteStreamController) void {
+        // Step 1: Get stream
+        const stream_ptr = self.stream orelse return;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 2: If closeRequested or stream not readable, return
+        if (self.closeRequested or stream.state != .readable) {
+            return;
+        }
+
+        // Step 3: If queueTotalSize > 0, set closeRequested and return
+        if (self.queueTotalSize > 0) {
+            self.closeRequested = true;
+            return;
+        }
+
+        // Step 4: If pendingPullIntos not empty, check alignment
+        if (self.pendingPullIntos.items.len > 0) {
+            const first_pending = self.pendingPullIntos.items[0];
+
+            if (first_pending.bytes_filled % first_pending.element_size != 0) {
+                const e = common.JSValue{ .string = "Incomplete byte fill in pending pull-into" };
+                self.errorInternal(e);
+                return;
+            }
+        }
+
+        // Step 5: Clear algorithms
+        self.clearAlgorithms();
+
+        // Step 6: Close the stream
+        stream.closeInternal();
+    }
+
+    /// Enqueue a chunk
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueue"
+    fn enqueueInternal(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
+        // Step 1: Get stream
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 2: If closeRequested or not readable, return
+        if (self.closeRequested or stream.state != .readable) {
+            return;
+        }
+
+        // Step 3-5: Extract buffer details
+        const buffer = chunk.getViewedArrayBuffer();
+        const byteOffset: u64 = @intCast(chunk.getByteOffset());
+        const byteLength: u64 = @intCast(chunk.getByteLength());
+
+        // Step 6: Check if buffer is detached
+        if (buffer.isDetached()) {
+            return error.TypeError;
+        }
+
+        // Step 7: Transfer the buffer
+        const internal_buffer = try self.allocator.create(ArrayBuffer);
+        internal_buffer.* = .{
+            .data = buffer.data,
+            .byte_length = buffer.data.len,
+            .detached = buffer.detached,
+        };
+        const transferred_buffer = try internal_buffer.transfer();
+        const buffer_ptr = try self.allocator.create(ArrayBuffer);
+        buffer_ptr.* = transferred_buffer;
+        self.allocator.destroy(internal_buffer);
+
+        // Step 8: If pendingPullIntos not empty, handle specially
+        if (self.pendingPullIntos.items.len > 0) {
+            const first_pending = self.pendingPullIntos.items[0];
+
+            if (first_pending.buffer.isDetached()) {
+                return error.TypeError;
+            }
+
+            self.invalidateBYOBRequest();
+
+            // Transfer first pending buffer
+            const old_buffer = first_pending.buffer;
+            const transferred = try old_buffer.transfer();
+            const transferred_ptr = try self.allocator.create(ArrayBuffer);
+            transferred_ptr.* = transferred;
+            first_pending.buffer = transferred_ptr;
+            self.allocator.destroy(old_buffer);
+
+            if (first_pending.reader_type == .none) {
+                try self.enqueueDetachedPullIntoToQueue(first_pending);
+            }
+        }
+
+        // Step 9: If has default reader, process read requests
+        if (stream.hasDefaultReader()) {
+            try self.processReadRequestsUsingQueue();
+
+            if (stream.getNumReadRequests() == 0) {
+                try self.enqueueChunkToQueue(buffer_ptr, byteOffset, byteLength);
+            } else {
+                if (self.pendingPullIntos.items.len > 0) {
+                    _ = self.shiftPendingPullInto();
+                }
+
+                const transferred_view = try ViewConstruction.constructView(
+                    .uint8_array,
+                    buffer_ptr,
+                    byteOffset,
+                    byteLength,
+                );
+                _ = transferred_view; // TODO: Convert to JSValue
+                stream.fulfillReadRequest(common.JSValue{ .bytes = buffer_ptr.data }, false);
+            }
+        } else if (stream.hasBYOBReader()) {
+            // Step 10: Enqueue and process BYOB requests
+            try self.enqueueChunkToQueue(buffer_ptr, byteOffset, byteLength);
+
+            var filled_pull_intos = try self.processPullIntoDescriptorsUsingQueue();
+            defer filled_pull_intos.deinit();
+
+            for (filled_pull_intos.items) |filled_pull_into| {
+                try self.commitPullIntoDescriptor(filled_pull_into);
+            }
+        } else {
+            // Step 11: No reader, just enqueue
+            try self.enqueueChunkToQueue(buffer_ptr, byteOffset, byteLength);
+        }
+
+        // Step 12: Call pull if needed
+        self.callPullIfNeeded();
     }
 
     // ============================================================================
