@@ -46,23 +46,6 @@ pub const ReadableStreamGenericReader = struct {
     /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
-
-    pub fn init(allocator: std.mem.Allocator, allocator: std.mem.Allocator, closedPromise: *AsyncPromise(void), stream: ?*ReadableStream, eventLoop: eventLoop.EventLoop) !ReadableStreamGenericReader {
-        return try ReadableStreamGenericReader.initFields(allocator, &.{
-            .allocator = allocator,
-            .closedPromise = closedPromise,
-            .stream = stream,
-            .eventLoop = eventLoop,
-        });
-    }
-    fn initFields(allocator: std.mem.Allocator, fields: *const struct { allocator: std.mem.Allocator, closedPromise: *AsyncPromise(void), stream: ?*ReadableStream, eventLoop: eventLoop.EventLoop, }) !ReadableStreamGenericReader {
-        return .{
-            .allocator = fields.allocator,
-            .closedPromise = fields.closedPromise,
-            .stream = fields.stream,
-            .eventLoop = fields.eventLoop,
-        };
-    }
     // ========================================================================
     // ReadableStreamGenericReader methods
     // ========================================================================

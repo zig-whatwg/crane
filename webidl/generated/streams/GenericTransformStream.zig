@@ -78,17 +78,6 @@ pub const GenericTransformStream = struct {
     /// mixin has an associated transform, which is an actual TransformStream."
     transform: *TransformStream,
 
-
-    pub fn init(allocator: std.mem.Allocator, transform: *TransformStream) !GenericTransformStream {
-        return try GenericTransformStream.initFields(allocator, &.{
-            .transform = transform,
-        });
-    }
-    fn initFields(allocator: std.mem.Allocator, fields: *const struct { transform: *TransformStream, }) !GenericTransformStream {
-        return .{
-            .transform = fields.transform,
-        };
-    }
     // ========================================================================
     // GenericTransformStream methods
     // ========================================================================

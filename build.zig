@@ -1,17 +1,16 @@
 const std = @import("std");
 
-/// Auto-discover and create modules for all .zig files in webidl/generated/
-fn createWebIDLModules(
+/// Auto-discover and create modules for all .zig files in a directory
+fn autoDiscoverModules(
     b: *std.Build,
     allocator: std.mem.Allocator,
     target: std.Build.ResolvedTarget,
-    infra_mod: *std.Build.Module,
-    webidl_mod: *std.Build.Module,
+    base_dir: []const u8,
+    dependencies: []const std.Build.Module.Import,
 ) !std.StringHashMap(*std.Build.Module) {
     var modules = std.StringHashMap(*std.Build.Module).init(allocator);
 
-    const webidl_dir = "webidl/generated";
-    var dir = try std.fs.cwd().openDir(webidl_dir, .{ .iterate = true });
+    var dir = try std.fs.cwd().openDir(base_dir, .{ .iterate = true });
     defer dir.close();
 
     var walker = try dir.walk(allocator);
@@ -21,27 +20,42 @@ fn createWebIDLModules(
         if (entry.kind != .file) continue;
         if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
 
-        // Build full path: webidl/generated/subdir/File.zig
-        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ webidl_dir, entry.path });
+        // Skip root.zig files (these are usually parent module roots)
+        if (std.mem.endsWith(u8, entry.path, "root.zig")) continue;
+
+        // Build full path
+        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ base_dir, entry.path });
         defer allocator.free(full_path);
 
-        // Create module name from file path: subdir/File.zig -> subdir_file
+        // Create module name from file path
         const module_name = try filePathToModuleName(allocator, entry.path);
 
-        // Create module with common dependencies (infra, webidl)
+        // Create module with provided dependencies
         const mod = b.createModule(.{
             .root_source_file = b.path(full_path),
             .target = target,
-            .imports = &.{
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "webidl", .module = webidl_mod },
-            },
+            .imports = dependencies,
         });
 
         try modules.put(module_name, mod);
     }
 
     return modules;
+}
+
+/// Auto-discover and create modules for all .zig files in webidl/generated/
+fn createWebIDLModules(
+    b: *std.Build,
+    allocator: std.mem.Allocator,
+    target: std.Build.ResolvedTarget,
+    infra_mod: *std.Build.Module,
+    webidl_mod: *std.Build.Module,
+) !std.StringHashMap(*std.Build.Module) {
+    const deps = &[_]std.Build.Module.Import{
+        .{ .name = "infra", .module = infra_mod },
+        .{ .name = "webidl", .module = webidl_mod },
+    };
+    return autoDiscoverModules(b, allocator, target, "webidl/generated", deps);
 }
 
 /// Helper to get a module from the hashmap or exit with error

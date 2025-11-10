@@ -1035,6 +1035,30 @@ const GlobalRegistry = struct {
     }
 };
 
+/// Convert PascalCase to snake_case for module names
+/// Example: "ReadableStreamGenericReader" -> "readable_stream_generic_reader"
+fn pascalToSnakeCase(allocator: std.mem.Allocator, pascal: []const u8) ![]const u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var prev_was_upper = false;
+    for (pascal, 0..) |c, i| {
+        if (std.ascii.isUpper(c)) {
+            // Add underscore before uppercase if previous wasn't uppercase (except at start)
+            if (i > 0 and result.items.len > 0 and !prev_was_upper) {
+                try result.append(allocator, '_');
+            }
+            try result.append(allocator, std.ascii.toLower(c));
+            prev_was_upper = true;
+        } else {
+            try result.append(allocator, c);
+            prev_was_upper = false;
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
+}
+
 fn parseImports(
     allocator: std.mem.Allocator,
     source: []const u8,
@@ -3125,6 +3149,16 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
+    // Emit mixin imports (if any)
+    if (parsed.mixin_names.len > 0) {
+        for (parsed.mixin_names) |mixin_name| {
+            // Convert PascalCase to snake_case for module name
+            const module_name = try pascalToSnakeCase(allocator, mixin_name);
+            defer allocator.free(module_name);
+            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin_name, module_name, mixin_name });
+        }
+    }
+
     try writer.print("pub const {s} = struct {{\n", .{parsed.name});
 
     // Emit "const Self = @This();" if the source class had it
@@ -3575,7 +3609,8 @@ fn generateEnhancedClassWithRegistry(
         };
 
         // Generate default init if no init exists (neither in this class nor inherited)
-        if (!has_init and !has_parent_init) {
+        // Skip generating init for mixins - they're meant to be included, not instantiated
+        if (!has_init and !has_parent_init and parsed.class_kind != .mixin) {
             // Collect ALL fields (parent + own) for init parameters
             var all_fields_for_init: std.ArrayList(FieldDef) = .empty;
             defer all_fields_for_init.deinit(allocator);

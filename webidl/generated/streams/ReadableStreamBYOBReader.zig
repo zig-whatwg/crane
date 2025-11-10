@@ -27,6 +27,7 @@ const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const DictionaryParsing = @import("dictionary_parsing");
+const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 pub const ReadableStreamBYOBReader = struct {
     // ========================================================================
     // Fields from ReadableStreamGenericReader mixin

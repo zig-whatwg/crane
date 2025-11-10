@@ -51,17 +51,6 @@ pub const TextEncoderCommon = struct {
     /// 
     /// This is a readonly attribute - set during construction and never changes.
     encoding: []const u8,
-    pub fn init(allocator: std.mem.Allocator, encoding: []const u8) !TextEncoderCommon {
-        return try TextEncoderCommon.initFields(allocator, &.{
-            .encoding = encoding,
-        });
-    }
-    fn initFields(allocator: std.mem.Allocator, fields: *const struct { encoding: []const u8, }) !TextEncoderCommon {
-        return .{
-            .allocator = allocator,
-            .encoding = try allocator.dupe(u8, fields.encoding),
-        };
-    }
     pub fn deinit(self: *TextEncoderCommon) void {
         self.allocator.free(self.encoding);
     }

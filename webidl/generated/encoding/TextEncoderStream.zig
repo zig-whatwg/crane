@@ -38,6 +38,8 @@ const WritableStream = streams.WritableStream;
 /// TextEncoderStream includes TextEncoderCommon;
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
+const TextEncoderCommon = @import("text_encoder_common").TextEncoderCommon;
+const GenericTransformStream = @import("generic_transform_stream").GenericTransformStream;
 pub const TextEncoderStream = struct {
     // ========================================================================
     // Fields from TextEncoderCommon mixin

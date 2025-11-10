@@ -68,21 +68,6 @@ pub const TextDecoderCommon = struct {
     /// 
     /// This is a readonly attribute - set during construction and never changes.
     ignoreBOM: webidl.boolean,
-    pub fn init(allocator: std.mem.Allocator, encoding: []const u8, fatal: webidl.boolean, ignoreBOM: webidl.boolean) !TextDecoderCommon {
-        return try TextDecoderCommon.initFields(allocator, &.{
-            .encoding = encoding,
-            .fatal = fatal,
-            .ignoreBOM = ignoreBOM,
-        });
-    }
-    fn initFields(allocator: std.mem.Allocator, fields: *const struct { encoding: []const u8, fatal: webidl.boolean, ignoreBOM: webidl.boolean, }) !TextDecoderCommon {
-        return .{
-            .allocator = allocator,
-            .encoding = try allocator.dupe(u8, fields.encoding),
-            .fatal = fields.fatal,
-            .ignoreBOM = fields.ignoreBOM,
-        };
-    }
     pub fn deinit(self: *TextDecoderCommon) void {
         self.allocator.free(self.encoding);
     }

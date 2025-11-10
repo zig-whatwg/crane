@@ -223,6 +223,7 @@ pub const TextDecoderError = error{
 /// readonly attribute boolean ignoreBOM;
 /// };
 /// ```
+const TextDecoderCommon = @import("text_decoder_common").TextDecoderCommon;
 pub const TextDecoder = struct {
     // ========================================================================
     // Fields from TextDecoderCommon mixin
