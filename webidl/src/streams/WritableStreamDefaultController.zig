@@ -94,17 +94,26 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
         self.strategySizeAlgorithm = common.defaultSizeAlgorithm();
     }
 
-    pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) !*AsyncPromise(void) {
+    /// [[AbortSteps]](reason)
+    ///
+    /// Spec: § 5.2.6 "Controller's abort steps"
+    pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) common.Promise(void) {
+        // Spec step 1: Let result be the result of performing this.[[abortAlgorithm]], passing reason
         const result = self.abortAlgorithm.call(reason);
+
+        // Spec step 2: Perform ! WritableStreamDefaultControllerClearAlgorithms(this)
         self.clearAlgorithms();
 
-        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-        if (result.isFulfilled()) {
-            promise.fulfill({});
-        } else if (result.isRejected()) {
-            promise.reject(result.error_value orelse common.JSValue{ .string = "Abort failed" });
-        }
-        return promise;
+        // Spec step 3: Return result
+        return result;
+    }
+
+    /// [[ErrorSteps]]()
+    ///
+    /// Spec: § 5.2.7 "Controller's error steps"
+    pub fn errorSteps(self: *WritableStreamDefaultController) void {
+        // Spec step 1: Perform ! ResetQueue(this)
+        self.queue.resetQueue();
     }
 
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
