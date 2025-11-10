@@ -11,6 +11,7 @@ const common = @import("common");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const WritableStream = @import("WritableStream").WritableStream;
 
 pub const WritableStreamDefaultController = webidl.interface(struct {
     allocator: std.mem.Allocator,
@@ -82,9 +83,21 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     // Internal Algorithms
     // ============================================================================
 
+    /// WritableStreamDefaultControllerError(controller, error)
+    ///
+    /// Spec: § 5.7.3 "Error the controller"
     fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
-        _ = error_value;
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Assert: stream.[[state]] is "writable"
+        std.debug.assert(stream_ptr.state == .writable);
+
+        // Spec step 3: Perform ! WritableStreamDefaultControllerClearAlgorithms(controller)
         self.clearAlgorithms();
+
+        // Spec step 4: Perform ! WritableStreamStartErroring(stream, error)
+        stream_ptr.startErroring(error_value);
     }
 
     fn clearAlgorithms(self: *WritableStreamDefaultController) void {
@@ -114,6 +127,43 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     pub fn errorSteps(self: *WritableStreamDefaultController) void {
         // Spec step 1: Perform ! ResetQueue(this)
         self.queue.resetQueue();
+    }
+
+    /// WritableStreamDefaultControllerClose(controller)
+    ///
+    /// Spec: § 5.7.2 "Close the controller"
+    pub fn closeInternal(self: *WritableStreamDefaultController) void {
+        // Spec step 1: Perform ! EnqueueValueWithSize(controller, close sentinel, 0)
+        self.queue.enqueueValueWithSize(common.JSValue.closeSentinel(), 0) catch {
+            // EnqueueValueWithSize should not fail for close sentinel
+            return;
+        };
+
+        // Spec step 2: Perform ! WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+        self.advanceQueueIfNeeded();
+    }
+
+    /// WritableStreamDefaultControllerErrorIfNeeded(controller, error)
+    ///
+    /// Spec: § 5.7.4 "Error the controller if writable"
+    pub fn errorIfNeeded(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
+        // Spec step 1: If controller.[[stream]].[[state]] is "writable", perform ! WritableStreamDefaultControllerError(controller, error)
+        const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
+        if (stream_ptr.state == .writable) {
+            self.errorInternal(error_value);
+        }
+    }
+
+    /// WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+    ///
+    /// Spec: § 5.7.1 "Process the next chunk in the queue if ready"
+    fn advanceQueueIfNeeded(self: *WritableStreamDefaultController) void {
+        // Simplified implementation - in full version, this would:
+        // 1. Check if controller is not started or queue is empty
+        // 2. Check if there's an in-flight write
+        // 3. Dequeue next chunk and process it
+        // For now, this is a no-op placeholder
+        _ = self;
     }
 
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {

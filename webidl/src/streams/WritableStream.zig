@@ -294,11 +294,57 @@ pub const WritableStream = webidl.interface(struct {
         return promise;
     }
 
+    /// WritableStreamClose(stream)
+    ///
+    /// Spec: § 5.3.4 "Close the writable stream"
     fn closeInternal(self: *WritableStream) !*AsyncPromise(void) {
-        self.state = .closed;
+        // Spec step 1: Let state be stream.[[state]]
+        const state = self.state;
+
+        // Spec step 2: If state is "closed" or "errored", return rejected promise with TypeError
+        if (state == .closed or state == .errored) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Cannot close a closed or errored stream" });
+            return promise;
+        }
+
+        // Spec step 3: Assert: state is "writable" or "erroring"
+        std.debug.assert(state == .writable or state == .erroring);
+
+        // Spec step 4: Assert: ! WritableStreamCloseQueuedOrInFlight(stream) is false
+        std.debug.assert(!self.closeQueuedOrInFlight());
+
+        // Spec step 5: Let promise be a new promise
         const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-        promise.fulfill({});
+
+        // Spec step 6: Set stream.[[closeRequest]] to promise
+        self.closeRequest = promise;
+
+        // Spec step 7: Let writer be stream.[[writer]]
+        // Spec step 8: If writer is not undefined, and stream.[[backpressure]] is true, and state is "writable",
+        //              resolve writer.[[readyPromise]] with undefined
+        if (state == .writable and self.backpressure) {
+            switch (self.writer) {
+                .none => {},
+                .default => |writer| {
+                    writer.readyPromise.fulfill({});
+                },
+            }
+        }
+
+        // Spec step 9: Perform ! WritableStreamDefaultControllerClose(stream.[[controller]])
+        self.controller.closeInternal();
+
+        // Spec step 10: Return promise
         return promise;
+    }
+
+    /// WritableStreamCloseQueuedOrInFlight(stream)
+    ///
+    /// Spec: § 5.3.9 "Check if close is queued or in flight"
+    fn closeQueuedOrInFlight(self: *const WritableStream) bool {
+        // Spec step 1-2: If closeRequest or inFlightCloseRequest is undefined, return false; else true
+        return self.closeRequest != null or self.inFlightCloseRequest != null;
     }
 
     fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
