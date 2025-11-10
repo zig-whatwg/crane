@@ -18,7 +18,7 @@ const ReadableStreamGenericReader = @import("readable_stream_generic_reader").Re
 const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
-const DictionaryParsing = @import("dictionary_parsing");
+const DictionaryParsing = @import("dict_parsing");
 
 pub const ReadableStreamBYOBReader = webidl.interface(struct {
     /// WebIDL includes: ReadableStreamGenericReader (provides closed, cancel, and shared fields)
@@ -42,7 +42,7 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
             .closedPromise = closedPromise,
             .stream = stream,
             .eventLoop = loop,
-            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).empty,
+            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
         };
     }
 

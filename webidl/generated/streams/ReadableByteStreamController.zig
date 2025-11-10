@@ -143,6 +143,10 @@ pub const ReadableByteStreamController = struct {
         // Return highWaterMark - queueTotalSize
         return self.strategyHwm - self.queueTotalSize;
     }
+    /// Internal helper for desiredSize (called from generated code)
+    pub fn desiredSize(self: *const ReadableByteStreamController) ?f64 {
+        return self.call_desiredSize();
+    }
     /// Close the controlled readable stream
     /// 
     /// Spec: § 4.7.3 "The close() method steps are:"

@@ -26,7 +26,7 @@ pub const ReadableStream = @import("readable_stream").ReadableStream;
 pub const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 pub const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
-pub const DictionaryParsing = @import("dictionary_parsing");
+pub const DictionaryParsing = @import("dict_parsing");
 const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 pub const ReadableStreamBYOBReader = struct {
     // ========================================================================
@@ -60,7 +60,7 @@ pub const ReadableStreamBYOBReader = struct {
             .closedPromise = closedPromise,
             .stream = stream,
             .eventLoop = loop,
-            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).empty,
+            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
         };
     }
     pub fn deinit(self: *ReadableStreamBYOBReader) void {

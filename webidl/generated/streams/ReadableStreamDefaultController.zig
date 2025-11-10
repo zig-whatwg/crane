@@ -465,8 +465,14 @@ pub const ReadableStreamDefaultController = struct {
         // Step 3: Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
         self.clearAlgorithms();
 
-        // Step 4: Return result.
-        return result;
+        // Step 4: Return result (convert synchronous promise to async).
+        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+        if (result.isFulfilled()) {
+            promise.fulfill({});
+        } else if (result.isRejected()) {
+            promise.reject(result.error_value orelse common.JSValue{ .string = "Cancel failed" });
+        }
+        return promise;
     }
     /// [[ReleaseSteps]]() - Internal operation called when reader is released
     /// 

@@ -84,7 +84,7 @@ pub const ReadableStreamDefaultReader = struct {
             .eventLoop = loop,
             .closedPromise = closedPromise,
             .stream = stream,
-            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).empty,
+            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
         };
     }
     /// Deinitialize the reader

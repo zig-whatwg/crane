@@ -167,7 +167,7 @@ pub const WritableStream = struct {
             .state = .writable,
             .storedError = null,
             .writer = .none,
-            .writeRequests = std.ArrayList(*AsyncPromise(void)).empty,
+            .writeRequests = std.ArrayList(*AsyncPromise(void)){},
             .eventLoop = loop,
             .eventLoop_storage = null,
         };
@@ -332,7 +332,7 @@ pub const WritableStream = struct {
         // Spec step 1-2: If closeRequest or inFlightCloseRequest is undefined, return false; else true
         return self.closeRequest != null or self.inFlightCloseRequest != null;
     }
-    fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
+    pub fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
         const writer = try self.allocator.create(WritableStreamDefaultWriter);
         errdefer self.allocator.destroy(writer);
 
