@@ -28,24 +28,25 @@ pub const Node = struct {
     parent_node: ?*Node,
     child_nodes: std.ArrayList(*Node),
     owner_document: ?*Document,
-    pub const ELEMENT_NODE: u16,
-    pub const ATTRIBUTE_NODE: u16,
-    pub const TEXT_NODE: u16,
-    pub const CDATA_SECTION_NODE: u16,
-    pub const ENTITY_REFERENCE_NODE: u16,
-    pub const ENTITY_NODE: u16,
-    pub const PROCESSING_INSTRUCTION_NODE: u16,
-    pub const COMMENT_NODE: u16,
-    pub const DOCUMENT_NODE: u16,
-    pub const DOCUMENT_TYPE_NODE: u16,
-    pub const DOCUMENT_FRAGMENT_NODE: u16,
-    pub const NOTATION_NODE: u16,
-    pub const DOCUMENT_POSITION_DISCONNECTED: u16,
-    pub const DOCUMENT_POSITION_PRECEDING: u16,
-    pub const DOCUMENT_POSITION_FOLLOWING: u16,
-    pub const DOCUMENT_POSITION_CONTAINS: u16,
-    pub const DOCUMENT_POSITION_CONTAINED_BY: u16,
-    pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16,
+
+    pub const ELEMENT_NODE: u16 = 1;
+    pub const ATTRIBUTE_NODE: u16 = 2;
+    pub const TEXT_NODE: u16 = 3;
+    pub const CDATA_SECTION_NODE: u16 = 4;
+    pub const ENTITY_REFERENCE_NODE: u16 = 5;
+    pub const ENTITY_NODE: u16 = 6;
+    pub const PROCESSING_INSTRUCTION_NODE: u16 = 7;
+    pub const COMMENT_NODE: u16 = 8;
+    pub const DOCUMENT_NODE: u16 = 9;
+    pub const DOCUMENT_TYPE_NODE: u16 = 10;
+    pub const DOCUMENT_FRAGMENT_NODE: u16 = 11;
+    pub const NOTATION_NODE: u16 = 12;
+    pub const DOCUMENT_POSITION_DISCONNECTED: u16 = 0x01;
+    pub const DOCUMENT_POSITION_PRECEDING: u16 = 0x02;
+    pub const DOCUMENT_POSITION_FOLLOWING: u16 = 0x04;
+    pub const DOCUMENT_POSITION_CONTAINS: u16 = 0x08;
+    pub const DOCUMENT_POSITION_CONTAINED_BY: u16 = 0x10;
+    pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
 
     pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
         return .{

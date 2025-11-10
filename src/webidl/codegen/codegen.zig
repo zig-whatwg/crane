@@ -428,6 +428,7 @@ const ParsedClass = struct {
     fields: []FieldDef,
     methods: []MethodDef,
     properties: []PropertyDef,
+    constants: [][]const u8, // Raw constant declarations like "pub const NONE: u16 = 0;"
     allocator: std.mem.Allocator,
     file_doc: ?[]const u8 = null,
     class_doc: ?[]const u8 = null,
@@ -462,6 +463,12 @@ const ParsedClass = struct {
             }
         }
         self.allocator.free(self.properties);
+
+        // Free constants
+        for (self.constants) |constant| {
+            self.allocator.free(constant);
+        }
+        self.allocator.free(self.constants);
 
         if (self.file_doc) |doc| {
             self.allocator.free(doc);
@@ -500,6 +507,7 @@ const ClassInfo = struct {
     fields: []FieldDef,
     methods: []MethodDef,
     properties: []PropertyDef,
+    constants: [][]const u8, // Raw constant declarations
     source_start: usize,
     source_end: usize,
     file_path: []const u8,
@@ -1220,6 +1228,12 @@ fn scanFileForClasses(
                 };
             }
 
+            // Deep copy constants
+            const constants_copy = try allocator.alloc([]const u8, parsed.constants.len);
+            for (parsed.constants, 0..) |constant, i| {
+                constants_copy[i] = try allocator.dupe(u8, constant);
+            }
+
             // Deep copy WebIDL options (exposed scopes need duplication)
             var webidl_options_copy = parsed.webidl_options;
             if (parsed.webidl_options.exposed) |exposed| {
@@ -1233,6 +1247,7 @@ fn scanFileForClasses(
                 .fields = fields_copy,
                 .methods = methods_copy,
                 .properties = properties_copy,
+                .constants = constants_copy,
                 .source_start = parsed.source_start,
                 .source_end = parsed.source_end,
                 .file_path = file_path,
@@ -1764,6 +1779,7 @@ fn parseClassDefinition(
     fields: []FieldDef,
     methods: []MethodDef,
     properties: []PropertyDef,
+    constants: [][]const u8,
     source_start: usize,
     source_end: usize,
     allocator: std.mem.Allocator,
@@ -1805,6 +1821,12 @@ fn parseClassDefinition(
             }
         }
         self.allocator.free(self.properties);
+
+        // Free constants
+        for (self.constants) |constant| {
+            self.allocator.free(constant);
+        }
+        self.allocator.free(self.constants);
 
         if (self.class_doc) |doc| {
             self.allocator.free(doc);
@@ -1909,7 +1931,10 @@ fn parseClassDefinition(
     var properties: std.ArrayList(PropertyDef) = .empty;
     errdefer properties.deinit(allocator);
 
-    const has_self_type = try parseStructBody(allocator, class_body, &fields, &methods, &properties);
+    var constants: std.ArrayList([]const u8) = .empty;
+    errdefer constants.deinit(allocator);
+
+    const has_self_type = try parseStructBody(allocator, class_body, &fields, &methods, &properties, &constants);
 
     // Convert to owned slices with proper error handling to prevent leaks
     const mixin_names_slice = try mixin_names.toOwnedSlice(allocator);
@@ -1929,6 +1954,9 @@ fn parseClassDefinition(
     const properties_slice = try properties.toOwnedSlice(allocator);
     errdefer allocator.free(properties_slice);
 
+    const constants_slice = try constants.toOwnedSlice(allocator);
+    errdefer allocator.free(constants_slice);
+
     return .{
         .name = class_name,
         .parent_name = parent_name,
@@ -1936,6 +1964,7 @@ fn parseClassDefinition(
         .fields = fields_slice,
         .methods = methods_slice,
         .properties = properties_slice,
+        .constants = constants_slice,
         .source_start = name_start,
         .source_end = closing_paren + 2,
         .allocator = allocator,
@@ -2192,6 +2221,7 @@ pub fn parseStructBody(
     fields: *std.ArrayList(FieldDef),
     methods: *std.ArrayList(MethodDef),
     properties: *std.ArrayList(PropertyDef),
+    constants: *std.ArrayList([]const u8),
 ) !bool {
     var pos: usize = 0;
     var has_self_type = false;
@@ -2297,6 +2327,19 @@ pub fn parseStructBody(
                 continue;
             }
 
+            // Check for pub const declarations with type annotations (constants)
+            if (std.mem.startsWith(u8, line, "pub const ") and
+                std.mem.indexOf(u8, line, ":") != null and
+                !std.mem.startsWith(u8, line, "pub const extends") and
+                !std.mem.startsWith(u8, line, "pub const mixins") and
+                !std.mem.startsWith(u8, line, "pub const properties"))
+            {
+                // This is a constant declaration like "pub const NONE: u16 = 0;"
+                try constants.append(allocator, try allocator.dupe(u8, line));
+                pos = line_end + 1;
+                continue;
+            }
+
             if (line.len > 0 and !std.mem.startsWith(u8, line, "//") and
                 !std.mem.startsWith(u8, line, "extends:") and
                 !std.mem.startsWith(u8, line, "mixins:") and
@@ -2308,6 +2351,7 @@ pub fn parseStructBody(
 
                     const after_colon = line[colon_pos + 1 ..];
                     var type_end = after_colon.len;
+                    var default_value: ?[]const u8 = null;
 
                     // Find the end of the type, respecting parenthesis depth for generic types
                     // e.g., "HashMap(K, V), next_field" should stop at the comma after V)
@@ -2325,6 +2369,16 @@ pub fn parseStructBody(
                             // Default value assignment
                             type_end = i;
                             found_end = true;
+                            // Extract default value (everything after '=' until ',' or end)
+                            const after_equals = after_colon[i + 1 ..];
+                            var value_end = after_equals.len;
+                            for (after_equals, 0..) |ch, idx| {
+                                if (ch == ',') {
+                                    value_end = idx;
+                                    break;
+                                }
+                            }
+                            default_value = std.mem.trim(u8, after_equals[0..value_end], " \t,");
                             break;
                         } else if (c == ',' and depth == 0) {
                             // End of field (comma separating fields, not generic params)
@@ -2346,7 +2400,7 @@ pub fn parseStructBody(
                     try fields.append(allocator, .{
                         .name = field_name,
                         .type_name = field_type,
-                        .default_value = null,
+                        .default_value = default_value,
                         .doc_comment = field_doc,
                     });
                 }
@@ -3136,10 +3190,18 @@ fn generateEnhancedClassWithRegistry(
 
         // Write parent fields
         for (all_parent_fields.items) |field| {
-            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            if (field.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            }
         }
         for (all_parent_properties.items) |prop| {
-            try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            if (prop.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            }
         }
 
         if (all_parent_fields.items.len > 0 or all_parent_properties.items.len > 0) {
@@ -3166,7 +3228,11 @@ fn generateEnhancedClassWithRegistry(
                     try writer.print("    /// {s}\n", .{line});
                 }
             }
-            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            if (field.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            }
         }
 
         // Copy all property fields from mixin
@@ -3177,7 +3243,11 @@ fn generateEnhancedClassWithRegistry(
                     try writer.print("    /// {s}\n", .{line});
                 }
             }
-            try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            if (prop.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            }
         }
 
         if (mixin_info.fields.len > 0 or mixin_info.properties.len > 0) {
@@ -3199,7 +3269,11 @@ fn generateEnhancedClassWithRegistry(
                 try writer.print("    /// {s}\n", .{line});
             }
         }
-        try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+        if (prop.default_value) |default| {
+            try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+        } else {
+            try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+        }
     }
 
     for (parsed.fields) |field| {
@@ -3209,10 +3283,22 @@ fn generateEnhancedClassWithRegistry(
                 try writer.print("    /// {s}\n", .{line});
             }
         }
-        try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+        if (field.default_value) |default| {
+            try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+        } else {
+            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+        }
     }
 
-    if (parsed.fields.len > 0 and parsed.methods.len > 0) {
+    // Emit constants (pub const declarations with types)
+    if (parsed.constants.len > 0) {
+        try writer.writeAll("\n");
+        for (parsed.constants) |constant| {
+            try writer.print("    {s}\n", .{constant});
+        }
+    }
+
+    if ((parsed.fields.len > 0 or parsed.constants.len > 0) and parsed.methods.len > 0) {
         try writer.writeAll("\n");
     }
 

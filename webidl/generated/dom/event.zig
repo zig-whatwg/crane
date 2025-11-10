@@ -33,10 +33,11 @@ pub const Event = struct {
     canceled_flag: bool,
     is_trusted: bool,
     time_stamp: f64,
-    pub const NONE: u16,
-    pub const CAPTURING_PHASE: u16,
-    pub const AT_TARGET: u16,
-    pub const BUBBLING_PHASE: u16,
+
+    pub const NONE: u16 = 0;
+    pub const CAPTURING_PHASE: u16 = 1;
+    pub const AT_TARGET: u16 = 2;
+    pub const BUBBLING_PHASE: u16 = 3;
 
     /// Constructor: new Event(type, eventInitDict)
     /// Spec: https://dom.spec.whatwg.org/#dom-event-event
