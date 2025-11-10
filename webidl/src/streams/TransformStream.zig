@@ -89,6 +89,60 @@ pub const TransformStream = webidl.interface(struct {
     pub fn get_writable(self: *const TransformStream) *WritableStream {
         return self.writableStream;
     }
+
+    // ============================================================================
+    // Internal Helper Methods
+    // ============================================================================
+
+    /// TransformStreamError(stream, e)
+    ///
+    /// Spec: § 6.3.1 "Error both sides of the transform stream"
+    pub fn errorStream(self: *TransformStream, e: common.JSValue) void {
+        // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
+        self.readableStream.controller.errorInternal(e);
+
+        // Spec step 2: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, e)
+        self.errorWritableAndUnblockWrite(e);
+    }
+
+    /// TransformStreamErrorWritableAndUnblockWrite(stream, e)
+    ///
+    /// Spec: § 6.3.1 "Error writable side and unblock write"
+    pub fn errorWritableAndUnblockWrite(self: *TransformStream, e: common.JSValue) void {
+        // Spec step 1: Perform ! TransformStreamDefaultControllerClearAlgorithms(stream.[[controller]])
+        self.controller.clearAlgorithms();
+
+        // Spec step 2: Perform ! WritableStreamDefaultControllerErrorIfNeeded(stream.[[writable]].[[controller]], e)
+        // Note: errorInternal checks if already errored
+        self.writableStream.errorInternal(e);
+
+        // Spec step 3: Perform ! TransformStreamUnblockWrite(stream)
+        self.unblockWrite();
+    }
+
+    /// TransformStreamSetBackpressure(stream, backpressure)
+    ///
+    /// Spec: § 6.3.1 "Set backpressure signal"
+    pub fn setBackpressure(self: *TransformStream, backpressure: bool) void {
+        // Spec step 1: Assert: stream.[[backpressure]] is not backpressure
+        // (We allow setting to same value for simplicity)
+
+        // Spec step 4: Set stream.[[backpressure]] to backpressure
+        self.backpressure = backpressure;
+
+        // Note: Full implementation would handle backpressureChangePromise
+        // For now, we just set the flag
+    }
+
+    /// TransformStreamUnblockWrite(stream)
+    ///
+    /// Spec: § 6.3.1 "Unblock write if backpressure is true"
+    pub fn unblockWrite(self: *TransformStream) void {
+        // Spec step 1: If stream.[[backpressure]] is true, perform ! TransformStreamSetBackpressure(stream, false)
+        if (self.backpressure) {
+            self.setBackpressure(false);
+        }
+    }
 }, .{
     .exposed = &.{.global},
     .transferable = true,

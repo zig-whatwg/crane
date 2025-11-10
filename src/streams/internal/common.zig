@@ -295,6 +295,28 @@ pub const FlushAlgorithm = struct {
     }
 };
 
+/// Transform algorithm - transforms a chunk
+/// Spec: Abstract operation passed to SetUpTransformStreamDefaultController
+pub const TransformAlgorithm = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        call: *const fn (ctx: *anyopaque, chunk: JSValue) Promise(void),
+        deinit: ?*const fn (ctx: *anyopaque) void,
+    };
+
+    pub fn call(self: TransformAlgorithm, chunk: JSValue) Promise(void) {
+        return self.vtable.call(self.ptr, chunk);
+    }
+
+    pub fn deinit(self: TransformAlgorithm) void {
+        if (self.vtable.deinit) |deinit_fn| {
+            deinit_fn(self.ptr);
+        }
+    }
+};
+
 /// Iterator result from async iteration
 /// Spec: ECMAScript IteratorResult interface { value, done }
 pub const IteratorResult = struct {
@@ -436,6 +458,24 @@ pub fn defaultAbortAlgorithm() AbortAlgorithm {
         fn call(ctx: *anyopaque, reason: ?JSValue) Promise(void) {
             _ = ctx;
             _ = reason;
+            return Promise(void).fulfilled({});
+        }
+    };
+
+    return .{
+        .ptr = undefined,
+        .vtable = &.{
+            .call = impl.call,
+            .deinit = null,
+        },
+    };
+}
+
+pub fn defaultTransformAlgorithm() TransformAlgorithm {
+    const impl = struct {
+        fn call(ctx: *anyopaque, chunk: JSValue) Promise(void) {
+            _ = ctx;
+            _ = chunk;
             return Promise(void).fulfilled({});
         }
     };

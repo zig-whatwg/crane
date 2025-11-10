@@ -496,6 +496,25 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         // For default controller, release steps are a no-op
         _ = self;
     }
+
+    /// ReadableStreamDefaultControllerHasBackpressure(controller)
+    ///
+    /// Spec: § 4.6.6 "Check if controller has backpressure"
+    pub fn hasBackpressure(self: *const ReadableStreamDefaultController) bool {
+        // Spec step 1: Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller)
+        const desired_size = self.calculateDesiredSize();
+
+        // Spec step 2: If desiredSize ≤ 0, return true
+        // Spec step 3: Return false
+        return if (desired_size) |size| size <= 0 else false;
+    }
+
+    /// ReadableStreamDefaultControllerGetDesiredSize(controller)
+    ///
+    /// Spec: § 4.6.6 "Get desired size for controller"
+    pub fn getDesiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+        return self.calculateDesiredSize();
+    }
 }, .{
     .exposed = &.{.global},
 });
