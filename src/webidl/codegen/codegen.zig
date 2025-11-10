@@ -79,6 +79,7 @@ const PUB_CONST_EXTENDS_LEN = "pub const extends".len; // = 17
 const PTR_CONST_PREFIX_LEN = "*const ".len; // = 7
 const PTR_PREFIX_LEN = "*".len; // = 1
 const WEBIDL_INTERFACE_PREFIX_LEN = "webidl.interface(".len; // = 18
+const WEBIDL_NAMESPACE_PREFIX_LEN = "webidl.namespace(".len; // = 18
 const PUB_CONST_INCLUDES_LEN = "pub const includes".len; // = 18
 
 /// Configuration for generated class method prefixes.
@@ -247,6 +248,7 @@ pub fn generateAllClasses(
         errdefer allocator.free(source_content);
 
         if (std.mem.indexOf(u8, source_content, "webidl.interface(") != null or
+            std.mem.indexOf(u8, source_content, "webidl.namespace(") != null or
             std.mem.indexOf(u8, source_content, "webidl.mixin(") != null or
             std.mem.indexOf(u8, source_content, "@import(\"zoop\")") != null)
         {
@@ -1089,16 +1091,28 @@ fn scanFileForClasses(
     var pos: usize = 0;
 
     while (pos < source.len) {
-        // Find next webidl.interface( or webidl.mixin(
+        // Find next webidl.interface( or webidl.namespace( or webidl.mixin(
         const class_start = std.mem.indexOfPos(u8, source, pos, "webidl.interface(");
+        const namespace_start = std.mem.indexOfPos(u8, source, pos, "webidl.namespace(");
         const mixin_start = std.mem.indexOfPos(u8, source, pos, "webidl.mixin(");
 
         const next_start = blk: {
             if (class_start) |c| {
+                if (namespace_start) |n| {
+                    if (mixin_start) |m| {
+                        break :blk @min(@min(c, n), m);
+                    }
+                    break :blk @min(c, n);
+                }
                 if (mixin_start) |m| {
                     break :blk @min(c, m);
                 }
                 break :blk c;
+            } else if (namespace_start) |n| {
+                if (mixin_start) |m| {
+                    break :blk @min(n, m);
+                }
+                break :blk n;
             } else if (mixin_start) |m| {
                 break :blk m;
             } else {
@@ -1359,16 +1373,28 @@ fn processSourceFileWithRegistry(
     var last_class_end: usize = 0;
 
     while (pos < source.len) {
-        // Find next webidl.interface( or webidl.mixin(
+        // Find next webidl.interface( or webidl.namespace( or webidl.mixin(
         const class_start = std.mem.indexOfPos(u8, source, pos, "webidl.interface(");
+        const namespace_start = std.mem.indexOfPos(u8, source, pos, "webidl.namespace(");
         const mixin_start = std.mem.indexOfPos(u8, source, pos, "webidl.mixin(");
 
         const next_start = blk: {
             if (class_start) |c| {
+                if (namespace_start) |n| {
+                    if (mixin_start) |m| {
+                        break :blk @min(@min(c, n), m);
+                    }
+                    break :blk @min(c, n);
+                }
                 if (mixin_start) |m| {
                     break :blk @min(c, m);
                 }
                 break :blk c;
+            } else if (namespace_start) |n| {
+                if (mixin_start) |m| {
+                    break :blk @min(n, m);
+                }
+                break :blk n;
             } else if (mixin_start) |m| {
                 break :blk m;
             } else {
