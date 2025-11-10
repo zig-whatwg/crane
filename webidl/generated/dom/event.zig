@@ -34,7 +34,7 @@ pub const Event = struct {
     is_trusted: bool,
     time_stamp: f64,
 
-    const EventTarget = @import("event_target").EventTarget;
+    pub const EventTarget = @import("event_target").EventTarget;
     pub const NONE: u16 = 0;
     pub const CAPTURING_PHASE: u16 = 1;
     pub const AT_TARGET: u16 = 2;

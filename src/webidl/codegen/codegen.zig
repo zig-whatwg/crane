@@ -1376,7 +1376,24 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
         };
 
         if (!should_filter) {
-            try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
+            // Make const @import declarations public so dictionaries/helpers can be re-exported
+            // Example: "const TextEncoderEncodeIntoResult = @import(...)" -> "pub const TextEncoderEncodeIntoResult = @import(...)"
+            const trimmed_line = std.mem.trim(u8, line, " \t\r");
+            if (std.mem.startsWith(u8, trimmed_line, "const ") and
+                !std.mem.startsWith(u8, trimmed_line, "const std") and
+                !std.mem.startsWith(u8, trimmed_line, "const webidl") and
+                !std.mem.startsWith(u8, trimmed_line, "const infra") and
+                std.mem.indexOf(u8, trimmed_line, "@import") != null)
+            {
+                // Emit as pub const
+                const leading_whitespace = line[0..std.mem.indexOf(u8, line, "const").?];
+                try result.appendSlice(allocator, leading_whitespace);
+                try result.appendSlice(allocator, "pub ");
+                try result.appendSlice(allocator, trimmed_line);
+                if (line_end < source.len) try result.append(allocator, '\n');
+            } else {
+                try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
+            }
         }
 
         if (line_end >= source.len) break;
@@ -2287,7 +2304,39 @@ pub fn parseStructBody(
 
             const signature = std.mem.trim(u8, body[paren_pos .. closing_paren + 1], " \t\r\n");
 
-            const open_brace_pos = std.mem.indexOfPos(u8, body, closing_paren, "{") orelse {
+            // Find the opening brace of the method body
+            // Skip over any braces in the return type (e.g., "!struct { fields }" return types)
+            const open_brace_pos = blk: {
+                var search_pos = closing_paren + 1;
+                var in_struct_type = false;
+                var brace_depth: i32 = 0;
+
+                while (search_pos < body.len) : (search_pos += 1) {
+                    const c = body[search_pos];
+
+                    // Track if we're inside a struct type declaration in the return type
+                    if (!in_struct_type and search_pos + 6 <= body.len and std.mem.eql(u8, body[search_pos .. search_pos + 6], "struct")) {
+                        in_struct_type = true;
+                        search_pos += 5; // Skip "struct" keyword
+                        continue;
+                    }
+
+                    if (in_struct_type) {
+                        if (c == '{') {
+                            brace_depth += 1;
+                        } else if (c == '}') {
+                            brace_depth -= 1;
+                            if (brace_depth == 0) {
+                                in_struct_type = false;
+                            }
+                        }
+                    } else if (c == '{') {
+                        // This is the method body opening brace
+                        break :blk search_pos;
+                    }
+                }
+
+                // Couldn't find method body brace
                 pos = closing_paren + 1;
                 continue;
             };
@@ -3338,7 +3387,13 @@ fn generateEnhancedClassWithRegistry(
     if (parsed.constants.len > 0) {
         try writer.writeAll("\n");
         for (parsed.constants) |constant| {
-            try writer.print("    {s}\n", .{constant});
+            // Make const @import declarations public so they can be re-exported
+            // Example: "const TextEncoderEncodeIntoResult = @import(...)" -> "pub const TextEncoderEncodeIntoResult = @import(...)"
+            if (std.mem.startsWith(u8, constant, "const ") and std.mem.indexOf(u8, constant, "@import") != null) {
+                try writer.print("    pub {s}\n", .{constant});
+            } else {
+                try writer.print("    {s}\n", .{constant});
+            }
         }
     }
 

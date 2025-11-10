@@ -16,11 +16,11 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const dict_parsing = @import("dict_parsing");
-const ReadableStream = @import("readable_stream").ReadableStream;
-const WritableStream = @import("writable_stream").WritableStream;
-const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
+pub const common = @import("common");
+pub const dict_parsing = @import("dict_parsing");
+pub const ReadableStream = @import("readable_stream").ReadableStream;
+pub const WritableStream = @import("writable_stream").WritableStream;
+pub const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
 pub const TransformStream = struct {
     // ========================================================================
     // TransformStream fields

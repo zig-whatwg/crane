@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Event = @import("event").Event;
+pub const Event = @import("event").Event;
 pub const CustomEvent = struct {
     // ========================================================================
     // CustomEvent fields

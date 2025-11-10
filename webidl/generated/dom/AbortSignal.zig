@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const EventTarget = @import("event_target").EventTarget;
+pub const EventTarget = @import("event_target").EventTarget;
 pub const AbortSignal = struct {
     // ========================================================================
     // AbortSignal fields

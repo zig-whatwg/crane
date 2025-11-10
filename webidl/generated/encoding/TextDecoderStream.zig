@@ -20,16 +20,16 @@ const webidl = @import("webidl");
 // Import mixins
 
 // Import dictionaries
-const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+pub const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 
 // Import streams
-const streams = @import("streams");
+pub const streams = @import("streams");
 const TransformStream = streams.TransformStream;
 const ReadableStream = streams.ReadableStream;
 const WritableStream = streams.WritableStream;
 
 // Import encoding infrastructure
-const encoding_mod = @import("encoding");
+pub const encoding_mod = @import("encoding");
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
 /// TextDecoderStream - decodes a stream of bytes to a stream of strings

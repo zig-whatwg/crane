@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Node = @import("node").Node;
+pub const Node = @import("node").Node;
 
 const Allocator = std.mem.Allocator;
 pub const CharacterData = struct {

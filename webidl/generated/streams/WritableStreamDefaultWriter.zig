@@ -16,11 +16,11 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
 
-const WritableStream = @import("writable_stream").WritableStream;
+pub const WritableStream = @import("writable_stream").WritableStream;
 pub const WritableStreamDefaultWriter = struct {
     // ========================================================================
     // WritableStreamDefaultWriter fields

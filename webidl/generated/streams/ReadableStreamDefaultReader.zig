@@ -20,13 +20,13 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import stream infrastructure
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
-const ReadRequest = @import("read_request").ReadRequest;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const ReadRequest = @import("read_request").ReadRequest;
 
 // Import ReadableStream (circular dependency handled carefully)
-const ReadableStream = @import("readable_stream").ReadableStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
 /// ReadableStreamDefaultReader WebIDL interface
 /// 
 /// IDL:

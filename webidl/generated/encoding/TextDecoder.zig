@@ -165,13 +165,13 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 // Import dictionaries
-const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
-const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
+pub const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+pub const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 
 // Import mixin (used in 'pub const includes' declaration)
 
 // Import encoding infrastructure
-const encoding_mod = @import("encoding");
+pub const encoding_mod = @import("encoding");
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
 

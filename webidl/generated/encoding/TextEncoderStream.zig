@@ -20,7 +20,7 @@ const webidl = @import("webidl");
 // Import mixins
 
 // Import streams
-const streams = @import("streams");
+pub const streams = @import("streams");
 const TransformStream = streams.TransformStream;
 const ReadableStream = streams.ReadableStream;
 const WritableStream = streams.WritableStream;

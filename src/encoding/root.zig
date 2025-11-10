@@ -120,9 +120,9 @@ test "generated TextDecoder mixin delegation" {
     defer decoder.deinit();
 
     // Verify mixin fields are accessible through delegation
-    try std.testing.expectEqualStrings("utf-8", decoder.encoding());
-    try std.testing.expectEqual(true, decoder.getFatal());
-    try std.testing.expectEqual(false, decoder.getIgnoreBOM());
+    try std.testing.expectEqualStrings("utf-8", decoder.encoding);
+    try std.testing.expectEqual(true, decoder.get_fatal());
+    try std.testing.expectEqual(false, decoder.get_ignoreBOM());
 }
 
 test "generated TextEncoder mixin delegation" {
@@ -132,5 +132,5 @@ test "generated TextEncoder mixin delegation" {
     defer encoder.deinit();
 
     // Verify mixin field is accessible through delegation
-    try std.testing.expectEqualStrings("utf-8", encoder.encoding());
+    try std.testing.expectEqualStrings("utf-8", encoder.encoding);
 }

@@ -16,24 +16,24 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 
 // BYOB infrastructure imports
-const PullIntoDescriptorModule = @import("pull_into_descriptor");
+pub const PullIntoDescriptorModule = @import("pull_into_descriptor");
 const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
 const ArrayBuffer = PullIntoDescriptorModule.ArrayBuffer;
 const ViewConstructor = PullIntoDescriptorModule.ViewConstructor;
 const ReaderType = PullIntoDescriptorModule.ReaderType;
 
-const ReadIntoRequestModule = @import("read_into_request");
+pub const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 
-const ViewConstruction = @import("view_construction");
+pub const ViewConstruction = @import("view_construction");
 
-const AsyncPromise = @import("async_promise").AsyncPromise;
-const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2
 ///

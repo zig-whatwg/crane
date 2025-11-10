@@ -16,10 +16,10 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const common = @import("common");
+pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
 pub const WritableStreamDefaultController = struct {
     // ========================================================================
     // WritableStreamDefaultController fields

@@ -17,15 +17,15 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import stream infrastructure
-const common = @import("common");
-const dict_parsing = @import("dict_parsing");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
-const TestEventLoop = @import("test_event_loop").TestEventLoop;
+pub const common = @import("common");
+pub const dict_parsing = @import("dict_parsing");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const TestEventLoop = @import("test_event_loop").TestEventLoop;
 
 // Import related types
-const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
-const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
+pub const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
+pub const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 
 /// Stream state enumeration
 ///

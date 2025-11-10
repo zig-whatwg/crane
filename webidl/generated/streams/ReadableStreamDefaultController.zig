@@ -20,16 +20,16 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import stream infrastructure
-const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const Value = @import("queue_with_sizes").Value;
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+pub const Value = @import("queue_with_sizes").Value;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
 
 // Import ReadableStream (will be defined elsewhere to avoid circular dependency)
 // We use *anyopaque for the stream reference and cast when needed
-const ReadableStream = @import("readable_stream").ReadableStream;
-const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
+pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
 /// ReadableStreamDefaultController WebIDL interface
 /// 
 /// IDL:

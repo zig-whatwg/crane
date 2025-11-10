@@ -15,7 +15,7 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
-const Node = @import("node").Node;
+pub const Node = @import("node").Node;
 /// Element WebIDL interface
 pub const Element = struct {
     // ========================================================================
@@ -27,7 +27,7 @@ pub const Element = struct {
     namespace_uri: ?[]const u8,
     attributes: std.ArrayList(Attr),
 
-    const Attr = @import("attr").Attr;
+    pub const Attr = @import("attr").Attr;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         return .{

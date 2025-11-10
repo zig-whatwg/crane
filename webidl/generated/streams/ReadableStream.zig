@@ -20,19 +20,19 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 // Import stream infrastructure
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const TestEventLoop = @import("test_event_loop").TestEventLoop;
-const AsyncPromise = @import("async_promise").AsyncPromise;
-const dict_parsing = @import("dict_parsing");
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const TestEventLoop = @import("test_event_loop").TestEventLoop;
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const dict_parsing = @import("dict_parsing");
 
 // Import related stream types (will be fully linked after all types are defined)
 // NOTE: These will create circular dependencies that need careful handling
-const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
-const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
-const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
-const WritableStream = @import("writable_stream").WritableStream;
-const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
+pub const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
+pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
+pub const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
+pub const WritableStream = @import("writable_stream").WritableStream;
+pub const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 
 /// Stream state enumeration
 ///
@@ -393,7 +393,10 @@ pub const ReadableStream = struct {
     /// 
     /// Spec: § 4.1.7 "The tee() method steps are:"
     /// Creates two branches that can be consumed independently.
-    pub fn call_tee(self: *ReadableStream) !struct { branch1: *ReadableStream, branch2: *ReadableStream }
+    pub fn call_tee(self: *ReadableStream) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
+        // Step 1: Let branches be ? ReadableStreamTee(this, false).
+        return self.teeInternal(false);
+    }
     /// from(asyncIterable) static method
     /// 
     /// IDL: static ReadableStream from(any asyncIterable);
@@ -628,7 +631,48 @@ pub const ReadableStream = struct {
     /// ReadableStreamTee(stream, cloneForBranch2)
     /// 
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
-    fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !struct { branch1: *ReadableStream, branch2: *ReadableStream }
+    fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
+        // Spec step 1-2: Asserts (checked by type system)
+
+        // Spec step 3: Acquire reader
+        const reader = try self.acquireDefaultReader(self.eventLoop);
+
+        // Spec step 4-12: Initialize state variables (now in TeeState)
+        const teeState = try TeeState.init(
+            self.allocator,
+            self,
+            reader,
+            self.eventLoop,
+            cloneForBranch2,
+        );
+        errdefer teeState.deinit();
+
+        // Spec step 16-18: Create branch streams with custom pull/cancel algorithms
+        // We create two streams that share the TeeState for coordination
+
+        const branch1 = try self.allocator.create(ReadableStream);
+        errdefer self.allocator.destroy(branch1);
+
+        const branch2 = try self.allocator.create(ReadableStream);
+        errdefer self.allocator.destroy(branch2);
+
+        // Initialize branch streams
+        branch1.* = try initWithSource(self.allocator, self.eventLoop, null, null);
+        branch2.* = try initWithSource(self.allocator, self.eventLoop, null, null);
+
+        // Link branches to tee state
+        teeState.branch1 = branch1;
+        teeState.branch2 = branch2;
+        branch1.teeState = teeState;
+        branch2.teeState = teeState;
+
+        // Spec step 19: Forward reader errors to both branches
+        // (Would be implemented with reader.closedPromise reaction)
+        // TODO: Implement error forwarding when reader's closedPromise rejects
+
+        // Spec step 20: Return the two branches
+        return .{ .branch1 = branch1, .branch2 = branch2 };
+    }
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{

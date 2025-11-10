@@ -16,17 +16,17 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
 
-const ReadableStream = @import("readable_stream").ReadableStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
 
 // BYOB-specific imports
-const ReadIntoRequestModule = @import("read_into_request");
+pub const ReadIntoRequestModule = @import("read_into_request");
 const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
-const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
-const DictionaryParsing = @import("dictionary_parsing");
+pub const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+pub const DictionaryParsing = @import("dictionary_parsing");
 const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 pub const ReadableStreamBYOBReader = struct {
     // ========================================================================

@@ -12,8 +12,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
+pub const Node = @import("node").Node;
+pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
 pub const Document = struct {
@@ -23,7 +23,7 @@ pub const Document = struct {
     allocator: Allocator,
     node: Node,
 
-    const Text = @import("text").Text;
+    pub const Text = @import("text").Text;
 
     pub fn init(allocator: Allocator) !Document {
         return .{

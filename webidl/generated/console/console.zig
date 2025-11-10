@@ -139,8 +139,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
-const types = @import("types");
-const format = @import("format");
+pub const types = @import("types");
+pub const format = @import("format");
 
 const Allocator = std.mem.Allocator;
 const Group = types.Group;

@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const AbortSignal = @import("abort_signal").AbortSignal;
+pub const AbortSignal = @import("abort_signal").AbortSignal;
 pub const AbortController = struct {
     // ========================================================================
     // AbortController fields

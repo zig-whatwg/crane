@@ -16,7 +16,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
+pub const common = @import("common");
 pub const TransformStreamDefaultController = struct {
     // ========================================================================
     // TransformStreamDefaultController fields

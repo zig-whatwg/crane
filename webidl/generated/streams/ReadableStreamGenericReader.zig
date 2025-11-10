@@ -25,11 +25,11 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const common = @import("common");
-const eventLoop = @import("event_loop");
-const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const common = @import("common");
+pub const eventLoop = @import("event_loop");
+pub const AsyncPromise = @import("async_promise").AsyncPromise;
 
-const ReadableStream = @import("readable_stream").ReadableStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
 /// ReadableStreamGenericReader mixin
 /// 
 /// This mixin defines the shared interface between ReadableStreamDefaultReader

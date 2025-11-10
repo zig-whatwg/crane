@@ -30,8 +30,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-const ReadableStream = @import("readable_stream").ReadableStream;
-const WritableStream = @import("writable_stream").WritableStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
+pub const WritableStream = @import("writable_stream").WritableStream;
 /// GenericTransformStream mixin
 /// 
 /// This mixin provides the standard readable/writable property pair for

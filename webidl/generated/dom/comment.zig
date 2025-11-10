@@ -11,7 +11,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const CharacterData = @import("character_data").CharacterData;
+pub const CharacterData = @import("character_data").CharacterData;
 pub const Comment = struct {
     // ========================================================================
     // Comment fields
