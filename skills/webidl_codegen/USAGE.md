@@ -1,5 +1,18 @@
 # When to Use the WebIDL Codegen Skill
 
+## ⚠️ READ THIS BEFORE TOUCHING webidl/src/ FILES ⚠️
+
+**MANDATORY RULES - ALWAYS ENFORCED:**
+
+1. Property getters → `get_` prefix (with underscore)
+2. Property setters → `set_` prefix (with underscore)
+3. Spec public methods → `call_` prefix
+4. init/deinit/internal → NO prefix
+
+**If you write or modify ANY method in webidl/src/, you MUST check these rules FIRST.**
+
+---
+
 Use this skill when:
 
 ## Code Generation

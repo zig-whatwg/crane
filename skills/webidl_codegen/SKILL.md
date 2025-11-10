@@ -1,5 +1,16 @@
 # WebIDL Codegen Skill
 
+## ⚠️ CRITICAL - READ THIS FIRST ⚠️
+
+**BEFORE writing or modifying ANY code in `webidl/src/`, you MUST:**
+
+1. **ALWAYS prefix property getters with `get_`** (with underscore)
+2. **ALWAYS prefix property setters with `set_`** (with underscore)
+3. **ALWAYS prefix spec instance/static methods with `call_`**
+4. **NEVER prefix `init()`, `deinit()`, or internal helpers**
+
+**Violation of these rules is UNACCEPTABLE and will break the codebase.**
+
 ## Overview
 
 This skill documents the WebIDL code generation system ported from zoop. It defines critical naming conventions and codegen behavior that MUST be followed when working with WebIDL interface files.
@@ -131,17 +142,130 @@ pub fn call_getNumReadRequests(...) { }
 - Methods in spec sections like § 4.7+ (internal abstract operations)
 - Methods not exposed in WebIDL interface definition
 
-## Summary Table
+## Summary Table - MEMORIZE THIS
 
-| Method Type | Prefix | Example |
-|-------------|--------|---------|
-| Property Getter | `get_` | `get_fatal()`, `get_ignoreBOM()` |
-| Property Setter | `set_` | `set_encoding()`, `set_fatal()` |
-| Spec Instance Method | `call_` | `call_decode()`, `call_encode()`, `call_locked()` |
-| Spec Static Method | `call_` | `call_from()`, `call_of()` |
-| Constructor | None | `init()` |
-| Destructor | None | `deinit()` |
-| Internal Helper | None | `getNumReadRequests()`, `fulfillReadRequest()` |
+| Method Type | Prefix | Example | ALWAYS/NEVER |
+|-------------|--------|---------|--------------|
+| Property Getter | `get_` | `get_fatal()`, `get_ignoreBOM()`, `get_encoding()`, `get_readable()` | **ALWAYS use get_ with underscore** |
+| Property Setter | `set_` | `set_encoding()`, `set_fatal()` | **ALWAYS use set_ with underscore** |
+| Spec Instance Method | `call_` | `call_decode()`, `call_encode()`, `call_locked()`, `call_cancel()`, `call_getReader()`, `call_pipeTo()`, `call_assert()`, `call_log()` | **ALWAYS use call_ prefix** |
+| Spec Static Method | `call_` | `call_from()`, `call_of()` | **ALWAYS use call_ prefix** |
+| Constructor | **None** | `init()` | **NEVER use prefix** |
+| Destructor | **None** | `deinit()` | **NEVER use prefix** |
+| Internal Helper | **None** | `getNumReadRequests()`, `fulfillReadRequest()`, `closeInternal()` | **NEVER use call_ prefix** |
+
+## Complete Examples from Real Code
+
+### Property Getters - MUST have get_ prefix
+
+```zig
+// Encoding attributes
+pub inline fn get_encoding(self: *const TextDecoder) []const u8
+pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean
+pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean
+
+// Stream attributes  
+pub fn get_readable(self: *const TransformStream) *ReadableStream
+pub fn get_writable(self: *const TransformStream) *WritableStream
+
+// BYOB attributes
+pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue
+```
+
+### Spec Methods - MUST have call_ prefix
+
+```zig
+// Encoding methods
+pub fn call_decode(self: *TextDecoder, input: ?[]const u8, options: ?DecodeOptions) ![]const u8
+pub fn call_encode(self: *TextEncoder, input: []const u8) ![]u8
+pub fn call_encodeInto(self: *TextEncoder, source: []const u8, dest: []u8) EncodeIntoResult
+
+// Stream methods
+pub fn call_locked(self: *const ReadableStream) bool
+pub fn call_cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void)
+pub fn call_getReader(self: *ReadableStream, options: ?ReaderOptions) !ReaderUnion
+pub fn call_pipeTo(self: *ReadableStream, dest: *WritableStream, options: ?PipeOptions) !*AsyncPromise(void)
+pub fn call_pipeThrough(self: *ReadableStream, transform: TransformPair, options: ?PipeOptions) *ReadableStream
+pub fn call_tee(self: *ReadableStream) !TeeResult
+pub fn call_from(allocator: std.mem.Allocator, loop: EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream
+pub fn call_values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator
+pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator
+
+// Controller methods
+pub fn call_enqueue(self: *ReadableStreamDefaultController, chunk: ?webidl.JSValue) !void
+pub fn call_close(self: *ReadableStreamDefaultController) !void
+pub fn call_error(self: *ReadableStreamDefaultController, e: ?webidl.JSValue) void
+pub fn call_desiredSize(self: *const ReadableStreamDefaultController) ?f64
+
+// Reader methods
+pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(ReadResult)
+pub fn call_releaseLock(self: *ReadableStreamDefaultReader) void
+
+// Writer methods
+pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter
+pub fn call_write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void)
+pub fn call_close(self: *WritableStreamDefaultWriter) !*AsyncPromise(void)
+pub fn call_abort(self: *WritableStreamDefaultWriter, reason: ?webidl.JSValue) !*AsyncPromise(void)
+pub fn call_releaseLock(self: *WritableStreamDefaultWriter) void
+pub fn call_desiredSize(self: *const WritableStreamDefaultWriter) ?f64
+
+// Console methods (ALL console methods need call_ prefix)
+pub fn call_assert(self: *Console, condition: bool, data: []const webidl.JSValue) void
+pub fn call_clear(self: *Console) void
+pub fn call_debug(self: *Console, data: []const webidl.JSValue) void
+pub fn call_error(self: *Console, data: []const webidl.JSValue) void
+pub fn call_info(self: *Console, data: []const webidl.JSValue) void
+pub fn call_log(self: *Console, data: []const webidl.JSValue) void
+pub fn call_table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void
+pub fn call_trace(self: *Console, data: []const webidl.JSValue) void
+pub fn call_warn(self: *Console, data: []const webidl.JSValue) void
+pub fn call_dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void
+pub fn call_dirxml(self: *Console, data: []const webidl.JSValue) void
+pub fn call_count(self: *Console, label: []const u8) void
+pub fn call_countReset(self: *Console, label: []const u8) void
+pub fn call_group(self: *Console, data: []const webidl.JSValue) void
+pub fn call_groupCollapsed(self: *Console, data: []const webidl.JSValue) void
+pub fn call_groupEnd(self: *Console) void
+pub fn call_time(self: *Console, label: []const u8) void
+pub fn call_timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void
+pub fn call_timeEnd(self: *Console, label: []const u8) void
+
+// BYOB methods
+pub fn call_respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void
+pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: ?webidl.JSValue) !void
+pub fn call_getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest
+
+// Transform methods
+pub fn call_enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void
+pub fn call_terminate(self: *TransformStreamDefaultController) void
+
+// Queuing strategy
+pub fn call_size(_: *const CountQueuingStrategy, _: ?webidl.JSValue) f64
+```
+
+### Internal Methods - NO prefix
+
+```zig
+// Constructors/destructors - NO prefix
+pub fn init(allocator: std.mem.Allocator) !TextDecoder
+pub fn deinit(self: *TextDecoder) void
+
+// Internal helpers - NO prefix
+pub fn getNumReadRequests(self: *const ReadableStream) usize
+pub fn hasDefaultReader(self: *const ReadableStream) bool
+pub fn hasBYOBReader(self: *const ReadableStream) bool
+pub fn getNumReadIntoRequests(self: *const ReadableStream) usize
+pub fn fulfillReadRequest(self: *ReadableStream, chunk: common.JSValue, done: bool) void
+pub fn fulfillReadIntoRequest(self: *ReadableStream, chunk: webidl.ArrayBufferView, done: bool) void
+pub fn closeInternal(self: *ReadableStream) void
+pub fn errorInternal(self: *ReadableStream, e: common.JSValue) void
+pub fn calculateDesiredSize(self: *const ReadableStreamDefaultController) ?f64
+pub fn releaseSteps(self: *ReadableStreamDefaultController) void
+pub fn pullInto(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !*AsyncPromise(ReadResult)
+pub fn callPullIfNeeded(self: *ReadableByteStreamController) void
+pub fn handleQueueDrain(self: *ReadableByteStreamController) void
+pub fn processReadRequestsUsingQueue(self: *ReadableByteStreamController) !void
+```
 
 ## Verification Checklist
 
@@ -245,4 +369,60 @@ zig build
 
 ---
 
-**REMEMBER: These naming conventions are MANDATORY. Violating them breaks the WebIDL code generation system and the WHATWG spec compliance.**
+## Enforcement Rules
+
+### When Writing NEW Code in webidl/src/
+
+**EVERY TIME you write a method in a webidl.interface() file, you MUST ask:**
+
+1. **Is this a property getter (IDL attribute)?** → Use `get_` prefix
+2. **Is this a property setter (writable attribute)?** → Use `set_` prefix  
+3. **Is this a spec-defined public method?** → Use `call_` prefix
+4. **Is this init(), deinit(), or internal helper?** → NO prefix
+
+**DO NOT skip this check. DO NOT assume. DO NOT forget.**
+
+### When Reviewing Existing Code
+
+If you see ANY of these patterns, they are **WRONG** and must be fixed:
+
+- `pub inline fn encoding(` → Should be `pub inline fn get_encoding(`
+- `pub inline fn readable(` → Should be `pub fn get_readable(`
+- `pub fn decode(` → Should be `pub fn call_decode(`
+- `pub fn locked(` → Should be `pub fn call_locked(`
+- `pub fn assert(` → Should be `pub fn call_assert(`
+- `pub fn log(` → Should be `pub fn call_log(`
+
+### Verification Command
+
+After modifying ANY file in `webidl/src/`, run:
+
+```bash
+# Check for methods missing get_ prefix (property getters)
+grep -rn "pub inline fn [a-z][a-zA-Z]*(" webidl/src --include="*.zig" | \
+  grep -v "get_\|set_\|init\|deinit"
+
+# Check for methods missing call_ prefix (spec methods)  
+grep -rn "pub fn [a-z][a-zA-Z]*(" webidl/src --include="*.zig" | \
+  grep -v "get_\|set_\|init\|deinit\|call_\|Internal\|fulfill\|close\|error\|has\|is\|calculate\|release\|handle\|process"
+
+# Regenerate
+zig build codegen
+```
+
+If the grep commands find ANYTHING, those methods need to be fixed.
+
+---
+
+## ⚠️ FINAL WARNING ⚠️
+
+**These naming conventions are MANDATORY and NON-NEGOTIABLE.**
+
+Violating them:
+- Breaks the WebIDL code generation system
+- Breaks WHATWG spec compliance  
+- Breaks the JavaScript bindings layer
+- Makes the codebase inconsistent
+- Will require comprehensive fixes across all files
+
+**ALWAYS follow these rules. NO EXCEPTIONS.**
