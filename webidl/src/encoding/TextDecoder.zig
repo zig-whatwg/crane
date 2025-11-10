@@ -205,8 +205,11 @@ pub const TextDecoderError = error{
 /// };
 /// ```
 pub const TextDecoder = webidl.interface(struct {
-    /// Mixin: TextDecoderCommon (encoding, fatal, ignoreBOM)
-    mixin: TextDecoderCommon,
+    /// WebIDL includes: TextDecoderCommon (encoding, fatal, ignoreBOM)
+    ///
+    /// The TextDecoderCommon mixin is flattened into this interface by the codegen
+    /// to provide shared readonly attributes across TextDecoder implementations
+    pub const includes = .{TextDecoderCommon};
 
     allocator: std.mem.Allocator,
 
@@ -303,11 +306,9 @@ pub const TextDecoder = webidl.interface(struct {
 
         // Step 3-5: Set properties
         return .{
-            .mixin = .{
-                .encoding = encoding_name,
-                .fatal = options.fatal,
-                .ignoreBOM = options.ignoreBOM,
-            },
+            .encoding = encoding_name,
+            .fatal = options.fatal,
+            .ignoreBOM = options.ignoreBOM,
             .allocator = allocator,
             .enc = enc,
             .doNotFlush = false,
@@ -362,7 +363,7 @@ pub const TextDecoder = webidl.interface(struct {
     ///
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextDecoder) []const u8 {
-        return self.mixin.encoding;
+        return self.encoding;
     }
 
     /// Get the fatal flag
@@ -375,7 +376,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// readonly attribute boolean fatal;
     /// ```
     pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
-        return self.mixin.fatal;
+        return self.fatal;
     }
 
     /// Get the ignoreBOM flag
@@ -388,7 +389,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// readonly attribute boolean ignoreBOM;
     /// ```
     pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
-        return self.mixin.ignoreBOM;
+        return self.ignoreBOM;
     }
 
     /// decode() - Decodes bytes to a string
@@ -525,7 +526,7 @@ pub const TextDecoder = webidl.interface(struct {
         }
 
         // Step 4: Handle BOM (if not ignoreBOM and not seen yet)
-        if (!self.mixin.ignoreBOM and !self.bomSeen) {
+        if (!self.ignoreBOM and !self.bomSeen) {
             bytes = self.stripBOM(bytes);
         }
 
@@ -546,7 +547,7 @@ pub const TextDecoder = webidl.interface(struct {
         const result = decoder.decode(bytes, utf16_buf, !self.doNotFlush);
 
         // Handle decoding errors in fatal mode
-        if (self.mixin.fatal and result.had_errors) {
+        if (self.fatal and result.had_errors) {
             return error.DecodingError;
         }
 
@@ -604,7 +605,7 @@ pub const TextDecoder = webidl.interface(struct {
     /// Decode UTF-8 bytes (fast path for UTF-8 encoding)
     fn decodeUtf8(self: *TextDecoder, bytes: []const u8) TextDecoderError![]const u8 {
         // Validate UTF-8 in fatal mode
-        if (self.mixin.fatal) {
+        if (self.fatal) {
             if (!std.unicode.utf8ValidateSlice(bytes)) {
                 return error.DecodingError;
             }

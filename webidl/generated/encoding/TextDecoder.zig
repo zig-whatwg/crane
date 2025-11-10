@@ -213,8 +213,33 @@ pub const TextDecoderError = error{
 /// };
 /// ```
 pub const TextDecoder = struct {
-    /// Mixin: TextDecoderCommon (encoding, fatal, ignoreBOM)
-    mixin: TextDecoderCommon,
+    // ========================================================================
+    // Fields from TextDecoderCommon mixin
+    // ========================================================================
+    /// The encoding name (WHATWG canonical name, lowercase ASCII)
+    /// 
+    /// Examples: "utf-8", "windows-1252", "iso-8859-1"
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    encoding: []const u8,
+    /// Fatal error mode flag
+    /// 
+    /// - `true`: Throw TypeError on invalid byte sequences
+    /// - `false`: Use U+FFFD replacement character (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    fatal: webidl.boolean,
+    /// Byte Order Mark (BOM) handling flag
+    /// 
+    /// - `true`: Keep BOM in output as U+FEFF (ZERO WIDTH NO-BREAK SPACE)
+    /// - `false`: Strip BOM from output (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
+    ignoreBOM: webidl.boolean,
+
+    // ========================================================================
+    // TextDecoder fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// The encoding used by this decoder
     enc: *const Encoding,
@@ -305,11 +330,9 @@ pub const TextDecoder = struct {
 
         // Step 3-5: Set properties
         return .{
-            .mixin = .{
-                .encoding = encoding_name,
-                .fatal = options.fatal,
-                .ignoreBOM = options.ignoreBOM,
-            },
+            .encoding = encoding_name,
+            .fatal = options.fatal,
+            .ignoreBOM = options.ignoreBOM,
             .allocator = allocator,
             .enc = enc,
             .doNotFlush = false,
@@ -350,6 +373,11 @@ pub const TextDecoder = struct {
             self.allocator.free(buf);
         }
     }
+
+    // ========================================================================
+    // TextDecoder methods
+    // ========================================================================
+
     /// Get the encoding name (WHATWG canonical name)
     /// 
     /// WHATWG Encoding Standard § 5.1.1
@@ -362,7 +390,7 @@ pub const TextDecoder = struct {
     /// 
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextDecoder) []const u8 {
-        return self.mixin.encoding;
+        return self.encoding;
     }
     /// Get the fatal flag
     /// 
@@ -374,7 +402,7 @@ pub const TextDecoder = struct {
     /// readonly attribute boolean fatal;
     /// ```
     pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
-        return self.mixin.fatal;
+        return self.fatal;
     }
     /// Get the ignoreBOM flag
     /// 
@@ -386,7 +414,7 @@ pub const TextDecoder = struct {
     /// readonly attribute boolean ignoreBOM;
     /// ```
     pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
-        return self.mixin.ignoreBOM;
+        return self.ignoreBOM;
     }
     /// decode() - Decodes bytes to a string
     /// 
@@ -522,7 +550,7 @@ pub const TextDecoder = struct {
         }
 
         // Step 4: Handle BOM (if not ignoreBOM and not seen yet)
-        if (!self.mixin.ignoreBOM and !self.bomSeen) {
+        if (!self.ignoreBOM and !self.bomSeen) {
             bytes = self.stripBOM(bytes);
         }
 
@@ -543,7 +571,7 @@ pub const TextDecoder = struct {
         const result = decoder.decode(bytes, utf16_buf, !self.doNotFlush);
 
         // Handle decoding errors in fatal mode
-        if (self.mixin.fatal and result.had_errors) {
+        if (self.fatal and result.had_errors) {
             return error.DecodingError;
         }
 
@@ -594,7 +622,7 @@ pub const TextDecoder = struct {
     /// Decode UTF-8 bytes (fast path for UTF-8 encoding)
     fn decodeUtf8(self: *TextDecoder, bytes: []const u8) TextDecoderError![]const u8 {
         // Validate UTF-8 in fatal mode
-        if (self.mixin.fatal) {
+        if (self.fatal) {
             if (!std.unicode.utf8ValidateSlice(bytes)) {
                 return error.DecodingError;
             }
