@@ -105,3 +105,73 @@ test "ReadableStream.pipeThrough - basic transform chain" {
     // Result should be the readable side of the transform
     try testing.expect(result == pair.readable);
 }
+
+test "ReadableStream.tee - basic branching" {
+    const allocator = testing.allocator;
+
+    // Create source
+    var source = try streams.ReadableStream.init(allocator);
+    defer source.deinit();
+
+    // Verify source is not locked before tee
+    try testing.expect(!source.locked());
+
+    // Tee the stream
+    const branches = try source.tee();
+    defer {
+        branches.branch1.deinit();
+        allocator.destroy(branches.branch1);
+        branches.branch2.deinit();
+        allocator.destroy(branches.branch2);
+    }
+
+    // Verify source is now locked
+    try testing.expect(source.locked());
+
+    // Verify both branches exist and are readable streams
+    try testing.expect(branches.branch1.state == .readable);
+    try testing.expect(branches.branch2.state == .readable);
+
+    // Verify branches are not locked initially
+    try testing.expect(!branches.branch1.locked());
+    try testing.expect(!branches.branch2.locked());
+}
+
+test "ReadableStream.tee - independent consumption" {
+    const allocator = testing.allocator;
+
+    // Create source
+    var source = try streams.ReadableStream.init(allocator);
+    defer source.deinit();
+
+    // Tee the stream
+    const branches = try source.tee();
+    defer {
+        branches.branch1.deinit();
+        allocator.destroy(branches.branch1);
+        branches.branch2.deinit();
+        allocator.destroy(branches.branch2);
+    }
+
+    // Get readers for both branches
+    const reader1 = try branches.branch1.getReader(null);
+    const reader2 = try branches.branch2.getReader(null);
+
+    // Both branches should be locked now
+    try testing.expect(branches.branch1.locked());
+    try testing.expect(branches.branch2.locked());
+
+    // Release readers
+    switch (reader1) {
+        .default => |r| r.releaseLock(),
+        else => {},
+    }
+    switch (reader2) {
+        .default => |r| r.releaseLock(),
+        else => {},
+    }
+
+    // Both branches should be unlocked now
+    try testing.expect(!branches.branch1.locked());
+    try testing.expect(!branches.branch2.locked());
+}

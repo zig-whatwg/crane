@@ -566,21 +566,45 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
     fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
-        _ = cloneForBranch2;
+        // Spec step 1-2: Asserts (checked by type system)
 
-        // Simplified implementation - create two new streams
-        // Full implementation would share a TeeState and coordinate reading
+        // Spec step 3: Acquire reader
+        const reader = try self.acquireDefaultReader(self.eventLoop);
+
+        // Spec step 4-12: Initialize state variables (now in TeeState)
+        const teeState = try TeeState.init(
+            self.allocator,
+            self,
+            reader,
+            self.eventLoop,
+            cloneForBranch2,
+        );
+        errdefer teeState.deinit();
+
+        // Spec step 16-18: Create branch streams with custom pull/cancel algorithms
+        // We create two streams that share the TeeState for coordination
+
         const branch1 = try self.allocator.create(ReadableStream);
         errdefer self.allocator.destroy(branch1);
-        branch1.* = try initWithSource(self.allocator, self.eventLoop, null, null);
 
         const branch2 = try self.allocator.create(ReadableStream);
         errdefer self.allocator.destroy(branch2);
+
+        // Initialize branch streams
+        branch1.* = try initWithSource(self.allocator, self.eventLoop, null, null);
         branch2.* = try initWithSource(self.allocator, self.eventLoop, null, null);
 
-        // Lock the original stream
-        _ = try self.acquireDefaultReader(self.eventLoop);
+        // Link branches to tee state
+        teeState.branch1 = branch1;
+        teeState.branch2 = branch2;
+        branch1.teeState = teeState;
+        branch2.teeState = teeState;
 
+        // Spec step 19: Forward reader errors to both branches
+        // (Would be implemented with reader.closedPromise reaction)
+        // TODO: Implement error forwarding when reader's closedPromise rejects
+
+        // Spec step 20: Return the two branches
         return .{ .branch1 = branch1, .branch2 = branch2 };
     }
 });
@@ -923,29 +947,236 @@ pub const PipeState = struct {
     }
 };
 
-/// TeeState placeholder
+/// TeeState - Shared state for coordinating tee branches
 ///
 /// Spec: § 4.10.5 "ReadableStreamDefaultTee(stream, cloneForBranch2)"
 ///
-/// Shared state for coordinating tee branches. Full implementation deferred to Phase 4.
+/// This structure holds the shared state between two tee branches that allows them
+/// to coordinate reading from a single source stream.
 pub const TeeState = struct {
-    refCount: usize,
     allocator: std.mem.Allocator,
+    refCount: usize,
 
-    pub fn init(allocator: std.mem.Allocator) !*TeeState {
+    // Shared reader
+    reader: *ReadableStreamDefaultReader,
+
+    // Original source stream
+    source: *ReadableStream,
+
+    // Branch streams
+    branch1: ?*ReadableStream,
+    branch2: ?*ReadableStream,
+
+    // Reading coordination
+    reading: bool,
+    readAgain: bool,
+
+    // Cancel coordination
+    canceled1: bool,
+    canceled2: bool,
+    reason1: ?common.JSValue,
+    reason2: ?common.JSValue,
+    cancelPromise: *AsyncPromise(void),
+
+    // Clone flag
+    cloneForBranch2: bool,
+
+    // Event loop
+    eventLoop: eventLoop.EventLoop,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        source: *ReadableStream,
+        reader: *ReadableStreamDefaultReader,
+        loop: eventLoop.EventLoop,
+        cloneForBranch2: bool,
+    ) !*TeeState {
         const self = try allocator.create(TeeState);
+        errdefer allocator.destroy(self);
+
+        const cancelPromise = try AsyncPromise(void).init(allocator, loop);
+        errdefer cancelPromise.deinit();
+
         self.* = .{
-            .refCount = 2, // Two branches
             .allocator = allocator,
+            .refCount = 2, // Two branches
+            .reader = reader,
+            .source = source,
+            .branch1 = null,
+            .branch2 = null,
+            .reading = false,
+            .readAgain = false,
+            .canceled1 = false,
+            .canceled2 = false,
+            .reason1 = null,
+            .reason2 = null,
+            .cancelPromise = cancelPromise,
+            .cloneForBranch2 = cloneForBranch2,
+            .eventLoop = loop,
         };
+
         return self;
+    }
+
+    pub fn deinit(self: *TeeState) void {
+        self.cancelPromise.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn release(self: *TeeState) void {
         self.refCount -= 1;
         if (self.refCount == 0) {
-            self.allocator.destroy(self);
+            self.deinit();
         }
+    }
+
+    /// Pull algorithm for tee branches
+    ///
+    /// Spec: § 4.10.5 step 13 "pullAlgorithm"
+    pub fn pullAlgorithm(self: *TeeState) !*AsyncPromise(void) {
+        // Step 13.1: If reading is true, set readAgain to true and return
+        if (self.reading) {
+            self.readAgain = true;
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.fulfill({});
+            return promise;
+        }
+
+        // Step 13.2: Set reading to true
+        self.reading = true;
+
+        // Step 13.3-4: Create read request and perform read
+        const readPromise = try self.reader.read();
+
+        // Wait for read to complete
+        self.eventLoop.runMicrotasks();
+
+        if (readPromise.isFulfilled()) {
+            const result = readPromise.state.fulfilled;
+            defer readPromise.deinit();
+
+            if (result.done) {
+                // Close steps (spec step 13 close steps)
+                self.reading = false;
+
+                if (!self.canceled1 and self.branch1 != null) {
+                    self.branch1.?.controller.closeInternal();
+                }
+                if (!self.canceled2 and self.branch2 != null) {
+                    self.branch2.?.controller.closeInternal();
+                }
+                if (!self.canceled1 or !self.canceled2) {
+                    self.cancelPromise.fulfill({});
+                }
+            } else if (result.value) |chunk| {
+                // Chunk steps (spec step 13 chunk steps)
+                // Queue microtask to perform these steps
+                self.handleChunk(chunk);
+            }
+        } else if (readPromise.isRejected()) {
+            // Error steps (spec step 13 error steps)
+            self.reading = false;
+            readPromise.deinit();
+        }
+
+        // Step 13.5: Return promise resolved with undefined
+        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+        promise.fulfill({});
+        return promise;
+    }
+
+    /// Handle a chunk read from the source
+    ///
+    /// Spec: § 4.10.5 step 13 chunk steps
+    fn handleChunk(self: *TeeState, chunk: common.JSValue) void {
+        // Microtask step 1: Set readAgain to false
+        self.readAgain = false;
+
+        // Microtask step 2: Let chunk1 and chunk2 be chunk
+        const chunk1 = chunk;
+        const chunk2 = chunk;
+
+        // Microtask step 3: If canceled2 is false and cloneForBranch2 is true
+        // TODO: Implement StructuredClone for when cloneForBranch2 is true
+        // For now, both chunks reference the same value
+
+        // Microtask step 4: If canceled1 is false, enqueue chunk1 to branch1
+        if (!self.canceled1 and self.branch1 != null) {
+            self.branch1.?.controller.enqueueInternal(chunk1) catch {};
+        }
+
+        // Microtask step 5: If canceled2 is false, enqueue chunk2 to branch2
+        if (!self.canceled2 and self.branch2 != null) {
+            self.branch2.?.controller.enqueueInternal(chunk2) catch {};
+        }
+
+        // Microtask step 6: Set reading to false
+        self.reading = false;
+
+        // Microtask step 7: If readAgain is true, perform pullAlgorithm
+        if (self.readAgain) {
+            _ = self.pullAlgorithm() catch {};
+        }
+    }
+
+    /// Cancel algorithm for branch 1
+    ///
+    /// Spec: § 4.10.5 step 14 "cancel1Algorithm"
+    pub fn cancel1Algorithm(self: *TeeState, reason: ?common.JSValue) *AsyncPromise(void) {
+        // Step 1: Set canceled1 to true
+        self.canceled1 = true;
+
+        // Step 2: Set reason1 to reason
+        self.reason1 = reason;
+
+        // Step 3: If canceled2 is true
+        if (self.canceled2) {
+            // Create composite reason
+            const compositeReason = common.JSValue{ .string = "Both branches canceled" };
+
+            // Cancel source with composite reason
+            const cancelResult = self.source.cancelInternal(compositeReason) catch self.cancelPromise;
+
+            // Resolve cancelPromise with cancelResult
+            self.eventLoop.runMicrotasks();
+            if (cancelResult.isFulfilled()) {
+                self.cancelPromise.fulfill({});
+                cancelResult.deinit();
+            }
+        }
+
+        // Step 4: Return cancelPromise
+        return self.cancelPromise;
+    }
+
+    /// Cancel algorithm for branch 2
+    ///
+    /// Spec: § 4.10.5 step 15 "cancel2Algorithm"
+    pub fn cancel2Algorithm(self: *TeeState, reason: ?common.JSValue) *AsyncPromise(void) {
+        // Step 1: Set canceled2 to true
+        self.canceled2 = true;
+
+        // Step 2: Set reason2 to reason
+        self.reason2 = reason;
+
+        // Step 3: If canceled1 is true
+        if (self.canceled1) {
+            // Create composite reason
+            const compositeReason = common.JSValue{ .string = "Both branches canceled" };
+
+            // Cancel source with composite reason
+            const cancelResult = self.source.cancelInternal(compositeReason) catch self.cancelPromise;
+
+            // Resolve cancelPromise with cancelResult
+            self.eventLoop.runMicrotasks();
+            if (cancelResult.isFulfilled()) {
+                self.cancelPromise.fulfill({});
+                cancelResult.deinit();
+            }
+        }
+
+        // Step 4: Return cancelPromise
+        return self.cancelPromise;
     }
 };
 
