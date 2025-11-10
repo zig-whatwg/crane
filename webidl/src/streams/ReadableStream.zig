@@ -257,7 +257,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.2 "The locked getter steps are:"
     /// Returns true if the stream is locked to a reader.
-    pub fn locked(self: *const ReadableStream) bool {
+    pub fn call_locked(self: *const ReadableStream) bool {
         // Spec: § 4.1.2 "Return ! IsReadableStreamLocked(this)."
         return self.isLocked();
     }
@@ -268,7 +268,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.3 "The cancel(reason) method steps are:"
     /// Cancels the stream, signaling a loss of interest in the stream by a consumer.
-    pub fn cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+    pub fn call_cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
         if (self.isLocked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
