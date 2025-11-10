@@ -212,7 +212,7 @@ pub const WritableStream = struct {
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
     }
-    fn isLocked(self: *const WritableStream) bool {
+    pub fn isLocked(self: *const WritableStream) bool {
         return self.writer != .none;
     }
     /// WritableStreamAbort(stream, reason)

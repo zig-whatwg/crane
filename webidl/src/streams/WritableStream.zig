@@ -225,7 +225,7 @@ pub const WritableStream = webidl.interface(struct {
     // Internal Algorithms
     // ============================================================================
 
-    fn isLocked(self: *const WritableStream) bool {
+    pub fn isLocked(self: *const WritableStream) bool {
         return self.writer != .none;
     }
 
@@ -349,7 +349,7 @@ pub const WritableStream = webidl.interface(struct {
         return self.closeRequest != null or self.inFlightCloseRequest != null;
     }
 
-    fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
+    pub fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
         const writer = try self.allocator.create(WritableStreamDefaultWriter);
         errdefer self.allocator.destroy(writer);
 
