@@ -79,7 +79,7 @@ const PUB_CONST_EXTENDS_LEN = "pub const extends".len; // = 17
 const PTR_CONST_PREFIX_LEN = "*const ".len; // = 7
 const PTR_PREFIX_LEN = "*".len; // = 1
 const WEBIDL_INTERFACE_PREFIX_LEN = "webidl.interface(".len; // = 18
-const PUB_CONST_MIXINS_LEN = "pub const mixins".len; // = 16
+const PUB_CONST_INCLUDES_LEN = "pub const includes".len; // = 18
 
 /// Configuration for generated class method prefixes.
 ///
@@ -814,12 +814,14 @@ const GlobalRegistry = struct {
     allocator: std.mem.Allocator,
     files: std.StringHashMap(FileInfo),
     string_pool: std.StringHashMap(void), // Interned strings
+    mixins: std.StringHashMap(ClassInfo), // Map of mixin name -> ClassInfo
 
     fn init(allocator: std.mem.Allocator) GlobalRegistry {
         return .{
             .allocator = allocator,
             .files = std.StringHashMap(FileInfo).init(allocator),
             .string_pool = std.StringHashMap(void).init(allocator),
+            .mixins = std.StringHashMap(ClassInfo).init(allocator),
         };
     }
 
@@ -887,6 +889,9 @@ const GlobalRegistry = struct {
             self.allocator.free(pool_entry.key_ptr.*);
         }
         self.string_pool.deinit();
+
+        // Free mixins registry (mixin ClassInfo data is already freed from files)
+        self.mixins.deinit();
     }
 
     fn addClass(self: *GlobalRegistry, file_path: []const u8, class_info: ClassInfo) !void {
@@ -902,6 +907,16 @@ const GlobalRegistry = struct {
             }
         }
         return null;
+    }
+
+    /// Register a mixin in the global registry
+    fn addMixin(self: *GlobalRegistry, mixin_name: []const u8, mixin_info: ClassInfo) !void {
+        try self.mixins.put(mixin_name, mixin_info);
+    }
+
+    /// Get a mixin by name from the global registry
+    fn getMixin(self: *GlobalRegistry, mixin_name: []const u8) ?ClassInfo {
+        return self.mixins.get(mixin_name);
     }
 
     /// Build a map of class name -> list of descendant class names
@@ -1139,6 +1154,9 @@ fn scanFileForClasses(
             }
         };
 
+        // Determine if this is a mixin or interface
+        const is_mixin = if (mixin_start) |m| m == next_start else false;
+
         if (try parseClassDefinition(allocator, source, next_start)) |parsed| {
             defer {
                 var mutable = parsed;
@@ -1213,6 +1231,12 @@ fn scanFileForClasses(
                 .has_self_type = parsed.has_self_type,
             };
 
+            if (is_mixin) {
+                // Register this as a mixin in the global registry
+                try registry.addMixin(interned_name, class_info);
+            }
+
+            // Always add to classes list (mixins can also be processed as classes for generation)
             try classes.append(allocator, class_info);
             pos = parsed.source_end;
         } else {
@@ -1692,7 +1716,7 @@ fn parseClassDefinition(
         parent_name = std.mem.trim(u8, class_body[type_start..type_end], " \t\r\n");
     }
 
-    // Parse mixins: pub const mixins = .{ Mixin1, Mixin2 };
+    // Parse includes: pub const includes = .{ Mixin1, Mixin2 };
     var mixin_names: std.ArrayList([]const u8) = .empty;
     errdefer {
         for (mixin_names.items) |mixin| {
@@ -1701,14 +1725,14 @@ fn parseClassDefinition(
         mixin_names.deinit(allocator);
     }
 
-    if (std.mem.indexOf(u8, class_body, "pub const mixins")) |mixins_pos| {
-        if (std.mem.indexOfPos(u8, class_body, mixins_pos, "=")) |eq_pos| {
+    if (std.mem.indexOf(u8, class_body, "pub const includes")) |includes_pos| {
+        if (std.mem.indexOfPos(u8, class_body, includes_pos, "=")) |eq_pos| {
             if (std.mem.indexOfPos(u8, class_body, eq_pos, ".{")) |dot_brace| {
-                if (std.mem.indexOfPos(u8, class_body, dot_brace, "}")) |mixins_close| {
-                    const mixins_content = std.mem.trim(u8, class_body[dot_brace + 2 .. mixins_close], " \t\r\n");
+                if (std.mem.indexOfPos(u8, class_body, dot_brace, "}")) |includes_close| {
+                    const includes_content = std.mem.trim(u8, class_body[dot_brace + 2 .. includes_close], " \t\r\n");
 
                     // Parse comma-separated mixin names
-                    var it = std.mem.splitSequence(u8, mixins_content, ",");
+                    var it = std.mem.splitSequence(u8, includes_content, ",");
                     while (it.next()) |mixin_part| {
                         const mixin_name = std.mem.trim(u8, mixin_part, " \t\r\n");
                         if (mixin_name.len > 0) {
