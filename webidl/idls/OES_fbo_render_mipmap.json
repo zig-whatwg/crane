@@ -1,0 +1,1 @@
+{"definitions":[{"interface":{"name":"OES_fbo_render_mipmap","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[]}}]}

@@ -1,0 +1,1 @@
+{"definitions":[{"interface":{"name":"WEBGL_depth_texture","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"UNSIGNED_INT_24_8_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34042,"lexeme":"0x84FA"}}}]}}]}

@@ -1,0 +1,1 @@
+{"definitions":[{"interface":{"name":"HTMLIFrameElement","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"csp","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}}]}}]}

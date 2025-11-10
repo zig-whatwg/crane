@@ -1,0 +1,19 @@
+# Zig build artifacts
+.zig-cache/
+zig-out/
+zig-cache/
+
+# Backup files
+*.backup
+.git.backup/
+
+# Test artifacts
+test_arraylist*
+
+# OS files
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~

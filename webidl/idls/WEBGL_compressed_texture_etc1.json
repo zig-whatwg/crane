@@ -1,0 +1,1 @@
+{"definitions":[{"interface":{"name":"WEBGL_compressed_texture_etc1","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"COMPRESSED_RGB_ETC1_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36196,"lexeme":"0x8D64"}}}]}}]}

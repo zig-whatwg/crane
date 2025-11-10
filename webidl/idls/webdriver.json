@@ -1,0 +1,1 @@
+{"definitions":[{"interface_mixin":{"name":"NavigatorAutomationInformation","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"webdriver","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Navigator","mixin":"NavigatorAutomationInformation"}}]}

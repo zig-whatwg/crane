@@ -1,0 +1,144 @@
+//! Event interface per WHATWG DOM Standard
+//! Spec: https://dom.spec.whatwg.org/#interface-event
+
+const std = @import("std");
+const webidl = @import("webidl");
+const infra = @import("infra");
+
+const Allocator = std.mem.Allocator;
+
+/// Event WebIDL interface
+pub const Event = webidl.interface(struct {
+    allocator: Allocator,
+    event_type: []const u8,
+    target: ?*EventTarget,
+    current_target: ?*EventTarget,
+    event_phase: u16,
+    bubbles: bool,
+    cancelable: bool,
+    composed: bool,
+    stop_propagation_flag: bool,
+    stop_immediate_propagation_flag: bool,
+    canceled_flag: bool,
+    is_trusted: bool,
+    time_stamp: f64,
+
+    const EventTarget = @import("event_target").EventTarget;
+
+    pub const NONE: u16 = 0;
+    pub const CAPTURING_PHASE: u16 = 1;
+    pub const AT_TARGET: u16 = 2;
+    pub const BUBBLING_PHASE: u16 = 3;
+
+    /// Constructor: new Event(type, eventInitDict)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-event
+    pub fn init(allocator: Allocator, event_type: []const u8, options: ?EventInit) !Event {
+        const event_init = options orelse EventInit{};
+
+        return .{
+            .allocator = allocator,
+            .event_type = event_type,
+            .target = null,
+            .current_target = null,
+            .event_phase = NONE,
+            .bubbles = event_init.bubbles,
+            .cancelable = event_init.cancelable,
+            .composed = event_init.composed,
+            .stop_propagation_flag = false,
+            .stop_immediate_propagation_flag = false,
+            .canceled_flag = false,
+            .is_trusted = false,
+            .time_stamp = 0,
+        };
+    }
+
+    pub fn deinit(self: *Event) void {
+        _ = self;
+    }
+
+    /// stopPropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
+    pub fn call_stopPropagation(self: *Event) void {
+        self.stop_propagation_flag = true;
+    }
+
+    /// stopImmediatePropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
+    pub fn call_stopImmediatePropagation(self: *Event) void {
+        self.stop_propagation_flag = true;
+        self.stop_immediate_propagation_flag = true;
+    }
+
+    /// preventDefault()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
+    pub fn call_preventDefault(self: *Event) void {
+        if (self.cancelable) {
+            self.canceled_flag = true;
+        }
+    }
+
+    /// composedPath()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
+    pub fn call_composedPath(self: *Event) ![]EventTarget {
+        _ = self;
+        // Return the composed path
+        return &[_]EventTarget{};
+    }
+
+    /// initEvent(type, bubbles, cancelable)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
+    pub fn call_initEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        if (self.event_phase != NONE) return;
+
+        self.event_type = event_type;
+        self.bubbles = bubbles;
+        self.cancelable = cancelable;
+    }
+
+    /// Getters
+    pub fn get_type(self: *const Event) []const u8 {
+        return self.event_type;
+    }
+
+    pub fn get_target(self: *const Event) ?*EventTarget {
+        return self.target;
+    }
+
+    pub fn get_currentTarget(self: *const Event) ?*EventTarget {
+        return self.current_target;
+    }
+
+    pub fn get_eventPhase(self: *const Event) u16 {
+        return self.event_phase;
+    }
+
+    pub fn get_bubbles(self: *const Event) bool {
+        return self.bubbles;
+    }
+
+    pub fn get_cancelable(self: *const Event) bool {
+        return self.cancelable;
+    }
+
+    pub fn get_defaultPrevented(self: *const Event) bool {
+        return self.canceled_flag;
+    }
+
+    pub fn get_composed(self: *const Event) bool {
+        return self.composed;
+    }
+
+    pub fn get_isTrusted(self: *const Event) bool {
+        return self.is_trusted;
+    }
+
+    pub fn get_timeStamp(self: *const Event) f64 {
+        return self.time_stamp;
+    }
+});
+
+pub const EventInit = struct {
+    bubbles: bool = false,
+    cancelable: bool = false,
+    composed: bool = false,
+};

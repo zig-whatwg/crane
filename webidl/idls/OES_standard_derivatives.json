@@ -1,0 +1,1 @@
+{"definitions":[{"interface":{"name":"OES_standard_derivatives","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"FRAGMENT_SHADER_DERIVATIVE_HINT_OES","type":{"identifier":"GLenum"},"value":{"value":35723,"lexeme":"0x8B8B"}}}]}}]}

@@ -246,6 +246,18 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    // DOM interface module for Document (extends Node)
+    const document_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/generated/dom/document.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "node", .module = node_mod },
+            .{ .name = "element", .module = element_mod },
+        },
+    });
+
     // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, etc.)
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),
@@ -263,8 +275,13 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("text", text_mod);
     dom_mod.addImport("comment", comment_mod);
     dom_mod.addImport("document_fragment", document_fragment_mod);
+    dom_mod.addImport("document", document_mod);
     dom_mod.addImport("dom_token_list", dom_token_list_mod);
     dom_mod.addImport("attr", attr_mod);
+
+    // Handle circular dependencies by adding imports after all modules are created
+    element_mod.addImport("attr", attr_mod);
+    node_mod.addImport("document", document_mod);
 
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
