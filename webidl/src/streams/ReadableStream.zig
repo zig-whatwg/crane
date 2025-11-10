@@ -506,7 +506,38 @@ pub const ReadableStream = webidl.interface(struct {
         return switch (self.reader) {
             .none => 0,
             .default => |reader| reader.readRequests.items.len,
-            .byob => 0, // TODO: BYOB reader requests (Phase 7)
+            .byob => 0, // BYOB reader uses read-into requests, not read requests
+        };
+    }
+
+    /// Check if stream has a default reader
+    ///
+    /// Spec: § 4.1.4 "ReadableStreamHasDefaultReader(stream)"
+    pub fn hasDefaultReader(self: *const ReadableStream) bool {
+        return switch (self.reader) {
+            .default => true,
+            else => false,
+        };
+    }
+
+    /// Check if stream has a BYOB reader
+    ///
+    /// Spec: § 4.1.4 "ReadableStreamHasBYOBReader(stream)"
+    pub fn hasBYOBReader(self: *const ReadableStream) bool {
+        return switch (self.reader) {
+            .byob => true,
+            else => false,
+        };
+    }
+
+    /// Get number of pending read-into requests (BYOB)
+    ///
+    /// Spec: § 4.1.4 "ReadableStreamGetNumReadIntoRequests(stream)"
+    pub fn getNumReadIntoRequests(self: *const ReadableStream) usize {
+        return switch (self.reader) {
+            .none => 0,
+            .default => 0, // Default reader doesn't have read-into requests
+            .byob => |reader| reader.readIntoRequests.items.len,
         };
     }
 
@@ -535,7 +566,45 @@ pub const ReadableStream = webidl.interface(struct {
                     });
                 }
             },
-            .byob => {}, // TODO: BYOB reader fulfillment (Phase 7)
+            .byob => {}, // BYOB uses fulfillReadIntoRequest
+        }
+    }
+
+    /// ReadableStreamFulfillReadIntoRequest(stream, chunk, done)
+    ///
+    /// Spec: § 4.5.5 "Fulfill a pending read-into request (BYOB)"
+    pub fn fulfillReadIntoRequest(self: *ReadableStream, chunk: webidl.ArrayBufferView, done: bool) void {
+        switch (self.reader) {
+            .none => return, // No reader, nothing to fulfill
+            .default => return, // Default reader doesn't have read-into requests
+            .byob => |reader| {
+                // Remove the first read-into request
+                if (reader.readIntoRequests.items.len == 0) return;
+
+                const request = reader.readIntoRequests.orderedRemove(0);
+
+                // Execute the appropriate steps based on done flag
+                if (done) {
+                    const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+                    // Convert chunk to ReadIntoRequest ArrayBufferView
+                    const view = ReadIntoRequestModule.ArrayBufferView{
+                        .data = chunk.getViewedArrayBuffer().data,
+                        .offset = @intCast(chunk.getByteOffset()),
+                        .length = @intCast(chunk.getByteLength()),
+                    };
+                    request.executeCloseSteps();
+                    _ = view; // TODO: Should pass view to close steps with done=true
+                } else {
+                    const ReadIntoRequestModule = @import("../../src/streams/internal/read_into_request.zig");
+                    // Convert chunk to ReadIntoRequest ArrayBufferView
+                    const view = ReadIntoRequestModule.ArrayBufferView{
+                        .data = chunk.getViewedArrayBuffer().data,
+                        .offset = @intCast(chunk.getByteOffset()),
+                        .length = @intCast(chunk.getByteLength()),
+                    };
+                    request.executeChunkSteps(view);
+                }
+            },
         }
     }
 

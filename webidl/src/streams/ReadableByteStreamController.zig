@@ -659,16 +659,267 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
     ) !void {
+        // Step 1: Get stream
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 3: Determine done flag
+        var done = false;
+        if (stream.state == .closed) {
+            done = true;
+        }
+
         // Step 5: Convert descriptor to view
         const filled_view = try self.convertPullIntoDescriptor(pullIntoDescriptor);
 
         // Step 6-7: Fulfill based on reader type
         if (pullIntoDescriptor.reader_type == .default) {
-            // TODO: Fulfill read request with filled_view
-            _ = filled_view;
+            // Step 6: Fulfill read request
+            // TODO: Convert filled_view to JSValue properly
+            stream.fulfillReadRequest(common.JSValue{ .object = {} }, done);
         } else {
-            // TODO: Fulfill read-into request with filled_view
-            _ = filled_view;
+            // Step 7: Fulfill read-into request
+            stream.fulfillReadIntoRequest(filled_view, done);
         }
+    }
+
+    // ============================================================================
+    // Pull Coordination and Queue Processing (§ 4.10.11)
+    // ============================================================================
+
+    /// Check if pull should be called
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerShouldCallPull"
+    fn shouldCallPull(self: *const ReadableByteStreamController) bool {
+        // Step 1: Let stream be controller.[[stream]]
+        const stream_ptr = self.stream orelse return false;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *const ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 2: If stream.[[state]] is not "readable", return false
+        if (stream.state != .readable) {
+            return false;
+        }
+
+        // Step 3: If controller.[[closeRequested]] is true, return false
+        if (self.closeRequested) {
+            return false;
+        }
+
+        // Step 4: If controller.[[started]] is false, return false
+        if (!self.started) {
+            return false;
+        }
+
+        // Step 5: If has default reader and read requests > 0, return true
+        if (stream.hasDefaultReader() and stream.getNumReadRequests() > 0) {
+            return true;
+        }
+
+        // Step 6: If has BYOB reader and read-into requests > 0, return true
+        if (stream.hasBYOBReader() and stream.getNumReadIntoRequests() > 0) {
+            return true;
+        }
+
+        // Step 7-9: Check desired size
+        const desired_size = self.desiredSize();
+        if (desired_size) |size| {
+            if (size > 0) {
+                return true;
+            }
+        }
+
+        // Step 10: Return false
+        return false;
+    }
+
+    /// Call pull if needed
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerCallPullIfNeeded"
+    pub fn callPullIfNeeded(self: *ReadableByteStreamController) void {
+        // Step 1: Determine if pull should be called
+        const should_pull = self.shouldCallPull();
+
+        // Step 2: If not needed, return
+        if (!should_pull) {
+            return;
+        }
+
+        // Step 3: If already pulling, set pullAgain flag
+        if (self.pulling) {
+            self.pullAgain = true;
+            return;
+        }
+
+        // Step 5: Set pulling flag
+        self.pulling = true;
+
+        // Step 6: Call pull algorithm
+        const pull_result = self.pullAlgorithm.call();
+
+        // Step 7: On fulfillment
+        if (pull_result.isFulfilled()) {
+            self.pulling = false;
+
+            // Step 7.2: If pullAgain, call again
+            if (self.pullAgain) {
+                self.pullAgain = false;
+                self.callPullIfNeeded();
+            }
+        }
+
+        // Step 8: On rejection
+        if (pull_result.isRejected()) {
+            const error_value = pull_result.error_value orelse common.JSValue{ .string = "Pull failed" };
+            self.errorInternal(error_value);
+        }
+    }
+
+    /// Process pull-into descriptors using queue
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue"
+    fn processPullIntoDescriptorsUsingQueue(
+        self: *ReadableByteStreamController,
+    ) !std.ArrayList(*PullIntoDescriptor) {
+        // Step 2: Create result list
+        var filled_pull_intos = std.ArrayList(*PullIntoDescriptor).init(self.allocator);
+        errdefer filled_pull_intos.deinit();
+
+        // Step 3: Process pending pull-intos
+        while (self.pendingPullIntos.items.len > 0) {
+            // Step 3.1: If queue is empty, break
+            if (self.queueTotalSize == 0) {
+                break;
+            }
+
+            // Step 3.2: Get first descriptor
+            const pullIntoDescriptor = self.pendingPullIntos.items[0];
+
+            // Step 3.3: Try to fill from queue
+            if (self.fillPullIntoDescriptorFromQueue(pullIntoDescriptor)) {
+                // Step 3.3.1: Shift the descriptor
+                _ = self.shiftPendingPullInto();
+
+                // Step 3.3.2: Add to filled list
+                try filled_pull_intos.append(pullIntoDescriptor);
+            }
+        }
+
+        // Step 4: Return filled descriptors
+        return filled_pull_intos;
+    }
+
+    /// Handle queue drain (empty queue with close requested)
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerHandleQueueDrain"
+    pub fn handleQueueDrain(self: *ReadableByteStreamController) void {
+        // Step 2: If queue is empty and close requested, close the stream
+        if (self.queueTotalSize == 0.0 and self.closeRequested) {
+            self.clearAlgorithms();
+
+            const stream_ptr = self.stream orelse return;
+            const ReadableStreamModule = @import("ReadableStream");
+            const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+            stream.closeInternal();
+        } else {
+            // Step 3: Otherwise, call pull if needed
+            self.callPullIfNeeded();
+        }
+    }
+
+    /// Process all pending read requests using queue (for default readers)
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessReadRequestsUsingQueue"
+    pub fn processReadRequestsUsingQueue(self: *ReadableByteStreamController) !void {
+        // Step 1: Get stream
+        const stream_ptr = self.stream orelse return;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 3: Process all read requests
+        while (stream.getNumReadRequests() > 0) {
+            // Step 3.1: If queue is empty, return
+            if (self.queueTotalSize == 0) {
+                return;
+            }
+
+            // Step 3.4: Fill read request from queue
+            try self.fillReadRequestFromQueue();
+        }
+    }
+
+    /// Fill a read request from the queue (for default readers)
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerFillReadRequestFromQueue"
+    fn fillReadRequestFromQueue(self: *ReadableByteStreamController) !void {
+        // Step 2: Remove first queue entry
+        const entry = self.byteQueue.items[0];
+        _ = self.byteQueue.orderedRemove(0);
+
+        // Step 4: Update queue size
+        self.queueTotalSize -= @as(f64, @floatFromInt(entry.byteLength));
+
+        // Step 5: Handle queue drain
+        self.handleQueueDrain();
+
+        // Step 6: Create Uint8Array view
+        const view = try ViewConstruction.constructView(
+            .uint8_array,
+            entry.buffer,
+            entry.byteOffset,
+            entry.byteLength,
+        );
+
+        // Step 7: Fulfill the read request
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("ReadableStream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Convert view to JSValue
+        _ = view; // TODO: Properly convert ArrayBufferView to JSValue
+        const chunk_value = common.JSValue{ .bytes = entry.buffer.data };
+        stream.fulfillReadRequest(chunk_value, false);
+    }
+
+    /// Get BYOB request for this controller
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerGetBYOBRequest"
+    pub fn getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest {
+        // Step 1: If byobRequest is null and pendingPullIntos is not empty
+        if (self.byobRequest == null and self.pendingPullIntos.items.len > 0) {
+            const firstDescriptor = self.pendingPullIntos.items[0];
+
+            // Create Uint8Array view for the BYOB request
+            const view_byteOffset = firstDescriptor.byte_offset + firstDescriptor.bytes_filled;
+            const view_byteLength = firstDescriptor.byteLength - firstDescriptor.bytes_filled;
+
+            // Convert internal ArrayBuffer to webidl.ArrayBuffer
+            var webidl_buffer = webidl.ArrayBuffer{
+                .data = firstDescriptor.buffer.data,
+                .detached = firstDescriptor.buffer.detached,
+            };
+
+            const Uint8ArrayType = webidl.TypedArray(u8);
+            const uint8_view = try Uint8ArrayType.init(
+                &webidl_buffer,
+                view_byteOffset,
+                view_byteLength,
+            );
+            const view = webidl.ArrayBufferView{ .uint8_array = uint8_view };
+
+            // Create BYOB request
+            const byobRequest = try self.allocator.create(ReadableStreamBYOBRequest);
+            errdefer self.allocator.destroy(byobRequest);
+
+            // Initialize BYOB request (simplified - full implementation would call init method)
+            _ = view; // TODO: Initialize ReadableStreamBYOBRequest with view
+            byobRequest.* = undefined; // Placeholder
+
+            self.byobRequest = byobRequest;
+        }
+
+        // Step 2: Return the request
+        return self.byobRequest;
     }
 });
