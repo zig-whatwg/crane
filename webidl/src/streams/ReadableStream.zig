@@ -593,28 +593,41 @@ pub const ReadableStream = webidl.interface(struct {
 
     /// ReadableStreamCancel(stream, reason)
     ///
-    /// Spec: § 4.2.2 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
+    /// ReadableStreamCancel(stream, reason)
+    ///
+    /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
     fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
-        // Step 1: Set stream.[[disturbed]] to true.
+        // Spec step 1: Set stream.[[disturbed]] to true
         self.disturbed = true;
 
-        // Step 2: If stream.[[state]] is "closed", return a promise fulfilled with undefined.
+        // Spec step 2: If stream.[[state]] is "closed", return a promise fulfilled with undefined
         if (self.state == .closed) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.fulfill({});
             return promise;
         }
 
-        // Step 3: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
+        // Spec step 3: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]]
         if (self.state == .errored) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(self.storedError orelse common.JSValue.undefined_value());
             return promise;
         }
 
-        // Step 4-6: Perform cancel on controller
-        // For now, we delegate to controller's cancel algorithm
-        return self.controller.cancelInternal(reason);
+        // Spec step 4: Perform ! ReadableStreamClose(stream)
+        self.closeInternal();
+
+        // Spec step 5: Let reader be stream.[[reader]]
+        // Spec step 6: If reader is not undefined and reader implements ReadableStreamBYOBReader
+        // TODO: Handle BYOB reader readIntoRequests (Phase 7)
+        // For now, we only have default readers which are handled in closeInternal()
+
+        // Spec step 7: Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
+        const cancel_promise = try self.controller.cancelInternal(reason);
+
+        // Spec step 8: Return the result of reacting to sourceCancelPromise with a fulfillment step that returns undefined
+        // For simplicity, we return the promise directly (equivalent behavior)
+        return cancel_promise;
     }
 
     /// AcquireReadableStreamDefaultReader(stream)
@@ -745,14 +758,42 @@ pub const ReadableStream = webidl.interface(struct {
 
     /// ReadableStreamClose(stream)
     ///
-    /// Spec: § 4.2.6 "Close the stream"
+    /// Spec: § 4.2.6 "ReadableStreamClose(stream)"
+    ///
+    /// Close the stream and resolve any pending read requests.
     pub fn closeInternal(self: *ReadableStream) void {
-        // Step 1: Assert: stream.[[state]] is "readable".
-        // Step 2: Set stream.[[state]] to "closed".
+        // Spec step 1: Assert: stream.[[state]] is "readable"
+        std.debug.assert(self.state == .readable);
+
+        // Spec step 2: Set stream.[[state]] to "closed"
         self.state = .closed;
 
-        // Step 3-5: Resolve reader's closed promise
-        // (Full implementation would resolve reader's closed promise)
+        // Spec step 3: Let reader be stream.[[reader]]
+        // Spec step 4: If reader is undefined, return
+        switch (self.reader) {
+            .none => return,
+            .default => |reader| {
+                // Spec step 5: Resolve reader.[[closedPromise]] with undefined
+                reader.closedPromise.fulfill({});
+
+                // Spec step 6: If reader implements ReadableStreamDefaultReader
+                // Spec step 6.1: Let readRequests be reader.[[readRequests]]
+                // Spec step 6.2: Set reader.[[readRequests]] to an empty list
+                // Spec step 6.3: For each readRequest of readRequests, perform readRequest's close steps
+                while (reader.readRequests.items.len > 0) {
+                    const read_promise = reader.readRequests.orderedRemove(0);
+                    // Close steps: fulfill with { value: undefined, done: true }
+                    read_promise.fulfill(.{
+                        .value = null,
+                        .done = true,
+                    });
+                }
+            },
+            .byob => {
+                // TODO: BYOB reader close handling (Phase 7)
+                // This would handle readIntoRequests similar to default reader
+            },
+        }
     }
 
     /// ReadableStreamError(stream, e)
