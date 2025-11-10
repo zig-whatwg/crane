@@ -273,6 +273,28 @@ pub const AbortAlgorithm = struct {
     }
 };
 
+/// Flush algorithm - flushes the transform stream
+/// Spec: Abstract operation passed to SetUpTransformStreamDefaultController
+pub const FlushAlgorithm = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        call: *const fn (ctx: *anyopaque) Promise(void),
+        deinit: ?*const fn (ctx: *anyopaque) void,
+    };
+
+    pub fn call(self: FlushAlgorithm) Promise(void) {
+        return self.vtable.call(self.ptr);
+    }
+
+    pub fn deinit(self: FlushAlgorithm) void {
+        if (self.vtable.deinit) |deinit_fn| {
+            deinit_fn(self.ptr);
+        }
+    }
+};
+
 /// Default algorithms that do nothing (for streams without custom behavior)
 pub fn defaultPullAlgorithm() PullAlgorithm {
     const impl = struct {
@@ -367,6 +389,23 @@ pub fn defaultAbortAlgorithm() AbortAlgorithm {
         fn call(ctx: *anyopaque, reason: ?JSValue) Promise(void) {
             _ = ctx;
             _ = reason;
+            return Promise(void).fulfilled({});
+        }
+    };
+
+    return .{
+        .ptr = undefined,
+        .vtable = &.{
+            .call = impl.call,
+            .deinit = null,
+        },
+    };
+}
+
+pub fn defaultFlushAlgorithm() FlushAlgorithm {
+    const impl = struct {
+        fn call(ctx: *anyopaque) Promise(void) {
+            _ = ctx;
             return Promise(void).fulfilled({});
         }
     };

@@ -100,8 +100,8 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             .pullAgain = false,
             .pullAlgorithm = pullAlgorithm,
             .pulling = false,
-            .pendingPullIntos = std.ArrayList(*PullIntoDescriptor).init(allocator),
-            .byteQueue = std.ArrayList(ByteStreamQueueEntry).init(allocator),
+            .pendingPullIntos = .empty,
+            .byteQueue = .empty,
             .queueTotalSize = 0.0,
             .started = false,
             .strategyHwm = strategyHwm,
@@ -116,7 +116,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
-        self.byteQueue.deinit();
+        self.byteQueue.deinit(self.allocator);
 
         // Clean up pending pull-intos
         for (self.pendingPullIntos.items) |descriptor| {
@@ -124,7 +124,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
         }
-        self.pendingPullIntos.deinit();
+        self.pendingPullIntos.deinit(self.allocator);
 
         // Clean up BYOB request
         if (self.byobRequest) |req| {
@@ -596,7 +596,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             try self.enqueueChunkToQueue(buffer_ptr, byteOffset, byteLength);
 
             var filled_pull_intos = try self.processPullIntoDescriptorsUsingQueue();
-            defer filled_pull_intos.deinit();
+            defer filled_pull_intos.deinit(self.allocator);
 
             for (filled_pull_intos.items) |filled_pull_into| {
                 try self.commitPullIntoDescriptor(filled_pull_into);
@@ -963,8 +963,8 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         self: *ReadableByteStreamController,
     ) !std.ArrayList(*PullIntoDescriptor) {
         // Step 2: Create result list
-        var filled_pull_intos = std.ArrayList(*PullIntoDescriptor).init(self.allocator);
-        errdefer filled_pull_intos.deinit();
+        var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+        errdefer filled_pull_intos.deinit(self.allocator);
 
         // Step 3: Process pending pull-intos
         while (self.pendingPullIntos.items.len > 0) {
@@ -982,7 +982,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
                 _ = self.shiftPendingPullInto();
 
                 // Step 3.3.2: Add to filled list
-                try filled_pull_intos.append(pullIntoDescriptor);
+                try filled_pull_intos.append(self.allocator, pullIntoDescriptor);
             }
         }
 
@@ -1072,7 +1072,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
             // Create Uint8Array view for the BYOB request
             const view_byteOffset = firstDescriptor.byte_offset + firstDescriptor.bytes_filled;
-            const view_byteLength = firstDescriptor.byteLength - firstDescriptor.bytes_filled;
+            const view_byteLength = firstDescriptor.byte_length - firstDescriptor.bytes_filled;
 
             // Convert internal ArrayBuffer to webidl.ArrayBuffer
             var webidl_buffer = webidl.ArrayBuffer{

@@ -12,7 +12,7 @@ const common = @import("common");
 const dict_parsing = @import("dict_parsing");
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const TestEventLoop = @import("test_eventLoop").TestEventLoop;
+const TestEventLoop = @import("test_event_loop").TestEventLoop;
 
 // Import related types
 const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;

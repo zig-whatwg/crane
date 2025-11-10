@@ -205,7 +205,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         }
 
         // Return highWaterMark - queueTotalSize
-        return self.strategyHwm - self.queue.queueTotalSize;
+        return self.strategyHwm - self.queue.queue_total_size;
     }
 
     /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
