@@ -292,7 +292,7 @@ pub fn build(b: *std.Build) void {
 
     // Create interface modules with proper dependencies
     const text_encoder_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/text_encoder.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/TextEncoder.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
@@ -301,7 +301,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const text_encoder_result_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/TextEncoderEncodeIntoResult.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/TextEncoderEncodeIntoResult.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
@@ -310,7 +310,7 @@ pub fn build(b: *std.Build) void {
     text_encoder_mod.addImport("text_encoder_encode_into_result", text_encoder_result_mod);
 
     const text_decoder_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/TextDecoderOptions.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/TextDecoderOptions.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
@@ -318,7 +318,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const text_decode_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/TextDecodeOptions.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/TextDecodeOptions.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
@@ -326,7 +326,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const text_decoder_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/text_decoder.zig"),
+        .root_source_file = b.path("webidl/generated/encoding/TextDecoder.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },

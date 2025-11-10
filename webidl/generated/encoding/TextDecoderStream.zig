@@ -13,7 +13,7 @@ const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 
 // Import dictionaries
-const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+const TextDecoderOptions = @import("text_decoder_options").TextDecoderOptions;
 
 // Import streams
 const streams = @import("streams");

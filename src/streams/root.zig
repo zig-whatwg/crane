@@ -65,12 +65,14 @@ pub const ReadableByteStreamController = @import("readable_byte_stream_controlle
 
 // Stream classes (from interfaces/)
 pub const ReadableStream = @import("readable_stream").ReadableStream;
+// Note: ReadableStreamGenericReader is a mixin, not a public interface - used internally
 pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
 pub const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
 pub const ReadableStreamIterator = @import("readable_stream").ReadableStreamIterator;
 pub const WritableStream = @import("writable_stream").WritableStream;
 pub const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 pub const TransformStream = @import("transform_stream").TransformStream;
+// Note: GenericTransformStream is a mixin, not a public interface - used by other specs
 
 // Re-export commonly used types
 pub const QueueWithSizes = internal.QueueWithSizes;
@@ -96,9 +98,11 @@ test {
     std.testing.refAllDecls(ReadableStreamBYOBRequest);
     std.testing.refAllDecls(ReadableByteStreamController);
     std.testing.refAllDecls(ReadableStream);
+    // Note: ReadableStreamGenericReader is a mixin - tested via interfaces that use it
     std.testing.refAllDecls(ReadableStreamDefaultReader);
     std.testing.refAllDecls(ReadableStreamBYOBReader);
     std.testing.refAllDecls(WritableStream);
     std.testing.refAllDecls(WritableStreamDefaultWriter);
     std.testing.refAllDecls(TransformStream);
+    // Note: GenericTransformStream is a mixin - tested via interfaces that use it
 }

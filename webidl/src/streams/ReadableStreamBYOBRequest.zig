@@ -1,11 +1,48 @@
+//! ReadableStreamBYOBRequest class per WHATWG Streams Standard
+//!
+//! Spec: https://streams.spec.whatwg.org/#rs-byob-request-class
+//!
+//! Represents a request to fill a user-provided buffer.
+
 const std = @import("std");
 const webidl = @import("webidl");
+
 pub const ReadableStreamBYOBRequest = webidl.interface(struct {
     allocator: std.mem.Allocator,
+
+    /// [[controller]]: The parent controller
+    controller: ?*anyopaque,
+
+    /// [[view]]: The view to write into
+    view: ?webidl.JSValue,
+
     pub fn init(allocator: std.mem.Allocator) !ReadableStreamBYOBRequest {
-        return .{ .allocator = allocator };
+        return .{
+            .allocator = allocator,
+            .controller = null,
+            .view = null,
+        };
     }
-    pub fn deinit(self: *ReadableStreamBYOBRequest) void {
+
+    pub fn deinit(_: *ReadableStreamBYOBRequest) void {}
+
+    // ============================================================================
+    // WebIDL Interface Methods
+    // ============================================================================
+
+    pub fn viewAttr(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
+        return self.view;
+    }
+
+    pub fn respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
         _ = self;
+        _ = bytesWritten;
+        // Indicate bytes were written
+    }
+
+    pub fn respondWithNewView(self: *ReadableStreamBYOBRequest, view: ?webidl.JSValue) !void {
+        _ = self;
+        _ = view;
+        // Replace the view
     }
 });

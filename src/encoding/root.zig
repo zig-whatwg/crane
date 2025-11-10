@@ -103,3 +103,29 @@ pub const TextEncoderEncodeIntoResult = @import("text_encoder_encode_into_result
 pub const TextDecoder = @import("text_decoder").TextDecoder;
 pub const TextDecoderOptions = @import("text_decoder_options").TextDecoderOptions;
 pub const TextDecodeOptions = @import("text_decode_options").TextDecodeOptions;
+
+// Test generated interfaces with mixin composition
+test "generated TextDecoder mixin delegation" {
+    const allocator = std.testing.allocator;
+    
+    var decoder = try TextDecoder.init(allocator, "utf-8", .{
+        .fatal = true,
+        .ignoreBOM = false,
+    });
+    defer decoder.deinit();
+    
+    // Verify mixin fields are accessible through delegation
+    try std.testing.expectEqualStrings("utf-8", decoder.encoding());
+    try std.testing.expectEqual(true, decoder.getFatal());
+    try std.testing.expectEqual(false, decoder.getIgnoreBOM());
+}
+
+test "generated TextEncoder mixin delegation" {
+    const allocator = std.testing.allocator;
+    
+    var encoder = TextEncoder.init(allocator);
+    defer encoder.deinit();
+    
+    // Verify mixin field is accessible through delegation
+    try std.testing.expectEqualStrings("utf-8", encoder.encoding());
+}

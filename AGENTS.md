@@ -567,6 +567,91 @@ Root:
 
 ---
 
+## Temporary Files Policy
+
+**CRITICAL: All generated documentation and temporary files MUST go into `tmp/` directory.**
+
+### Rules for Temporary Files
+
+**Unless explicitly requested otherwise by the user:**
+
+1. **✅ All generated markdown files MUST go in `tmp/`**
+   - Analysis documents
+   - Summary reports
+   - Investigation notes
+   - Scratch documentation
+   - **Exception:** Only permanent documentation explicitly requested for project root
+
+2. **✅ All temporary scripts MUST go in `tmp/`**
+   - Test scripts
+   - Debug utilities
+   - One-off automation scripts
+   - Investigation helpers
+   - **Exception:** Only permanent tools explicitly requested for project structure
+
+3. **✅ `tmp/` directory MUST be gitignored**
+   - Verify `.gitignore` includes `/tmp/` 
+   - Create directory if it doesn't exist
+   - Never commit temporary files
+
+### Examples
+
+**❌ WRONG - Writing to project root:**
+```
+ENCODING_MIXIN_ANALYSIS.md          # ❌ Should be tmp/encoding_mixin_analysis.md
+INVESTIGATION_NOTES.md              # ❌ Should be tmp/investigation_notes.md
+/tmp/test_something.zig             # ❌ Wrong tmp location
+```
+
+**✅ CORRECT - Writing to tmp/:**
+```
+tmp/encoding_mixin_analysis.md      # ✅ Temporary analysis
+tmp/investigation_notes.md          # ✅ Temporary notes
+tmp/test_something.zig              # ✅ Temporary test script
+tmp/debug_helper.sh                 # ✅ Temporary shell script
+```
+
+**✅ CORRECT - Permanent files (when explicitly requested):**
+```
+WEBIDL_MIXIN_GUIDELINES.md          # ✅ Permanent reference (explicitly requested)
+CHANGELOG.md                         # ✅ Project documentation
+CONTRIBUTING.md                      # ✅ Project documentation
+```
+
+### When User Explicitly Requests Root Location
+
+**Only place files in project root when user explicitly says:**
+- "Create a permanent reference document in the root"
+- "Add this to the project documentation"
+- "This should be committed to the repo"
+
+**Otherwise, default to `tmp/` for all generated content.**
+
+### Workflow
+
+Before creating any markdown or script file:
+
+1. **Check if user explicitly requested permanent location**
+   - If yes → Create in requested location
+   - If no → Create in `tmp/`
+
+2. **Verify `tmp/` exists and is gitignored**
+   ```bash
+   mkdir -p tmp
+   grep -q "^/tmp/" .gitignore || echo "/tmp/" >> .gitignore
+   ```
+
+3. **Create file in appropriate location**
+
+### Why This Matters
+
+- **Keeps repository clean** - No clutter from investigation files
+- **Prevents accidental commits** - Temporary analysis doesn't get committed
+- **Clear separation** - Permanent vs temporary documentation
+- **User control** - User decides what becomes permanent
+
+---
+
 ## Zero Tolerance For
 
 - Memory leaks (test with `std.testing.allocator`)
@@ -579,6 +664,7 @@ Root:
 - **Missing spec references** (must cite WHATWG spec section)
 - **Incorrect cross-spec behavior** (dependencies must be handled correctly)
 - **Unmarked temporary mocks** (all mocks must have clear TODO markers)
+- **Generated files in project root** (must use `tmp/` unless explicitly requested otherwise)
 
 ---
 
@@ -626,14 +712,15 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 
 1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
 2. **Check bd for existing issues** - `bd ready --json` - See if work is already tracked
-3. **Identify context** - Which spec are you working on? (file path, imports)
-4. **Read the WHATWG spec** - Load complete spec from `specs/[spec-name].md`
-5. **Read the complete section** - Context matters, never rely on fragments
-6. **Check dependencies** - Use `monorepo_navigation` to find implementations
-7. **Load relevant skills** - Get specialized, context-aware guidance
-8. **Look at existing tests** - See patterns in similar specs
-9. **Check FEATURE_CATALOG.md** - See existing API patterns
-10. **Follow the Golden Rules** - Especially algorithm precision and dependency handling
+3. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
+4. **Identify context** - Which spec are you working on? (file path, imports)
+5. **Read the WHATWG spec** - Load complete spec from `specs/[spec-name].md`
+6. **Read the complete section** - Context matters, never rely on fragments
+7. **Check dependencies** - Use `monorepo_navigation` to find implementations
+8. **Load relevant skills** - Get specialized, context-aware guidance
+9. **Look at existing tests** - See patterns in similar specs
+10. **Check FEATURE_CATALOG.md** - See existing API patterns
+11. **Follow the Golden Rules** - Especially algorithm precision and dependency handling
 
 ---
 

@@ -919,7 +919,7 @@ const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 
 ### WebIDL Mixins
 
-**Interface mixins define reusable member bundles that can be included in multiple interfaces.**
+**Interface mixins define reusable member bundles that can be included in multiple interfaces using composition.**
 
 #### What are Mixins?
 
@@ -928,9 +928,9 @@ From WebIDL spec:
 
 Mixins are used to share common attributes and methods across multiple interfaces without inheritance.
 
-#### When to Use `webidl.mixin()`
+#### Critical Rule: Always Use `webidl.mixin()`
 
-Use `webidl.mixin()` when implementing an `interface mixin` from the WebIDL spec:
+**ALL mixin definitions MUST use `webidl.mixin()` wrapper:**
 
 ```zig
 // IDL:
@@ -940,11 +940,16 @@ Use `webidl.mixin()` when implementing an `interface mixin` from the WebIDL spec
 //   readonly attribute boolean ignoreBOM;
 // };
 
+// ✅ CORRECT: Use webidl.mixin()
 pub const TextDecoderCommon = webidl.mixin(struct {
     encoding: []const u8,
     fatal: webidl.boolean,
     ignoreBOM: webidl.boolean,
 });
+
+// ❌ WRONG: Don't use plain struct or webidl.interface()
+pub const TextDecoderCommon = struct { ... };  // ❌ Missing webidl.mixin()
+pub const TextDecoderCommon = webidl.interface(struct { ... });  // ❌ Wrong wrapper
 ```
 
 **Key differences from `webidl.interface()`:**
@@ -952,8 +957,11 @@ pub const TextDecoderCommon = webidl.mixin(struct {
 - Mixins **define shared members** that are included in other interfaces
 - Mixins **do not have constructors**
 - Mixins are **included** using the WebIDL `includes` statement
+- **MUST be wrapped with `webidl.mixin()`**
 
-#### Mixin Inclusion Pattern
+#### Mixin Composition Pattern (REQUIRED)
+
+**When an interface includes a mixin, use composition by embedding the mixin as a field:**
 
 ```zig
 // IDL:
@@ -963,19 +971,101 @@ pub const TextDecoderCommon = webidl.mixin(struct {
 // };
 // TextDecoder includes TextDecoderCommon;
 
+// ✅ CORRECT: Embed mixin as a field
 pub const TextDecoder = webidl.interface(struct {
-    // Include mixin fields directly
-    encoding: []const u8,       // From TextDecoderCommon
-    fatal: webidl.boolean,      // From TextDecoderCommon
-    ignoreBOM: webidl.boolean,  // From TextDecoderCommon
+    mixin: TextDecoderCommon,  // ✅ Embed mixin as field
     
-    // TextDecoder-specific fields
+    allocator: std.mem.Allocator,
+    enc: *const Encoding,
     doNotFlush: bool,
     bomSeen: bool,
-    // ...
+    // ... other interface-specific fields
     
-    pub fn init(...) !TextDecoder {
-        // Initialize all fields including mixin members
+    pub fn init(allocator: std.mem.Allocator, label: []const u8, options: TextDecoderOptions) !TextDecoder {
+        const enc = try getEncoding(label);
+        return .{
+            .mixin = .{  // ✅ Initialize mixin
+                .encoding = enc.name,
+                .fatal = options.fatal,
+                .ignoreBOM = options.ignoreBOM,
+            },
+            .allocator = allocator,
+            .enc = enc,
+            .doNotFlush = false,
+            .bomSeen = false,
+        };
+    }
+    
+    // ✅ Delegate getters to mixin
+    pub inline fn encoding(self: *const TextDecoder) []const u8 {
+        return self.mixin.encoding;
+    }
+    
+    pub inline fn getFatal(self: *const TextDecoder) webidl.boolean {
+        return self.mixin.fatal;
+    }
+    
+    pub inline fn getIgnoreBOM(self: *const TextDecoder) webidl.boolean {
+        return self.mixin.ignoreBOM;
+    }
+});
+```
+
+**❌ WRONG: Direct field duplication (DO NOT DO THIS):**
+```zig
+// ❌ Don't duplicate mixin fields directly in the interface
+pub const TextDecoder = webidl.interface(struct {
+    // ❌ These should be in a mixin field, not duplicated
+    encoding: []const u8,       
+    fatal: webidl.boolean,      
+    ignoreBOM: webidl.boolean,  
+    
+    allocator: std.mem.Allocator,
+    // ...
+});
+```
+
+#### Multiple Mixin Composition
+
+**When an interface includes multiple mixins, use descriptive field names:**
+
+```zig
+// IDL:
+// interface TextDecoderStream {
+//   constructor(...);
+// };
+// TextDecoderStream includes TextDecoderCommon;
+// TextDecoderStream includes GenericTransformStream;
+
+pub const TextDecoderStream = webidl.interface(struct {
+    decoderMixin: TextDecoderCommon,        // ✅ First mixin
+    transformMixin: GenericTransformStream, // ✅ Second mixin
+    
+    allocator: std.mem.Allocator,
+    // ... other fields
+    
+    pub fn init(...) !TextDecoderStream {
+        return .{
+            .decoderMixin = .{
+                .encoding = enc.name,
+                .fatal = options.fatal,
+                .ignoreBOM = options.ignoreBOM,
+            },
+            .transformMixin = .{
+                .transform = transform,
+            },
+            // ... other fields
+        };
+    }
+    
+    // Delegate to TextDecoderCommon mixin
+    pub inline fn encoding(self: *const TextDecoderStream) []const u8 {
+        return self.decoderMixin.encoding;
+    }
+    
+    // Delegate to GenericTransformStream mixin
+    pub inline fn readable(self: *const TextDecoderStream) *ReadableStream {
+        return self.transformMixin.readable();
     }
 });
 ```
@@ -989,11 +1079,30 @@ Mixin files follow the same PascalCase naming as interfaces:
 ✅ CORRECT: TextDecoderCommon.zig
 ```
 
-#### Common WebIDL Mixins
+#### Verifying Mixin Usage in Specs
+
+**When implementing an interface, ALWAYS check the spec for `includes` statements:**
+
+```
+// In specs/encoding.md:
+TextDecoder includes TextDecoderCommon;
+TextDecoderStream includes TextDecoderCommon;
+```
+
+**Steps to implement:**
+1. Find all `includes` statements for the interface in the spec
+2. Verify mixin definitions exist and use `webidl.mixin()`
+3. Embed each mixin as a field in the interface
+4. Delegate all mixin methods/getters to the mixin fields
+5. Never duplicate mixin fields directly in the interface
+
+#### Common WebIDL Mixins (Verified)
 
 From the WHATWG specs:
-- **TextDecoderCommon**: Shared by `TextDecoder` and `TextDecoderStream`
-- **TextEncoderCommon**: Shared by `TextEncoder` and `TextEncoderStream`
+- **TextDecoderCommon** (`webidl/src/encoding/TextDecoderCommon.zig`): Shared by `TextDecoder` and `TextDecoderStream` ✅
+- **TextEncoderCommon** (`webidl/src/encoding/TextEncoderCommon.zig`): Shared by `TextEncoder` and `TextEncoderStream` ✅
+- **GenericTransformStream** (`webidl/src/streams/GenericTransformStream.zig`): Shared by transform stream classes ✅
+- **ReadableStreamGenericReader** (`webidl/src/streams/ReadableStreamGenericReader.zig`): Shared by reader classes ✅
 - **WindowOrWorkerGlobalScope**: Shared by `Window` and `WorkerGlobalScope`
 - **Body**: Shared by `Request` and `Response` (Fetch API)
 
@@ -1001,7 +1110,9 @@ From the WHATWG specs:
 
 **Mixin Definition (`TextEncoderCommon.zig`):**
 ```zig
-pub const TextEncoderCommon = webidl.mixin(struct {
+const webidl = @import("webidl");
+
+pub const TextEncoderCommon = webidl.mixin(struct {  // ✅ MUST use webidl.mixin()
     /// The encoding name (always "utf-8")
     encoding: []const u8,
 });
@@ -1009,21 +1120,29 @@ pub const TextEncoderCommon = webidl.mixin(struct {
 
 **Interface Including Mixin (`TextEncoder.zig`):**
 ```zig
+const webidl = @import("webidl");
+const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
+
 pub const TextEncoder = webidl.interface(struct {
-    allocator: Allocator,
+    mixin: TextEncoderCommon,  // ✅ Embed mixin as field
+    allocator: std.mem.Allocator,
     
-    // Include mixin member
-    encoding: []const u8,  // From TextEncoderCommon
-    
-    pub fn init(allocator: Allocator) TextEncoder {
+    pub fn init(allocator: std.mem.Allocator) TextEncoder {
         return .{
+            .mixin = .{  // ✅ Initialize mixin
+                .encoding = "utf-8",
+            },
             .allocator = allocator,
-            .encoding = "utf-8",  // Initialize mixin member
         };
     }
     
     pub fn deinit(self: *TextEncoder) void {
         _ = self;
+    }
+    
+    // ✅ Delegate getter to mixin
+    pub inline fn encoding(self: *const TextEncoder) []const u8 {
+        return self.mixin.encoding;
     }
     
     pub fn encode(self: *TextEncoder, input: []const u8) ![]const u8 {
@@ -1032,20 +1151,34 @@ pub const TextEncoder = webidl.interface(struct {
 });
 ```
 
-**Key Points:**
-1. Mixin members are **copied** into the including interface
-2. The including interface **must initialize** all mixin members
-3. Mixins provide **compile-time member reuse**, not runtime inheritance
-4. Use `webidl.mixin()` for IDL `interface mixin`, `webidl.interface()` for IDL `interface`
+#### Key Principles for Mixin Implementation
+
+**✅ DO:**
+1. **Always use `webidl.mixin()`** for mixin definitions
+2. **Embed mixins as fields** in interfaces that include them
+3. **Use descriptive field names** for multiple mixins (`decoderMixin`, `transformMixin`)
+4. **Delegate all getters** from interface to mixin fields
+5. **Initialize mixin fields** in constructor
+6. **Check spec for `includes` statements** to find all required mixins
+7. **Never duplicate mixin fields** directly in the interface struct
+
+**❌ DON'T:**
+1. Don't use plain `struct` for mixins (must use `webidl.mixin()`)
+2. Don't use `webidl.interface()` for mixins (wrong wrapper)
+3. Don't duplicate mixin fields directly in interface
+4. Don't skip delegation - always delegate to mixin
+5. Don't use generic names like `mixin1`, `mixin2` for multiple mixins
+6. Don't bypass mixin fields with direct access
 
 ### Checklist for WebIDL Interfaces and Mixins
 
 When creating or modifying WebIDL interfaces or mixins:
 
+**General Requirements:**
 - [ ] **Identify the WebIDL type**:
   - [ ] Use `webidl.interface()` for IDL `interface` definitions
   - [ ] Use `webidl.namespace()` for IDL `namespace` definitions
-  - [ ] Use `webidl.mixin()` for IDL `interface mixin` definitions
+  - [ ] Use `webidl.mixin()` for IDL `interface mixin` definitions (REQUIRED)
 - [ ] **File named in PascalCase** (e.g., `TextDecoder.zig`, not `text_decoder.zig`)
 - [ ] **All attributes use camelCase** (e.g., `encodingName`, not `encoding_name`)
 - [ ] **All methods use camelCase without prefixes** (e.g., `decode()`, not `call_decode()`)
@@ -1054,8 +1187,21 @@ When creating or modifying WebIDL interfaces or mixins:
 - [ ] **Import statements use PascalCase filenames**
 - [ ] **Tests updated to use camelCase method names**
 - [ ] **Documentation uses correct naming**
-- [ ] **For mixins**: Include mixin members in implementing interfaces
-- [ ] **For mixins**: Do not add constructors or instance methods to mixin definitions
+
+**For Mixin Definitions:**
+- [ ] **MUST use `webidl.mixin()` wrapper** (not plain struct or webidl.interface)
+- [ ] **Define only shared attributes** (no constructors, no instance-specific fields)
+- [ ] **Use camelCase for mixin fields**
+- [ ] **Document which interfaces include this mixin**
+
+**For Interfaces Including Mixins:**
+- [ ] **Check spec for ALL `includes` statements** for this interface
+- [ ] **Embed each mixin as a field** (e.g., `mixin: TextDecoderCommon`)
+- [ ] **Use descriptive field names** for multiple mixins (e.g., `decoderMixin`, `transformMixin`)
+- [ ] **Initialize mixin fields in constructor**
+- [ ] **Add delegation methods** for all mixin getters (e.g., `pub inline fn encoding(self) { return self.mixin.encoding; }`)
+- [ ] **Never duplicate mixin fields** directly in the interface struct
+- [ ] **Update all internal references** to use `self.mixin.field` instead of `self.field`
 
 ---
 

@@ -17,3 +17,6 @@ test_arraylist*
 *.swp
 *.swo
 *~
+
+# Temporary files (agent-generated docs, scripts, analysis)
+/tmp/

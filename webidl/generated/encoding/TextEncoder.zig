@@ -122,9 +122,9 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 // Import dictionary
-const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
+const TextEncoderEncodeIntoResult = @import("text_encoder_encode_into_result").TextEncoderEncodeIntoResult;
 
-// Import mixin
+// Import mixin - file import since it's not a separate module
 const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 
 /// TextEncoder - encodes strings to UTF-8 bytes
