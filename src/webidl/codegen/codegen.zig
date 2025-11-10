@@ -472,6 +472,27 @@ const ParsedClass = struct {
     }
 };
 
+/// WebIDL exposure scope for [Exposed] attribute
+const ExposureScope = enum {
+    all, // [Exposed=*]
+    Window,
+    Worker,
+    DedicatedWorker,
+    SharedWorker,
+    ServiceWorker,
+};
+
+/// WebIDL extended attributes (parsed from interface options)
+const WebIDLOptions = struct {
+    exposed: ?[]ExposureScope = null,
+    transferable: bool = false,
+    serializable: bool = false,
+    secure_context: bool = false,
+    cross_origin_isolated: bool = false,
+    // Legacy attributes (not commonly used, so we'll parse them later if needed)
+    // global, legacy_factory_function, etc.
+};
+
 const ClassInfo = struct {
     name: []const u8,
     parent_name: ?[]const u8,
@@ -483,6 +504,16 @@ const ClassInfo = struct {
     source_end: usize,
     file_path: []const u8,
     has_self_type: bool = false,
+
+    // WebIDL extended attributes
+    webidl_options: WebIDLOptions = .{},
+    class_kind: ClassKind = .interface, // interface, namespace, or mixin
+};
+
+const ClassKind = enum {
+    interface,
+    namespace,
+    mixin,
 };
 
 const FileInfo = struct {
@@ -830,6 +861,11 @@ const GlobalRegistry = struct {
                     }
                 }
                 self.allocator.free(class_info.properties);
+
+                // Free WebIDL options (exposed scopes)
+                if (class_info.webidl_options.exposed) |exposed| {
+                    self.allocator.free(exposed);
+                }
             }
             entry.value_ptr.classes.deinit(self.allocator);
             self.allocator.free(entry.value_ptr.source_content);
@@ -1184,6 +1220,12 @@ fn scanFileForClasses(
                 };
             }
 
+            // Deep copy WebIDL options (exposed scopes need duplication)
+            var webidl_options_copy = parsed.webidl_options;
+            if (parsed.webidl_options.exposed) |exposed| {
+                webidl_options_copy.exposed = try allocator.dupe(ExposureScope, exposed);
+            }
+
             const class_info = ClassInfo{
                 .name = interned_name,
                 .parent_name = interned_parent,
@@ -1195,6 +1237,8 @@ fn scanFileForClasses(
                 .source_end = parsed.source_end,
                 .file_path = file_path,
                 .has_self_type = parsed.has_self_type,
+                .webidl_options = webidl_options_copy,
+                .class_kind = parsed.class_kind,
             };
 
             if (is_mixin) {
@@ -1630,6 +1674,84 @@ fn extractFileDocComment(source: []const u8, allocator: std.mem.Allocator) !?[]c
     return try result.toOwnedSlice(allocator);
 }
 
+/// Parse WebIDL extended attributes from options block (}, .{ ... });
+fn parseWebIDLOptions(allocator: std.mem.Allocator, options_area: []const u8) !WebIDLOptions {
+    var result = WebIDLOptions{};
+
+    // Look for }, .{ pattern
+    const options_start_pattern = std.mem.indexOf(u8, options_area, "}, .{") orelse return result;
+    const options_start = options_start_pattern + 5; // Skip "}, .{"
+    const options_end = std.mem.indexOf(u8, options_area[options_start..], "})") orelse return result;
+    const options_content = std.mem.trim(u8, options_area[options_start .. options_start + options_end], " \t\r\n");
+
+    if (options_content.len == 0) return result;
+
+    // Parse .exposed = &.{.all} or .exposed = &.{.Window}
+    if (std.mem.indexOf(u8, options_content, ".exposed")) |exposed_pos| {
+        if (std.mem.indexOfPos(u8, options_content, exposed_pos, "&.{")) |amp_start| {
+            if (std.mem.indexOfPos(u8, options_content, amp_start, "}")) |scope_end| {
+                const scopes_text = options_content[amp_start + 3 .. scope_end];
+
+                // Parse exposure scopes
+                var scopes: std.ArrayList(ExposureScope) = .empty;
+                defer scopes.deinit(allocator);
+
+                var scope_it = std.mem.splitSequence(u8, scopes_text, ",");
+                while (scope_it.next()) |scope_part| {
+                    const trimmed = std.mem.trim(u8, scope_part, " \t\r\n.");
+                    if (std.mem.eql(u8, trimmed, "all")) {
+                        try scopes.append(allocator, .all);
+                    } else if (std.mem.eql(u8, trimmed, "Window")) {
+                        try scopes.append(allocator, .Window);
+                    } else if (std.mem.eql(u8, trimmed, "Worker")) {
+                        try scopes.append(allocator, .Worker);
+                    } else if (std.mem.eql(u8, trimmed, "DedicatedWorker")) {
+                        try scopes.append(allocator, .DedicatedWorker);
+                    } else if (std.mem.eql(u8, trimmed, "SharedWorker")) {
+                        try scopes.append(allocator, .SharedWorker);
+                    } else if (std.mem.eql(u8, trimmed, "ServiceWorker")) {
+                        try scopes.append(allocator, .ServiceWorker);
+                    }
+                }
+
+                if (scopes.items.len > 0) {
+                    result.exposed = try scopes.toOwnedSlice(allocator);
+                }
+            }
+        }
+    }
+
+    // Parse .transferable = true
+    if (std.mem.indexOf(u8, options_content, ".transferable")) |trans_pos| {
+        if (std.mem.indexOfPos(u8, options_content, trans_pos, "true")) |_| {
+            result.transferable = true;
+        }
+    }
+
+    // Parse .serializable = true
+    if (std.mem.indexOf(u8, options_content, ".serializable")) |ser_pos| {
+        if (std.mem.indexOfPos(u8, options_content, ser_pos, "true")) |_| {
+            result.serializable = true;
+        }
+    }
+
+    // Parse .secure_context = true
+    if (std.mem.indexOf(u8, options_content, ".secure_context")) |sec_pos| {
+        if (std.mem.indexOfPos(u8, options_content, sec_pos, "true")) |_| {
+            result.secure_context = true;
+        }
+    }
+
+    // Parse .cross_origin_isolated = true
+    if (std.mem.indexOf(u8, options_content, ".cross_origin_isolated")) |cross_pos| {
+        if (std.mem.indexOfPos(u8, options_content, cross_pos, "true")) |_| {
+            result.cross_origin_isolated = true;
+        }
+    }
+
+    return result;
+}
+
 /// Parse a single class definition starting at the given position
 fn parseClassDefinition(
     allocator: std.mem.Allocator,
@@ -1647,8 +1769,14 @@ fn parseClassDefinition(
     allocator: std.mem.Allocator,
     class_doc: ?[]const u8,
     has_self_type: bool,
+    webidl_options: WebIDLOptions,
+    class_kind: ClassKind,
 
     fn deinit(self: *@This()) void {
+        // Free exposure scopes if allocated
+        if (self.webidl_options.exposed) |scopes| {
+            self.allocator.free(scopes);
+        }
         for (self.mixin_names) |mixin| {
             self.allocator.free(mixin);
         }
@@ -1692,6 +1820,22 @@ fn parseClassDefinition(
     const closing_paren = std.mem.indexOfPos(u8, source, close_brace, ");") orelse return null;
 
     const class_body = source[open_brace + 1 .. close_brace];
+
+    // Determine class kind (interface, namespace, or mixin)
+    // start_pos points to where we found "webidl.interface(" or "webidl.namespace(" or "webidl.mixin("
+    const class_kind: ClassKind = blk: {
+        // Check what's at start_pos
+        if (std.mem.startsWith(u8, source[start_pos..], "webidl.mixin(")) {
+            break :blk .mixin;
+        } else if (std.mem.startsWith(u8, source[start_pos..], "webidl.namespace(")) {
+            break :blk .namespace;
+        } else {
+            break :blk .interface;
+        }
+    };
+
+    // Parse WebIDL options from }, .{ ... }); pattern
+    const webidl_options = try parseWebIDLOptions(allocator, source[close_brace .. closing_paren + 2]);
 
     var name_start = std.mem.lastIndexOfScalar(u8, source[0..start_pos], '\n') orelse 0;
     if (name_start > 0) name_start += 1;
@@ -1797,6 +1941,8 @@ fn parseClassDefinition(
         .allocator = allocator,
         .class_doc = class_doc,
         .has_self_type = has_self_type,
+        .webidl_options = webidl_options,
+        .class_kind = class_kind,
     };
 }
 
@@ -3735,6 +3881,50 @@ fn generateEnhancedClassWithRegistry(
             }
         }
     }
+
+    // ============================================================================
+    // WebIDL Metadata
+    // ============================================================================
+
+    try writer.writeAll("\n    // WebIDL extended attributes metadata\n");
+    try writer.writeAll("    pub const __webidl__ = .{\n");
+    try writer.print("        .name = \"{s}\",\n", .{parsed.name});
+
+    // Emit class kind
+    const kind_str = switch (parsed.class_kind) {
+        .interface => "interface",
+        .namespace => "namespace",
+        .mixin => "mixin",
+    };
+    try writer.print("        .kind = .{s},\n", .{kind_str});
+
+    // Emit exposed scopes
+    if (parsed.webidl_options.exposed) |exposed_scopes| {
+        try writer.writeAll("        .exposed = &.{");
+        for (exposed_scopes, 0..) |scope, i| {
+            if (i > 0) try writer.writeAll(", ");
+            const scope_str = switch (scope) {
+                .all => ".all",
+                .Window => ".Window",
+                .Worker => ".Worker",
+                .DedicatedWorker => ".DedicatedWorker",
+                .SharedWorker => ".SharedWorker",
+                .ServiceWorker => ".ServiceWorker",
+            };
+            try writer.writeAll(scope_str);
+        }
+        try writer.writeAll("},\n");
+    } else {
+        try writer.writeAll("        .exposed = null,\n");
+    }
+
+    // Emit boolean attributes
+    try writer.print("        .transferable = {},\n", .{parsed.webidl_options.transferable});
+    try writer.print("        .serializable = {},\n", .{parsed.webidl_options.serializable});
+    try writer.print("        .secure_context = {},\n", .{parsed.webidl_options.secure_context});
+    try writer.print("        .cross_origin_isolated = {},\n", .{parsed.webidl_options.cross_origin_isolated});
+
+    try writer.writeAll("    };\n");
 
     try writer.writeAll("};\n");
 

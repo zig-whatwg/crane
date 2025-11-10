@@ -86,5 +86,16 @@ pub const TextDecoderCommon = struct {
     pub fn deinit(self: *TextDecoderCommon) void {
         self.allocator.free(self.encoding);
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TextDecoderCommon",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

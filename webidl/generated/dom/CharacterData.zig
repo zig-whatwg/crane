@@ -43,5 +43,16 @@ pub const CharacterData = struct {
     pub fn get_length(self: *const CharacterData) usize {
         return self.data.len;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "CharacterData",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

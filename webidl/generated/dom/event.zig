@@ -131,6 +131,17 @@ pub const Event = struct {
     pub fn get_timeStamp(self: *const Event) f64 {
         return self.time_stamp;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "Event",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 
 

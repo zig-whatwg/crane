@@ -55,5 +55,16 @@ pub const DOMTokenList = struct {
     pub fn get_length(self: *const DOMTokenList) u32 {
         return @intCast(self.tokens.items.len);
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "DOMTokenList",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

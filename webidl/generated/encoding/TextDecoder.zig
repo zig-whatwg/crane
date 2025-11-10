@@ -592,5 +592,16 @@ pub const TextDecoder = struct {
 
         return utf8_output;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TextDecoder",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

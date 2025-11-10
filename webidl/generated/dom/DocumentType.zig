@@ -37,5 +37,16 @@ pub const DocumentType = struct {
     pub fn get_name(self: *const DocumentType) []const u8 {
         return self.name;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "DocumentType",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

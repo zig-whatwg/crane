@@ -92,5 +92,16 @@ pub const TransformStream = struct {
     pub fn get_writable(self: *const TransformStream) *WritableStream {
         return self.writableStream;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TransformStream",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = true,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

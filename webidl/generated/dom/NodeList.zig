@@ -41,5 +41,16 @@ pub const NodeList = struct {
     pub fn get_length(self: *const NodeList) u32 {
         return @intCast(self.nodes.items.len);
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "NodeList",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

@@ -102,5 +102,16 @@ pub const WritableStreamDefaultController = struct {
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
         return self.strategyHwm - self.queue.queue_total_size;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "WritableStreamDefaultController",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

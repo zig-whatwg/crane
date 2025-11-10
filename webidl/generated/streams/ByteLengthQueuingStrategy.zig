@@ -39,5 +39,16 @@ pub const ByteLengthQueuingStrategy = struct {
         // Should return chunk.byteLength, but simplified for now
         return 1.0;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ByteLengthQueuingStrategy",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

@@ -41,6 +41,17 @@ const WritableStream = @import("writable_stream").WritableStream;
 /// Usage pattern (in another spec):
 /// ```zig
 pub const CompressionStream = struct {
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "CompressionStream",
+        .kind = .interface,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 
 /// GenericTransformStream mixin
@@ -100,5 +111,16 @@ pub const GenericTransformStream = struct {
     pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
         return self.transform.writableStream;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "GenericTransformStream",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

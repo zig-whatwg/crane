@@ -38,5 +38,16 @@ pub const CountQueuingStrategy = struct {
         // Always returns 1 for count-based strategy
         return 1.0;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "CountQueuingStrategy",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

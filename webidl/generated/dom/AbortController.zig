@@ -39,5 +39,16 @@ pub const AbortController = struct {
     pub fn get_signal(self: *const AbortController) *const AbortSignal {
         return &self.signal;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "AbortController",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

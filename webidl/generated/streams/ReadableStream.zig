@@ -629,6 +629,17 @@ pub const ReadableStream = struct {
     /// 
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
     fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !struct { branch1: *ReadableStream, branch2: *ReadableStream }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableStream",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = true,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 
 

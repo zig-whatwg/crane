@@ -250,6 +250,17 @@ pub const WritableStream = struct {
         self.state = .errored;
         self.storedError = e;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "WritableStream",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = true,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 
 

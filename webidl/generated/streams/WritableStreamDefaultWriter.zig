@@ -157,5 +157,16 @@ pub const WritableStreamDefaultWriter = struct {
             self.stream = null;
         }
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "WritableStreamDefaultWriter",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

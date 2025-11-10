@@ -51,5 +51,16 @@ pub const Document = struct {
         text.* = try Text.init(self.allocator);
         return text;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "Document",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

@@ -36,5 +36,16 @@ pub const Attr = struct {
         self.allocator.free(self.name);
         self.allocator.free(self.value);
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "Attr",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

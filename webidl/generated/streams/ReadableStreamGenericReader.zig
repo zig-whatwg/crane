@@ -146,5 +146,16 @@ pub const ReadableStreamGenericReader = struct {
         // Step 8: Set reader.[[stream]] to undefined.
         self.stream = null;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableStreamGenericReader",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

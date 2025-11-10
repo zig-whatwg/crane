@@ -65,5 +65,16 @@ pub const TextEncoderCommon = struct {
     pub fn deinit(self: *TextEncoderCommon) void {
         self.allocator.free(self.encoding);
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TextEncoderCommon",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

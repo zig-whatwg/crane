@@ -61,5 +61,16 @@ pub const TransformStreamDefaultController = struct {
         _ = error_value;
         // Error both sides of the transform stream
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TransformStreamDefaultController",
+        .kind = .interface,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

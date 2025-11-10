@@ -95,5 +95,16 @@ pub const Element = struct {
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
         return self.namespace_uri;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "Element",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

@@ -1044,5 +1044,16 @@ pub const ReadableByteStreamController = struct {
         // Step 2: Return the request
         return self.byobRequest;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableByteStreamController",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

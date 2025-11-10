@@ -476,5 +476,16 @@ pub const ReadableStreamDefaultController = struct {
         // For default controller, release steps are a no-op
         _ = self;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableStreamDefaultController",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

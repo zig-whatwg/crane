@@ -31,5 +31,16 @@ pub const Text = struct {
     pub fn deinit(self: *Text) void {
         self.character_data.deinit();
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "Text",
+        .kind = .interface,
+        .exposed = &.{.Window},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 

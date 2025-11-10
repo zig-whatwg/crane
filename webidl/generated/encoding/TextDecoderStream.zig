@@ -192,5 +192,16 @@ pub const TextDecoderStream = struct {
         // 3. Handle fatal errors
         _ = controller;
     }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "TextDecoderStream",
+        .kind = .interface,
+        .exposed = &.{.all},
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
 };
 
