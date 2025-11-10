@@ -1,1 +1,40 @@
-{"definitions":[{"namespace":{"name":"TestUtils","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"gc","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "namespace": {
+        "name": "TestUtils",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "gc",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

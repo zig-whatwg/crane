@@ -1,1 +1,52 @@
-{"definitions":[{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestStorageAccessFor","return_type":{"promise":"undefined"},"arguments":[{"name":"requestedOrigin","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"TopLevelStorageAccessPermissionDescriptor","inherits":"PermissionDescriptor","partial":false,"extended_attributes":[],"members":[{"name":"requestedOrigin","type":"USVString","required":false,"default_value":"","extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestStorageAccessFor",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "requestedOrigin",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TopLevelStorageAccessPermissionDescriptor",
+        "inherits": "PermissionDescriptor",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "requestedOrigin",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,536 @@
-{"definitions":[{"interface":{"name":"HTMLFencedFrameElement","inherits":"HTMLElement","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[],"extended_attributes":[{"name":"HTMLConstructor","value":null}]}},{"attribute":{"name":"config","type":{"nullable":{"identifier":"FencedFrameConfig"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}},{"attribute":{"name":"width","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}},{"attribute":{"name":"height","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}},{"attribute":{"name":"sandbox","type":{"identifier":"DOMTokenList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null},{"name":"PutForwards","value":{"identifier":"value"}}]}},{"attribute":{"name":"allow","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}}]}},{"enum":{"name":"OpaqueProperty","values":["opaque"],"extended_attributes":[]}},{"interface":{"name":"FencedFrameConfig","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"Serializable","value":null}],"members":[{"constructor":{"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"setSharedStorageContext","return_type":"undefined","arguments":[{"name":"contextString","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"typedef":{"name":"UrnOrConfig","type":{"union":["USVString",{"identifier":"FencedFrameConfig"}]},"extended_attributes":[]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"deprecatedReplaceInURN","return_type":{"promise":"undefined"},"arguments":[{"name":"urnOrConfig","type":{"identifier":"UrnOrConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"replacements","type":{"record":{"key":"USVString","value":"USVString"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deprecatedURNtoURL","return_type":{"promise":"USVString"},"arguments":[{"name":"urnOrConfig","type":{"identifier":"UrnOrConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"send_reports","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"adAuctionComponents","return_type":{"sequence":"USVString"},"arguments":[{"name":"numAdComponents","type":"unsigned short","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"FenceReportingDestination","values":["buyer","seller","component-seller","direct-seller","shared-storage-select-url"],"extended_attributes":[]}},{"dictionary":{"name":"FenceEvent","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"eventType","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"eventData","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"destination","type":{"sequence":{"identifier":"FenceReportingDestination"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"crossOriginExposed","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"once","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"destinationURL","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"ReportEventType","type":{"union":[{"identifier":"FenceEvent"},"DOMString"]},"extended_attributes":[]}},{"interface":{"name":"Fence","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"reportEvent","return_type":"undefined","arguments":[{"name":"event","type":{"identifier":"ReportEventType"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setReportEventDataForAutomaticBeacons","return_type":"undefined","arguments":[{"name":"event","type":{"identifier":"FenceEvent"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getNestedConfigs","return_type":{"sequence":{"identifier":"FencedFrameConfig"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"disableUntrustedNetwork","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"notifyEvent","return_type":"undefined","arguments":[{"name":"event","type":{"identifier":"Event"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"Window","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"fence","type":{"nullable":{"identifier":"Fence"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"GlobalEventHandlers","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"onfencedtreeclick","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "HTMLFencedFrameElement",
+        "inherits": "HTMLElement",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [],
+              "extended_attributes": [
+                {
+                  "name": "HTMLConstructor",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "config",
+              "type": {
+                "nullable": {
+                  "identifier": "FencedFrameConfig"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "sandbox",
+              "type": {
+                "identifier": "DOMTokenList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                },
+                {
+                  "name": "PutForwards",
+                  "value": {
+                    "identifier": "value"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "allow",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "OpaqueProperty",
+        "values": [
+          "opaque"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "FencedFrameConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setSharedStorageContext",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "contextString",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "UrnOrConfig",
+        "type": {
+          "union": [
+            "USVString",
+            {
+              "identifier": "FencedFrameConfig"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "deprecatedReplaceInURN",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "urnOrConfig",
+                  "type": {
+                    "identifier": "UrnOrConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "replacements",
+                  "type": {
+                    "record": {
+                      "key": "USVString",
+                      "value": "USVString"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deprecatedURNtoURL",
+              "return_type": {
+                "promise": "USVString"
+              },
+              "arguments": [
+                {
+                  "name": "urnOrConfig",
+                  "type": {
+                    "identifier": "UrnOrConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "send_reports",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "adAuctionComponents",
+              "return_type": {
+                "sequence": "USVString"
+              },
+              "arguments": [
+                {
+                  "name": "numAdComponents",
+                  "type": "unsigned short",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "FenceReportingDestination",
+        "values": [
+          "buyer",
+          "seller",
+          "component-seller",
+          "direct-seller",
+          "shared-storage-select-url"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "FenceEvent",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "eventType",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "eventData",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "destination",
+            "type": {
+              "sequence": {
+                "identifier": "FenceReportingDestination"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "crossOriginExposed",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "once",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "destinationURL",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ReportEventType",
+        "type": {
+          "union": [
+            {
+              "identifier": "FenceEvent"
+            },
+            "DOMString"
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Fence",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "reportEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "event",
+                  "type": {
+                    "identifier": "ReportEventType"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setReportEventDataForAutomaticBeacons",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "event",
+                  "type": {
+                    "identifier": "FenceEvent"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getNestedConfigs",
+              "return_type": {
+                "sequence": {
+                  "identifier": "FencedFrameConfig"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "disableUntrustedNetwork",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "notifyEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "event",
+                  "type": {
+                    "identifier": "Event"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Window",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "fence",
+              "type": {
+                "nullable": {
+                  "identifier": "Fence"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "GlobalEventHandlers",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "onfencedtreeclick",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

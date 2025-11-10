@@ -1,1 +1,275 @@
-{"definitions":[{"interface":{"name":"GeolocationSensor","inherits":"Sensor","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","Window"]}}],"members":[{"constructor":{"arguments":[{"name":"options","type":{"identifier":"GeolocationSensorOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"read","return_type":{"promise":{"identifier":"GeolocationSensorReading"}},"arguments":[{"name":"readOptions","type":{"identifier":"ReadOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"attribute":{"name":"latitude","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"longitude","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altitude","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"accuracy","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altitudeAccuracy","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"heading","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speed","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"GeolocationSensorOptions","inherits":"SensorOptions","partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"ReadOptions","inherits":"GeolocationSensorOptions","partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"nullable":{"identifier":"AbortSignal"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"GeolocationSensorReading","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timestamp","type":{"nullable":{"identifier":"DOMHighResTimeStamp"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"latitude","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"longitude","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"altitude","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"accuracy","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"altitudeAccuracy","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"heading","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"speed","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "GeolocationSensor",
+        "inherits": "Sensor",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "Window"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "GeolocationSensorOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "read",
+              "return_type": {
+                "promise": {
+                  "identifier": "GeolocationSensorReading"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "readOptions",
+                  "type": {
+                    "identifier": "ReadOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "latitude",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "longitude",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altitude",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "accuracy",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altitudeAccuracy",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "heading",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speed",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "GeolocationSensorOptions",
+        "inherits": "SensorOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadOptions",
+        "inherits": "GeolocationSensorOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "nullable": {
+                "identifier": "AbortSignal"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "GeolocationSensorReading",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timestamp",
+            "type": {
+              "nullable": {
+                "identifier": "DOMHighResTimeStamp"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "latitude",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "longitude",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "altitude",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "accuracy",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "altitudeAccuracy",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "heading",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "speed",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

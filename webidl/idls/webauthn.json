@@ -1,1 +1,2392 @@
-{"definitions":[{"interface":{"name":"PublicKeyCredential","inherits":"Credential","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"rawId","type":{"identifier":"ArrayBuffer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"response","type":{"identifier":"AuthenticatorResponse"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"authenticatorAttachment","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getClientExtensionResults","return_type":{"identifier":"AuthenticationExtensionsClientOutputs"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isConditionalMediationAvailable","return_type":{"promise":"boolean"},"arguments":[],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":{"identifier":"PublicKeyCredentialJSON"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"typedef":{"name":"Base64URLString","type":"DOMString","extended_attributes":[]}},{"typedef":{"name":"PublicKeyCredentialJSON","type":"object","extended_attributes":[]}},{"dictionary":{"name":"RegistrationResponseJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"id","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"rawId","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"response","type":{"identifier":"AuthenticatorAttestationResponseJSON"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"authenticatorAttachment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"clientExtensionResults","type":{"identifier":"AuthenticationExtensionsClientOutputsJSON"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticatorAttestationResponseJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"clientDataJSON","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"authenticatorData","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transports","type":{"sequence":"DOMString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"publicKey","type":{"identifier":"Base64URLString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"publicKeyAlgorithm","type":{"identifier":"COSEAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"attestationObject","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationResponseJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"id","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"rawId","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"response","type":{"identifier":"AuthenticatorAssertionResponseJSON"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"authenticatorAttachment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"clientExtensionResults","type":{"identifier":"AuthenticationExtensionsClientOutputsJSON"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticatorAssertionResponseJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"clientDataJSON","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"authenticatorData","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"signature","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"userHandle","type":{"identifier":"Base64URLString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"CredentialCreationOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"publicKey","type":{"identifier":"PublicKeyCredentialCreationOptions"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CredentialRequestOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"publicKey","type":{"identifier":"PublicKeyCredentialRequestOptions"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"PublicKeyCredential","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"isUserVerifyingPlatformAuthenticatorAvailable","return_type":{"promise":"boolean"},"arguments":[],"static":true,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"PublicKeyCredential","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getClientCapabilities","return_type":{"promise":{"identifier":"PublicKeyCredentialClientCapabilities"}},"arguments":[],"static":true,"special":null,"extended_attributes":[]}}]}},{"typedef":{"name":"PublicKeyCredentialClientCapabilities","type":{"record":{"key":"DOMString","value":"boolean"}},"extended_attributes":[]}},{"interface":{"name":"PublicKeyCredential","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"parseCreationOptionsFromJSON","return_type":{"identifier":"PublicKeyCredentialCreationOptions"},"arguments":[{"name":"options","type":{"identifier":"PublicKeyCredentialCreationOptionsJSON"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"PublicKeyCredentialCreationOptionsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rp","type":{"identifier":"PublicKeyCredentialRpEntity"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"user","type":{"identifier":"PublicKeyCredentialUserEntityJSON"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"challenge","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"pubKeyCredParams","type":{"sequence":{"identifier":"PublicKeyCredentialParameters"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"excludeCredentials","type":{"sequence":{"identifier":"PublicKeyCredentialDescriptorJSON"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"authenticatorSelection","type":{"identifier":"AuthenticatorSelectionCriteria"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"hints","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"attestation","type":"DOMString","required":false,"default_value":"none","extended_attributes":[]},{"name":"attestationFormats","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"extensions","type":{"identifier":"AuthenticationExtensionsClientInputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialUserEntityJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"id","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"displayName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialDescriptorJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"id","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transports","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"interface":{"name":"PublicKeyCredential","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"parseRequestOptionsFromJSON","return_type":{"identifier":"PublicKeyCredentialRequestOptions"},"arguments":[{"name":"options","type":{"identifier":"PublicKeyCredentialRequestOptionsJSON"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"PublicKeyCredentialRequestOptionsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"challenge","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"rpId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"allowCredentials","type":{"sequence":{"identifier":"PublicKeyCredentialDescriptorJSON"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"userVerification","type":"DOMString","required":false,"default_value":"preferred","extended_attributes":[]},{"name":"hints","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"extensions","type":{"identifier":"AuthenticationExtensionsClientInputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"PublicKeyCredential","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"signalUnknownCredential","return_type":{"promise":"undefined"},"arguments":[{"name":"options","type":{"identifier":"UnknownCredentialOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"signalAllAcceptedCredentials","return_type":{"promise":"undefined"},"arguments":[{"name":"options","type":{"identifier":"AllAcceptedCredentialsOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"signalCurrentUserDetails","return_type":{"promise":"undefined"},"arguments":[{"name":"options","type":{"identifier":"CurrentUserDetailsOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"UnknownCredentialOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rpId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"credentialId","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AllAcceptedCredentialsOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rpId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"userId","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"allAcceptedCredentialIds","type":{"sequence":{"identifier":"Base64URLString"}},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CurrentUserDetailsOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rpId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"userId","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"displayName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"AuthenticatorResponse","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"clientDataJSON","type":{"identifier":"ArrayBuffer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"AuthenticatorAttestationResponse","inherits":"AuthenticatorResponse","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"attestationObject","type":{"identifier":"ArrayBuffer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"getTransports","return_type":{"sequence":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAuthenticatorData","return_type":{"identifier":"ArrayBuffer"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getPublicKey","return_type":{"nullable":{"identifier":"ArrayBuffer"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getPublicKeyAlgorithm","return_type":{"identifier":"COSEAlgorithmIdentifier"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"AuthenticatorAssertionResponse","inherits":"AuthenticatorResponse","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"authenticatorData","type":{"identifier":"ArrayBuffer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"signature","type":{"identifier":"ArrayBuffer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"userHandle","type":{"nullable":{"identifier":"ArrayBuffer"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"PublicKeyCredentialParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"alg","type":{"identifier":"COSEAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialCreationOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rp","type":{"identifier":"PublicKeyCredentialRpEntity"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"user","type":{"identifier":"PublicKeyCredentialUserEntity"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"challenge","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"pubKeyCredParams","type":{"sequence":{"identifier":"PublicKeyCredentialParameters"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"excludeCredentials","type":{"sequence":{"identifier":"PublicKeyCredentialDescriptor"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"authenticatorSelection","type":{"identifier":"AuthenticatorSelectionCriteria"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"hints","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"attestation","type":"DOMString","required":false,"default_value":"none","extended_attributes":[]},{"name":"attestationFormats","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"extensions","type":{"identifier":"AuthenticationExtensionsClientInputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialEntity","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialRpEntity","inherits":"PublicKeyCredentialEntity","partial":false,"extended_attributes":[],"members":[{"name":"id","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PublicKeyCredentialUserEntity","inherits":"PublicKeyCredentialEntity","partial":false,"extended_attributes":[],"members":[{"name":"id","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"displayName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticatorSelectionCriteria","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"authenticatorAttachment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"residentKey","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"requireResidentKey","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"userVerification","type":"DOMString","required":false,"default_value":"preferred","extended_attributes":[]}]}},{"enum":{"name":"AuthenticatorAttachment","values":["platform","cross-platform"],"extended_attributes":[]}},{"enum":{"name":"ResidentKeyRequirement","values":["discouraged","preferred","required"],"extended_attributes":[]}},{"enum":{"name":"AttestationConveyancePreference","values":["none","indirect","direct","enterprise"],"extended_attributes":[]}},{"dictionary":{"name":"PublicKeyCredentialRequestOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"challenge","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"rpId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"allowCredentials","type":{"sequence":{"identifier":"PublicKeyCredentialDescriptor"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"userVerification","type":"DOMString","required":false,"default_value":"preferred","extended_attributes":[]},{"name":"hints","type":{"sequence":"DOMString"},"required":false,"default_value":[],"extended_attributes":[]},{"name":"extensions","type":{"identifier":"AuthenticationExtensionsClientInputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"CollectedClientData","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"challenge","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"origin","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"crossOrigin","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"topOrigin","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"TokenBinding","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"status","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"id","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"TokenBindingStatus","values":["present","supported"],"extended_attributes":[]}},{"enum":{"name":"PublicKeyCredentialType","values":["public-key"],"extended_attributes":[]}},{"dictionary":{"name":"PublicKeyCredentialDescriptor","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"id","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transports","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"AuthenticatorTransport","values":["usb","nfc","ble","smart-card","hybrid","internal"],"extended_attributes":[]}},{"typedef":{"name":"COSEAlgorithmIdentifier","type":"long","extended_attributes":[]}},{"enum":{"name":"UserVerificationRequirement","values":["required","preferred","discouraged"],"extended_attributes":[]}},{"enum":{"name":"ClientCapability","values":["conditionalCreate","conditionalGet","hybridTransport","passkeyPlatformAuthenticator","userVerifyingPlatformAuthenticator","relatedOrigins","signalAllAcceptedCredentials","signalCurrentUserDetails","signalUnknownCredential"],"extended_attributes":[]}},{"enum":{"name":"PublicKeyCredentialHint","values":["security-key","client-device","hybrid"],"extended_attributes":[]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appid","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appid","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appidExclude","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appidExclude","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appidExclude","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"appidExclude","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"credProps","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"credProps","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CredentialPropertiesOutput","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rk","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"credProps","type":{"identifier":"CredentialPropertiesOutput"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"credProps","type":{"identifier":"CredentialPropertiesOutput"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFValues","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"first","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"second","type":{"identifier":"BufferSource"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFValuesJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"first","type":{"identifier":"Base64URLString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"second","type":{"identifier":"Base64URLString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFInputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"eval","type":{"identifier":"AuthenticationExtensionsPRFValues"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"evalByCredential","type":{"record":{"key":"DOMString","value":{"identifier":"AuthenticationExtensionsPRFValues"}}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFInputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"eval","type":{"identifier":"AuthenticationExtensionsPRFValuesJSON"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"evalByCredential","type":{"record":{"key":"DOMString","value":{"identifier":"AuthenticationExtensionsPRFValuesJSON"}}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"prf","type":{"identifier":"AuthenticationExtensionsPRFInputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"prf","type":{"identifier":"AuthenticationExtensionsPRFInputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFOutputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"enabled","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"results","type":{"identifier":"AuthenticationExtensionsPRFValues"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPRFOutputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"enabled","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"results","type":{"identifier":"AuthenticationExtensionsPRFValuesJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"prf","type":{"identifier":"AuthenticationExtensionsPRFOutputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"prf","type":{"identifier":"AuthenticationExtensionsPRFOutputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"largeBlob","type":{"identifier":"AuthenticationExtensionsLargeBlobInputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"largeBlob","type":{"identifier":"AuthenticationExtensionsLargeBlobInputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"LargeBlobSupport","values":["required","preferred"],"extended_attributes":[]}},{"dictionary":{"name":"AuthenticationExtensionsLargeBlobInputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"support","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"read","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"write","type":{"identifier":"BufferSource"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsLargeBlobInputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"support","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"read","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"write","type":{"identifier":"Base64URLString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"largeBlob","type":{"identifier":"AuthenticationExtensionsLargeBlobOutputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputsJSON","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"largeBlob","type":{"identifier":"AuthenticationExtensionsLargeBlobOutputsJSON"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsLargeBlobOutputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"blob","type":{"identifier":"ArrayBuffer"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"written","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsLargeBlobOutputsJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"blob","type":{"identifier":"Base64URLString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"written","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": "Credential",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "rawId",
+              "type": {
+                "identifier": "ArrayBuffer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "response",
+              "type": {
+                "identifier": "AuthenticatorResponse"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "authenticatorAttachment",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getClientExtensionResults",
+              "return_type": {
+                "identifier": "AuthenticationExtensionsClientOutputs"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isConditionalMediationAvailable",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": {
+                "identifier": "PublicKeyCredentialJSON"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "Base64URLString",
+        "type": "DOMString",
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "PublicKeyCredentialJSON",
+        "type": "object",
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RegistrationResponseJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rawId",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "response",
+            "type": {
+              "identifier": "AuthenticatorAttestationResponseJSON"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorAttachment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clientExtensionResults",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientOutputsJSON"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticatorAttestationResponseJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "clientDataJSON",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorData",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transports",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "publicKey",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "publicKeyAlgorithm",
+            "type": {
+              "identifier": "COSEAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "attestationObject",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationResponseJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rawId",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "response",
+            "type": {
+              "identifier": "AuthenticatorAssertionResponseJSON"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorAttachment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clientExtensionResults",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientOutputsJSON"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticatorAssertionResponseJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "clientDataJSON",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorData",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "signature",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "userHandle",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CredentialCreationOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "publicKey",
+            "type": {
+              "identifier": "PublicKeyCredentialCreationOptions"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CredentialRequestOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "publicKey",
+            "type": {
+              "identifier": "PublicKeyCredentialRequestOptions"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "isUserVerifyingPlatformAuthenticatorAvailable",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getClientCapabilities",
+              "return_type": {
+                "promise": {
+                  "identifier": "PublicKeyCredentialClientCapabilities"
+                }
+              },
+              "arguments": [],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "PublicKeyCredentialClientCapabilities",
+        "type": {
+          "record": {
+            "key": "DOMString",
+            "value": "boolean"
+          }
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "parseCreationOptionsFromJSON",
+              "return_type": {
+                "identifier": "PublicKeyCredentialCreationOptions"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PublicKeyCredentialCreationOptionsJSON"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialCreationOptionsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rp",
+            "type": {
+              "identifier": "PublicKeyCredentialRpEntity"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "user",
+            "type": {
+              "identifier": "PublicKeyCredentialUserEntityJSON"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "challenge",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pubKeyCredParams",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialParameters"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "excludeCredentials",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialDescriptorJSON"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorSelection",
+            "type": {
+              "identifier": "AuthenticatorSelectionCriteria"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hints",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "attestation",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "none",
+            "extended_attributes": []
+          },
+          {
+            "name": "attestationFormats",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "extensions",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientInputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialUserEntityJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "displayName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialDescriptorJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transports",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "parseRequestOptionsFromJSON",
+              "return_type": {
+                "identifier": "PublicKeyCredentialRequestOptions"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PublicKeyCredentialRequestOptionsJSON"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialRequestOptionsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "challenge",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rpId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "allowCredentials",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialDescriptorJSON"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "userVerification",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "preferred",
+            "extended_attributes": []
+          },
+          {
+            "name": "hints",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "extensions",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientInputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PublicKeyCredential",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "signalUnknownCredential",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "UnknownCredentialOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "signalAllAcceptedCredentials",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AllAcceptedCredentialsOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "signalCurrentUserDetails",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CurrentUserDetailsOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "UnknownCredentialOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rpId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "credentialId",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AllAcceptedCredentialsOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rpId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "userId",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "allAcceptedCredentialIds",
+            "type": {
+              "sequence": {
+                "identifier": "Base64URLString"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CurrentUserDetailsOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rpId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "userId",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "displayName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "AuthenticatorResponse",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "clientDataJSON",
+              "type": {
+                "identifier": "ArrayBuffer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "AuthenticatorAttestationResponse",
+        "inherits": "AuthenticatorResponse",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "attestationObject",
+              "type": {
+                "identifier": "ArrayBuffer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getTransports",
+              "return_type": {
+                "sequence": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAuthenticatorData",
+              "return_type": {
+                "identifier": "ArrayBuffer"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getPublicKey",
+              "return_type": {
+                "nullable": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getPublicKeyAlgorithm",
+              "return_type": {
+                "identifier": "COSEAlgorithmIdentifier"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "AuthenticatorAssertionResponse",
+        "inherits": "AuthenticatorResponse",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "authenticatorData",
+              "type": {
+                "identifier": "ArrayBuffer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "signature",
+              "type": {
+                "identifier": "ArrayBuffer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "userHandle",
+              "type": {
+                "nullable": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "alg",
+            "type": {
+              "identifier": "COSEAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialCreationOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rp",
+            "type": {
+              "identifier": "PublicKeyCredentialRpEntity"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "user",
+            "type": {
+              "identifier": "PublicKeyCredentialUserEntity"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "challenge",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pubKeyCredParams",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialParameters"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "excludeCredentials",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialDescriptor"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "authenticatorSelection",
+            "type": {
+              "identifier": "AuthenticatorSelectionCriteria"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hints",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "attestation",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "none",
+            "extended_attributes": []
+          },
+          {
+            "name": "attestationFormats",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "extensions",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialEntity",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialRpEntity",
+        "inherits": "PublicKeyCredentialEntity",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialUserEntity",
+        "inherits": "PublicKeyCredentialEntity",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "displayName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticatorSelectionCriteria",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "authenticatorAttachment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "residentKey",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requireResidentKey",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "userVerification",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "preferred",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AuthenticatorAttachment",
+        "values": [
+          "platform",
+          "cross-platform"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "ResidentKeyRequirement",
+        "values": [
+          "discouraged",
+          "preferred",
+          "required"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "AttestationConveyancePreference",
+        "values": [
+          "none",
+          "indirect",
+          "direct",
+          "enterprise"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialRequestOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "challenge",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rpId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "allowCredentials",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialDescriptor"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "userVerification",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "preferred",
+            "extended_attributes": []
+          },
+          {
+            "name": "hints",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "extensions",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CollectedClientData",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "challenge",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "origin",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "crossOrigin",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "topOrigin",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TokenBinding",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "status",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "TokenBindingStatus",
+        "values": [
+          "present",
+          "supported"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "PublicKeyCredentialType",
+        "values": [
+          "public-key"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PublicKeyCredentialDescriptor",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transports",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AuthenticatorTransport",
+        "values": [
+          "usb",
+          "nfc",
+          "ble",
+          "smart-card",
+          "hybrid",
+          "internal"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "COSEAlgorithmIdentifier",
+        "type": "long",
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "UserVerificationRequirement",
+        "values": [
+          "required",
+          "preferred",
+          "discouraged"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "ClientCapability",
+        "values": [
+          "conditionalCreate",
+          "conditionalGet",
+          "hybridTransport",
+          "passkeyPlatformAuthenticator",
+          "userVerifyingPlatformAuthenticator",
+          "relatedOrigins",
+          "signalAllAcceptedCredentials",
+          "signalCurrentUserDetails",
+          "signalUnknownCredential"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "PublicKeyCredentialHint",
+        "values": [
+          "security-key",
+          "client-device",
+          "hybrid"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appid",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appid",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appidExclude",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appidExclude",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appidExclude",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "appidExclude",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "credProps",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "credProps",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CredentialPropertiesOutput",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rk",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "credProps",
+            "type": {
+              "identifier": "CredentialPropertiesOutput"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "credProps",
+            "type": {
+              "identifier": "CredentialPropertiesOutput"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFValues",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "first",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "second",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFValuesJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "first",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "second",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFInputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "eval",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFValues"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "evalByCredential",
+            "type": {
+              "record": {
+                "key": "DOMString",
+                "value": {
+                  "identifier": "AuthenticationExtensionsPRFValues"
+                }
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFInputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "eval",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFValuesJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "evalByCredential",
+            "type": {
+              "record": {
+                "key": "DOMString",
+                "value": {
+                  "identifier": "AuthenticationExtensionsPRFValuesJSON"
+                }
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "prf",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "prf",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFInputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFOutputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "results",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFValues"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPRFOutputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "results",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFValuesJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "prf",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFOutputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "prf",
+            "type": {
+              "identifier": "AuthenticationExtensionsPRFOutputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "largeBlob",
+            "type": {
+              "identifier": "AuthenticationExtensionsLargeBlobInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "largeBlob",
+            "type": {
+              "identifier": "AuthenticationExtensionsLargeBlobInputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "LargeBlobSupport",
+        "values": [
+          "required",
+          "preferred"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsLargeBlobInputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "support",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "read",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "write",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsLargeBlobInputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "support",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "read",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "write",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "largeBlob",
+            "type": {
+              "identifier": "AuthenticationExtensionsLargeBlobOutputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputsJSON",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "largeBlob",
+            "type": {
+              "identifier": "AuthenticationExtensionsLargeBlobOutputsJSON"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsLargeBlobOutputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "blob",
+            "type": {
+              "identifier": "ArrayBuffer"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "written",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsLargeBlobOutputsJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "blob",
+            "type": {
+              "identifier": "Base64URLString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "written",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

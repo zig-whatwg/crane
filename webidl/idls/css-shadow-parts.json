@@ -1,1 +1,38 @@
-{"definitions":[{"interface":{"name":"Element","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"part","type":{"identifier":"DOMTokenList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null},{"name":"PutForwards","value":{"identifier":"value"}}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Element",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "part",
+              "type": {
+                "identifier": "DOMTokenList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                },
+                {
+                  "name": "PutForwards",
+                  "value": {
+                    "identifier": "value"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

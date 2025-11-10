@@ -1,1 +1,985 @@
-{"definitions":[{"interface":{"name":"CSSPositionTryRule","inherits":"CSSRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"style","type":{"identifier":"CSSPositionTryDescriptors"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null},{"name":"PutForwards","value":{"identifier":"cssText"}}]}}]}},{"interface":{"name":"CSSPositionTryDescriptors","inherits":"CSSStyleDeclaration","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"margin","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginTop","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginRight","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginBottom","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginLeft","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginBlock","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginBlockStart","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginBlockEnd","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginInline","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginInlineStart","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginInlineEnd","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-top","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-right","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-bottom","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-left","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-block","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-block-start","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-block-end","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-inline","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-inline-start","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin-inline-end","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetBlock","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetBlockStart","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetBlockEnd","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetInline","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetInlineStart","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"insetInlineEnd","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"top","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"left","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"right","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bottom","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-block","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-block-start","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-block-end","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-inline","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-inline-start","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inset-inline-end","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"width","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minWidth","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxWidth","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"height","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minHeight","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxHeight","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"blockSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minBlockSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxBlockSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inlineSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minInlineSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxInlineSize","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"min-width","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"max-width","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"min-height","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"max-height","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"block-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"min-block-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"max-block-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inline-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"min-inline-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"max-inline-size","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"placeSelf","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"alignSelf","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"justifySelf","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"place-self","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"align-self","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"justify-self","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"positionAnchor","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"position-anchor","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"positionArea","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"position-area","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "CSSPositionTryRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSPositionTryDescriptors"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                },
+                {
+                  "name": "PutForwards",
+                  "value": {
+                    "identifier": "cssText"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSPositionTryDescriptors",
+        "inherits": "CSSStyleDeclaration",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "margin",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginTop",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginRight",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginBottom",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginLeft",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginBlock",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginBlockStart",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginBlockEnd",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginInline",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginInlineStart",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginInlineEnd",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-top",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-right",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-bottom",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-left",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-block",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-block-start",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-block-end",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-inline",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-inline-start",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin-inline-end",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetBlock",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetBlockStart",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetBlockEnd",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetInline",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetInlineStart",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "insetInlineEnd",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "top",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "left",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "right",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bottom",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-block",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-block-start",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-block-end",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-inline",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-inline-start",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inset-inline-end",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minWidth",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxWidth",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minHeight",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxHeight",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "blockSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minBlockSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxBlockSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inlineSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minInlineSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxInlineSize",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "min-width",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "max-width",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "min-height",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "max-height",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "block-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "min-block-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "max-block-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inline-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "min-inline-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "max-inline-size",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "placeSelf",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "alignSelf",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "justifySelf",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "place-self",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "align-self",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "justify-self",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "positionAnchor",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "position-anchor",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "positionArea",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "position-area",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

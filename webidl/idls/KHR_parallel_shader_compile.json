@@ -1,1 +1,40 @@
-{"definitions":[{"interface":{"name":"KHR_parallel_shader_compile","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"COMPLETION_STATUS_KHR","type":{"identifier":"GLenum"},"value":{"value":37297,"lexeme":"0x91B1"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "KHR_parallel_shader_compile",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "COMPLETION_STATUS_KHR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37297,
+                "lexeme": "0x91B1"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,76 @@
-{"definitions":[{"interface":{"name":"WEBGL_compressed_texture_pvrtc","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"COMPRESSED_RGB_PVRTC_4BPPV1_IMG","type":{"identifier":"GLenum"},"value":{"value":35840,"lexeme":"0x8C00"}}},{"const":{"name":"COMPRESSED_RGB_PVRTC_2BPPV1_IMG","type":{"identifier":"GLenum"},"value":{"value":35841,"lexeme":"0x8C01"}}},{"const":{"name":"COMPRESSED_RGBA_PVRTC_4BPPV1_IMG","type":{"identifier":"GLenum"},"value":{"value":35842,"lexeme":"0x8C02"}}},{"const":{"name":"COMPRESSED_RGBA_PVRTC_2BPPV1_IMG","type":{"identifier":"GLenum"},"value":{"value":35843,"lexeme":"0x8C03"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_compressed_texture_pvrtc",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "COMPRESSED_RGB_PVRTC_4BPPV1_IMG",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35840,
+                "lexeme": "0x8C00"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_RGB_PVRTC_2BPPV1_IMG",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35841,
+                "lexeme": "0x8C01"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_RGBA_PVRTC_4BPPV1_IMG",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35842,
+                "lexeme": "0x8C02"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_RGBA_PVRTC_2BPPV1_IMG",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35843,
+                "lexeme": "0x8C03"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

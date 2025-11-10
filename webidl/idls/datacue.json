@@ -1,1 +1,82 @@
-{"definitions":[{"interface":{"name":"DataCue","inherits":"TextTrackCue","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"startTime","type":"double","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"endTime","type":"unrestricted double","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"type","type":"DOMString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"value","type":"any","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "DataCue",
+        "inherits": "TextTrackCue",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "startTime",
+                  "type": "double",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "endTime",
+                  "type": "unrestricted double",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "value",
+              "type": "any",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

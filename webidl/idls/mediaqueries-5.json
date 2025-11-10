@@ -1,1 +1,290 @@
-{"definitions":[{"typedef":{"name":"CustomMediaQuery","type":{"union":[{"identifier":"MediaList"},"boolean"]},"extended_attributes":[]}},{"interface":{"name":"CSSCustomMediaRule","inherits":"CSSRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"query","type":{"identifier":"CustomMediaQuery"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"preferences","type":{"identifier":"PreferenceManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"PreferenceManager","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"colorScheme","type":{"identifier":"PreferenceObject"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"contrast","type":{"identifier":"PreferenceObject"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"reducedMotion","type":{"identifier":"PreferenceObject"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"reducedTransparency","type":{"identifier":"PreferenceObject"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"reducedData","type":{"identifier":"PreferenceObject"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PreferenceObject","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"override","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"value","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"validValues","type":{"frozen_array":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"clearOverride","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"requestOverride","return_type":{"promise":"undefined"},"arguments":[{"name":"value","type":{"nullable":"DOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "typedef": {
+        "name": "CustomMediaQuery",
+        "type": {
+          "union": [
+            {
+              "identifier": "MediaList"
+            },
+            "boolean"
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSCustomMediaRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "query",
+              "type": {
+                "identifier": "CustomMediaQuery"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "preferences",
+              "type": {
+                "identifier": "PreferenceManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PreferenceManager",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "colorScheme",
+              "type": {
+                "identifier": "PreferenceObject"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "contrast",
+              "type": {
+                "identifier": "PreferenceObject"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "reducedMotion",
+              "type": {
+                "identifier": "PreferenceObject"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "reducedTransparency",
+              "type": {
+                "identifier": "PreferenceObject"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "reducedData",
+              "type": {
+                "identifier": "PreferenceObject"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PreferenceObject",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "override",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "value",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "validValues",
+              "type": {
+                "frozen_array": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clearOverride",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "requestOverride",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": {
+                    "nullable": "DOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

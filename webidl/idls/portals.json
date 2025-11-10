@@ -1,1 +1,390 @@
-{"definitions":[{"interface":{"name":"HTMLPortalElement","inherits":"HTMLElement","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[],"extended_attributes":[{"name":"HTMLConstructor","value":null}]}},{"attribute":{"name":"src","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}},{"attribute":{"name":"referrerPolicy","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}},{"operation":{"name":"activate","return_type":{"promise":"undefined"},"arguments":[{"name":"options","type":{"identifier":"PortalActivateOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"PostMessageOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessageerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"PortalActivateOptions","inherits":"PostMessageOptions","partial":false,"extended_attributes":[],"members":[{"name":"data","type":"any","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Window","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"portalHost","type":{"nullable":{"identifier":"PortalHost"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PortalHost","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"PostMessageOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessageerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PortalActivateEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"PortalActivateEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"adoptPredecessor","return_type":{"identifier":"HTMLPortalElement"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"PortalActivateEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":"any","required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"MessageEventSource","type":{"union":[{"identifier":"WindowProxy"},{"identifier":"MessagePort"},{"identifier":"ServiceWorker"},{"identifier":"HTMLPortalElement"},{"identifier":"PortalHost"}]},"extended_attributes":[]}},{"interface_mixin":{"name":"WindowEventHandlers","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"onportalactivate","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "HTMLPortalElement",
+        "inherits": "HTMLElement",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [],
+              "extended_attributes": [
+                {
+                  "name": "HTMLConstructor",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "src",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "referrerPolicy",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "activate",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PortalActivateOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PostMessageOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessageerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PortalActivateOptions",
+        "inherits": "PostMessageOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Window",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "portalHost",
+              "type": {
+                "nullable": {
+                  "identifier": "PortalHost"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PortalHost",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PostMessageOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessageerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PortalActivateEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "PortalActivateEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "adoptPredecessor",
+              "return_type": {
+                "identifier": "HTMLPortalElement"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PortalActivateEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "MessageEventSource",
+        "type": {
+          "union": [
+            {
+              "identifier": "WindowProxy"
+            },
+            {
+              "identifier": "MessagePort"
+            },
+            {
+              "identifier": "ServiceWorker"
+            },
+            {
+              "identifier": "HTMLPortalElement"
+            },
+            {
+              "identifier": "PortalHost"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "WindowEventHandlers",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "onportalactivate",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

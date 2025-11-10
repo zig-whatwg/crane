@@ -1,1 +1,268 @@
-{"definitions":[{"interface":{"name":"HTMLVideoElement","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestPictureInPicture","return_type":{"promise":{"identifier":"PictureInPictureWindow"}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"attribute":{"name":"onenterpictureinpicture","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onleavepictureinpicture","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"disablePictureInPicture","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}}]}},{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"pictureInPictureEnabled","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"exitPictureInPicture","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"interface_mixin":{"name":"DocumentOrShadowRoot","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"pictureInPictureElement","type":{"nullable":{"identifier":"Element"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PictureInPictureWindow","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"width","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"height","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onresize","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PictureInPictureEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"PictureInPictureEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"pictureInPictureWindow","type":{"identifier":"PictureInPictureWindow"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"PictureInPictureEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"pictureInPictureWindow","type":{"identifier":"PictureInPictureWindow"},"required":true,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "HTMLVideoElement",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestPictureInPicture",
+              "return_type": {
+                "promise": {
+                  "identifier": "PictureInPictureWindow"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "onenterpictureinpicture",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onleavepictureinpicture",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "disablePictureInPicture",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "pictureInPictureEnabled",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "exitPictureInPicture",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "DocumentOrShadowRoot",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "pictureInPictureElement",
+              "type": {
+                "nullable": {
+                  "identifier": "Element"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PictureInPictureWindow",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "width",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onresize",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PictureInPictureEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "PictureInPictureEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pictureInPictureWindow",
+              "type": {
+                "identifier": "PictureInPictureWindow"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PictureInPictureEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "pictureInPictureWindow",
+            "type": {
+              "identifier": "PictureInPictureWindow"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

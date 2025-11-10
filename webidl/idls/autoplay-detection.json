@@ -1,1 +1,111 @@
-{"definitions":[{"enum":{"name":"AutoplayPolicy","values":["allowed","allowed-muted","disallowed"],"extended_attributes":[]}},{"enum":{"name":"AutoplayPolicyMediaType","values":["mediaelement","audiocontext"],"extended_attributes":[]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"getAutoplayPolicy","return_type":{"identifier":"AutoplayPolicy"},"arguments":[{"name":"type","type":{"identifier":"AutoplayPolicyMediaType"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAutoplayPolicy","return_type":{"identifier":"AutoplayPolicy"},"arguments":[{"name":"element","type":{"identifier":"HTMLMediaElement"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAutoplayPolicy","return_type":{"identifier":"AutoplayPolicy"},"arguments":[{"name":"context","type":{"identifier":"AudioContext"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "AutoplayPolicy",
+        "values": [
+          "allowed",
+          "allowed-muted",
+          "disallowed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "AutoplayPolicyMediaType",
+        "values": [
+          "mediaelement",
+          "audiocontext"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "getAutoplayPolicy",
+              "return_type": {
+                "identifier": "AutoplayPolicy"
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": {
+                    "identifier": "AutoplayPolicyMediaType"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAutoplayPolicy",
+              "return_type": {
+                "identifier": "AutoplayPolicy"
+              },
+              "arguments": [
+                {
+                  "name": "element",
+                  "type": {
+                    "identifier": "HTMLMediaElement"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAutoplayPolicy",
+              "return_type": {
+                "identifier": "AutoplayPolicy"
+              },
+              "arguments": [
+                {
+                  "name": "context",
+                  "type": {
+                    "identifier": "AudioContext"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

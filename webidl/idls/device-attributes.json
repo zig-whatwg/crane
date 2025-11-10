@@ -1,1 +1,85 @@
-{"definitions":[{"interface":{"name":"NavigatorManagedData","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"getAnnotatedAssetId","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAnnotatedLocation","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getDirectoryId","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getHostname","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getSerialNumber","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "NavigatorManagedData",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "getAnnotatedAssetId",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAnnotatedLocation",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getDirectoryId",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getHostname",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getSerialNumber",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

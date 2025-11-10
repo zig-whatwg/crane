@@ -1,1 +1,1359 @@
-{"definitions":[{"interface":{"name":"AnimationTimeline","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"currentTime","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"DocumentTimelineOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"originTime","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}},{"interface":{"name":"DocumentTimeline","inherits":"AnimationTimeline","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"options","type":{"identifier":"DocumentTimelineOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}}]}},{"interface":{"name":"Animation","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"effect","type":{"nullable":{"identifier":"AnimationEffect"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"timeline","type":{"nullable":{"identifier":"AnimationTimeline"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"id","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"effect","type":{"nullable":{"identifier":"AnimationEffect"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timeline","type":{"nullable":{"identifier":"AnimationTimeline"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"startTime","type":{"nullable":"double"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"currentTime","type":{"nullable":"double"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"playbackRate","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"playState","type":{"identifier":"AnimationPlayState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"replaceState","type":{"identifier":"AnimationReplaceState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pending","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ready","type":{"promise":{"identifier":"Animation"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"finished","type":{"promise":{"identifier":"Animation"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onfinish","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"oncancel","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onremove","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"cancel","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"finish","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"play","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"pause","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"updatePlaybackRate","return_type":"undefined","arguments":[{"name":"playbackRate","type":"double","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reverse","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"persist","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"commitStyles","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"CEReactions","value":null}]}}]}},{"enum":{"name":"AnimationPlayState","values":["idle","running","paused","finished"],"extended_attributes":[]}},{"enum":{"name":"AnimationReplaceState","values":["active","removed","persisted"],"extended_attributes":[]}},{"interface":{"name":"AnimationEffect","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"getTiming","return_type":{"identifier":"EffectTiming"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getComputedTiming","return_type":{"identifier":"ComputedEffectTiming"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"updateTiming","return_type":"undefined","arguments":[{"name":"timing","type":{"identifier":"OptionalEffectTiming"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"EffectTiming","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"delay","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"endDelay","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"fill","type":{"identifier":"FillMode"},"required":false,"default_value":"auto","extended_attributes":[]},{"name":"iterationStart","type":"double","required":false,"default_value":{"value":0,"lexeme":"0.0"},"extended_attributes":[]},{"name":"iterations","type":"unrestricted double","required":false,"default_value":{"value":1,"lexeme":"1.0"},"extended_attributes":[]},{"name":"duration","type":{"union":["unrestricted double","DOMString"]},"required":false,"default_value":"auto","extended_attributes":[]},{"name":"direction","type":{"identifier":"PlaybackDirection"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"easing","type":"DOMString","required":false,"default_value":"linear","extended_attributes":[]}]}},{"dictionary":{"name":"OptionalEffectTiming","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"delay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"endDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"fill","type":{"identifier":"FillMode"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"iterationStart","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"iterations","type":"unrestricted double","required":false,"default_value":null,"extended_attributes":[]},{"name":"duration","type":{"union":["unrestricted double","DOMString"]},"required":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"PlaybackDirection"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"easing","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"FillMode","values":["none","forwards","backwards","both","auto"],"extended_attributes":[]}},{"enum":{"name":"PlaybackDirection","values":["normal","reverse","alternate","alternate-reverse"],"extended_attributes":[]}},{"dictionary":{"name":"ComputedEffectTiming","inherits":"EffectTiming","partial":false,"extended_attributes":[],"members":[{"name":"endTime","type":"unrestricted double","required":false,"default_value":null,"extended_attributes":[]},{"name":"activeDuration","type":"unrestricted double","required":false,"default_value":null,"extended_attributes":[]},{"name":"localTime","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"progress","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"currentIteration","type":{"nullable":"unrestricted double"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"KeyframeEffect","inherits":"AnimationEffect","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"target","type":{"nullable":{"identifier":"Element"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyframes","type":{"nullable":"object"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"union":["unrestricted double",{"identifier":"KeyframeEffectOptions"}]},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"constructor":{"arguments":[{"name":"source","type":{"identifier":"KeyframeEffect"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"target","type":{"nullable":{"identifier":"Element"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pseudoElement","type":{"nullable":{"identifier":"CSSOMString"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"composite","type":{"identifier":"CompositeOperation"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getKeyframes","return_type":{"sequence":"object"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setKeyframes","return_type":"undefined","arguments":[{"name":"keyframes","type":{"nullable":"object"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"BaseComputedKeyframe","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"offset","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"computedOffset","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"easing","type":"DOMString","required":false,"default_value":"linear","extended_attributes":[]},{"name":"composite","type":{"identifier":"CompositeOperationOrAuto"},"required":false,"default_value":"auto","extended_attributes":[]}]}},{"dictionary":{"name":"BasePropertyIndexedKeyframe","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"offset","type":{"union":[{"nullable":"double"},{"sequence":{"nullable":"double"}}]},"required":false,"default_value":[],"extended_attributes":[]},{"name":"easing","type":{"union":["DOMString",{"sequence":"DOMString"}]},"required":false,"default_value":[],"extended_attributes":[]},{"name":"composite","type":{"union":[{"identifier":"CompositeOperationOrAuto"},{"sequence":{"identifier":"CompositeOperationOrAuto"}}]},"required":false,"default_value":[],"extended_attributes":[]}]}},{"dictionary":{"name":"BaseKeyframe","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"offset","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"easing","type":"DOMString","required":false,"default_value":"linear","extended_attributes":[]},{"name":"composite","type":{"identifier":"CompositeOperationOrAuto"},"required":false,"default_value":"auto","extended_attributes":[]}]}},{"dictionary":{"name":"KeyframeEffectOptions","inherits":"EffectTiming","partial":false,"extended_attributes":[],"members":[{"name":"composite","type":{"identifier":"CompositeOperation"},"required":false,"default_value":"replace","extended_attributes":[]},{"name":"pseudoElement","type":{"nullable":{"identifier":"CSSOMString"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"CompositeOperation","values":["replace","add","accumulate"],"extended_attributes":[]}},{"enum":{"name":"CompositeOperationOrAuto","values":["replace","add","accumulate","auto"],"extended_attributes":[]}},{"interface_mixin":{"name":"Animatable","partial":false,"extended_attributes":[],"members":[{"operation":{"name":"animate","return_type":{"identifier":"Animation"},"arguments":[{"name":"keyframes","type":{"nullable":"object"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"union":["unrestricted double",{"identifier":"KeyframeAnimationOptions"}]},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAnimations","return_type":{"sequence":{"identifier":"Animation"}},"arguments":[{"name":"options","type":{"identifier":"GetAnimationsOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"KeyframeAnimationOptions","inherits":"KeyframeEffectOptions","partial":false,"extended_attributes":[],"members":[{"name":"id","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"timeline","type":{"nullable":{"identifier":"AnimationTimeline"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"GetAnimationsOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"subtree","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"pseudoElement","type":{"nullable":{"identifier":"CSSOMString"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"timeline","type":{"identifier":"DocumentTimeline"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"DocumentOrShadowRoot","partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getAnimations","return_type":{"sequence":{"identifier":"Animation"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"includes":{"interface":"Element","mixin":"Animatable"}},{"interface":{"name":"AnimationPlaybackEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"AnimationPlaybackEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"currentTime","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timelineTime","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"AnimationPlaybackEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"currentTime","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"timelineTime","type":{"nullable":"double"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "AnimationTimeline",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "currentTime",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "DocumentTimelineOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "originTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "DocumentTimeline",
+        "inherits": "AnimationTimeline",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "DocumentTimelineOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Animation",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "effect",
+                  "type": {
+                    "nullable": {
+                      "identifier": "AnimationEffect"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "timeline",
+                  "type": {
+                    "nullable": {
+                      "identifier": "AnimationTimeline"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "id",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "effect",
+              "type": {
+                "nullable": {
+                  "identifier": "AnimationEffect"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timeline",
+              "type": {
+                "nullable": {
+                  "identifier": "AnimationTimeline"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "startTime",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "currentTime",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "playbackRate",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "playState",
+              "type": {
+                "identifier": "AnimationPlayState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "replaceState",
+              "type": {
+                "identifier": "AnimationReplaceState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pending",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ready",
+              "type": {
+                "promise": {
+                  "identifier": "Animation"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "finished",
+              "type": {
+                "promise": {
+                  "identifier": "Animation"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onfinish",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oncancel",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onremove",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cancel",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "finish",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "play",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "pause",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "updatePlaybackRate",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "playbackRate",
+                  "type": "double",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reverse",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "persist",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "commitStyles",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AnimationPlayState",
+        "values": [
+          "idle",
+          "running",
+          "paused",
+          "finished"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "AnimationReplaceState",
+        "values": [
+          "active",
+          "removed",
+          "persisted"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "AnimationEffect",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "getTiming",
+              "return_type": {
+                "identifier": "EffectTiming"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getComputedTiming",
+              "return_type": {
+                "identifier": "ComputedEffectTiming"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "updateTiming",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "timing",
+                  "type": {
+                    "identifier": "OptionalEffectTiming"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EffectTiming",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "delay",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "endDelay",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "fill",
+            "type": {
+              "identifier": "FillMode"
+            },
+            "required": false,
+            "default_value": "auto",
+            "extended_attributes": []
+          },
+          {
+            "name": "iterationStart",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "iterations",
+            "type": "unrestricted double",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "duration",
+            "type": {
+              "union": [
+                "unrestricted double",
+                "DOMString"
+              ]
+            },
+            "required": false,
+            "default_value": "auto",
+            "extended_attributes": []
+          },
+          {
+            "name": "direction",
+            "type": {
+              "identifier": "PlaybackDirection"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "easing",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "linear",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "OptionalEffectTiming",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "delay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "endDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fill",
+            "type": {
+              "identifier": "FillMode"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iterationStart",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iterations",
+            "type": "unrestricted double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "duration",
+            "type": {
+              "union": [
+                "unrestricted double",
+                "DOMString"
+              ]
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "direction",
+            "type": {
+              "identifier": "PlaybackDirection"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "easing",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "FillMode",
+        "values": [
+          "none",
+          "forwards",
+          "backwards",
+          "both",
+          "auto"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "PlaybackDirection",
+        "values": [
+          "normal",
+          "reverse",
+          "alternate",
+          "alternate-reverse"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ComputedEffectTiming",
+        "inherits": "EffectTiming",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "endTime",
+            "type": "unrestricted double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "activeDuration",
+            "type": "unrestricted double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "localTime",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "progress",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "currentIteration",
+            "type": {
+              "nullable": "unrestricted double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "KeyframeEffect",
+        "inherits": "AnimationEffect",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "nullable": {
+                      "identifier": "Element"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyframes",
+                  "type": {
+                    "nullable": "object"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "union": [
+                      "unrestricted double",
+                      {
+                        "identifier": "KeyframeEffectOptions"
+                      }
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "source",
+                  "type": {
+                    "identifier": "KeyframeEffect"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "target",
+              "type": {
+                "nullable": {
+                  "identifier": "Element"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pseudoElement",
+              "type": {
+                "nullable": {
+                  "identifier": "CSSOMString"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "composite",
+              "type": {
+                "identifier": "CompositeOperation"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getKeyframes",
+              "return_type": {
+                "sequence": "object"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setKeyframes",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "keyframes",
+                  "type": {
+                    "nullable": "object"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "BaseComputedKeyframe",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "offset",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "computedOffset",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "easing",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "linear",
+            "extended_attributes": []
+          },
+          {
+            "name": "composite",
+            "type": {
+              "identifier": "CompositeOperationOrAuto"
+            },
+            "required": false,
+            "default_value": "auto",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "BasePropertyIndexedKeyframe",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "offset",
+            "type": {
+              "union": [
+                {
+                  "nullable": "double"
+                },
+                {
+                  "sequence": {
+                    "nullable": "double"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "easing",
+            "type": {
+              "union": [
+                "DOMString",
+                {
+                  "sequence": "DOMString"
+                }
+              ]
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "composite",
+            "type": {
+              "union": [
+                {
+                  "identifier": "CompositeOperationOrAuto"
+                },
+                {
+                  "sequence": {
+                    "identifier": "CompositeOperationOrAuto"
+                  }
+                }
+              ]
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "BaseKeyframe",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "offset",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "easing",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "linear",
+            "extended_attributes": []
+          },
+          {
+            "name": "composite",
+            "type": {
+              "identifier": "CompositeOperationOrAuto"
+            },
+            "required": false,
+            "default_value": "auto",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeyframeEffectOptions",
+        "inherits": "EffectTiming",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "composite",
+            "type": {
+              "identifier": "CompositeOperation"
+            },
+            "required": false,
+            "default_value": "replace",
+            "extended_attributes": []
+          },
+          {
+            "name": "pseudoElement",
+            "type": {
+              "nullable": {
+                "identifier": "CSSOMString"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "CompositeOperation",
+        "values": [
+          "replace",
+          "add",
+          "accumulate"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "CompositeOperationOrAuto",
+        "values": [
+          "replace",
+          "add",
+          "accumulate",
+          "auto"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "Animatable",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "animate",
+              "return_type": {
+                "identifier": "Animation"
+              },
+              "arguments": [
+                {
+                  "name": "keyframes",
+                  "type": {
+                    "nullable": "object"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "union": [
+                      "unrestricted double",
+                      {
+                        "identifier": "KeyframeAnimationOptions"
+                      }
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAnimations",
+              "return_type": {
+                "sequence": {
+                  "identifier": "Animation"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "GetAnimationsOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeyframeAnimationOptions",
+        "inherits": "KeyframeEffectOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "timeline",
+            "type": {
+              "nullable": {
+                "identifier": "AnimationTimeline"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "GetAnimationsOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "subtree",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "pseudoElement",
+            "type": {
+              "nullable": {
+                "identifier": "CSSOMString"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "timeline",
+              "type": {
+                "identifier": "DocumentTimeline"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "DocumentOrShadowRoot",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getAnimations",
+              "return_type": {
+                "sequence": {
+                  "identifier": "Animation"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Element",
+        "mixin": "Animatable"
+      }
+    },
+    {
+      "interface": {
+        "name": "AnimationPlaybackEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "AnimationPlaybackEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "currentTime",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timelineTime",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AnimationPlaybackEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "currentTime",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timelineTime",
+            "type": {
+              "nullable": "double"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,80 @@
-{"definitions":[{"dictionary":{"name":"RelatedApplication","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"platform","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"url","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"id","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"version","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"getInstalledRelatedApps","return_type":{"promise":{"sequence":{"identifier":"RelatedApplication"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"SecureContext","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "RelatedApplication",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "platform",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "url",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "version",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "getInstalledRelatedApps",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "RelatedApplication"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

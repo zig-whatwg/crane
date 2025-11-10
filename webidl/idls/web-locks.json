@@ -1,1 +1,341 @@
-{"definitions":[{"interface_mixin":{"name":"NavigatorLocks","partial":false,"extended_attributes":[{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"locks","type":{"identifier":"LockManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Navigator","mixin":"NavigatorLocks"}},{"includes":{"interface":"WorkerNavigator","mixin":"NavigatorLocks"}},{"interface":{"name":"LockManager","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"request","return_type":{"promise":"any"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"callback","type":{"identifier":"LockGrantedCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"request","return_type":{"promise":"any"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"LockOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"callback","type":{"identifier":"LockGrantedCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"query","return_type":{"promise":{"identifier":"LockManagerSnapshot"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"callback":{"name":"LockGrantedCallback","return_type":{"promise":"any"},"arguments":[{"name":"lock","type":{"nullable":{"identifier":"Lock"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"enum":{"name":"LockMode","values":["shared","exclusive"],"extended_attributes":[]}},{"dictionary":{"name":"LockOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"mode","type":{"identifier":"LockMode"},"required":false,"default_value":"exclusive","extended_attributes":[]},{"name":"ifAvailable","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"steal","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"LockManagerSnapshot","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"held","type":{"sequence":{"identifier":"LockInfo"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"pending","type":{"sequence":{"identifier":"LockInfo"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"LockInfo","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"mode","type":{"identifier":"LockMode"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"clientId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Lock","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"mode","type":{"identifier":"LockMode"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "NavigatorLocks",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "locks",
+              "type": {
+                "identifier": "LockManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Navigator",
+        "mixin": "NavigatorLocks"
+      }
+    },
+    {
+      "includes": {
+        "interface": "WorkerNavigator",
+        "mixin": "NavigatorLocks"
+      }
+    },
+    {
+      "interface": {
+        "name": "LockManager",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "request",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "LockGrantedCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "request",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "LockOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "LockGrantedCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "query",
+              "return_type": {
+                "promise": {
+                  "identifier": "LockManagerSnapshot"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "LockGrantedCallback",
+        "return_type": {
+          "promise": "any"
+        },
+        "arguments": [
+          {
+            "name": "lock",
+            "type": {
+              "nullable": {
+                "identifier": "Lock"
+              }
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "LockMode",
+        "values": [
+          "shared",
+          "exclusive"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "LockOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "mode",
+            "type": {
+              "identifier": "LockMode"
+            },
+            "required": false,
+            "default_value": "exclusive",
+            "extended_attributes": []
+          },
+          {
+            "name": "ifAvailable",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "steal",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "LockManagerSnapshot",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "held",
+            "type": {
+              "sequence": {
+                "identifier": "LockInfo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pending",
+            "type": {
+              "sequence": {
+                "identifier": "LockInfo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "LockInfo",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mode",
+            "type": {
+              "identifier": "LockMode"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clientId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Lock",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "mode",
+              "type": {
+                "identifier": "LockMode"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

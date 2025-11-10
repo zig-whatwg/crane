@@ -1,1 +1,392 @@
-{"definitions":[{"enum":{"name":"BinaryType","values":["blob","arraybuffer"],"extended_attributes":[]}},{"interface":{"name":"WebSocket","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"protocols","type":{"union":["DOMString",{"sequence":"DOMString"}]},"optional":true,"variadic":false,"default_value":[],"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"url","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"const":{"name":"CONNECTING","type":"unsigned short","value":{"value":0,"lexeme":"0"}}},{"const":{"name":"OPEN","type":"unsigned short","value":{"value":1,"lexeme":"1"}}},{"const":{"name":"CLOSING","type":"unsigned short","value":{"value":2,"lexeme":"2"}}},{"const":{"name":"CLOSED","type":"unsigned short","value":{"value":3,"lexeme":"3"}}},{"attribute":{"name":"readyState","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bufferedAmount","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onopen","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onclose","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"extensions","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"protocol","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[{"name":"code","type":"unsigned short","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"reason","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"binaryType","type":{"identifier":"BinaryType"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":{"union":[{"identifier":"BufferSource"},{"identifier":"Blob"},"USVString"]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CloseEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"CloseEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"wasClean","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"code","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"reason","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"CloseEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"wasClean","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"code","type":"unsigned short","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"reason","type":"USVString","required":false,"default_value":"","extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "BinaryType",
+        "values": [
+          "blob",
+          "arraybuffer"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "WebSocket",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "protocols",
+                  "type": {
+                    "union": [
+                      "DOMString",
+                      {
+                        "sequence": "DOMString"
+                      }
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": [],
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "url",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "const": {
+              "name": "CONNECTING",
+              "type": "unsigned short",
+              "value": {
+                "value": 0,
+                "lexeme": "0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "OPEN",
+              "type": "unsigned short",
+              "value": {
+                "value": 1,
+                "lexeme": "1"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLOSING",
+              "type": "unsigned short",
+              "value": {
+                "value": 2,
+                "lexeme": "2"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLOSED",
+              "type": "unsigned short",
+              "value": {
+                "value": 3,
+                "lexeme": "3"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "readyState",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bufferedAmount",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onopen",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onclose",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "extensions",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "protocol",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "code",
+                  "type": "unsigned short",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "reason",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "binaryType",
+              "type": {
+                "identifier": "BinaryType"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "BufferSource"
+                      },
+                      {
+                        "identifier": "Blob"
+                      },
+                      "USVString"
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CloseEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "CloseEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "wasClean",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "code",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "reason",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CloseEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "wasClean",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "code",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "reason",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,486 @@
-{"definitions":[{"interface":{"name":"URL","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}},{"name":"LegacyWindowAlias","value":{"identifier":"webkitURL"}}],"members":[{"constructor":{"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"base","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"parse","return_type":{"nullable":{"identifier":"URL"}},"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"base","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"canParse","return_type":"boolean","arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"base","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"stringifier":{"attribute":{"name":"href","type":"USVString","readonly":false,"static":false,"stringifier":true,"inherit":false,"extended_attributes":[]}}},{"attribute":{"name":"origin","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"protocol","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"username","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"password","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"host","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"hostname","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"port","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pathname","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"search","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"searchParams","type":{"identifier":"URLSearchParams"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"hash","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":"USVString","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"URLSearchParams","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"union":[{"sequence":{"sequence":"USVString"}},{"record":{"key":"USVString","value":"USVString"}},"USVString"]},"optional":true,"variadic":false,"default_value":"","extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"size","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"append","return_type":"undefined","arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"delete","return_type":"undefined","arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"get","return_type":{"nullable":"USVString"},"arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAll","return_type":{"sequence":"USVString"},"arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"has","return_type":"boolean","arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"USVString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"set","return_type":"undefined","arguments":[{"name":"name","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"sort","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"iterable":{"key_type":"USVString","value_type":"USVString"}},{"stringifier":"keyword"}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "URL",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          },
+          {
+            "name": "LegacyWindowAlias",
+            "value": {
+              "identifier": "webkitURL"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "base",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parse",
+              "return_type": {
+                "nullable": {
+                  "identifier": "URL"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "base",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "canParse",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "base",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": {
+              "attribute": {
+                "name": "href",
+                "type": "USVString",
+                "readonly": false,
+                "static": false,
+                "stringifier": true,
+                "inherit": false,
+                "extended_attributes": []
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "origin",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "protocol",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "username",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "password",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "host",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "hostname",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "port",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pathname",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "search",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "searchParams",
+              "type": {
+                "identifier": "URLSearchParams"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "hash",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": "USVString",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "URLSearchParams",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "union": [
+                      {
+                        "sequence": {
+                          "sequence": "USVString"
+                        }
+                      },
+                      {
+                        "record": {
+                          "key": "USVString",
+                          "value": "USVString"
+                        }
+                      },
+                      "USVString"
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "size",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "append",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "get",
+              "return_type": {
+                "nullable": "USVString"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAll",
+              "return_type": {
+                "sequence": "USVString"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "has",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "set",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "sort",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "iterable": {
+              "key_type": "USVString",
+              "value_type": "USVString"
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    }
+  ]
+}

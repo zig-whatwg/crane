@@ -301,7 +301,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const text_encoder_result_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/text_encoder_encode_into_result.zig"),
+        .root_source_file = b.path("webidl/src/encoding/TextEncoderEncodeIntoResult.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
@@ -310,7 +310,7 @@ pub fn build(b: *std.Build) void {
     text_encoder_mod.addImport("text_encoder_encode_into_result", text_encoder_result_mod);
 
     const text_decoder_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/text_decoder_options.zig"),
+        .root_source_file = b.path("webidl/src/encoding/TextDecoderOptions.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
@@ -318,7 +318,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const text_decode_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/encoding/text_decode_options.zig"),
+        .root_source_file = b.path("webidl/src/encoding/TextDecodeOptions.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },

@@ -1,1 +1,125 @@
-{"definitions":[{"interface":{"name":"BeforeInstallPromptEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"EventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"prompt","return_type":{"promise":{"identifier":"PromptResponseObject"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"PromptResponseObject","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"userChoice","type":{"identifier":"AppBannerPromptOutcome"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"AppBannerPromptOutcome","values":["accepted","dismissed"],"extended_attributes":[]}},{"interface":{"name":"Window","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"onappinstalled","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onbeforeinstallprompt","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "BeforeInstallPromptEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "EventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "prompt",
+              "return_type": {
+                "promise": {
+                  "identifier": "PromptResponseObject"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PromptResponseObject",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "userChoice",
+            "type": {
+              "identifier": "AppBannerPromptOutcome"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AppBannerPromptOutcome",
+        "values": [
+          "accepted",
+          "dismissed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Window",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "onappinstalled",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onbeforeinstallprompt",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

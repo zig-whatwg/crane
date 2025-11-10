@@ -1,1 +1,149 @@
-{"definitions":[{"interface":{"name":"OVR_multiview2","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR","type":{"identifier":"GLenum"},"value":{"value":38448,"lexeme":"0x9630"}}},{"const":{"name":"FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR","type":{"identifier":"GLenum"},"value":{"value":38450,"lexeme":"0x9632"}}},{"const":{"name":"MAX_VIEWS_OVR","type":{"identifier":"GLenum"},"value":{"value":38449,"lexeme":"0x9631"}}},{"const":{"name":"FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR","type":{"identifier":"GLenum"},"value":{"value":38451,"lexeme":"0x9633"}}},{"operation":{"name":"framebufferTextureMultiviewOVR","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"attachment","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"texture","type":{"nullable":{"identifier":"WebGLTexture"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"level","type":{"identifier":"GLint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"baseViewIndex","type":{"identifier":"GLint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"numViews","type":{"identifier":"GLsizei"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "OVR_multiview2",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "FRAMEBUFFER_ATTACHMENT_TEXTURE_NUM_VIEWS_OVR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 38448,
+                "lexeme": "0x9630"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "FRAMEBUFFER_ATTACHMENT_TEXTURE_BASE_VIEW_INDEX_OVR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 38450,
+                "lexeme": "0x9632"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_VIEWS_OVR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 38449,
+                "lexeme": "0x9631"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "FRAMEBUFFER_INCOMPLETE_VIEW_TARGETS_OVR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 38451,
+                "lexeme": "0x9633"
+              }
+            }
+          },
+          {
+            "operation": {
+              "name": "framebufferTextureMultiviewOVR",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "attachment",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "texture",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLTexture"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "level",
+                  "type": {
+                    "identifier": "GLint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "baseViewIndex",
+                  "type": {
+                    "identifier": "GLint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "numViews",
+                  "type": {
+                    "identifier": "GLsizei"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

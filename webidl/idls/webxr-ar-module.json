@@ -1,1 +1,92 @@
-{"definitions":[{"enum":{"name":"XREnvironmentBlendMode","values":["opaque","alpha-blend","additive"],"extended_attributes":[]}},{"interface":{"name":"XRSession","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"environmentBlendMode","type":{"identifier":"XREnvironmentBlendMode"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"XRInteractionMode","values":["screen-space","world-space"],"extended_attributes":[]}},{"interface":{"name":"XRSession","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"interactionMode","type":{"identifier":"XRInteractionMode"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRView","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"isFirstPersonObserver","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "XREnvironmentBlendMode",
+        "values": [
+          "opaque",
+          "alpha-blend",
+          "additive"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSession",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "environmentBlendMode",
+              "type": {
+                "identifier": "XREnvironmentBlendMode"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "XRInteractionMode",
+        "values": [
+          "screen-space",
+          "world-space"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSession",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "interactionMode",
+              "type": {
+                "identifier": "XRInteractionMode"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRView",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "isFirstPersonObserver",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

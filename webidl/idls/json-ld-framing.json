@@ -1,1 +1,174 @@
-{"definitions":[{"interface":{"name":"JsonLdProcessor","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"JsonLd"}}],"members":[{"operation":{"name":"frame","return_type":{"promise":{"identifier":"JsonLdRecord"}},"arguments":[{"name":"input","type":{"identifier":"JsonLdInput"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"frame","type":{"identifier":"JsonLdInput"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"JsonLdOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"JsonLdFramingError","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"code","type":{"identifier":"JsonLdFramingErrorCode"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"message","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"JsonLdFramingErrorCode","values":["invalid frame","invalid @embed value"],"extended_attributes":[]}},{"dictionary":{"name":"JsonLdOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"embed","type":{"union":[{"identifier":"JsonLdEmbed"},"boolean"]},"required":false,"default_value":"@once","extended_attributes":[]},{"name":"explicit","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"omitDefault","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"omitGraph","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"requireAll","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"frameDefault","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"enum":{"name":"JsonLdEmbed","values":["@always","@once","@never"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "JsonLdProcessor",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "JsonLd"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "frame",
+              "return_type": {
+                "promise": {
+                  "identifier": "JsonLdRecord"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": {
+                    "identifier": "JsonLdInput"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "frame",
+                  "type": {
+                    "identifier": "JsonLdInput"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "JsonLdOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "JsonLdFramingError",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "code",
+            "type": {
+              "identifier": "JsonLdFramingErrorCode"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "message",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "JsonLdFramingErrorCode",
+        "values": [
+          "invalid frame",
+          "invalid @embed value"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "JsonLdOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "embed",
+            "type": {
+              "union": [
+                {
+                  "identifier": "JsonLdEmbed"
+                },
+                "boolean"
+              ]
+            },
+            "required": false,
+            "default_value": "@once",
+            "extended_attributes": []
+          },
+          {
+            "name": "explicit",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "omitDefault",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "omitGraph",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requireAll",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameDefault",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "JsonLdEmbed",
+        "values": [
+          "@always",
+          "@once",
+          "@never"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

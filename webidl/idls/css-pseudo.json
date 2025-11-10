@@ -1,1 +1,127 @@
-{"definitions":[{"interface":{"name":"CSSPseudoElement","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"type","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"element","type":{"identifier":"Element"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"parent","type":{"union":[{"identifier":"Element"},{"identifier":"CSSPseudoElement"}]},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"pseudo","return_type":{"nullable":{"identifier":"CSSPseudoElement"}},"arguments":[{"name":"type","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"Element","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"pseudo","return_type":{"nullable":{"identifier":"CSSPseudoElement"}},"arguments":[{"name":"type","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "CSSPseudoElement",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "element",
+              "type": {
+                "identifier": "Element"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "parent",
+              "type": {
+                "union": [
+                  {
+                    "identifier": "Element"
+                  },
+                  {
+                    "identifier": "CSSPseudoElement"
+                  }
+                ]
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "pseudo",
+              "return_type": {
+                "nullable": {
+                  "identifier": "CSSPseudoElement"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Element",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "pseudo",
+              "return_type": {
+                "nullable": {
+                  "identifier": "CSSPseudoElement"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

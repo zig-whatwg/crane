@@ -1,1 +1,4588 @@
-{"definitions":[{"dictionary":{"name":"RTCConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"iceServers","type":{"sequence":{"identifier":"RTCIceServer"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"iceTransportPolicy","type":{"identifier":"RTCIceTransportPolicy"},"required":false,"default_value":"all","extended_attributes":[]},{"name":"bundlePolicy","type":{"identifier":"RTCBundlePolicy"},"required":false,"default_value":"balanced","extended_attributes":[]},{"name":"rtcpMuxPolicy","type":{"identifier":"RTCRtcpMuxPolicy"},"required":false,"default_value":"require","extended_attributes":[]},{"name":"certificates","type":{"sequence":{"identifier":"RTCCertificate"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"iceCandidatePoolSize","type":"octet","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"dictionary":{"name":"RTCIceServer","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"urls","type":{"union":["USVString",{"sequence":"USVString"}]},"required":true,"default_value":null,"extended_attributes":[]},{"name":"username","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"credential","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCIceTransportPolicy","values":["relay","all"],"extended_attributes":[]}},{"enum":{"name":"RTCBundlePolicy","values":["balanced","max-compat","max-bundle"],"extended_attributes":[]}},{"enum":{"name":"RTCRtcpMuxPolicy","values":["require"],"extended_attributes":[]}},{"dictionary":{"name":"RTCOfferAnswerOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"RTCOfferOptions","inherits":"RTCOfferAnswerOptions","partial":false,"extended_attributes":[],"members":[{"name":"iceRestart","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCAnswerOptions","inherits":"RTCOfferAnswerOptions","partial":false,"extended_attributes":[],"members":[]}},{"enum":{"name":"RTCSignalingState","values":["stable","have-local-offer","have-remote-offer","have-local-pranswer","have-remote-pranswer","closed"],"extended_attributes":[]}},{"enum":{"name":"RTCIceGatheringState","values":["new","gathering","complete"],"extended_attributes":[]}},{"enum":{"name":"RTCPeerConnectionState","values":["closed","failed","disconnected","new","connecting","connected"],"extended_attributes":[]}},{"enum":{"name":"RTCIceConnectionState","values":["closed","failed","disconnected","new","checking","completed","connected"],"extended_attributes":[]}},{"interface":{"name":"RTCPeerConnection","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"configuration","type":{"identifier":"RTCConfiguration"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"createOffer","return_type":{"promise":{"identifier":"RTCSessionDescriptionInit"}},"arguments":[{"name":"options","type":{"identifier":"RTCOfferOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createAnswer","return_type":{"promise":{"identifier":"RTCSessionDescriptionInit"}},"arguments":[{"name":"options","type":{"identifier":"RTCAnswerOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setLocalDescription","return_type":{"promise":"undefined"},"arguments":[{"name":"description","type":{"identifier":"RTCLocalSessionDescriptionInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"localDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"currentLocalDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pendingLocalDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"setRemoteDescription","return_type":{"promise":"undefined"},"arguments":[{"name":"description","type":{"identifier":"RTCSessionDescriptionInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"remoteDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"currentRemoteDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pendingRemoteDescription","type":{"nullable":{"identifier":"RTCSessionDescription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"addIceCandidate","return_type":{"promise":"undefined"},"arguments":[{"name":"candidate","type":{"identifier":"RTCIceCandidateInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"signalingState","type":{"identifier":"RTCSignalingState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"iceGatheringState","type":{"identifier":"RTCIceGatheringState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"iceConnectionState","type":{"identifier":"RTCIceConnectionState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"connectionState","type":{"identifier":"RTCPeerConnectionState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"canTrickleIceCandidates","type":{"nullable":"boolean"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"restartIce","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getConfiguration","return_type":{"identifier":"RTCConfiguration"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setConfiguration","return_type":"undefined","arguments":[{"name":"configuration","type":{"identifier":"RTCConfiguration"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onnegotiationneeded","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onicecandidate","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onicecandidateerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onsignalingstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"oniceconnectionstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onicegatheringstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onconnectionstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"createOffer","return_type":{"promise":"undefined"},"arguments":[{"name":"successCallback","type":{"identifier":"RTCSessionDescriptionCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"failureCallback","type":{"identifier":"RTCPeerConnectionErrorCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RTCOfferOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setLocalDescription","return_type":{"promise":"undefined"},"arguments":[{"name":"description","type":{"identifier":"RTCLocalSessionDescriptionInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"successCallback","type":{"identifier":"VoidFunction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"failureCallback","type":{"identifier":"RTCPeerConnectionErrorCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createAnswer","return_type":{"promise":"undefined"},"arguments":[{"name":"successCallback","type":{"identifier":"RTCSessionDescriptionCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"failureCallback","type":{"identifier":"RTCPeerConnectionErrorCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setRemoteDescription","return_type":{"promise":"undefined"},"arguments":[{"name":"description","type":{"identifier":"RTCSessionDescriptionInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"successCallback","type":{"identifier":"VoidFunction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"failureCallback","type":{"identifier":"RTCPeerConnectionErrorCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"addIceCandidate","return_type":{"promise":"undefined"},"arguments":[{"name":"candidate","type":{"identifier":"RTCIceCandidateInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"successCallback","type":{"identifier":"VoidFunction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"failureCallback","type":{"identifier":"RTCPeerConnectionErrorCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"callback":{"name":"RTCPeerConnectionErrorCallback","return_type":"undefined","arguments":[{"name":"error","type":{"identifier":"DOMException"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"RTCSessionDescriptionCallback","return_type":"undefined","arguments":[{"name":"description","type":{"identifier":"RTCSessionDescriptionInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"RTCOfferOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"offerToReceiveAudio","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"offerToReceiveVideo","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCSdpType","values":["offer","pranswer","answer","rollback"],"extended_attributes":[]}},{"interface":{"name":"RTCSessionDescription","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"descriptionInitDict","type":{"identifier":"RTCSessionDescriptionInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"RTCSdpType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sdp","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":{"identifier":"RTCSessionDescriptionInit"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"Default","value":null}]}}]}},{"dictionary":{"name":"RTCSessionDescriptionInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"RTCSdpType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"sdp","type":"DOMString","required":false,"default_value":"","extended_attributes":[]}]}},{"dictionary":{"name":"RTCLocalSessionDescriptionInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"RTCSdpType"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sdp","type":"DOMString","required":false,"default_value":"","extended_attributes":[]}]}},{"interface":{"name":"RTCIceCandidate","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"candidateInitDict","type":{"identifier":"RTCLocalIceCandidateInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"candidate","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sdpMid","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sdpMLineIndex","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"foundation","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"component","type":{"nullable":{"identifier":"RTCIceComponent"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"priority","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"address","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"protocol","type":{"nullable":{"identifier":"RTCIceProtocol"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"port","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"nullable":{"identifier":"RTCIceCandidateType"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tcpType","type":{"nullable":{"identifier":"RTCIceTcpCandidateType"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"relatedAddress","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"relatedPort","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usernameFragment","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"relayProtocol","type":{"nullable":{"identifier":"RTCIceServerTransportProtocol"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"url","type":{"nullable":"USVString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":{"identifier":"RTCIceCandidateInit"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCIceCandidateInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"candidate","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"sdpMid","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sdpMLineIndex","type":{"nullable":"unsigned short"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"usernameFragment","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCLocalIceCandidateInit","inherits":"RTCIceCandidateInit","partial":false,"extended_attributes":[],"members":[{"name":"relayProtocol","type":{"nullable":{"identifier":"RTCIceServerTransportProtocol"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"url","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCIceProtocol","values":["udp","tcp"],"extended_attributes":[]}},{"enum":{"name":"RTCIceTcpCandidateType","values":["active","passive","so"],"extended_attributes":[]}},{"enum":{"name":"RTCIceCandidateType","values":["host","srflx","prflx","relay"],"extended_attributes":[]}},{"enum":{"name":"RTCIceServerTransportProtocol","values":["udp","tcp","tls"],"extended_attributes":[]}},{"interface":{"name":"RTCPeerConnectionIceEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCPeerConnectionIceEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"candidate","type":{"nullable":{"identifier":"RTCIceCandidate"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"url","type":{"nullable":"USVString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCPeerConnectionIceEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"candidate","type":{"nullable":{"identifier":"RTCIceCandidate"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"url","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCPeerConnectionIceErrorEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCPeerConnectionIceErrorEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"address","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"port","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"url","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"errorCode","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"errorText","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCPeerConnectionIceErrorEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"address","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"port","type":{"nullable":"unsigned short"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"url","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"errorCode","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]},{"name":"errorText","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCPeerConnection","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"generateCertificate","return_type":{"promise":{"identifier":"RTCCertificate"}},"arguments":[{"name":"keygenAlgorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCCertificateExpiration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"expires","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"interface":{"name":"RTCCertificate","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"Serializable","value":null}],"members":[{"attribute":{"name":"expires","type":{"identifier":"EpochTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getFingerprints","return_type":{"sequence":{"identifier":"RTCDtlsFingerprint"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"RTCPeerConnection","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getSenders","return_type":{"sequence":{"identifier":"RTCRtpSender"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getReceivers","return_type":{"sequence":{"identifier":"RTCRtpReceiver"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getTransceivers","return_type":{"sequence":{"identifier":"RTCRtpTransceiver"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"addTrack","return_type":{"identifier":"RTCRtpSender"},"arguments":[{"name":"track","type":{"identifier":"MediaStreamTrack"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"streams","type":{"identifier":"MediaStream"},"optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"removeTrack","return_type":"undefined","arguments":[{"name":"sender","type":{"identifier":"RTCRtpSender"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"addTransceiver","return_type":{"identifier":"RTCRtpTransceiver"},"arguments":[{"name":"trackOrKind","type":{"union":[{"identifier":"MediaStreamTrack"},"DOMString"]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"RTCRtpTransceiverInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"ontrack","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCRtpTransceiverInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"direction","type":{"identifier":"RTCRtpTransceiverDirection"},"required":false,"default_value":"sendrecv","extended_attributes":[]},{"name":"streams","type":{"sequence":{"identifier":"MediaStream"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"sendEncodings","type":{"sequence":{"identifier":"RTCRtpEncodingParameters"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"enum":{"name":"RTCRtpTransceiverDirection","values":["sendrecv","sendonly","recvonly","inactive","stopped"],"extended_attributes":[]}},{"interface":{"name":"RTCRtpSender","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"track","type":{"nullable":{"identifier":"MediaStreamTrack"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transport","type":{"nullable":{"identifier":"RTCDtlsTransport"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getCapabilities","return_type":{"nullable":{"identifier":"RTCRtpCapabilities"}},"arguments":[{"name":"kind","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"setParameters","return_type":{"promise":"undefined"},"arguments":[{"name":"parameters","type":{"identifier":"RTCRtpSendParameters"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"setParameterOptions","type":{"identifier":"RTCSetParameterOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getParameters","return_type":{"identifier":"RTCRtpSendParameters"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"replaceTrack","return_type":{"promise":"undefined"},"arguments":[{"name":"withTrack","type":{"nullable":{"identifier":"MediaStreamTrack"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setStreams","return_type":"undefined","arguments":[{"name":"streams","type":{"identifier":"MediaStream"},"optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getStats","return_type":{"promise":{"identifier":"RTCStatsReport"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCRtpParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"headerExtensions","type":{"sequence":{"identifier":"RTCRtpHeaderExtensionParameters"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"rtcp","type":{"identifier":"RTCRtcpParameters"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"codecs","type":{"sequence":{"identifier":"RTCRtpCodecParameters"}},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpSendParameters","inherits":"RTCRtpParameters","partial":false,"extended_attributes":[],"members":[{"name":"transactionId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"encodings","type":{"sequence":{"identifier":"RTCRtpEncodingParameters"}},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpReceiveParameters","inherits":"RTCRtpParameters","partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"RTCRtpCodingParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpEncodingParameters","inherits":"RTCRtpCodingParameters","partial":false,"extended_attributes":[],"members":[{"name":"active","type":"boolean","required":false,"default_value":true,"extended_attributes":[]},{"name":"codec","type":{"identifier":"RTCRtpCodec"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"maxBitrate","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"maxFramerate","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"scaleResolutionDownBy","type":"double","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtcpParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"cname","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"reducedSize","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpHeaderExtensionParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"uri","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"id","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]},{"name":"encrypted","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpCodec","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"mimeType","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"clockRate","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"channels","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[]},{"name":"sdpFmtpLine","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpCodecParameters","inherits":"RTCRtpCodec","partial":false,"extended_attributes":[],"members":[{"name":"payloadType","type":"octet","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpCapabilities","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"codecs","type":{"sequence":{"identifier":"RTCRtpCodec"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"headerExtensions","type":{"sequence":{"identifier":"RTCRtpHeaderExtensionCapability"}},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpHeaderExtensionCapability","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"uri","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCSetParameterOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"interface":{"name":"RTCRtpReceiver","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"track","type":{"identifier":"MediaStreamTrack"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transport","type":{"nullable":{"identifier":"RTCDtlsTransport"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getCapabilities","return_type":{"nullable":{"identifier":"RTCRtpCapabilities"}},"arguments":[{"name":"kind","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"getParameters","return_type":{"identifier":"RTCRtpReceiveParameters"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getContributingSources","return_type":{"sequence":{"identifier":"RTCRtpContributingSource"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getSynchronizationSources","return_type":{"sequence":{"identifier":"RTCRtpSynchronizationSource"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getStats","return_type":{"promise":{"identifier":"RTCStatsReport"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"jitterBufferTarget","type":{"nullable":{"identifier":"DOMHighResTimeStamp"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCRtpContributingSource","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"source","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"audioLevel","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"rtpTimestamp","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRtpSynchronizationSource","inherits":"RTCRtpContributingSource","partial":false,"extended_attributes":[],"members":[]}},{"interface":{"name":"RTCRtpTransceiver","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"mid","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sender","type":{"identifier":"RTCRtpSender"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"receiver","type":{"identifier":"RTCRtpReceiver"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"direction","type":{"identifier":"RTCRtpTransceiverDirection"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"currentDirection","type":{"nullable":{"identifier":"RTCRtpTransceiverDirection"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"stop","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setCodecPreferences","return_type":"undefined","arguments":[{"name":"codecs","type":{"sequence":{"identifier":"RTCRtpCodec"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"RTCDtlsTransport","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"iceTransport","type":{"identifier":"RTCIceTransport"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"state","type":{"identifier":"RTCDtlsTransportState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getRemoteCertificates","return_type":{"sequence":{"identifier":"ArrayBuffer"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"RTCDtlsTransportState","values":["new","connecting","connected","closed","failed"],"extended_attributes":[]}},{"dictionary":{"name":"RTCDtlsFingerprint","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"algorithm","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCIceTransport","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"role","type":{"identifier":"RTCIceRole"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"component","type":{"identifier":"RTCIceComponent"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"RTCIceTransportState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"gatheringState","type":{"identifier":"RTCIceGathererState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getLocalCandidates","return_type":{"sequence":{"identifier":"RTCIceCandidate"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getRemoteCandidates","return_type":{"sequence":{"identifier":"RTCIceCandidate"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getSelectedCandidatePair","return_type":{"nullable":{"identifier":"RTCIceCandidatePair"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getLocalParameters","return_type":{"nullable":{"identifier":"RTCIceParameters"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getRemoteParameters","return_type":{"nullable":{"identifier":"RTCIceParameters"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ongatheringstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onselectedcandidatepairchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCIceParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"usernameFragment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"password","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCIceCandidatePair","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"local","type":{"identifier":"RTCIceCandidate"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"remote","type":{"identifier":"RTCIceCandidate"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"enum":{"name":"RTCIceGathererState","values":["new","gathering","complete"],"extended_attributes":[]}},{"enum":{"name":"RTCIceTransportState","values":["closed","failed","disconnected","new","checking","completed","connected"],"extended_attributes":[]}},{"enum":{"name":"RTCIceRole","values":["unknown","controlling","controlled"],"extended_attributes":[]}},{"enum":{"name":"RTCIceComponent","values":["rtp","rtcp"],"extended_attributes":[]}},{"interface":{"name":"RTCTrackEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCTrackEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"receiver","type":{"identifier":"RTCRtpReceiver"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"track","type":{"identifier":"MediaStreamTrack"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"streams","type":{"frozen_array":{"identifier":"MediaStream"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"transceiver","type":{"identifier":"RTCRtpTransceiver"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCTrackEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"receiver","type":{"identifier":"RTCRtpReceiver"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"track","type":{"identifier":"MediaStreamTrack"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"streams","type":{"sequence":{"identifier":"MediaStream"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"transceiver","type":{"identifier":"RTCRtpTransceiver"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCPeerConnection","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"sctp","type":{"nullable":{"identifier":"RTCSctpTransport"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"createDataChannel","return_type":{"identifier":"RTCDataChannel"},"arguments":[{"name":"label","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"dataChannelDict","type":{"identifier":"RTCDataChannelInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"ondatachannel","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"RTCSctpTransport","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"transport","type":{"identifier":"RTCDtlsTransport"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"RTCSctpTransportState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxMessageSize","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxChannels","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"RTCSctpTransportState","values":["connecting","connected","closed"],"extended_attributes":[]}},{"interface":{"name":"RTCDataChannel","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"Transferable","value":null}],"members":[{"attribute":{"name":"label","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ordered","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxPacketLifeTime","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxRetransmits","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"protocol","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"negotiated","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"id","type":{"nullable":"unsigned short"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"readyState","type":{"identifier":"RTCDataChannelState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bufferedAmount","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bufferedAmountLowThreshold","type":"unsigned long","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"EnforceRange","value":null}]}},{"attribute":{"name":"onopen","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onbufferedamountlow","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onclosing","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onclose","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"binaryType","type":{"identifier":"BinaryType"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":{"identifier":"Blob"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":{"identifier":"ArrayBuffer"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":{"identifier":"ArrayBufferView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCDataChannelInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"ordered","type":"boolean","required":false,"default_value":true,"extended_attributes":[]},{"name":"maxPacketLifeTime","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"maxRetransmits","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"protocol","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"negotiated","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"id","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"enum":{"name":"RTCDataChannelState","values":["connecting","open","closing","closed"],"extended_attributes":[]}},{"interface":{"name":"RTCDataChannelEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCDataChannelEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"channel","type":{"identifier":"RTCDataChannel"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCDataChannelEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"channel","type":{"identifier":"RTCDataChannel"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCRtpSender","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"dtmf","type":{"nullable":{"identifier":"RTCDTMFSender"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"RTCDTMFSender","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"insertDTMF","return_type":"undefined","arguments":[{"name":"tones","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"duration","type":"unsigned long","optional":true,"variadic":false,"default_value":{"value":100,"lexeme":"100"},"extended_attributes":[]},{"name":"interToneGap","type":"unsigned long","optional":true,"variadic":false,"default_value":{"value":70,"lexeme":"70"},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"ontonechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"canInsertDTMF","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"toneBuffer","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"RTCDTMFToneChangeEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCDTMFToneChangeEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"tone","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCDTMFToneChangeEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"tone","type":"DOMString","required":false,"default_value":"","extended_attributes":[]}]}},{"interface":{"name":"RTCPeerConnection","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getStats","return_type":{"promise":{"identifier":"RTCStatsReport"}},"arguments":[{"name":"selector","type":{"nullable":{"identifier":"MediaStreamTrack"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"RTCStatsReport","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"maplike":{"key_type":"DOMString","value_type":"object","readonly":true}}]}},{"dictionary":{"name":"RTCStats","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"type","type":{"identifier":"RTCStatsType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"id","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCError","inherits":"DOMException","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"RTCErrorInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"message","type":"DOMString","optional":true,"variadic":false,"default_value":"","extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"errorDetail","type":{"identifier":"RTCErrorDetailType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sdpLineNumber","type":{"nullable":"long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sctpCauseCode","type":{"nullable":"long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"receivedAlert","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sentAlert","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCErrorInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"errorDetail","type":{"identifier":"RTCErrorDetailType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"sdpLineNumber","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"sctpCauseCode","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"receivedAlert","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"sentAlert","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCErrorDetailType","values":["data-channel-failure","dtls-failure","fingerprint-failure","sctp-failure","sdp-syntax-error","hardware-encoder-not-available","hardware-encoder-error"],"extended_attributes":[]}},{"interface":{"name":"RTCErrorEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"RTCErrorEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"error","type":{"identifier":"RTCError"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"RTCErrorEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"error","type":{"identifier":"RTCError"},"required":true,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "RTCConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "iceServers",
+            "type": {
+              "sequence": {
+                "identifier": "RTCIceServer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "iceTransportPolicy",
+            "type": {
+              "identifier": "RTCIceTransportPolicy"
+            },
+            "required": false,
+            "default_value": "all",
+            "extended_attributes": []
+          },
+          {
+            "name": "bundlePolicy",
+            "type": {
+              "identifier": "RTCBundlePolicy"
+            },
+            "required": false,
+            "default_value": "balanced",
+            "extended_attributes": []
+          },
+          {
+            "name": "rtcpMuxPolicy",
+            "type": {
+              "identifier": "RTCRtcpMuxPolicy"
+            },
+            "required": false,
+            "default_value": "require",
+            "extended_attributes": []
+          },
+          {
+            "name": "certificates",
+            "type": {
+              "sequence": {
+                "identifier": "RTCCertificate"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "iceCandidatePoolSize",
+            "type": "octet",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIceServer",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "urls",
+            "type": {
+              "union": [
+                "USVString",
+                {
+                  "sequence": "USVString"
+                }
+              ]
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "username",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "credential",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceTransportPolicy",
+        "values": [
+          "relay",
+          "all"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCBundlePolicy",
+        "values": [
+          "balanced",
+          "max-compat",
+          "max-bundle"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCRtcpMuxPolicy",
+        "values": [
+          "require"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCOfferAnswerOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCOfferOptions",
+        "inherits": "RTCOfferAnswerOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "iceRestart",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCAnswerOptions",
+        "inherits": "RTCOfferAnswerOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCSignalingState",
+        "values": [
+          "stable",
+          "have-local-offer",
+          "have-remote-offer",
+          "have-local-pranswer",
+          "have-remote-pranswer",
+          "closed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceGatheringState",
+        "values": [
+          "new",
+          "gathering",
+          "complete"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCPeerConnectionState",
+        "values": [
+          "closed",
+          "failed",
+          "disconnected",
+          "new",
+          "connecting",
+          "connected"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceConnectionState",
+        "values": [
+          "closed",
+          "failed",
+          "disconnected",
+          "new",
+          "checking",
+          "completed",
+          "connected"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "configuration",
+                  "type": {
+                    "identifier": "RTCConfiguration"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createOffer",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCSessionDescriptionInit"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RTCOfferOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createAnswer",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCSessionDescriptionInit"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RTCAnswerOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setLocalDescription",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "description",
+                  "type": {
+                    "identifier": "RTCLocalSessionDescriptionInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "localDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "currentLocalDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pendingLocalDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setRemoteDescription",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "description",
+                  "type": {
+                    "identifier": "RTCSessionDescriptionInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "remoteDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "currentRemoteDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pendingRemoteDescription",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSessionDescription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addIceCandidate",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "candidate",
+                  "type": {
+                    "identifier": "RTCIceCandidateInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "signalingState",
+              "type": {
+                "identifier": "RTCSignalingState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "iceGatheringState",
+              "type": {
+                "identifier": "RTCIceGatheringState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "iceConnectionState",
+              "type": {
+                "identifier": "RTCIceConnectionState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "connectionState",
+              "type": {
+                "identifier": "RTCPeerConnectionState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "canTrickleIceCandidates",
+              "type": {
+                "nullable": "boolean"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "restartIce",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getConfiguration",
+              "return_type": {
+                "identifier": "RTCConfiguration"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setConfiguration",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "configuration",
+                  "type": {
+                    "identifier": "RTCConfiguration"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onnegotiationneeded",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onicecandidate",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onicecandidateerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onsignalingstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oniceconnectionstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onicegatheringstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onconnectionstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createOffer",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "successCallback",
+                  "type": {
+                    "identifier": "RTCSessionDescriptionCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "failureCallback",
+                  "type": {
+                    "identifier": "RTCPeerConnectionErrorCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RTCOfferOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setLocalDescription",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "description",
+                  "type": {
+                    "identifier": "RTCLocalSessionDescriptionInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "successCallback",
+                  "type": {
+                    "identifier": "VoidFunction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "failureCallback",
+                  "type": {
+                    "identifier": "RTCPeerConnectionErrorCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createAnswer",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "successCallback",
+                  "type": {
+                    "identifier": "RTCSessionDescriptionCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "failureCallback",
+                  "type": {
+                    "identifier": "RTCPeerConnectionErrorCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setRemoteDescription",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "description",
+                  "type": {
+                    "identifier": "RTCSessionDescriptionInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "successCallback",
+                  "type": {
+                    "identifier": "VoidFunction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "failureCallback",
+                  "type": {
+                    "identifier": "RTCPeerConnectionErrorCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addIceCandidate",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "candidate",
+                  "type": {
+                    "identifier": "RTCIceCandidateInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "successCallback",
+                  "type": {
+                    "identifier": "VoidFunction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "failureCallback",
+                  "type": {
+                    "identifier": "RTCPeerConnectionErrorCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "RTCPeerConnectionErrorCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "error",
+            "type": {
+              "identifier": "DOMException"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "RTCSessionDescriptionCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "description",
+            "type": {
+              "identifier": "RTCSessionDescriptionInit"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCOfferOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "offerToReceiveAudio",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "offerToReceiveVideo",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCSdpType",
+        "values": [
+          "offer",
+          "pranswer",
+          "answer",
+          "rollback"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCSessionDescription",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "descriptionInitDict",
+                  "type": {
+                    "identifier": "RTCSessionDescriptionInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "RTCSdpType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sdp",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": {
+                "identifier": "RTCSessionDescriptionInit"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "Default",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCSessionDescriptionInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "RTCSdpType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdp",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCLocalSessionDescriptionInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "RTCSdpType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdp",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCIceCandidate",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "candidateInitDict",
+                  "type": {
+                    "identifier": "RTCLocalIceCandidateInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "candidate",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sdpMid",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sdpMLineIndex",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "foundation",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "component",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceComponent"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "priority",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "address",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "protocol",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceProtocol"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "port",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceCandidateType"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tcpType",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceTcpCandidateType"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "relatedAddress",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "relatedPort",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usernameFragment",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "relayProtocol",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceServerTransportProtocol"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "url",
+              "type": {
+                "nullable": "USVString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": {
+                "identifier": "RTCIceCandidateInit"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIceCandidateInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "candidate",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "sdpMid",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdpMLineIndex",
+            "type": {
+              "nullable": "unsigned short"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "usernameFragment",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCLocalIceCandidateInit",
+        "inherits": "RTCIceCandidateInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "relayProtocol",
+            "type": {
+              "nullable": {
+                "identifier": "RTCIceServerTransportProtocol"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "url",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceProtocol",
+        "values": [
+          "udp",
+          "tcp"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceTcpCandidateType",
+        "values": [
+          "active",
+          "passive",
+          "so"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceCandidateType",
+        "values": [
+          "host",
+          "srflx",
+          "prflx",
+          "relay"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceServerTransportProtocol",
+        "values": [
+          "udp",
+          "tcp",
+          "tls"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnectionIceEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCPeerConnectionIceEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "candidate",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCIceCandidate"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "url",
+              "type": {
+                "nullable": "USVString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCPeerConnectionIceEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "candidate",
+            "type": {
+              "nullable": {
+                "identifier": "RTCIceCandidate"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "url",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnectionIceErrorEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCPeerConnectionIceErrorEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "address",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "port",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "url",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "errorCode",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "errorText",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCPeerConnectionIceErrorEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "address",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "port",
+            "type": {
+              "nullable": "unsigned short"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "url",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "errorCode",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "errorText",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "generateCertificate",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCCertificate"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "keygenAlgorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCCertificateExpiration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "expires",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCCertificate",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "expires",
+              "type": {
+                "identifier": "EpochTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getFingerprints",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCDtlsFingerprint"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getSenders",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCRtpSender"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getReceivers",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCRtpReceiver"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getTransceivers",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCRtpTransceiver"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addTrack",
+              "return_type": {
+                "identifier": "RTCRtpSender"
+              },
+              "arguments": [
+                {
+                  "name": "track",
+                  "type": {
+                    "identifier": "MediaStreamTrack"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "streams",
+                  "type": {
+                    "identifier": "MediaStream"
+                  },
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "removeTrack",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "sender",
+                  "type": {
+                    "identifier": "RTCRtpSender"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addTransceiver",
+              "return_type": {
+                "identifier": "RTCRtpTransceiver"
+              },
+              "arguments": [
+                {
+                  "name": "trackOrKind",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "MediaStreamTrack"
+                      },
+                      "DOMString"
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "RTCRtpTransceiverInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ontrack",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpTransceiverInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "direction",
+            "type": {
+              "identifier": "RTCRtpTransceiverDirection"
+            },
+            "required": false,
+            "default_value": "sendrecv",
+            "extended_attributes": []
+          },
+          {
+            "name": "streams",
+            "type": {
+              "sequence": {
+                "identifier": "MediaStream"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "sendEncodings",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpEncodingParameters"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCRtpTransceiverDirection",
+        "values": [
+          "sendrecv",
+          "sendonly",
+          "recvonly",
+          "inactive",
+          "stopped"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCRtpSender",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "track",
+              "type": {
+                "nullable": {
+                  "identifier": "MediaStreamTrack"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transport",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCDtlsTransport"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getCapabilities",
+              "return_type": {
+                "nullable": {
+                  "identifier": "RTCRtpCapabilities"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "kind",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setParameters",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "parameters",
+                  "type": {
+                    "identifier": "RTCRtpSendParameters"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "setParameterOptions",
+                  "type": {
+                    "identifier": "RTCSetParameterOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getParameters",
+              "return_type": {
+                "identifier": "RTCRtpSendParameters"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "replaceTrack",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "withTrack",
+                  "type": {
+                    "nullable": {
+                      "identifier": "MediaStreamTrack"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setStreams",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "streams",
+                  "type": {
+                    "identifier": "MediaStream"
+                  },
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getStats",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCStatsReport"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "headerExtensions",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpHeaderExtensionParameters"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rtcp",
+            "type": {
+              "identifier": "RTCRtcpParameters"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "codecs",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpCodecParameters"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpSendParameters",
+        "inherits": "RTCRtpParameters",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transactionId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "encodings",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpEncodingParameters"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpReceiveParameters",
+        "inherits": "RTCRtpParameters",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpCodingParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpEncodingParameters",
+        "inherits": "RTCRtpCodingParameters",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "active",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          },
+          {
+            "name": "codec",
+            "type": {
+              "identifier": "RTCRtpCodec"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "maxBitrate",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "maxFramerate",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "scaleResolutionDownBy",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtcpParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "cname",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "reducedSize",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpHeaderExtensionParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "uri",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "encrypted",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpCodec",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "mimeType",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clockRate",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "channels",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdpFmtpLine",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpCodecParameters",
+        "inherits": "RTCRtpCodec",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "payloadType",
+            "type": "octet",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpCapabilities",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "codecs",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpCodec"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "headerExtensions",
+            "type": {
+              "sequence": {
+                "identifier": "RTCRtpHeaderExtensionCapability"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpHeaderExtensionCapability",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "uri",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCSetParameterOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCRtpReceiver",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "track",
+              "type": {
+                "identifier": "MediaStreamTrack"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transport",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCDtlsTransport"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getCapabilities",
+              "return_type": {
+                "nullable": {
+                  "identifier": "RTCRtpCapabilities"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "kind",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getParameters",
+              "return_type": {
+                "identifier": "RTCRtpReceiveParameters"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getContributingSources",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCRtpContributingSource"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getSynchronizationSources",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCRtpSynchronizationSource"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getStats",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCStatsReport"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "jitterBufferTarget",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMHighResTimeStamp"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpContributingSource",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "source",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "audioLevel",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rtpTimestamp",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpSynchronizationSource",
+        "inherits": "RTCRtpContributingSource",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCRtpTransceiver",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "mid",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sender",
+              "type": {
+                "identifier": "RTCRtpSender"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "receiver",
+              "type": {
+                "identifier": "RTCRtpReceiver"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "direction",
+              "type": {
+                "identifier": "RTCRtpTransceiverDirection"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "currentDirection",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCRtpTransceiverDirection"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "stop",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setCodecPreferences",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "codecs",
+                  "type": {
+                    "sequence": {
+                      "identifier": "RTCRtpCodec"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCDtlsTransport",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "iceTransport",
+              "type": {
+                "identifier": "RTCIceTransport"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "RTCDtlsTransportState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRemoteCertificates",
+              "return_type": {
+                "sequence": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCDtlsTransportState",
+        "values": [
+          "new",
+          "connecting",
+          "connected",
+          "closed",
+          "failed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCDtlsFingerprint",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "algorithm",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "value",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCIceTransport",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "role",
+              "type": {
+                "identifier": "RTCIceRole"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "component",
+              "type": {
+                "identifier": "RTCIceComponent"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "RTCIceTransportState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "gatheringState",
+              "type": {
+                "identifier": "RTCIceGathererState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getLocalCandidates",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCIceCandidate"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRemoteCandidates",
+              "return_type": {
+                "sequence": {
+                  "identifier": "RTCIceCandidate"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getSelectedCandidatePair",
+              "return_type": {
+                "nullable": {
+                  "identifier": "RTCIceCandidatePair"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getLocalParameters",
+              "return_type": {
+                "nullable": {
+                  "identifier": "RTCIceParameters"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRemoteParameters",
+              "return_type": {
+                "nullable": {
+                  "identifier": "RTCIceParameters"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ongatheringstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onselectedcandidatepairchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIceParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "usernameFragment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "password",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCIceCandidatePair",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "local",
+              "type": {
+                "identifier": "RTCIceCandidate"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "remote",
+              "type": {
+                "identifier": "RTCIceCandidate"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceGathererState",
+        "values": [
+          "new",
+          "gathering",
+          "complete"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceTransportState",
+        "values": [
+          "closed",
+          "failed",
+          "disconnected",
+          "new",
+          "checking",
+          "completed",
+          "connected"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceRole",
+        "values": [
+          "unknown",
+          "controlling",
+          "controlled"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCIceComponent",
+        "values": [
+          "rtp",
+          "rtcp"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCTrackEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCTrackEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "receiver",
+              "type": {
+                "identifier": "RTCRtpReceiver"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "track",
+              "type": {
+                "identifier": "MediaStreamTrack"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "streams",
+              "type": {
+                "frozen_array": {
+                  "identifier": "MediaStream"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "transceiver",
+              "type": {
+                "identifier": "RTCRtpTransceiver"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCTrackEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "receiver",
+            "type": {
+              "identifier": "RTCRtpReceiver"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "track",
+            "type": {
+              "identifier": "MediaStreamTrack"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "streams",
+            "type": {
+              "sequence": {
+                "identifier": "MediaStream"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "transceiver",
+            "type": {
+              "identifier": "RTCRtpTransceiver"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "sctp",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCSctpTransport"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createDataChannel",
+              "return_type": {
+                "identifier": "RTCDataChannel"
+              },
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "dataChannelDict",
+                  "type": {
+                    "identifier": "RTCDataChannelInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondatachannel",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCSctpTransport",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "transport",
+              "type": {
+                "identifier": "RTCDtlsTransport"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "RTCSctpTransportState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxMessageSize",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxChannels",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCSctpTransportState",
+        "values": [
+          "connecting",
+          "connected",
+          "closed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCDataChannel",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "label",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ordered",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxPacketLifeTime",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxRetransmits",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "protocol",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "negotiated",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "id",
+              "type": {
+                "nullable": "unsigned short"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "readyState",
+              "type": {
+                "identifier": "RTCDataChannelState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bufferedAmount",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bufferedAmountLowThreshold",
+              "type": "unsigned long",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "EnforceRange",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "onopen",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onbufferedamountlow",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onclosing",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onclose",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "binaryType",
+              "type": {
+                "identifier": "BinaryType"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "Blob"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "ArrayBuffer"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "ArrayBufferView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCDataChannelInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "ordered",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          },
+          {
+            "name": "maxPacketLifeTime",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "maxRetransmits",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "protocol",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "negotiated",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCDataChannelState",
+        "values": [
+          "connecting",
+          "open",
+          "closing",
+          "closed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCDataChannelEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCDataChannelEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "channel",
+              "type": {
+                "identifier": "RTCDataChannel"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCDataChannelEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "channel",
+            "type": {
+              "identifier": "RTCDataChannel"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCRtpSender",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "dtmf",
+              "type": {
+                "nullable": {
+                  "identifier": "RTCDTMFSender"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCDTMFSender",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "insertDTMF",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "tones",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "duration",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 100,
+                    "lexeme": "100"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "interToneGap",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 70,
+                    "lexeme": "70"
+                  },
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ontonechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "canInsertDTMF",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "toneBuffer",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCDTMFToneChangeEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCDTMFToneChangeEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tone",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCDTMFToneChangeEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "tone",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getStats",
+              "return_type": {
+                "promise": {
+                  "identifier": "RTCStatsReport"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "selector",
+                  "type": {
+                    "nullable": {
+                      "identifier": "MediaStreamTrack"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCStatsReport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "maplike": {
+              "key_type": "DOMString",
+              "value_type": "object",
+              "readonly": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCStats",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": {
+              "identifier": "RTCStatsType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "id",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCError",
+        "inherits": "DOMException",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "RTCErrorInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "message",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "errorDetail",
+              "type": {
+                "identifier": "RTCErrorDetailType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sdpLineNumber",
+              "type": {
+                "nullable": "long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sctpCauseCode",
+              "type": {
+                "nullable": "long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "receivedAlert",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sentAlert",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCErrorInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "errorDetail",
+            "type": {
+              "identifier": "RTCErrorDetailType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdpLineNumber",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sctpCauseCode",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "receivedAlert",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sentAlert",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCErrorDetailType",
+        "values": [
+          "data-channel-failure",
+          "dtls-failure",
+          "fingerprint-failure",
+          "sctp-failure",
+          "sdp-syntax-error",
+          "hardware-encoder-not-available",
+          "hardware-encoder-error"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCErrorEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "RTCErrorEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "error",
+              "type": {
+                "identifier": "RTCError"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCErrorEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "error",
+            "type": {
+              "identifier": "RTCError"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

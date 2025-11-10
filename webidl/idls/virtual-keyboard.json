@@ -1,1 +1,139 @@
-{"definitions":[{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"virtualKeyboard","type":{"identifier":"VirtualKeyboard"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"VirtualKeyboard","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"show","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"hide","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"boundingRect","type":{"identifier":"DOMRect"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"overlaysContent","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ongeometrychange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"ElementContentEditable","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"virtualKeyboardPolicy","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "virtualKeyboard",
+              "type": {
+                "identifier": "VirtualKeyboard"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                },
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "VirtualKeyboard",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "show",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "hide",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "boundingRect",
+              "type": {
+                "identifier": "DOMRect"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "overlaysContent",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ongeometrychange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "ElementContentEditable",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "virtualKeyboardPolicy",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

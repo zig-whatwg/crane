@@ -1,0 +1,78 @@
+{
+  "spec": {
+    "title": "CSS Custom Highlight API Module Level 1",
+    "url": "https://drafts.csswg.org/css-highlight-api-1/"
+  },
+  "algorithms": [
+    {
+      "name": "to create a custom highlight",
+      "href": "https://drafts.csswg.org/css-highlight-api-1/#dom-highlight-highlight",
+      "html": "When the <dfn class=\"dfn-paneled idl-code has-dfn-panel\" data-dfn-for=\"Highlight\" data-dfn-type=\"constructor\" data-export=\"\" data-lt=\"Highlight(...initialRanges)|constructor(...initialRanges)|Highlight()|constructor()\" id=\"dom-highlight-highlight\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\"><code>Highlight(AbstractRange... initialRanges)</code></dfn> constructor is invoked,\n\t\trun the following steps:",
+      "rationale": ".algorithm",
+      "steps": [
+        {
+          "html": "Let <var>highlight</var> be the new <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#highlight\" id=\"ref-for-highlight③\">Highlight</a></code> object."
+        },
+        {
+          "html": "Set <var>highlight</var>’s <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlight-priority\" id=\"ref-for-dom-highlight-priority①\">priority</a></code> to <code>0</code>."
+        },
+        {
+          "html": "Set <var>highlight</var>’s <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlight-type\" id=\"ref-for-dom-highlight-type①\">type</a></code> to <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlighttype-highlight\" id=\"ref-for-dom-highlighttype-highlight\">highlight</a></code>."
+        },
+        {
+          "html": "For each <var>range</var> of <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlight-highlight-initialranges-initialranges\" id=\"ref-for-dom-highlight-highlight-initialranges-initialranges\">initialRanges</a></code>,\n\t\t\t\tlet <var>rangeArg</var> be the result of <a data-link-type=\"dfn\" href=\"https://webidl.spec.whatwg.org/#dfn-convert-idl-to-javascript-value\" id=\"ref-for-dfn-convert-idl-to-javascript-value\">converting</a> <var>range</var> to an ECMAScript value,\n\t\t\t\tthen run <a href=\"https://webidl.spec.whatwg.org/#js-set-add\">the steps for a built-in setlike add function</a>,\n\t\t\t\twith <var>highlight</var> as the <code>this</code> value,\n\t\t\t\tand <var>rangeArg</var> as the argument."
+        },
+        {
+          "html": "Return <var>highlight</var>."
+        }
+      ]
+    },
+    {
+      "name": "to register a custom highlight",
+      "href": "https://drafts.csswg.org/css-highlight-api-1/#custom-highlight-name",
+      "html": "The <dfn class=\"dfn-paneled has-dfn-panel\" data-dfn-type=\"dfn\" data-export=\"\" id=\"custom-highlight-name\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\">custom highlight name</dfn> assigned to a <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-highlight-api-1/#custom-highlight\" id=\"ref-for-custom-highlight⑧\">custom highlight</a> when it is <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-highlight-api-1/#registered\" id=\"ref-for-registered④\">registered</a>\n\t\tis used to identify the highlight during styling (see <a href=\"https://drafts.csswg.org/css-highlight-api-1/#styling-highlights\">§ 4 Styling Custom Highlights</a>).",
+      "rationale": ".algorithm",
+      "steps": [
+        {
+          "html": "<p>If any of the following are true, return the empty <a data-link-type=\"dfn\" href=\"https://webidl.spec.whatwg.org/#idl-sequence\" id=\"ref-for-idl-sequence⑥\">sequence</a>:</p>\n      <ul>\n       <li data-md=\"\">\n        <p><var>x</var> is negative</p>\n       </li><li data-md=\"\">\n        <p><var>y</var> is negative</p>\n       </li><li data-md=\"\">\n        <p><var>x</var> is greater than the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css2/#viewport%E2%91%A0\" id=\"ref-for-viewport%E2%91%A0\">viewport</a> width excluding the size of a rendered scroll bar (if any)</p>\n       </li><li data-md=\"\">\n        <p><var>y</var> is greater than the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css2/#viewport%E2%91%A0\" id=\"ref-for-viewport%E2%91%A0①\">viewport</a> height excluding the size of a rendered scroll bar (if any)</p>\n       </li><li data-md=\"\">\n        <p>The topmost <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-display-4/#box\" id=\"ref-for-box\">box</a> in the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css2/#viewport%E2%91%A0\" id=\"ref-for-viewport%E2%91%A0②\">viewport</a> in paint order that would be a target for hit testing at coordinates <var>x</var>,<var>y</var> when applying\nthe <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/cssom-view-1/#transforms\" id=\"ref-for-transforms\">transforms</a> that apply to the descendants of the viewport, has an element associated to it that’s in a <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-shadow-tree\" id=\"ref-for-concept-shadow-tree②\">shadow tree</a> whose\n<a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-element-shadow-root\" id=\"ref-for-concept-element-shadow-root\">shadow root</a> is not <a data-link-type=\"dfn\" href=\"https://infra.spec.whatwg.org/#list-contain\" id=\"ref-for-list-contain\">contained by</a> <var>options</var>.<var>shadowRoots</var>.</p>\n      </li></ul>"
+        },
+        {
+          "html": "<p>Otherwise, let <var>results</var> be an empty <a data-link-type=\"dfn\" href=\"https://webidl.spec.whatwg.org/#idl-sequence\" id=\"ref-for-idl-sequence⑦\">sequence</a>.</p>"
+        },
+        {
+          "html": "For each <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#highlight\" id=\"ref-for-highlight⑥\">Highlight</a></code> <var>highlight</var> in this <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#highlightregistry\" id=\"ref-for-highlightregistry④\">HighlightRegistry</a></code>:",
+          "rationale": "let",
+          "steps": [
+            {
+              "html": "<p>Let <var>result</var> be a new <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dictdef-highlighthitresult\" id=\"ref-for-dictdef-highlighthitresult④\">HighlightHitResult</a></code> with <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlighthitresult-highlight\" id=\"ref-for-dom-highlighthitresult-highlight\">highlight</a></code> set to <var>highlight</var>.</p>"
+            },
+            {
+              "html": "For each <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://dom.spec.whatwg.org/#abstractrange\" id=\"ref-for-abstractrange⑤\">AbstractRange</a></code> <var>abstractRange</var> in <var>highlight</var>:",
+              "rationale": "if",
+              "steps": [
+                {
+                  "html": "<p>If <var>abstractRange</var> is an <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#staticrange-valid\" id=\"ref-for-staticrange-valid①\">invalid</a> <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://dom.spec.whatwg.org/#staticrange\" id=\"ref-for-staticrange⑦\">StaticRange</a></code>, then <a data-link-type=\"dfn\" href=\"https://infra.spec.whatwg.org/#iteration-continue\" id=\"ref-for-iteration-continue\">continue</a>.</p>"
+                },
+                {
+                  "html": "<p>Let <var>range</var> be a new <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://dom.spec.whatwg.org/#range\" id=\"ref-for-range⑨\">Range</a></code> whose <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-range-start-node\" id=\"ref-for-concept-range-start-node①\">start node</a> and <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-range-end-node\" id=\"ref-for-concept-range-end-node①\">end node</a> are set to <var>abstractRange</var>’s\n<span id=\"ref-for-concept-range-start-node②\">start node</span> and <span id=\"ref-for-concept-range-end-node②\">end node</span> respectively, and <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-range-start-offset\" id=\"ref-for-concept-range-start-offset\">start offset</a> and <a data-link-type=\"dfn\" href=\"https://dom.spec.whatwg.org/#concept-range-end-offset\" id=\"ref-for-concept-range-end-offset\">end offset</a> are set to <var>abstractRange</var>’s \n<span id=\"ref-for-concept-range-start-offset①\">start offset</span> and <span id=\"ref-for-concept-range-end-offset①\">end offset</span> respectively.</p>"
+                },
+                {
+                  "html": "<p>If the coordinates <var>x</var>,<var>y</var> fall inside at least one of the <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.fxtf.org/geometry-1/#domrect\" id=\"ref-for-domrect\">DOMRect</a></code>s returned by calling <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/cssom-view-1/#dom-range-getclientrects\" id=\"ref-for-dom-range-getclientrects\">getClientRects()</a></code>\non <var>range</var>, then append <var>abstractRange</var> to <var>result</var>.<code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlighthitresult-ranges\" id=\"ref-for-dom-highlighthitresult-ranges\">ranges</a></code>.</p>"
+                }
+              ]
+            },
+            {
+              "html": "<p>If <var>result</var>.<code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlighthitresult-ranges\" id=\"ref-for-dom-highlighthitresult-ranges①\">ranges</a></code> is not empty, append <var>result</var> to <var>results</var>.</p>"
+            }
+          ]
+        },
+        {
+          "html": "<p>Sort <var>results</var> by descending order of <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-highlight-api-1/#priority\" id=\"ref-for-priority④\">priority</a> of its <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dictdef-highlighthitresult\" id=\"ref-for-dictdef-highlighthitresult⑤\">HighlightHitResult</a></code>s' <code class=\"idl\"><a data-link-type=\"idl\" href=\"https://drafts.csswg.org/css-highlight-api-1/#dom-highlighthitresult-highlight\" id=\"ref-for-dom-highlighthitresult-highlight①\">highlight</a></code> attributes.</p>"
+        },
+        {
+          "html": "<p>Return <var>results</var>.</p>"
+        }
+      ]
+    }
+  ]
+}

@@ -1,1 +1,773 @@
-{"definitions":[{"dictionary":{"name":"PushPermissionDescriptor","inherits":"PermissionDescriptor","partial":false,"extended_attributes":[],"members":[{"name":"userVisibleOnly","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface_mixin":{"name":"PushManagerAttribute","partial":false,"extended_attributes":[{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"pushManager","type":{"identifier":"PushManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Window","mixin":"PushManagerAttribute"}},{"includes":{"interface":"ServiceWorkerRegistration","mixin":"PushManagerAttribute"}},{"interface":{"name":"PushManager","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"supportedContentEncodings","type":{"frozen_array":"DOMString"},"readonly":true,"static":true,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"subscribe","return_type":{"promise":{"identifier":"PushSubscription"}},"arguments":[{"name":"options","type":{"identifier":"PushSubscriptionOptionsInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getSubscription","return_type":{"promise":{"nullable":{"identifier":"PushSubscription"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"permissionState","return_type":{"promise":{"identifier":"PermissionState"}},"arguments":[{"name":"options","type":{"identifier":"PushSubscriptionOptionsInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"PushSubscriptionOptions","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"userVisibleOnly","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"applicationServerKey","type":{"nullable":{"identifier":"ArrayBuffer"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"PushSubscriptionOptionsInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"userVisibleOnly","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"applicationServerKey","type":{"nullable":{"union":[{"identifier":"BufferSource"},"DOMString"]}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"PushSubscription","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"endpoint","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expirationTime","type":{"nullable":{"identifier":"EpochTimeStamp"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"options","type":{"identifier":"PushSubscriptionOptions"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"getKey","return_type":{"nullable":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"name","type":{"identifier":"PushEncryptionKeyName"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"unsubscribe","return_type":{"promise":"boolean"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":{"identifier":"PushSubscriptionJSON"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"PushSubscriptionJSON","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"endpoint","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"expirationTime","type":{"nullable":{"identifier":"EpochTimeStamp"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"keys","type":{"record":{"key":"DOMString","value":"USVString"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"PushEncryptionKeyName","values":["p256dh","auth"],"extended_attributes":[]}},{"interface":{"name":"PushMessageData","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"arrayBuffer","return_type":{"identifier":"ArrayBuffer"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"blob","return_type":{"identifier":"Blob"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"bytes","return_type":{"identifier":"Uint8Array"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"json","return_type":"any","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"text","return_type":"USVString","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"ServiceWorkerGlobalScope","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"onpush","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpushsubscriptionchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PushEvent","inherits":"ExtendableEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"PushEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":{"identifier":"PushMessageData"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"notification","type":{"nullable":{"identifier":"Notification"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"PushEventInit","inherits":"ExtendableEventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":{"nullable":{"identifier":"PushMessageDataInit"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"notification","type":{"nullable":{"identifier":"Notification"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"PushMessageDataInit","type":{"union":[{"identifier":"BufferSource"},"USVString"]},"extended_attributes":[]}},{"interface":{"name":"PushSubscriptionChangeEvent","inherits":"ExtendableEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"PushSubscriptionChangeEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"newSubscription","type":{"nullable":{"identifier":"PushSubscription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"oldSubscription","type":{"nullable":{"identifier":"PushSubscription"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"PushSubscriptionChangeEventInit","inherits":"ExtendableEventInit","partial":false,"extended_attributes":[],"members":[{"name":"newSubscription","type":{"identifier":"PushSubscription"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"oldSubscription","type":{"identifier":"PushSubscription"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "PushPermissionDescriptor",
+        "inherits": "PermissionDescriptor",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "userVisibleOnly",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "PushManagerAttribute",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "pushManager",
+              "type": {
+                "identifier": "PushManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Window",
+        "mixin": "PushManagerAttribute"
+      }
+    },
+    {
+      "includes": {
+        "interface": "ServiceWorkerRegistration",
+        "mixin": "PushManagerAttribute"
+      }
+    },
+    {
+      "interface": {
+        "name": "PushManager",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "supportedContentEncodings",
+              "type": {
+                "frozen_array": "DOMString"
+              },
+              "readonly": true,
+              "static": true,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "subscribe",
+              "return_type": {
+                "promise": {
+                  "identifier": "PushSubscription"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PushSubscriptionOptionsInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getSubscription",
+              "return_type": {
+                "promise": {
+                  "nullable": {
+                    "identifier": "PushSubscription"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "permissionState",
+              "return_type": {
+                "promise": {
+                  "identifier": "PermissionState"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "PushSubscriptionOptionsInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PushSubscriptionOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "userVisibleOnly",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "applicationServerKey",
+              "type": {
+                "nullable": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PushSubscriptionOptionsInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "userVisibleOnly",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "applicationServerKey",
+            "type": {
+              "nullable": {
+                "union": [
+                  {
+                    "identifier": "BufferSource"
+                  },
+                  "DOMString"
+                ]
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PushSubscription",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "endpoint",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expirationTime",
+              "type": {
+                "nullable": {
+                  "identifier": "EpochTimeStamp"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "options",
+              "type": {
+                "identifier": "PushSubscriptionOptions"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getKey",
+              "return_type": {
+                "nullable": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": {
+                    "identifier": "PushEncryptionKeyName"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "unsubscribe",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": {
+                "identifier": "PushSubscriptionJSON"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PushSubscriptionJSON",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "endpoint",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "expirationTime",
+            "type": {
+              "nullable": {
+                "identifier": "EpochTimeStamp"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "keys",
+            "type": {
+              "record": {
+                "key": "DOMString",
+                "value": "USVString"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "PushEncryptionKeyName",
+        "values": [
+          "p256dh",
+          "auth"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "PushMessageData",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "arrayBuffer",
+              "return_type": {
+                "identifier": "ArrayBuffer"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "blob",
+              "return_type": {
+                "identifier": "Blob"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "bytes",
+              "return_type": {
+                "identifier": "Uint8Array"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "json",
+              "return_type": "any",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "text",
+              "return_type": "USVString",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ServiceWorkerGlobalScope",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "onpush",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpushsubscriptionchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PushEvent",
+        "inherits": "ExtendableEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "PushEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": {
+                  "identifier": "PushMessageData"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "notification",
+              "type": {
+                "nullable": {
+                  "identifier": "Notification"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PushEventInit",
+        "inherits": "ExtendableEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": {
+              "nullable": {
+                "identifier": "PushMessageDataInit"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "notification",
+            "type": {
+              "nullable": {
+                "identifier": "Notification"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "PushMessageDataInit",
+        "type": {
+          "union": [
+            {
+              "identifier": "BufferSource"
+            },
+            "USVString"
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "PushSubscriptionChangeEvent",
+        "inherits": "ExtendableEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "PushSubscriptionChangeEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "newSubscription",
+              "type": {
+                "nullable": {
+                  "identifier": "PushSubscription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oldSubscription",
+              "type": {
+                "nullable": {
+                  "identifier": "PushSubscription"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PushSubscriptionChangeEventInit",
+        "inherits": "ExtendableEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "newSubscription",
+            "type": {
+              "identifier": "PushSubscription"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "oldSubscription",
+            "type": {
+              "identifier": "PushSubscription"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,395 @@
-{"definitions":[{"interface":{"name":"PerformanceResourceTiming","inherits":"PerformanceEntry","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"initiatorType","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deliveryType","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"nextHopProtocol","type":"ByteString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"workerStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"redirectStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"redirectEnd","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fetchStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"domainLookupStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"domainLookupEnd","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"connectStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"connectEnd","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"secureConnectionStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"requestStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"finalResponseHeadersStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"firstInterimResponseStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"responseStart","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"responseEnd","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transferSize","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"encodedBodySize","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"decodedBodySize","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"responseStatus","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"renderBlockingStatus","type":{"identifier":"RenderBlockingStatusType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"contentType","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"contentEncoding","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":"object","arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"Default","value":null}]}}]}},{"enum":{"name":"RenderBlockingStatusType","values":["blocking","non-blocking"],"extended_attributes":[]}},{"interface":{"name":"Performance","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"clearResourceTimings","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setResourceTimingBufferSize","return_type":"undefined","arguments":[{"name":"maxSize","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onresourcetimingbufferfull","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "PerformanceResourceTiming",
+        "inherits": "PerformanceEntry",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "initiatorType",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deliveryType",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "nextHopProtocol",
+              "type": "ByteString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "workerStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "redirectStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "redirectEnd",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fetchStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "domainLookupStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "domainLookupEnd",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "connectStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "connectEnd",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "secureConnectionStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "requestStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "finalResponseHeadersStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "firstInterimResponseStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "responseStart",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "responseEnd",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transferSize",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "encodedBodySize",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "decodedBodySize",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "responseStatus",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "renderBlockingStatus",
+              "type": {
+                "identifier": "RenderBlockingStatusType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "contentType",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "contentEncoding",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": "object",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "Default",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RenderBlockingStatusType",
+        "values": [
+          "blocking",
+          "non-blocking"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Performance",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "clearResourceTimings",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setResourceTimingBufferSize",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "maxSize",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onresourcetimingbufferfull",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,3149 @@
-{"definitions":[{"interface":{"name":"StyleSheet","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"type","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"disabled","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ownerNode","type":{"identifier":"Node"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"parentStyleSheet","type":{"identifier":"StyleSheet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"href","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"title","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"media","type":{"identifier":"MediaList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"StyleSheetList","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":{"identifier":"StyleSheet"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"MediaList","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"mediaText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":"DOMString","arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deleteMedium","return_type":{"identifier":"void"},"arguments":[{"name":"oldMedium","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"appendMedium","return_type":{"identifier":"void"},"arguments":[{"name":"newMedium","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"LinkStyle","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"sheet","type":{"identifier":"StyleSheet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"DocumentStyle","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"styleSheets","type":{"identifier":"StyleSheetList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSStyleSheet","inherits":"stylesheets::StyleSheet","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"ownerRule","type":{"identifier":"CSSRule"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cssRules","type":{"identifier":"CSSRuleList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"insertRule","return_type":"unsigned long","arguments":[{"name":"rule","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deleteRule","return_type":{"identifier":"void"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CSSRuleList","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":{"identifier":"CSSRule"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CSSRule","inherits":null,"partial":false,"extended_attributes":[],"members":[{"const":{"name":"UNKNOWN_RULE","type":"unsigned short","value":{"value":0,"lexeme":"0"}}},{"const":{"name":"STYLE_RULE","type":"unsigned short","value":{"value":1,"lexeme":"1"}}},{"const":{"name":"CHARSET_RULE","type":"unsigned short","value":{"value":2,"lexeme":"2"}}},{"const":{"name":"IMPORT_RULE","type":"unsigned short","value":{"value":3,"lexeme":"3"}}},{"const":{"name":"MEDIA_RULE","type":"unsigned short","value":{"value":4,"lexeme":"4"}}},{"const":{"name":"FONT_FACE_RULE","type":"unsigned short","value":{"value":5,"lexeme":"5"}}},{"const":{"name":"PAGE_RULE","type":"unsigned short","value":{"value":6,"lexeme":"6"}}},{"attribute":{"name":"type","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cssText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"parentStyleSheet","type":{"identifier":"CSSStyleSheet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"parentRule","type":{"identifier":"CSSRule"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSStyleRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"selectorText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"style","type":{"identifier":"CSSStyleDeclaration"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSMediaRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"media","type":{"identifier":"stylesheets::MediaList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cssRules","type":{"identifier":"CSSRuleList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"insertRule","return_type":"unsigned long","arguments":[{"name":"rule","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deleteRule","return_type":{"identifier":"void"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CSSFontFaceRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"style","type":{"identifier":"CSSStyleDeclaration"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSPageRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"selectorText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"style","type":{"identifier":"CSSStyleDeclaration"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSImportRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"href","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"media","type":{"identifier":"stylesheets::MediaList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"styleSheet","type":{"identifier":"CSSStyleSheet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSCharsetRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"encoding","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSUnknownRule","inherits":"CSSRule","partial":false,"extended_attributes":[],"members":[]}},{"interface":{"name":"CSSStyleDeclaration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"cssText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getPropertyValue","return_type":"DOMString","arguments":[{"name":"propertyName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getPropertyCSSValue","return_type":{"identifier":"CSSValue"},"arguments":[{"name":"propertyName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"removeProperty","return_type":"DOMString","arguments":[{"name":"propertyName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getPropertyPriority","return_type":"DOMString","arguments":[{"name":"propertyName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setProperty","return_type":{"identifier":"void"},"arguments":[{"name":"propertyName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"value","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"priority","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":"DOMString","arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"parentRule","type":{"identifier":"CSSRule"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSValue","inherits":null,"partial":false,"extended_attributes":[],"members":[{"const":{"name":"CSS_INHERIT","type":"unsigned short","value":{"value":0,"lexeme":"0"}}},{"const":{"name":"CSS_PRIMITIVE_VALUE","type":"unsigned short","value":{"value":1,"lexeme":"1"}}},{"const":{"name":"CSS_VALUE_LIST","type":"unsigned short","value":{"value":2,"lexeme":"2"}}},{"const":{"name":"CSS_CUSTOM","type":"unsigned short","value":{"value":3,"lexeme":"3"}}},{"attribute":{"name":"cssText","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cssValueType","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSPrimitiveValue","inherits":"CSSValue","partial":false,"extended_attributes":[],"members":[{"const":{"name":"CSS_UNKNOWN","type":"unsigned short","value":{"value":0,"lexeme":"0"}}},{"const":{"name":"CSS_NUMBER","type":"unsigned short","value":{"value":1,"lexeme":"1"}}},{"const":{"name":"CSS_PERCENTAGE","type":"unsigned short","value":{"value":2,"lexeme":"2"}}},{"const":{"name":"CSS_EMS","type":"unsigned short","value":{"value":3,"lexeme":"3"}}},{"const":{"name":"CSS_EXS","type":"unsigned short","value":{"value":4,"lexeme":"4"}}},{"const":{"name":"CSS_PX","type":"unsigned short","value":{"value":5,"lexeme":"5"}}},{"const":{"name":"CSS_CM","type":"unsigned short","value":{"value":6,"lexeme":"6"}}},{"const":{"name":"CSS_MM","type":"unsigned short","value":{"value":7,"lexeme":"7"}}},{"const":{"name":"CSS_IN","type":"unsigned short","value":{"value":8,"lexeme":"8"}}},{"const":{"name":"CSS_PT","type":"unsigned short","value":{"value":9,"lexeme":"9"}}},{"const":{"name":"CSS_PC","type":"unsigned short","value":{"value":10,"lexeme":"10"}}},{"const":{"name":"CSS_DEG","type":"unsigned short","value":{"value":11,"lexeme":"11"}}},{"const":{"name":"CSS_RAD","type":"unsigned short","value":{"value":12,"lexeme":"12"}}},{"const":{"name":"CSS_GRAD","type":"unsigned short","value":{"value":13,"lexeme":"13"}}},{"const":{"name":"CSS_MS","type":"unsigned short","value":{"value":14,"lexeme":"14"}}},{"const":{"name":"CSS_S","type":"unsigned short","value":{"value":15,"lexeme":"15"}}},{"const":{"name":"CSS_HZ","type":"unsigned short","value":{"value":16,"lexeme":"16"}}},{"const":{"name":"CSS_KHZ","type":"unsigned short","value":{"value":17,"lexeme":"17"}}},{"const":{"name":"CSS_DIMENSION","type":"unsigned short","value":{"value":18,"lexeme":"18"}}},{"const":{"name":"CSS_STRING","type":"unsigned short","value":{"value":19,"lexeme":"19"}}},{"const":{"name":"CSS_URI","type":"unsigned short","value":{"value":20,"lexeme":"20"}}},{"const":{"name":"CSS_IDENT","type":"unsigned short","value":{"value":21,"lexeme":"21"}}},{"const":{"name":"CSS_ATTR","type":"unsigned short","value":{"value":22,"lexeme":"22"}}},{"const":{"name":"CSS_COUNTER","type":"unsigned short","value":{"value":23,"lexeme":"23"}}},{"const":{"name":"CSS_RECT","type":"unsigned short","value":{"value":24,"lexeme":"24"}}},{"const":{"name":"CSS_RGBCOLOR","type":"unsigned short","value":{"value":25,"lexeme":"25"}}},{"attribute":{"name":"primitiveType","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"setFloatValue","return_type":{"identifier":"void"},"arguments":[{"name":"unitType","type":"unsigned short","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"floatValue","type":"float","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getFloatValue","return_type":"float","arguments":[{"name":"unitType","type":"unsigned short","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setStringValue","return_type":{"identifier":"void"},"arguments":[{"name":"stringType","type":"unsigned short","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"stringValue","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getStringValue","return_type":"DOMString","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getCounterValue","return_type":{"identifier":"Counter"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getRectValue","return_type":{"identifier":"Rect"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getRGBColorValue","return_type":{"identifier":"RGBColor"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CSSValueList","inherits":"CSSValue","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":{"identifier":"CSSValue"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"RGBColor","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"red","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"green","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"blue","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Rect","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"top","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"right","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bottom","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"left","type":{"identifier":"CSSPrimitiveValue"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Counter","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"identifier","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"listStyle","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"separator","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"ViewCSS","inherits":"views::AbstractView","partial":false,"extended_attributes":[],"members":[{"operation":{"name":"getComputedStyle","return_type":{"identifier":"CSSStyleDeclaration"},"arguments":[{"name":"elt","type":{"identifier":"Element"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"pseudoElt","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"DocumentCSS","inherits":"stylesheets::DocumentStyle","partial":false,"extended_attributes":[],"members":[{"operation":{"name":"getOverrideStyle","return_type":{"identifier":"CSSStyleDeclaration"},"arguments":[{"name":"elt","type":{"identifier":"Element"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"pseudoElt","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"DOMImplementationCSS","inherits":"DOMImplementation","partial":false,"extended_attributes":[],"members":[{"operation":{"name":"createCSSStyleSheet","return_type":{"identifier":"CSSStyleSheet"},"arguments":[{"name":"title","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"media","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"ElementCSSInlineStyle","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"style","type":{"identifier":"CSSStyleDeclaration"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSS2Properties","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"azimuth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"background","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"backgroundAttachment","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"backgroundColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"backgroundImage","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"backgroundPosition","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"backgroundRepeat","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"border","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderCollapse","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderSpacing","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderTop","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderRight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderBottom","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderLeft","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderTopColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderRightColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderBottomColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderLeftColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderTopStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderRightStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderBottomStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderLeftStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderTopWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderRightWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderBottomWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderLeftWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"borderWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"bottom","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"captionSide","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clear","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clip","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"color","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"content","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"counterIncrement","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"counterReset","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cue","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cueAfter","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cueBefore","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cursor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"direction","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"display","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"elevation","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"emptyCells","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"cssFloat","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"font","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontFamily","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontSize","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontSizeAdjust","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontStretch","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontVariant","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fontWeight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"height","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"left","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"letterSpacing","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lineHeight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"listStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"listStyleImage","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"listStylePosition","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"listStyleType","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"margin","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginTop","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginRight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginBottom","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marginLeft","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"markerOffset","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"marks","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxHeight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maxWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minHeight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"orphans","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outline","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outlineColor","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outlineStyle","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outlineWidth","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"overflow","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"padding","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"paddingTop","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"paddingRight","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"paddingBottom","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"paddingLeft","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"page","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pageBreakAfter","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pageBreakBefore","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pageBreakInside","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pause","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pauseAfter","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pauseBefore","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pitch","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pitchRange","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"playDuring","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"position","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"quotes","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"richness","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"right","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"size","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speak","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speakHeader","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speakNumeral","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speakPunctuation","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speechRate","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"stress","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tableLayout","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textAlign","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textDecoration","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textIndent","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textShadow","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textTransform","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"top","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"unicodeBidi","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"verticalAlign","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"visibility","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"voiceFamily","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"volume","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"whiteSpace","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"widows","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"width","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"wordSpacing","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"zIndex","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"typedef":{"name":"DOMString","type":{"identifier":"dom::DOMString"},"extended_attributes":[]}},{"typedef":{"name":"DOMString","type":{"identifier":"dom::DOMString"},"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "StyleSheet",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "type",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "disabled",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ownerNode",
+              "type": {
+                "identifier": "Node"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "parentStyleSheet",
+              "type": {
+                "identifier": "StyleSheet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "href",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "title",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "media",
+              "type": {
+                "identifier": "MediaList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "StyleSheetList",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": {
+                "identifier": "StyleSheet"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MediaList",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "mediaText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteMedium",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "oldMedium",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "appendMedium",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "newMedium",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "LinkStyle",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "sheet",
+              "type": {
+                "identifier": "StyleSheet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "DocumentStyle",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "styleSheets",
+              "type": {
+                "identifier": "StyleSheetList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSStyleSheet",
+        "inherits": "stylesheets::StyleSheet",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "ownerRule",
+              "type": {
+                "identifier": "CSSRule"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssRules",
+              "type": {
+                "identifier": "CSSRuleList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "insertRule",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "rule",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteRule",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSRuleList",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": {
+                "identifier": "CSSRule"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSRule",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "const": {
+              "name": "UNKNOWN_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 0,
+                "lexeme": "0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "STYLE_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 1,
+                "lexeme": "1"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CHARSET_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 2,
+                "lexeme": "2"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "IMPORT_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 3,
+                "lexeme": "3"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MEDIA_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 4,
+                "lexeme": "4"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "FONT_FACE_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 5,
+                "lexeme": "5"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "PAGE_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 6,
+                "lexeme": "6"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "parentStyleSheet",
+              "type": {
+                "identifier": "CSSStyleSheet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "parentRule",
+              "type": {
+                "identifier": "CSSRule"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSStyleRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "selectorText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSMediaRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "media",
+              "type": {
+                "identifier": "stylesheets::MediaList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssRules",
+              "type": {
+                "identifier": "CSSRuleList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "insertRule",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "rule",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteRule",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSFontFaceRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSPageRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "selectorText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSImportRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "href",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "media",
+              "type": {
+                "identifier": "stylesheets::MediaList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "styleSheet",
+              "type": {
+                "identifier": "CSSStyleSheet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSCharsetRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "encoding",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSUnknownRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSStyleDeclaration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "cssText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getPropertyValue",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "propertyName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getPropertyCSSValue",
+              "return_type": {
+                "identifier": "CSSValue"
+              },
+              "arguments": [
+                {
+                  "name": "propertyName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "removeProperty",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "propertyName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getPropertyPriority",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "propertyName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setProperty",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "propertyName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "value",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "priority",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "parentRule",
+              "type": {
+                "identifier": "CSSRule"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSValue",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "const": {
+              "name": "CSS_INHERIT",
+              "type": "unsigned short",
+              "value": {
+                "value": 0,
+                "lexeme": "0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_PRIMITIVE_VALUE",
+              "type": "unsigned short",
+              "value": {
+                "value": 1,
+                "lexeme": "1"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_VALUE_LIST",
+              "type": "unsigned short",
+              "value": {
+                "value": 2,
+                "lexeme": "2"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_CUSTOM",
+              "type": "unsigned short",
+              "value": {
+                "value": 3,
+                "lexeme": "3"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssText",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssValueType",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSPrimitiveValue",
+        "inherits": "CSSValue",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "const": {
+              "name": "CSS_UNKNOWN",
+              "type": "unsigned short",
+              "value": {
+                "value": 0,
+                "lexeme": "0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_NUMBER",
+              "type": "unsigned short",
+              "value": {
+                "value": 1,
+                "lexeme": "1"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_PERCENTAGE",
+              "type": "unsigned short",
+              "value": {
+                "value": 2,
+                "lexeme": "2"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_EMS",
+              "type": "unsigned short",
+              "value": {
+                "value": 3,
+                "lexeme": "3"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_EXS",
+              "type": "unsigned short",
+              "value": {
+                "value": 4,
+                "lexeme": "4"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_PX",
+              "type": "unsigned short",
+              "value": {
+                "value": 5,
+                "lexeme": "5"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_CM",
+              "type": "unsigned short",
+              "value": {
+                "value": 6,
+                "lexeme": "6"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_MM",
+              "type": "unsigned short",
+              "value": {
+                "value": 7,
+                "lexeme": "7"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_IN",
+              "type": "unsigned short",
+              "value": {
+                "value": 8,
+                "lexeme": "8"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_PT",
+              "type": "unsigned short",
+              "value": {
+                "value": 9,
+                "lexeme": "9"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_PC",
+              "type": "unsigned short",
+              "value": {
+                "value": 10,
+                "lexeme": "10"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_DEG",
+              "type": "unsigned short",
+              "value": {
+                "value": 11,
+                "lexeme": "11"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_RAD",
+              "type": "unsigned short",
+              "value": {
+                "value": 12,
+                "lexeme": "12"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_GRAD",
+              "type": "unsigned short",
+              "value": {
+                "value": 13,
+                "lexeme": "13"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_MS",
+              "type": "unsigned short",
+              "value": {
+                "value": 14,
+                "lexeme": "14"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_S",
+              "type": "unsigned short",
+              "value": {
+                "value": 15,
+                "lexeme": "15"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_HZ",
+              "type": "unsigned short",
+              "value": {
+                "value": 16,
+                "lexeme": "16"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_KHZ",
+              "type": "unsigned short",
+              "value": {
+                "value": 17,
+                "lexeme": "17"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_DIMENSION",
+              "type": "unsigned short",
+              "value": {
+                "value": 18,
+                "lexeme": "18"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_STRING",
+              "type": "unsigned short",
+              "value": {
+                "value": 19,
+                "lexeme": "19"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_URI",
+              "type": "unsigned short",
+              "value": {
+                "value": 20,
+                "lexeme": "20"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_IDENT",
+              "type": "unsigned short",
+              "value": {
+                "value": 21,
+                "lexeme": "21"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_ATTR",
+              "type": "unsigned short",
+              "value": {
+                "value": 22,
+                "lexeme": "22"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_COUNTER",
+              "type": "unsigned short",
+              "value": {
+                "value": 23,
+                "lexeme": "23"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_RECT",
+              "type": "unsigned short",
+              "value": {
+                "value": 24,
+                "lexeme": "24"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CSS_RGBCOLOR",
+              "type": "unsigned short",
+              "value": {
+                "value": 25,
+                "lexeme": "25"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "primitiveType",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setFloatValue",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "unitType",
+                  "type": "unsigned short",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "floatValue",
+                  "type": "float",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getFloatValue",
+              "return_type": "float",
+              "arguments": [
+                {
+                  "name": "unitType",
+                  "type": "unsigned short",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setStringValue",
+              "return_type": {
+                "identifier": "void"
+              },
+              "arguments": [
+                {
+                  "name": "stringType",
+                  "type": "unsigned short",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "stringValue",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getStringValue",
+              "return_type": "DOMString",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getCounterValue",
+              "return_type": {
+                "identifier": "Counter"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRectValue",
+              "return_type": {
+                "identifier": "Rect"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRGBColorValue",
+              "return_type": {
+                "identifier": "RGBColor"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSValueList",
+        "inherits": "CSSValue",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": {
+                "identifier": "CSSValue"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RGBColor",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "red",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "green",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "blue",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Rect",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "top",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "right",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bottom",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "left",
+              "type": {
+                "identifier": "CSSPrimitiveValue"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Counter",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "identifier",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "listStyle",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "separator",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ViewCSS",
+        "inherits": "views::AbstractView",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getComputedStyle",
+              "return_type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "arguments": [
+                {
+                  "name": "elt",
+                  "type": {
+                    "identifier": "Element"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "pseudoElt",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "DocumentCSS",
+        "inherits": "stylesheets::DocumentStyle",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getOverrideStyle",
+              "return_type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "arguments": [
+                {
+                  "name": "elt",
+                  "type": {
+                    "identifier": "Element"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "pseudoElt",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "DOMImplementationCSS",
+        "inherits": "DOMImplementation",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "createCSSStyleSheet",
+              "return_type": {
+                "identifier": "CSSStyleSheet"
+              },
+              "arguments": [
+                {
+                  "name": "title",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "media",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ElementCSSInlineStyle",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSStyleDeclaration"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSS2Properties",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "azimuth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "background",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "backgroundAttachment",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "backgroundColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "backgroundImage",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "backgroundPosition",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "backgroundRepeat",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "border",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderCollapse",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderSpacing",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderTop",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderRight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderBottom",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderLeft",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderTopColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderRightColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderBottomColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderLeftColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderTopStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderRightStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderBottomStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderLeftStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderTopWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderRightWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderBottomWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderLeftWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "borderWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bottom",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "captionSide",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clear",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clip",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "color",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "content",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "counterIncrement",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "counterReset",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cue",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cueAfter",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cueBefore",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cursor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "direction",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "display",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "elevation",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "emptyCells",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "cssFloat",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "font",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontFamily",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontSize",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontSizeAdjust",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontStretch",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontVariant",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontWeight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "left",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "letterSpacing",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lineHeight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "listStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "listStyleImage",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "listStylePosition",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "listStyleType",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "margin",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginTop",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginRight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginBottom",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marginLeft",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "markerOffset",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "marks",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxHeight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maxWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minHeight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "orphans",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outline",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outlineColor",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outlineStyle",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outlineWidth",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "overflow",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "padding",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "paddingTop",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "paddingRight",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "paddingBottom",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "paddingLeft",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "page",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pageBreakAfter",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pageBreakBefore",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pageBreakInside",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pause",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pauseAfter",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pauseBefore",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pitch",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pitchRange",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "playDuring",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "position",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "quotes",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "richness",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "right",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "size",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speak",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speakHeader",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speakNumeral",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speakPunctuation",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speechRate",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "stress",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tableLayout",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textAlign",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textDecoration",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textIndent",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textShadow",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textTransform",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "top",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "unicodeBidi",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "verticalAlign",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "visibility",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "voiceFamily",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "volume",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "whiteSpace",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "widows",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "wordSpacing",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "zIndex",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "DOMString",
+        "type": {
+          "identifier": "dom::DOMString"
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "DOMString",
+        "type": {
+          "identifier": "dom::DOMString"
+        },
+        "extended_attributes": []
+      }
+    }
+  ]
+}

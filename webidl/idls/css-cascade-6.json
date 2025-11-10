@@ -1,1 +1,51 @@
-{"definitions":[{"interface":{"name":"CSSScopeRule","inherits":"CSSGroupingRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"start","type":{"nullable":{"identifier":"CSSOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"end","type":{"nullable":{"identifier":"CSSOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "CSSScopeRule",
+        "inherits": "CSSGroupingRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "start",
+              "type": {
+                "nullable": {
+                  "identifier": "CSSOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "end",
+              "type": {
+                "nullable": {
+                  "identifier": "CSSOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

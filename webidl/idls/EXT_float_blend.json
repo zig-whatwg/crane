@@ -1,1 +1,27 @@
-{"definitions":[{"interface":{"name":"EXT_float_blend","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "EXT_float_blend",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": []
+      }
+    }
+  ]
+}

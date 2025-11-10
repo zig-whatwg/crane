@@ -1,1 +1,424 @@
-{"definitions":[{"enum":{"name":"TaskPriority","values":["user-blocking","user-visible","background"],"extended_attributes":[]}},{"dictionary":{"name":"SchedulerPostTaskOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"priority","type":{"identifier":"TaskPriority"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"delay","type":"unsigned long long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"callback":{"name":"SchedulerPostTaskCallback","return_type":"any","arguments":[],"extended_attributes":[]}},{"interface":{"name":"Scheduler","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"postTask","return_type":{"promise":"any"},"arguments":[{"name":"callback","type":{"identifier":"SchedulerPostTaskCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SchedulerPostTaskOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"yield","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"TaskPriorityChangeEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"priorityChangeEventInitDict","type":{"identifier":"TaskPriorityChangeEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"previousPriority","type":{"identifier":"TaskPriority"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"TaskPriorityChangeEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"previousPriority","type":{"identifier":"TaskPriority"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"TaskControllerInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"priority","type":{"identifier":"TaskPriority"},"required":false,"default_value":"user-visible","extended_attributes":[]}]}},{"interface":{"name":"TaskController","inherits":"AbortController","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"TaskControllerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"setPriority","return_type":"undefined","arguments":[{"name":"priority","type":{"identifier":"TaskPriority"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"TaskSignalAnyInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"priority","type":{"union":[{"identifier":"TaskPriority"},{"identifier":"TaskSignal"}]},"required":false,"default_value":"user-visible","extended_attributes":[]}]}},{"interface":{"name":"TaskSignal","inherits":"AbortSignal","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"_any","return_type":{"identifier":"TaskSignal"},"arguments":[{"name":"signals","type":{"sequence":{"identifier":"AbortSignal"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"TaskSignalAnyInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"attribute":{"name":"priority","type":{"identifier":"TaskPriority"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onprioritychange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"WindowOrWorkerGlobalScope","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"scheduler","type":{"identifier":"Scheduler"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"Replaceable","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "TaskPriority",
+        "values": [
+          "user-blocking",
+          "user-visible",
+          "background"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SchedulerPostTaskOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "priority",
+            "type": {
+              "identifier": "TaskPriority"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "delay",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "SchedulerPostTaskCallback",
+        "return_type": "any",
+        "arguments": [],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Scheduler",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "postTask",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "SchedulerPostTaskCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SchedulerPostTaskOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "yield",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TaskPriorityChangeEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "priorityChangeEventInitDict",
+                  "type": {
+                    "identifier": "TaskPriorityChangeEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "previousPriority",
+              "type": {
+                "identifier": "TaskPriority"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TaskPriorityChangeEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "previousPriority",
+            "type": {
+              "identifier": "TaskPriority"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TaskControllerInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "priority",
+            "type": {
+              "identifier": "TaskPriority"
+            },
+            "required": false,
+            "default_value": "user-visible",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TaskController",
+        "inherits": "AbortController",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "TaskControllerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setPriority",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "priority",
+                  "type": {
+                    "identifier": "TaskPriority"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TaskSignalAnyInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "priority",
+            "type": {
+              "union": [
+                {
+                  "identifier": "TaskPriority"
+                },
+                {
+                  "identifier": "TaskSignal"
+                }
+              ]
+            },
+            "required": false,
+            "default_value": "user-visible",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TaskSignal",
+        "inherits": "AbortSignal",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "_any",
+              "return_type": {
+                "identifier": "TaskSignal"
+              },
+              "arguments": [
+                {
+                  "name": "signals",
+                  "type": {
+                    "sequence": {
+                      "identifier": "AbortSignal"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "TaskSignalAnyInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "priority",
+              "type": {
+                "identifier": "TaskPriority"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onprioritychange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "WindowOrWorkerGlobalScope",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "scheduler",
+              "type": {
+                "identifier": "Scheduler"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "Replaceable",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

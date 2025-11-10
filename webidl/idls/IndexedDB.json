@@ -1,1 +1,2379 @@
-{"definitions":[{"interface":{"name":"IDBRequest","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"result","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"error","type":{"nullable":{"identifier":"DOMException"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"source","type":{"nullable":{"union":[{"identifier":"IDBObjectStore"},{"identifier":"IDBIndex"},{"identifier":"IDBCursor"}]}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transaction","type":{"nullable":{"identifier":"IDBTransaction"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"readyState","type":{"identifier":"IDBRequestReadyState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onsuccess","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"IDBRequestReadyState","values":["pending","done"],"extended_attributes":[]}},{"interface":{"name":"IDBOpenDBRequest","inherits":"IDBRequest","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"onblocked","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onupgradeneeded","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"IDBVersionChangeEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"IDBVersionChangeEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"oldVersion","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"newVersion","type":{"nullable":"unsigned long long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"IDBVersionChangeEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"oldVersion","type":"unsigned long long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"newVersion","type":{"nullable":"unsigned long long"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface_mixin":{"name":"WindowOrWorkerGlobalScope","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"indexedDB","type":{"identifier":"IDBFactory"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"IDBFactory","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"open","return_type":{"identifier":"IDBOpenDBRequest"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"version","type":"unsigned long long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"deleteDatabase","return_type":{"identifier":"IDBOpenDBRequest"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"databases","return_type":{"promise":{"sequence":{"identifier":"IDBDatabaseInfo"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"cmp","return_type":"short","arguments":[{"name":"first","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"second","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"IDBDatabaseInfo","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"version","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"IDBDatabase","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"version","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"objectStoreNames","type":{"identifier":"DOMStringList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"transaction","return_type":{"identifier":"IDBTransaction"},"arguments":[{"name":"storeNames","type":{"union":["DOMString",{"sequence":"DOMString"}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"mode","type":{"identifier":"IDBTransactionMode"},"optional":true,"variadic":false,"default_value":"readonly","extended_attributes":[]},{"name":"options","type":{"identifier":"IDBTransactionOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createObjectStore","return_type":{"identifier":"IDBObjectStore"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"IDBObjectStoreParameters"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"deleteObjectStore","return_type":"undefined","arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onabort","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onclose","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onversionchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"IDBTransactionDurability","values":["default","strict","relaxed"],"extended_attributes":[]}},{"dictionary":{"name":"IDBTransactionOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"durability","type":{"identifier":"IDBTransactionDurability"},"required":false,"default_value":"default","extended_attributes":[]}]}},{"dictionary":{"name":"IDBObjectStoreParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"keyPath","type":{"nullable":{"union":["DOMString",{"sequence":"DOMString"}]}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"autoIncrement","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"IDBObjectStore","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"name","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"keyPath","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"indexNames","type":{"identifier":"DOMStringList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transaction","type":{"identifier":"IDBTransaction"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"autoIncrement","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"put","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"add","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"delete","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"clear","return_type":{"identifier":"IDBRequest"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"get","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getKey","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAll","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"queryOrOptions","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"count","type":"unsigned long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAllKeys","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"queryOrOptions","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"count","type":"unsigned long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAllRecords","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"options","type":{"identifier":"IDBGetAllOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"count","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"openCursor","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"IDBCursorDirection"},"optional":true,"variadic":false,"default_value":"next","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"openKeyCursor","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"IDBCursorDirection"},"optional":true,"variadic":false,"default_value":"next","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"index","return_type":{"identifier":"IDBIndex"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createIndex","return_type":{"identifier":"IDBIndex"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyPath","type":{"union":["DOMString",{"sequence":"DOMString"}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"IDBIndexParameters"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"deleteIndex","return_type":"undefined","arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"IDBIndexParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"unique","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"multiEntry","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"IDBGetAllOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"query","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"count","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"direction","type":{"identifier":"IDBCursorDirection"},"required":false,"default_value":"next","extended_attributes":[]}]}},{"interface":{"name":"IDBIndex","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"name","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"objectStore","type":{"identifier":"IDBObjectStore"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"keyPath","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"multiEntry","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"unique","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"get","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getKey","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAll","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"queryOrOptions","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"count","type":"unsigned long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAllKeys","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"queryOrOptions","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"count","type":"unsigned long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getAllRecords","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"options","type":{"identifier":"IDBGetAllOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"count","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"openCursor","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"IDBCursorDirection"},"optional":true,"variadic":false,"default_value":"next","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"openKeyCursor","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"query","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"IDBCursorDirection"},"optional":true,"variadic":false,"default_value":"next","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"interface":{"name":"IDBKeyRange","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"lower","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"upper","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lowerOpen","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"upperOpen","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"only","return_type":{"identifier":"IDBKeyRange"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"lowerBound","return_type":{"identifier":"IDBKeyRange"},"arguments":[{"name":"lower","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"open","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"upperBound","return_type":{"identifier":"IDBKeyRange"},"arguments":[{"name":"upper","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"open","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"bound","return_type":{"identifier":"IDBKeyRange"},"arguments":[{"name":"lower","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"upper","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"lowerOpen","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"upperOpen","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"includes","return_type":"boolean","arguments":[{"name":"key","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"IDBRecord","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"key","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"primaryKey","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"value","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"IDBCursor","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"source","type":{"union":[{"identifier":"IDBObjectStore"},{"identifier":"IDBIndex"}]},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"direction","type":{"identifier":"IDBCursorDirection"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"key","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"primaryKey","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"request","type":{"identifier":"IDBRequest"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"advance","return_type":"undefined","arguments":[{"name":"count","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"continue","return_type":"undefined","arguments":[{"name":"key","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"continuePrimaryKey","return_type":"undefined","arguments":[{"name":"key","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"primaryKey","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"update","return_type":{"identifier":"IDBRequest"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"delete","return_type":{"identifier":"IDBRequest"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"enum":{"name":"IDBCursorDirection","values":["next","nextunique","prev","prevunique"],"extended_attributes":[]}},{"interface":{"name":"IDBCursorWithValue","inherits":"IDBCursor","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"value","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"IDBTransaction","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"objectStoreNames","type":{"identifier":"DOMStringList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"mode","type":{"identifier":"IDBTransactionMode"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"durability","type":{"identifier":"IDBTransactionDurability"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"db","type":{"identifier":"IDBDatabase"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"error","type":{"nullable":{"identifier":"DOMException"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"objectStore","return_type":{"identifier":"IDBObjectStore"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"commit","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"abort","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onabort","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"oncomplete","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"IDBTransactionMode","values":["readonly","readwrite","versionchange"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "IDBRequest",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "result",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "error",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMException"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "source",
+              "type": {
+                "nullable": {
+                  "union": [
+                    {
+                      "identifier": "IDBObjectStore"
+                    },
+                    {
+                      "identifier": "IDBIndex"
+                    },
+                    {
+                      "identifier": "IDBCursor"
+                    }
+                  ]
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transaction",
+              "type": {
+                "nullable": {
+                  "identifier": "IDBTransaction"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "readyState",
+              "type": {
+                "identifier": "IDBRequestReadyState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onsuccess",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "IDBRequestReadyState",
+        "values": [
+          "pending",
+          "done"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBOpenDBRequest",
+        "inherits": "IDBRequest",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "onblocked",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onupgradeneeded",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBVersionChangeEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "IDBVersionChangeEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oldVersion",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "newVersion",
+              "type": {
+                "nullable": "unsigned long long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBVersionChangeEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "oldVersion",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "newVersion",
+            "type": {
+              "nullable": "unsigned long long"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "WindowOrWorkerGlobalScope",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "indexedDB",
+              "type": {
+                "identifier": "IDBFactory"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBFactory",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "open",
+              "return_type": {
+                "identifier": "IDBOpenDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "version",
+                  "type": "unsigned long long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteDatabase",
+              "return_type": {
+                "identifier": "IDBOpenDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "databases",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "IDBDatabaseInfo"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cmp",
+              "return_type": "short",
+              "arguments": [
+                {
+                  "name": "first",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "second",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBDatabaseInfo",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "version",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBDatabase",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "version",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "objectStoreNames",
+              "type": {
+                "identifier": "DOMStringList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "transaction",
+              "return_type": {
+                "identifier": "IDBTransaction"
+              },
+              "arguments": [
+                {
+                  "name": "storeNames",
+                  "type": {
+                    "union": [
+                      "DOMString",
+                      {
+                        "sequence": "DOMString"
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "mode",
+                  "type": {
+                    "identifier": "IDBTransactionMode"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "readonly",
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IDBTransactionOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createObjectStore",
+              "return_type": {
+                "identifier": "IDBObjectStore"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IDBObjectStoreParameters"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteObjectStore",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onabort",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onclose",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onversionchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "IDBTransactionDurability",
+        "values": [
+          "default",
+          "strict",
+          "relaxed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBTransactionOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "durability",
+            "type": {
+              "identifier": "IDBTransactionDurability"
+            },
+            "required": false,
+            "default_value": "default",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBObjectStoreParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "keyPath",
+            "type": {
+              "nullable": {
+                "union": [
+                  "DOMString",
+                  {
+                    "sequence": "DOMString"
+                  }
+                ]
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "autoIncrement",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBObjectStore",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "keyPath",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "indexNames",
+              "type": {
+                "identifier": "DOMStringList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transaction",
+              "type": {
+                "identifier": "IDBTransaction"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "autoIncrement",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "put",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "add",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "clear",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "get",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getKey",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAll",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "queryOrOptions",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "count",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAllKeys",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "queryOrOptions",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "count",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAllRecords",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IDBGetAllOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "count",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "openCursor",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "IDBCursorDirection"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "next",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "openKeyCursor",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "IDBCursorDirection"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "next",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "index",
+              "return_type": {
+                "identifier": "IDBIndex"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createIndex",
+              "return_type": {
+                "identifier": "IDBIndex"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyPath",
+                  "type": {
+                    "union": [
+                      "DOMString",
+                      {
+                        "sequence": "DOMString"
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IDBIndexParameters"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteIndex",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBIndexParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "unique",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "multiEntry",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IDBGetAllOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "query",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "count",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "direction",
+            "type": {
+              "identifier": "IDBCursorDirection"
+            },
+            "required": false,
+            "default_value": "next",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBIndex",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "objectStore",
+              "type": {
+                "identifier": "IDBObjectStore"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "keyPath",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "multiEntry",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "unique",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "get",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getKey",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAll",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "queryOrOptions",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "count",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAllKeys",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "queryOrOptions",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "count",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getAllRecords",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IDBGetAllOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "count",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "openCursor",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "IDBCursorDirection"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "next",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "openKeyCursor",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "IDBCursorDirection"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "next",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBKeyRange",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "lower",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "upper",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lowerOpen",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "upperOpen",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "only",
+              "return_type": {
+                "identifier": "IDBKeyRange"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "lowerBound",
+              "return_type": {
+                "identifier": "IDBKeyRange"
+              },
+              "arguments": [
+                {
+                  "name": "lower",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "open",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "upperBound",
+              "return_type": {
+                "identifier": "IDBKeyRange"
+              },
+              "arguments": [
+                {
+                  "name": "upper",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "open",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "bound",
+              "return_type": {
+                "identifier": "IDBKeyRange"
+              },
+              "arguments": [
+                {
+                  "name": "lower",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "upper",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "lowerOpen",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "upperOpen",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "includes",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "key",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBRecord",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "key",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "primaryKey",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "value",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBCursor",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "source",
+              "type": {
+                "union": [
+                  {
+                    "identifier": "IDBObjectStore"
+                  },
+                  {
+                    "identifier": "IDBIndex"
+                  }
+                ]
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "direction",
+              "type": {
+                "identifier": "IDBCursorDirection"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "key",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "primaryKey",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "request",
+              "type": {
+                "identifier": "IDBRequest"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "advance",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "count",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": [
+                    {
+                      "name": "EnforceRange",
+                      "value": null
+                    }
+                  ]
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "continue",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "key",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "continuePrimaryKey",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "key",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "primaryKey",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "update",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": {
+                "identifier": "IDBRequest"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "IDBCursorDirection",
+        "values": [
+          "next",
+          "nextunique",
+          "prev",
+          "prevunique"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBCursorWithValue",
+        "inherits": "IDBCursor",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "value",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IDBTransaction",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "objectStoreNames",
+              "type": {
+                "identifier": "DOMStringList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "mode",
+              "type": {
+                "identifier": "IDBTransactionMode"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "durability",
+              "type": {
+                "identifier": "IDBTransactionDurability"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "db",
+              "type": {
+                "identifier": "IDBDatabase"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "error",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMException"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "objectStore",
+              "return_type": {
+                "identifier": "IDBObjectStore"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "commit",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "abort",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onabort",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oncomplete",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "IDBTransactionMode",
+        "values": [
+          "readonly",
+          "readwrite",
+          "versionchange"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

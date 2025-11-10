@@ -1,0 +1,77 @@
+{
+  "spec": {
+    "title": "SPARQL 1.2 Query Language",
+    "url": "https://w3c.github.io/sparql-query/spec/"
+  },
+  "algorithms": [
+    {
+      "html": "The result of this function is determined by going through the following steps.",
+      "rationale": "if",
+      "steps": [
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are\n                <a data-cite=\"RDF12-CONCEPTS#dfn-rdf-term-equality\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-rdf-term-equality\" id=\"ref-for-index-term-same-rdf-term-2\">equal RDF terms</a>,\n                then return TRUE."
+        },
+        {
+          "html": "If <code>term1</code> or <code>term2</code> is an\n                <a data-cite=\"RDF12-CONCEPTS#dfn-iri\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-iri\" id=\"ref-for-index-term-iri-7\">IRI</a> or a\n                <a data-cite=\"RDF12-CONCEPTS#dfn-blank-node\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-blank-node\" id=\"ref-for-index-term-blank-node-9\">blank node</a>\n                then return FALSE."
+        },
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are both\n                <a data-cite=\"RDF12-CONCEPTS#dfn-literal\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-literal\" id=\"ref-for-index-term-literal-14\">literals</a>\n                and one or both of these literals has a datatype that is\n                not handled by the SPARQL processor,\n                then produce an <a data-link-type=\"dfn|abstract-op\" href=\"https://w3c.github.io/sparql-query/spec/#dfn-sparql-eval-error\" class=\"internalDFN\" id=\"ref-for-dfn-sparql-eval-error-11\">error</a>."
+        },
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are both\n                <a data-cite=\"RDF12-CONCEPTS#dfn-literal\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-literal\" id=\"ref-for-index-term-literal-15\">literals</a>\n                and one or both of these literals are known to be\n                <a data-cite=\"RDF12-CONCEPTS#dfn-ill-typed\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-ill-typed\" id=\"ref-for-index-term-ill-typed-1\">ill-typed</a>,\n                then produce an <a data-link-type=\"dfn|abstract-op\" href=\"https://w3c.github.io/sparql-query/spec/#dfn-sparql-eval-error\" class=\"internalDFN\" id=\"ref-for-dfn-sparql-eval-error-12\">error</a>."
+        },
+        {
+          "html": "<code>\"NaN\"^^xsd:double</code> and <code>\"NaN\"^^xsd:float</code> are considered to \n                represent the same value.\n                If <code>term1</code> and <code>term2</code> are\n                both \"NaN\" for either xsd:double or xsd:float, then \n                return TRUE."
+        },
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are both \n                <a data-cite=\"RDF12-CONCEPTS#dfn-literal\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-literal\" id=\"ref-for-index-term-literal-16\">literals</a>\n                and the SPARQL processor can determine that their the values are equal,\n                then return TRUE."
+        },
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are both \n                <a data-cite=\"RDF12-CONCEPTS#dfn-literal\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-literal\" id=\"ref-for-index-term-literal-17\">literals</a>\n                and the SPARQL processor can determine the values can not be equal,\n                then return FALSE."
+        },
+        {
+          "html": "If <code>term1</code> and <code>term2</code> are both \n                <a data-cite=\"RDF12-CONCEPTS#dfn-triple-term\" href=\"https://www.w3.org/TR/rdf12-concepts/#dfn-triple-term\" id=\"ref-for-index-term-triple-term-10\">triple terms</a>,\n                apply the function <code>sameValue</code> pair-wise to each of the components.\n                Return TRUE if each component pair returns TRUE;\n                produce an <a data-link-type=\"dfn|abstract-op\" href=\"https://w3c.github.io/sparql-query/spec/#dfn-sparql-eval-error\" class=\"internalDFN\" id=\"ref-for-dfn-sparql-eval-error-13\">error</a> if any component pair produces an <a data-link-type=\"dfn|abstract-op\" href=\"https://w3c.github.io/sparql-query/spec/#dfn-sparql-eval-error\" class=\"internalDFN\" id=\"ref-for-dfn-sparql-eval-error-14\">error</a>;\n                otherwise return FALSE."
+        },
+        {
+          "html": "Otherwise, return FALSE."
+        }
+      ]
+    },
+    {
+      "html": "with Dedup(M(<var>Ψ</var>)) being an order-preserving, duplicate-free version of the sequence M(<var>Ψ</var>); that is, Dedup(M(<var>Ψ</var>)) is a sequence of lists that has the following four properties\n              (where each such list in this sequence may contain RDF terms and\n              errors, as it is produced by the <a href=\"https://w3c.github.io/sparql-query/spec/#defn_ListEval\">ListEval</a> function).",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "For every list&nbsp;<var>L</var> in M(<var>Ψ</var>) there exists a\n                list&nbsp;<var>L'</var> in Dedup(M(<var>Ψ</var>)) such that <var>L</var>\n                and <var>L'</var> are the same,\n                where two lists <var>L</var> and <var>L'</var> from M(<var>Ψ</var>) are\n                considered the same as specified in the definition of the\n                <a href=\"https://w3c.github.io/sparql-query/spec/#defn_algGroup\">Group operator</a>."
+        },
+        {
+          "html": "For every list&nbsp;<var>L</var> in Dedup(M(<var>Ψ</var>)) there exists\n                a list&nbsp;<var>L'</var> in M(<var>Ψ</var>) such that <var>L</var> and\n                <var>L'</var> are the same."
+        },
+        {
+          "html": "Dedup(M(<var>Ψ</var>)) is free of duplicates. That is, the list at the <var>i</var>-th position in Dedup(M(<var>Ψ</var>)) is not the same list as the list at the <var>j</var>-th position in Dedup(M(<var>Ψ</var>)) for every two natural numbers <var>i</var> and <var>j</var> such that <var>i</var> ≠ <var>j</var>."
+        },
+        {
+          "html": "For any two lists <var>L<sub>1</sub></var> and <var>L<sub>2</sub></var> in Dedup(M(<var>Ψ</var>)), the relative order of their first occurrences in M(<var>Ψ</var>) is preserved in Dedup(M(<var>Ψ</var>)). That is, if <var>i<sub>1</sub></var>&nbsp;&lt;&nbsp;<var>i<sub>2</sub></var>, then <var>j<sub>1</sub></var>&nbsp;&lt;&nbsp;<var>j<sub>2</sub></var>, where\n                <ul>\n                  <li><var>i<sub>1</sub></var> is the smallest natural number such that <var>L<sub>1</sub></var> is at the <var>i<sub>1</sub></var>-th position in M(<var>Ψ</var>),</li>\n                  <li><var>i<sub>2</sub></var> is the smallest natural number such that <var>L<sub>2</sub></var> is at the <var>i<sub>2</sub></var>-th position in M(<var>Ψ</var>),</li>\n                  <li><var>j<sub>1</sub></var> is the position of <var>L<sub>1</sub></var> in Dedup(M(<var>Ψ</var>)), and</li>\n                  <li><var>j<sub>2</sub></var> is the position of <var>L<sub>2</sub></var> in Dedup(M(<var>Ψ</var>)).</li>\n                </ul>"
+        }
+      ]
+    },
+    {
+      "html": "An entailment regime E must provide conditions on basic graph pattern evaluation such\n            that for any basic graph pattern BGP, any RDF graph G, and any evaluation that satisfies\n            the conditions, the resulting multiset of solutions is uniquely determined up to RDF graph\n            equivalence. We denote the multiset of solutions from evaluating BGP over G using E with\n            Eval-E(G, BGP).<br>\n            An entailment regime must further satisfy the following conditions:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "For any E-consistent active graph AG, the entailment regime E uniquely specifies a\n              <a href=\"https://w3c.github.io/sparql-query/spec/#BGPsparqlBNodes\">scoping graph</a> SG that is E-equivalent to AG."
+        },
+        {
+          "html": "A set of well-formed graphs for E is specified such that, for any basic graph pattern\n              BGP, scoping graph SG, and solution mapping μ in Eval-E(SG, BGP), the graph μ(BGP) is\n              well-formed for E."
+        },
+        {
+          "html": "For any basic graph pattern BGP and scoping graph SG, if μ<sub>1</sub>, ...,\n              μ<sub>n</sub> in Eval-E(SG, BGP) and BGP<sub>1</sub>, ..., BGP<sub>n</sub> are basic\n              graph patterns all equivalent to BGP but not sharing any blank nodes with each other or\n              with SG, then\n              <blockquote>\n                <p>SG E-entails (SG union μ<sub>1</sub>(BGP<sub>1</sub>) union ... union\n                  μ<sub>n</sub>(BGP<sub>n</sub>))</p>\n              </blockquote>\n              <p>These conditions do not fully determine the set of possible answers, since RDF\n                allows unlimited amounts of redundancy. In addition, therefore, the following must\n                hold.</p>"
+        },
+        {
+          "html": "Entailment regimes should provide conditions to prevent trivial infinite solution\n              multisets as appropriate to the regime."
+        }
+      ]
+    }
+  ]
+}

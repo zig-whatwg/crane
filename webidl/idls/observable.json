@@ -1,1 +1,1054 @@
-{"definitions":[{"interface":{"name":"Subscriber","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"operation":{"name":"next","return_type":"undefined","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"error","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"complete","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"addTeardown","return_type":"undefined","arguments":[{"name":"teardown","type":{"identifier":"VoidFunction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"active","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"signal","type":{"identifier":"AbortSignal"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"callback":{"name":"SubscribeCallback","return_type":"undefined","arguments":[{"name":"subscriber","type":{"identifier":"Subscriber"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"ObservableSubscriptionCallback","return_type":"undefined","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"SubscriptionObserver","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"next","type":{"identifier":"ObservableSubscriptionCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"ObservableSubscriptionCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"complete","type":{"identifier":"VoidFunction"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"ObservableInspectorAbortHandler","return_type":"undefined","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"ObservableInspector","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"next","type":{"identifier":"ObservableSubscriptionCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"ObservableSubscriptionCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"complete","type":{"identifier":"VoidFunction"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"subscribe","type":{"identifier":"VoidFunction"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"abort","type":{"identifier":"ObservableInspectorAbortHandler"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"ObserverUnion","type":{"union":[{"identifier":"ObservableSubscriptionCallback"},{"identifier":"SubscriptionObserver"}]},"extended_attributes":[]}},{"typedef":{"name":"ObservableInspectorUnion","type":{"union":[{"identifier":"ObservableSubscriptionCallback"},{"identifier":"ObservableInspector"}]},"extended_attributes":[]}},{"dictionary":{"name":"SubscribeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"Predicate","return_type":"boolean","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"Reducer","return_type":"any","arguments":[{"name":"accumulator","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"currentValue","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"Mapper","return_type":"any","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"Visitor","return_type":"undefined","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"CatchCallback","return_type":"any","arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"Observable","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"callback","type":{"identifier":"SubscribeCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"subscribe","return_type":"undefined","arguments":[{"name":"observer","type":{"identifier":"ObserverUnion"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"from","return_type":{"identifier":"Observable"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"takeUntil","return_type":{"identifier":"Observable"},"arguments":[{"name":"value","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"map","return_type":{"identifier":"Observable"},"arguments":[{"name":"mapper","type":{"identifier":"Mapper"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"filter","return_type":{"identifier":"Observable"},"arguments":[{"name":"predicate","type":{"identifier":"Predicate"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"take","return_type":{"identifier":"Observable"},"arguments":[{"name":"amount","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"drop","return_type":{"identifier":"Observable"},"arguments":[{"name":"amount","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"flatMap","return_type":{"identifier":"Observable"},"arguments":[{"name":"mapper","type":{"identifier":"Mapper"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"switchMap","return_type":{"identifier":"Observable"},"arguments":[{"name":"mapper","type":{"identifier":"Mapper"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"inspect","return_type":{"identifier":"Observable"},"arguments":[{"name":"inspectorUnion","type":{"identifier":"ObservableInspectorUnion"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"catch","return_type":{"identifier":"Observable"},"arguments":[{"name":"callback","type":{"identifier":"CatchCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"finally","return_type":{"identifier":"Observable"},"arguments":[{"name":"callback","type":{"identifier":"VoidFunction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"toArray","return_type":{"promise":{"sequence":"any"}},"arguments":[{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"forEach","return_type":{"promise":"undefined"},"arguments":[{"name":"callback","type":{"identifier":"Visitor"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"every","return_type":{"promise":"boolean"},"arguments":[{"name":"predicate","type":{"identifier":"Predicate"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"first","return_type":{"promise":"any"},"arguments":[{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"last","return_type":{"promise":"any"},"arguments":[{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"find","return_type":{"promise":"any"},"arguments":[{"name":"predicate","type":{"identifier":"Predicate"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"some","return_type":{"promise":"boolean"},"arguments":[{"name":"predicate","type":{"identifier":"Predicate"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reduce","return_type":{"promise":"any"},"arguments":[{"name":"reducer","type":{"identifier":"Reducer"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"initialValue","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SubscribeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"ObservableEventListenerOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"capture","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"passive","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"EventTarget","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"when","return_type":{"identifier":"Observable"},"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"ObservableEventListenerOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Subscriber",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "next",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "error",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "complete",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addTeardown",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "teardown",
+                  "type": {
+                    "identifier": "VoidFunction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "active",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "signal",
+              "type": {
+                "identifier": "AbortSignal"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "SubscribeCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "subscriber",
+            "type": {
+              "identifier": "Subscriber"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "ObservableSubscriptionCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SubscriptionObserver",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "next",
+            "type": {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "complete",
+            "type": {
+              "identifier": "VoidFunction"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "ObservableInspectorAbortHandler",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ObservableInspector",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "next",
+            "type": {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "complete",
+            "type": {
+              "identifier": "VoidFunction"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "subscribe",
+            "type": {
+              "identifier": "VoidFunction"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "abort",
+            "type": {
+              "identifier": "ObservableInspectorAbortHandler"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ObserverUnion",
+        "type": {
+          "union": [
+            {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            {
+              "identifier": "SubscriptionObserver"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "ObservableInspectorUnion",
+        "type": {
+          "union": [
+            {
+              "identifier": "ObservableSubscriptionCallback"
+            },
+            {
+              "identifier": "ObservableInspector"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SubscribeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "Predicate",
+        "return_type": "boolean",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "index",
+            "type": "unsigned long long",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "Reducer",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "accumulator",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "currentValue",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "index",
+            "type": "unsigned long long",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "Mapper",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "index",
+            "type": "unsigned long long",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "Visitor",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "index",
+            "type": "unsigned long long",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "CatchCallback",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "value",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Observable",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "SubscribeCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "subscribe",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "observer",
+                  "type": {
+                    "identifier": "ObserverUnion"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "from",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "takeUntil",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "map",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "mapper",
+                  "type": {
+                    "identifier": "Mapper"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "filter",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "predicate",
+                  "type": {
+                    "identifier": "Predicate"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "take",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "amount",
+                  "type": "unsigned long long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "drop",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "amount",
+                  "type": "unsigned long long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "flatMap",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "mapper",
+                  "type": {
+                    "identifier": "Mapper"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "switchMap",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "mapper",
+                  "type": {
+                    "identifier": "Mapper"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "inspect",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "inspectorUnion",
+                  "type": {
+                    "identifier": "ObservableInspectorUnion"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "catch",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "CatchCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "finally",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "VoidFunction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toArray",
+              "return_type": {
+                "promise": {
+                  "sequence": "any"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "forEach",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "Visitor"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "every",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "predicate",
+                  "type": {
+                    "identifier": "Predicate"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "first",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "last",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "find",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "predicate",
+                  "type": {
+                    "identifier": "Predicate"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "some",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "predicate",
+                  "type": {
+                    "identifier": "Predicate"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reduce",
+              "return_type": {
+                "promise": "any"
+              },
+              "arguments": [
+                {
+                  "name": "reducer",
+                  "type": {
+                    "identifier": "Reducer"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "initialValue",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SubscribeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ObservableEventListenerOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "capture",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "passive",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "EventTarget",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "when",
+              "return_type": {
+                "identifier": "Observable"
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ObservableEventListenerOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

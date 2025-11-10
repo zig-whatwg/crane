@@ -1,1 +1,596 @@
-{"definitions":[{"dictionary":{"name":"MediaConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"video","type":{"identifier":"VideoConfiguration"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"audio","type":{"identifier":"AudioConfiguration"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaDecodingConfiguration","inherits":"MediaConfiguration","partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"MediaDecodingType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"keySystemConfiguration","type":{"identifier":"MediaCapabilitiesKeySystemConfiguration"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaEncodingConfiguration","inherits":"MediaConfiguration","partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"MediaEncodingType"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"MediaDecodingType","values":["file","media-source","webrtc"],"extended_attributes":[]}},{"enum":{"name":"MediaEncodingType","values":["record","webrtc"],"extended_attributes":[]}},{"dictionary":{"name":"VideoConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"contentType","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"width","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"height","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"bitrate","type":"unsigned long long","required":true,"default_value":null,"extended_attributes":[]},{"name":"framerate","type":"double","required":true,"default_value":null,"extended_attributes":[]},{"name":"hasAlphaChannel","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"hdrMetadataType","type":{"identifier":"HdrMetadataType"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"colorGamut","type":{"identifier":"ColorGamut"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"transferFunction","type":{"identifier":"TransferFunction"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"scalabilityMode","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"spatialScalability","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"HdrMetadataType","values":["smpteSt2086","smpteSt2094-10","smpteSt2094-40"],"extended_attributes":[]}},{"enum":{"name":"ColorGamut","values":["srgb","p3","rec2020"],"extended_attributes":[]}},{"enum":{"name":"TransferFunction","values":["srgb","pq","hlg"],"extended_attributes":[]}},{"dictionary":{"name":"AudioConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"contentType","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"channels","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"bitrate","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"samplerate","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"spatialRendering","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaCapabilitiesKeySystemConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"keySystem","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"initDataType","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"distinctiveIdentifier","type":{"identifier":"MediaKeysRequirement"},"required":false,"default_value":"optional","extended_attributes":[]},{"name":"persistentState","type":{"identifier":"MediaKeysRequirement"},"required":false,"default_value":"optional","extended_attributes":[]},{"name":"sessionTypes","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"audio","type":{"identifier":"KeySystemTrackConfiguration"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"video","type":{"identifier":"KeySystemTrackConfiguration"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"KeySystemTrackConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"robustness","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"encryptionScheme","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaCapabilitiesInfo","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":true,"default_value":null,"extended_attributes":[]},{"name":"smooth","type":"boolean","required":true,"default_value":null,"extended_attributes":[]},{"name":"powerEfficient","type":"boolean","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaCapabilitiesDecodingInfo","inherits":"MediaCapabilitiesInfo","partial":false,"extended_attributes":[],"members":[{"name":"keySystemAccess","type":{"nullable":{"identifier":"MediaKeySystemAccess"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"configuration","type":{"identifier":"MediaDecodingConfiguration"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MediaCapabilitiesEncodingInfo","inherits":"MediaCapabilitiesInfo","partial":false,"extended_attributes":[],"members":[{"name":"configuration","type":{"identifier":"MediaEncodingConfiguration"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"mediaCapabilities","type":{"identifier":"MediaCapabilities"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"WorkerNavigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Worker"}}],"members":[{"attribute":{"name":"mediaCapabilities","type":{"identifier":"MediaCapabilities"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"MediaCapabilities","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"decodingInfo","return_type":{"promise":{"identifier":"MediaCapabilitiesDecodingInfo"}},"arguments":[{"name":"configuration","type":{"identifier":"MediaDecodingConfiguration"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"encodingInfo","return_type":{"promise":{"identifier":"MediaCapabilitiesEncodingInfo"}},"arguments":[{"name":"configuration","type":{"identifier":"MediaEncodingConfiguration"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "MediaConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "video",
+            "type": {
+              "identifier": "VideoConfiguration"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "audio",
+            "type": {
+              "identifier": "AudioConfiguration"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaDecodingConfiguration",
+        "inherits": "MediaConfiguration",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "MediaDecodingType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "keySystemConfiguration",
+            "type": {
+              "identifier": "MediaCapabilitiesKeySystemConfiguration"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaEncodingConfiguration",
+        "inherits": "MediaConfiguration",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "MediaEncodingType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "MediaDecodingType",
+        "values": [
+          "file",
+          "media-source",
+          "webrtc"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "MediaEncodingType",
+        "values": [
+          "record",
+          "webrtc"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "contentType",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bitrate",
+            "type": "unsigned long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framerate",
+            "type": "double",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hasAlphaChannel",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hdrMetadataType",
+            "type": {
+              "identifier": "HdrMetadataType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "colorGamut",
+            "type": {
+              "identifier": "ColorGamut"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transferFunction",
+            "type": {
+              "identifier": "TransferFunction"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "scalabilityMode",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "spatialScalability",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "HdrMetadataType",
+        "values": [
+          "smpteSt2086",
+          "smpteSt2094-10",
+          "smpteSt2094-40"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "ColorGamut",
+        "values": [
+          "srgb",
+          "p3",
+          "rec2020"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "TransferFunction",
+        "values": [
+          "srgb",
+          "pq",
+          "hlg"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "contentType",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "channels",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bitrate",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "samplerate",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "spatialRendering",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaCapabilitiesKeySystemConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "keySystem",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "initDataType",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "distinctiveIdentifier",
+            "type": {
+              "identifier": "MediaKeysRequirement"
+            },
+            "required": false,
+            "default_value": "optional",
+            "extended_attributes": []
+          },
+          {
+            "name": "persistentState",
+            "type": {
+              "identifier": "MediaKeysRequirement"
+            },
+            "required": false,
+            "default_value": "optional",
+            "extended_attributes": []
+          },
+          {
+            "name": "sessionTypes",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "audio",
+            "type": {
+              "identifier": "KeySystemTrackConfiguration"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "video",
+            "type": {
+              "identifier": "KeySystemTrackConfiguration"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeySystemTrackConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "robustness",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "encryptionScheme",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaCapabilitiesInfo",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "smooth",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "powerEfficient",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaCapabilitiesDecodingInfo",
+        "inherits": "MediaCapabilitiesInfo",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "keySystemAccess",
+            "type": {
+              "nullable": {
+                "identifier": "MediaKeySystemAccess"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "configuration",
+            "type": {
+              "identifier": "MediaDecodingConfiguration"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaCapabilitiesEncodingInfo",
+        "inherits": "MediaCapabilitiesInfo",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "configuration",
+            "type": {
+              "identifier": "MediaEncodingConfiguration"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "mediaCapabilities",
+              "type": {
+                "identifier": "MediaCapabilities"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WorkerNavigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Worker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "mediaCapabilities",
+              "type": {
+                "identifier": "MediaCapabilities"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MediaCapabilities",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "decodingInfo",
+              "return_type": {
+                "promise": {
+                  "identifier": "MediaCapabilitiesDecodingInfo"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "configuration",
+                  "type": {
+                    "identifier": "MediaDecodingConfiguration"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "encodingInfo",
+              "return_type": {
+                "promise": {
+                  "identifier": "MediaCapabilitiesEncodingInfo"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "configuration",
+                  "type": {
+                    "identifier": "MediaEncodingConfiguration"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

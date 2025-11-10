@@ -1,1 +1,671 @@
-{"definitions":[{"enum":{"name":"TouchType","values":["direct","stylus"],"extended_attributes":[]}},{"dictionary":{"name":"TouchInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"identifier","type":"long","required":true,"default_value":null,"extended_attributes":[]},{"name":"target","type":{"identifier":"EventTarget"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"clientX","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"clientY","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"screenX","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"screenY","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"pageX","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"pageY","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"radiusX","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"radiusY","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"rotationAngle","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"force","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"altitudeAngle","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"azimuthAngle","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"touchType","type":{"identifier":"TouchType"},"required":false,"default_value":"direct","extended_attributes":[]}]}},{"interface":{"name":"Touch","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"touchInitDict","type":{"identifier":"TouchInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"identifier","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"target","type":{"identifier":"EventTarget"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"screenX","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"screenY","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clientX","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clientY","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pageX","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pageY","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"radiusX","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"radiusY","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"rotationAngle","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"force","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altitudeAngle","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"azimuthAngle","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"touchType","type":{"identifier":"TouchType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"TouchList","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"item","return_type":{"nullable":{"identifier":"Touch"}},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":"getter","extended_attributes":[]}}]}},{"dictionary":{"name":"TouchEventInit","inherits":"EventModifierInit","partial":false,"extended_attributes":[],"members":[{"name":"touches","type":{"sequence":{"identifier":"Touch"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"targetTouches","type":{"sequence":{"identifier":"Touch"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"changedTouches","type":{"sequence":{"identifier":"Touch"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface":{"name":"TouchEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"TouchEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"touches","type":{"identifier":"TouchList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"targetTouches","type":{"identifier":"TouchList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"changedTouches","type":{"identifier":"TouchList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"metaKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ctrlKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"shiftKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getModifierState","return_type":"boolean","arguments":[{"name":"keyArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":"getter","extended_attributes":[]}}]}},{"interface_mixin":{"name":"GlobalEventHandlers","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"ontouchstart","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ontouchend","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ontouchmove","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ontouchcancel","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "TouchType",
+        "values": [
+          "direct",
+          "stylus"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TouchInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "identifier",
+            "type": "long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "target",
+            "type": {
+              "identifier": "EventTarget"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clientX",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "clientY",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "screenX",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "screenY",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "pageX",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "pageY",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "radiusX",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "radiusY",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "rotationAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "force",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "altitudeAngle",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "azimuthAngle",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "touchType",
+            "type": {
+              "identifier": "TouchType"
+            },
+            "required": false,
+            "default_value": "direct",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Touch",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "touchInitDict",
+                  "type": {
+                    "identifier": "TouchInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "identifier",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "target",
+              "type": {
+                "identifier": "EventTarget"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "screenX",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "screenY",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clientX",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clientY",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pageX",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pageY",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "radiusX",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "radiusY",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "rotationAngle",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "force",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altitudeAngle",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "azimuthAngle",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "touchType",
+              "type": {
+                "identifier": "TouchType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TouchList",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "item",
+              "return_type": {
+                "nullable": {
+                  "identifier": "Touch"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": "getter",
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "TouchEventInit",
+        "inherits": "EventModifierInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "touches",
+            "type": {
+              "sequence": {
+                "identifier": "Touch"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "targetTouches",
+            "type": {
+              "sequence": {
+                "identifier": "Touch"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "changedTouches",
+            "type": {
+              "sequence": {
+                "identifier": "Touch"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TouchEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "TouchEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "touches",
+              "type": {
+                "identifier": "TouchList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "targetTouches",
+              "type": {
+                "identifier": "TouchList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "changedTouches",
+              "type": {
+                "identifier": "TouchList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "metaKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ctrlKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "shiftKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getModifierState",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "keyArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": "getter",
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "GlobalEventHandlers",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "ontouchstart",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ontouchend",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ontouchmove",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ontouchcancel",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,399 @@
-{"definitions":[{"dictionary":{"name":"CSPViolationReportBody","inherits":"ReportBody","partial":false,"extended_attributes":[],"members":[{"name":"documentURL","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"referrer","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"blockedURL","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"effectiveDirective","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"originalPolicy","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"sourceFile","type":{"nullable":"USVString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sample","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"disposition","type":{"identifier":"SecurityPolicyViolationEventDisposition"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"statusCode","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[]},{"name":"lineNumber","type":{"nullable":"unsigned long"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"columnNumber","type":{"nullable":"unsigned long"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SecurityPolicyViolationEventDisposition","values":["enforce","report"],"extended_attributes":[]}},{"interface":{"name":"SecurityPolicyViolationEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"SecurityPolicyViolationEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"documentURI","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"referrer","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"blockedURI","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"effectiveDirective","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"violatedDirective","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"originalPolicy","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sourceFile","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sample","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"disposition","type":{"identifier":"SecurityPolicyViolationEventDisposition"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"statusCode","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lineNumber","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"columnNumber","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"SecurityPolicyViolationEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"documentURI","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"referrer","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"blockedURI","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"violatedDirective","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"effectiveDirective","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"originalPolicy","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"sourceFile","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"sample","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"disposition","type":{"identifier":"SecurityPolicyViolationEventDisposition"},"required":false,"default_value":"enforce","extended_attributes":[]},{"name":"statusCode","type":"unsigned short","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"lineNumber","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"columnNumber","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "CSPViolationReportBody",
+        "inherits": "ReportBody",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "documentURL",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "referrer",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "blockedURL",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "effectiveDirective",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "originalPolicy",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sourceFile",
+            "type": {
+              "nullable": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sample",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "disposition",
+            "type": {
+              "identifier": "SecurityPolicyViolationEventDisposition"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "statusCode",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "lineNumber",
+            "type": {
+              "nullable": "unsigned long"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "columnNumber",
+            "type": {
+              "nullable": "unsigned long"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SecurityPolicyViolationEventDisposition",
+        "values": [
+          "enforce",
+          "report"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "SecurityPolicyViolationEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "SecurityPolicyViolationEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "documentURI",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "referrer",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "blockedURI",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "effectiveDirective",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "violatedDirective",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "originalPolicy",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sourceFile",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sample",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "disposition",
+              "type": {
+                "identifier": "SecurityPolicyViolationEventDisposition"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "statusCode",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lineNumber",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "columnNumber",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SecurityPolicyViolationEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "documentURI",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "referrer",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "blockedURI",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "violatedDirective",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "effectiveDirective",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "originalPolicy",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "sourceFile",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "sample",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "disposition",
+            "type": {
+              "identifier": "SecurityPolicyViolationEventDisposition"
+            },
+            "required": false,
+            "default_value": "enforce",
+            "extended_attributes": []
+          },
+          {
+            "name": "statusCode",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "lineNumber",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "columnNumber",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

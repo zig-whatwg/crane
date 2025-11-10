@@ -1,1 +1,399 @@
-{"definitions":[{"namespace":{"name":"console","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"operation":{"name":"assert","return_type":"undefined","arguments":[{"name":"condition","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clear","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"debug","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"info","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"log","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"table","return_type":"undefined","arguments":[{"name":"tabularData","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"properties","type":{"sequence":"DOMString"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"trace","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"warn","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"dir","return_type":"undefined","arguments":[{"name":"item","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"nullable":"object"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"dirxml","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"count","return_type":"undefined","arguments":[{"name":"label","type":"DOMString","optional":true,"variadic":false,"default_value":"default","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"countReset","return_type":"undefined","arguments":[{"name":"label","type":"DOMString","optional":true,"variadic":false,"default_value":"default","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"group","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"groupCollapsed","return_type":"undefined","arguments":[{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"groupEnd","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"time","return_type":"undefined","arguments":[{"name":"label","type":"DOMString","optional":true,"variadic":false,"default_value":"default","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"timeLog","return_type":"undefined","arguments":[{"name":"label","type":"DOMString","optional":true,"variadic":false,"default_value":"default","extended_attributes":[]},{"name":"data","type":"any","optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"timeEnd","return_type":"undefined","arguments":[{"name":"label","type":"DOMString","optional":true,"variadic":false,"default_value":"default","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "namespace": {
+        "name": "console",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "assert",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "condition",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clear",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "debug",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "info",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "log",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "table",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "tabularData",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "properties",
+                  "type": {
+                    "sequence": "DOMString"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "trace",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "warn",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "dir",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "item",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "nullable": "object"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "dirxml",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "count",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "default",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "countReset",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "default",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "group",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "groupCollapsed",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "groupEnd",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "time",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "default",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "timeLog",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "default",
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "timeEnd",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "label",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "default",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

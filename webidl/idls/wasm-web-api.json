@@ -1,1 +1,105 @@
-{"definitions":[{"namespace":{"name":"WebAssembly","partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"compileStreaming","return_type":{"promise":{"identifier":"Module"}},"arguments":[{"name":"source","type":{"promise":{"identifier":"Response"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"WebAssemblyCompileOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"instantiateStreaming","return_type":{"promise":{"identifier":"WebAssemblyInstantiatedSource"}},"arguments":[{"name":"source","type":{"promise":{"identifier":"Response"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"importObject","type":"object","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"WebAssemblyCompileOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "namespace": {
+        "name": "WebAssembly",
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "compileStreaming",
+              "return_type": {
+                "promise": {
+                  "identifier": "Module"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "source",
+                  "type": {
+                    "promise": {
+                      "identifier": "Response"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WebAssemblyCompileOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "instantiateStreaming",
+              "return_type": {
+                "promise": {
+                  "identifier": "WebAssemblyInstantiatedSource"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "source",
+                  "type": {
+                    "promise": {
+                      "identifier": "Response"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "importObject",
+                  "type": "object",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WebAssemblyCompileOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

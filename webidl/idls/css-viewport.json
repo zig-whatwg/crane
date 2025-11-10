@@ -1,1 +1,70 @@
-{"definitions":[{"interface":{"name":"Window","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"viewport","type":{"identifier":"Viewport"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null},{"name":"Replaceable","value":null}]}}]}},{"interface":{"name":"Viewport","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"segments","type":{"nullable":{"frozen_array":{"identifier":"DOMRect"}}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Window",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "viewport",
+              "type": {
+                "identifier": "Viewport"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                },
+                {
+                  "name": "Replaceable",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Viewport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "segments",
+              "type": {
+                "nullable": {
+                  "frozen_array": {
+                    "identifier": "DOMRect"
+                  }
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

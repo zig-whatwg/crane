@@ -1,1 +1,21 @@
-{"definitions":[{"dictionary":{"name":"MediaStreamConstraints","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"preferCurrentTab","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "MediaStreamConstraints",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "preferCurrentTab",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -16,7 +16,8 @@ pub fn writeToFile(ast_val: AST, filepath: []const u8) !void {
         allocator.destroy(infra_value);
     }
 
-    const json_bytes = try infra.json.serializeInfraValue(allocator, infra_value.*);
+    // Use pretty printing for better readability
+    const json_bytes = try infra.json.serializeInfraValuePretty(allocator, infra_value.*);
     defer allocator.free(json_bytes);
 
     const file = try std.fs.cwd().createFile(filepath, .{});

@@ -1,1 +1,104 @@
-{"definitions":[{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window"]}}],"members":[{"attribute":{"name":"devicePosture","type":{"identifier":"DevicePosture"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"DevicePosture","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window"]}}],"members":[{"attribute":{"name":"type","type":{"identifier":"DevicePostureType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"DevicePostureType","values":["continuous","folded"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "devicePosture",
+              "type": {
+                "identifier": "DevicePosture"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "DevicePosture",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "DevicePostureType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "DevicePostureType",
+        "values": [
+          "continuous",
+          "folded"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

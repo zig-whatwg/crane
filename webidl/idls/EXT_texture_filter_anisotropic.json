@@ -1,1 +1,52 @@
-{"definitions":[{"interface":{"name":"EXT_texture_filter_anisotropic","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"TEXTURE_MAX_ANISOTROPY_EXT","type":{"identifier":"GLenum"},"value":{"value":34046,"lexeme":"0x84FE"}}},{"const":{"name":"MAX_TEXTURE_MAX_ANISOTROPY_EXT","type":{"identifier":"GLenum"},"value":{"value":34047,"lexeme":"0x84FF"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "EXT_texture_filter_anisotropic",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "TEXTURE_MAX_ANISOTROPY_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34046,
+                "lexeme": "0x84FE"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_TEXTURE_MAX_ANISOTROPY_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34047,
+                "lexeme": "0x84FF"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,140 @@
-{"definitions":[{"interface":{"name":"Window","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestIdleCallback","return_type":"unsigned long","arguments":[{"name":"callback","type":{"identifier":"IdleRequestCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"IdleRequestOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"cancelIdleCallback","return_type":"undefined","arguments":[{"name":"handle","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"IdleRequestOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"IdleDeadline","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"timeRemaining","return_type":{"identifier":"DOMHighResTimeStamp"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"didTimeout","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"callback":{"name":"IdleRequestCallback","return_type":"undefined","arguments":[{"name":"deadline","type":{"identifier":"IdleDeadline"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Window",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestIdleCallback",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "IdleRequestCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "IdleRequestOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cancelIdleCallback",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "handle",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "IdleRequestOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "IdleDeadline",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "timeRemaining",
+              "return_type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "didTimeout",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "IdleRequestCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "deadline",
+            "type": {
+              "identifier": "IdleDeadline"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

@@ -1,1 +1,1033 @@
-{"definitions":[{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null},{"name":"IsolatedContext","value":null}],"members":[{"attribute":{"name":"smartCard","type":{"identifier":"SmartCardResourceManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"WorkerNavigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","SharedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"smartCard","type":{"identifier":"SmartCardResourceManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"SmartCardResourceManager","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","SharedWorker","Window"]}},{"name":"SecureContext","value":null},{"name":"IsolatedContext","value":null}],"members":[{"operation":{"name":"establishContext","return_type":{"promise":{"identifier":"SmartCardContext"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"SmartCardContext","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","SharedWorker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"listReaders","return_type":{"promise":{"sequence":"DOMString"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getStatusChange","return_type":{"promise":{"sequence":{"identifier":"SmartCardReaderStateOut"}}},"arguments":[{"name":"readerStates","type":{"sequence":{"identifier":"SmartCardReaderStateIn"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SmartCardGetStatusChangeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"connect","return_type":{"promise":{"identifier":"SmartCardConnectResult"}},"arguments":[{"name":"readerName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"accessMode","type":{"identifier":"SmartCardAccessMode"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SmartCardConnectOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"SmartCardReaderStateIn","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"readerName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"currentState","type":{"identifier":"SmartCardReaderStateFlagsIn"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"currentCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardReaderStateFlagsIn","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"unaware","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"ignore","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"unavailable","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"empty","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"present","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"exclusive","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"inuse","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"mute","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"unpowered","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardReaderStateOut","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"readerName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"eventState","type":{"identifier":"SmartCardReaderStateFlagsOut"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"eventCount","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"answerToReset","type":{"identifier":"ArrayBuffer"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardReaderStateFlagsOut","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"ignore","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"changed","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"unavailable","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"unknown","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"empty","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"present","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"exclusive","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"inuse","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"mute","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"unpowered","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardGetStatusChangeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timeout","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SmartCardProtocol","values":["raw","t0","t1"],"extended_attributes":[]}},{"dictionary":{"name":"SmartCardConnectResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"connection","type":{"identifier":"SmartCardConnection"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"activeProtocol","type":{"identifier":"SmartCardProtocol"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SmartCardAccessMode","values":["shared","exclusive","direct"],"extended_attributes":[]}},{"dictionary":{"name":"SmartCardConnectOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"preferredProtocols","type":{"sequence":{"identifier":"SmartCardProtocol"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"SmartCardConnection","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","SharedWorker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"disconnect","return_type":{"promise":"undefined"},"arguments":[{"name":"disposition","type":{"identifier":"SmartCardDisposition"},"optional":true,"variadic":false,"default_value":"leave","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"transmit","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"sendBuffer","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SmartCardTransmitOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"startTransaction","return_type":{"promise":"undefined"},"arguments":[{"name":"transaction","type":{"identifier":"SmartCardTransactionCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SmartCardTransactionOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"status","return_type":{"promise":{"identifier":"SmartCardConnectionStatus"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"control","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"controlCode","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getAttribute","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"tag","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setAttribute","return_type":{"promise":"undefined"},"arguments":[{"name":"tag","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"value","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"callback":{"name":"SmartCardTransactionCallback","return_type":{"promise":{"nullable":{"identifier":"SmartCardDisposition"}}},"arguments":[],"extended_attributes":[]}},{"enum":{"name":"SmartCardDisposition","values":["leave","reset","unpower","eject"],"extended_attributes":[]}},{"dictionary":{"name":"SmartCardTransmitOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"protocol","type":{"identifier":"SmartCardProtocol"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardTransactionOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SmartCardConnectionStatus","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"readerName","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"state","type":{"identifier":"SmartCardConnectionState"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"answerToReset","type":{"identifier":"ArrayBuffer"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SmartCardConnectionState","values":["absent","present","swallowed","powered","negotiable","t0","t1","raw"],"extended_attributes":[]}},{"interface":{"name":"SmartCardError","inherits":"DOMException","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["DedicatedWorker","SharedWorker","Window"]}},{"name":"Serializable","value":null}],"members":[{"constructor":{"arguments":[{"name":"message","type":"DOMString","optional":true,"variadic":false,"default_value":"","extended_attributes":[]},{"name":"options","type":{"identifier":"SmartCardErrorOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"responseCode","type":{"identifier":"SmartCardResponseCode"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"SmartCardErrorOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"responseCode","type":{"identifier":"SmartCardResponseCode"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SmartCardResponseCode","values":["no-service","no-smartcard","not-ready","not-transacted","proto-mismatch","reader-unavailable","removed-card","reset-card","server-too-busy","sharing-violation","system-cancelled","unknown-reader","unpowered-card","unresponsive-card","unsupported-card","unsupported-feature"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "IsolatedContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "smartCard",
+              "type": {
+                "identifier": "SmartCardResourceManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WorkerNavigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "SharedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "smartCard",
+              "type": {
+                "identifier": "SmartCardResourceManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "SmartCardResourceManager",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "SharedWorker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "IsolatedContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "establishContext",
+              "return_type": {
+                "promise": {
+                  "identifier": "SmartCardContext"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "SmartCardContext",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "SharedWorker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "listReaders",
+              "return_type": {
+                "promise": {
+                  "sequence": "DOMString"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getStatusChange",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "SmartCardReaderStateOut"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "readerStates",
+                  "type": {
+                    "sequence": {
+                      "identifier": "SmartCardReaderStateIn"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SmartCardGetStatusChangeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "connect",
+              "return_type": {
+                "promise": {
+                  "identifier": "SmartCardConnectResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "readerName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "accessMode",
+                  "type": {
+                    "identifier": "SmartCardAccessMode"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SmartCardConnectOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardReaderStateIn",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "readerName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "currentState",
+            "type": {
+              "identifier": "SmartCardReaderStateFlagsIn"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "currentCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardReaderStateFlagsIn",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "unaware",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "ignore",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "unavailable",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "empty",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "present",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "exclusive",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "inuse",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "mute",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "unpowered",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardReaderStateOut",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "readerName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "eventState",
+            "type": {
+              "identifier": "SmartCardReaderStateFlagsOut"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "eventCount",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "answerToReset",
+            "type": {
+              "identifier": "ArrayBuffer"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardReaderStateFlagsOut",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "ignore",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "changed",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "unavailable",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "unknown",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "empty",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "present",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "exclusive",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "inuse",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "mute",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "unpowered",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardGetStatusChangeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timeout",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SmartCardProtocol",
+        "values": [
+          "raw",
+          "t0",
+          "t1"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardConnectResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "connection",
+            "type": {
+              "identifier": "SmartCardConnection"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "activeProtocol",
+            "type": {
+              "identifier": "SmartCardProtocol"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SmartCardAccessMode",
+        "values": [
+          "shared",
+          "exclusive",
+          "direct"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardConnectOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "preferredProtocols",
+            "type": {
+              "sequence": {
+                "identifier": "SmartCardProtocol"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "SmartCardConnection",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "SharedWorker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "disconnect",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "disposition",
+                  "type": {
+                    "identifier": "SmartCardDisposition"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "leave",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "transmit",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "sendBuffer",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SmartCardTransmitOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "startTransaction",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "transaction",
+                  "type": {
+                    "identifier": "SmartCardTransactionCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SmartCardTransactionOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "status",
+              "return_type": {
+                "promise": {
+                  "identifier": "SmartCardConnectionStatus"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "control",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "controlCode",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": [
+                    {
+                      "name": "EnforceRange",
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getAttribute",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "tag",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": [
+                    {
+                      "name": "EnforceRange",
+                      "value": null
+                    }
+                  ]
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setAttribute",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "tag",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": [
+                    {
+                      "name": "EnforceRange",
+                      "value": null
+                    }
+                  ]
+                },
+                {
+                  "name": "value",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "SmartCardTransactionCallback",
+        "return_type": {
+          "promise": {
+            "nullable": {
+              "identifier": "SmartCardDisposition"
+            }
+          }
+        },
+        "arguments": [],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "SmartCardDisposition",
+        "values": [
+          "leave",
+          "reset",
+          "unpower",
+          "eject"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardTransmitOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "protocol",
+            "type": {
+              "identifier": "SmartCardProtocol"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardTransactionOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardConnectionStatus",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "readerName",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "state",
+            "type": {
+              "identifier": "SmartCardConnectionState"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "answerToReset",
+            "type": {
+              "identifier": "ArrayBuffer"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SmartCardConnectionState",
+        "values": [
+          "absent",
+          "present",
+          "swallowed",
+          "powered",
+          "negotiable",
+          "t0",
+          "t1",
+          "raw"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "SmartCardError",
+        "inherits": "DOMException",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "DedicatedWorker",
+                "SharedWorker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SmartCardErrorOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "responseCode",
+              "type": {
+                "identifier": "SmartCardResponseCode"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SmartCardErrorOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "responseCode",
+            "type": {
+              "identifier": "SmartCardResponseCode"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SmartCardResponseCode",
+        "values": [
+          "no-service",
+          "no-smartcard",
+          "not-ready",
+          "not-transacted",
+          "proto-mismatch",
+          "reader-unavailable",
+          "removed-card",
+          "reset-card",
+          "server-too-busy",
+          "sharing-violation",
+          "system-cancelled",
+          "unknown-reader",
+          "unpowered-card",
+          "unresponsive-card",
+          "unsupported-card",
+          "unsupported-feature"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

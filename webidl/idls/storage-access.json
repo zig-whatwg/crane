@@ -1,1 +1,38 @@
-{"definitions":[{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"hasStorageAccess","return_type":{"promise":"boolean"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"requestStorageAccess","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "hasStorageAccess",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "requestStorageAccess",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,76 @@
-{"definitions":[{"interface":{"name":"EXT_texture_compression_bptc","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"COMPRESSED_RGBA_BPTC_UNORM_EXT","type":{"identifier":"GLenum"},"value":{"value":36492,"lexeme":"0x8E8C"}}},{"const":{"name":"COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT","type":{"identifier":"GLenum"},"value":{"value":36493,"lexeme":"0x8E8D"}}},{"const":{"name":"COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT","type":{"identifier":"GLenum"},"value":{"value":36494,"lexeme":"0x8E8E"}}},{"const":{"name":"COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT","type":{"identifier":"GLenum"},"value":{"value":36495,"lexeme":"0x8E8F"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "EXT_texture_compression_bptc",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "COMPRESSED_RGBA_BPTC_UNORM_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36492,
+                "lexeme": "0x8E8C"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36493,
+                "lexeme": "0x8E8D"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_RGB_BPTC_SIGNED_FLOAT_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36494,
+                "lexeme": "0x8E8E"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36495,
+                "lexeme": "0x8E8F"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

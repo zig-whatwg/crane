@@ -1,1 +1,204 @@
-{"definitions":[{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"namedFlows","type":{"identifier":"NamedFlowMap"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"NamedFlowMap","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"maplike":{"key_type":{"identifier":"CSSOMString"},"value_type":{"identifier":"NamedFlow"},"readonly":false}}]}},{"interface":{"name":"NamedFlow","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"overset","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getRegions","return_type":{"sequence":{"identifier":"Element"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"firstEmptyRegionIndex","type":"short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getContent","return_type":{"sequence":{"identifier":"Node"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getRegionsByContent","return_type":{"sequence":{"identifier":"Element"}},"arguments":[{"name":"node","type":{"identifier":"Node"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"Region","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"regionOverset","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getRegionFlowRanges","return_type":{"nullable":{"sequence":{"identifier":"Range"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"includes":{"interface":"Element","mixin":"Region"}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "namedFlows",
+              "type": {
+                "identifier": "NamedFlowMap"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "NamedFlowMap",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "maplike": {
+              "key_type": {
+                "identifier": "CSSOMString"
+              },
+              "value_type": {
+                "identifier": "NamedFlow"
+              },
+              "readonly": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "NamedFlow",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "overset",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRegions",
+              "return_type": {
+                "sequence": {
+                  "identifier": "Element"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "firstEmptyRegionIndex",
+              "type": "short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getContent",
+              "return_type": {
+                "sequence": {
+                  "identifier": "Node"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRegionsByContent",
+              "return_type": {
+                "sequence": {
+                  "identifier": "Element"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "node",
+                  "type": {
+                    "identifier": "Node"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "Region",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "regionOverset",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getRegionFlowRanges",
+              "return_type": {
+                "nullable": {
+                  "sequence": {
+                    "identifier": "Range"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Element",
+        "mixin": "Region"
+      }
+    }
+  ]
+}

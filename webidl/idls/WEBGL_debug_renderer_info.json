@@ -1,1 +1,52 @@
-{"definitions":[{"interface":{"name":"WEBGL_debug_renderer_info","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"UNMASKED_VENDOR_WEBGL","type":{"identifier":"GLenum"},"value":{"value":37445,"lexeme":"0x9245"}}},{"const":{"name":"UNMASKED_RENDERER_WEBGL","type":{"identifier":"GLenum"},"value":{"value":37446,"lexeme":"0x9246"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_debug_renderer_info",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "UNMASKED_VENDOR_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37445,
+                "lexeme": "0x9245"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "UNMASKED_RENDERER_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37446,
+                "lexeme": "0x9246"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

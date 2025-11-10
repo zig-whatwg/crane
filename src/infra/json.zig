@@ -206,6 +206,16 @@ pub fn serializeInfraValue(allocator: Allocator, value: InfraValue) ![]const u8 
     return result.toOwnedSlice(allocator);
 }
 
+/// Serialize InfraValue to pretty-printed JSON with indentation
+pub fn serializeInfraValuePretty(allocator: Allocator, value: InfraValue) ![]const u8 {
+    var result = try std.ArrayList(u8).initCapacity(allocator, 0);
+    errdefer result.deinit(allocator);
+
+    try serializeValuePretty(allocator, &result, value, 0);
+
+    return result.toOwnedSlice(allocator);
+}
+
 pub fn serializeInfraValueToBytes(allocator: Allocator, value: InfraValue) ![]const u8 {
     return serializeInfraValue(allocator, value);
 }
@@ -263,6 +273,97 @@ fn serializeValue(allocator: Allocator, writer: *std.ArrayList(u8), value: Infra
                 try serializeValue(allocator, writer, .{ .string = entry.key });
                 try writer.append(allocator, ':');
                 try serializeValue(allocator, writer, entry.value.*);
+            }
+            try writer.append(allocator, '}');
+        },
+    }
+}
+
+fn serializeValuePretty(allocator: Allocator, writer: *std.ArrayList(u8), value: InfraValue, indent: usize) !void {
+    switch (value) {
+        .null_value => try writer.appendSlice(allocator, "null"),
+        .boolean => |b| {
+            if (b) {
+                try writer.appendSlice(allocator, "true");
+            } else {
+                try writer.appendSlice(allocator, "false");
+            }
+        },
+        .number => |n| {
+            var buf: [64]u8 = undefined;
+            const s = try std.fmt.bufPrint(&buf, "{d}", .{n});
+            try writer.appendSlice(allocator, s);
+        },
+        .string => |s| {
+            const string_module = @import("string.zig");
+            const utf8_string = try string_module.utf16ToUtf8(allocator, s);
+            defer allocator.free(utf8_string);
+
+            try writer.append(allocator, '"');
+            for (utf8_string) |c| {
+                switch (c) {
+                    '"' => try writer.appendSlice(allocator, "\\\""),
+                    '\\' => try writer.appendSlice(allocator, "\\\\"),
+                    '\n' => try writer.appendSlice(allocator, "\\n"),
+                    '\r' => try writer.appendSlice(allocator, "\\r"),
+                    '\t' => try writer.appendSlice(allocator, "\\t"),
+                    else => try writer.append(allocator, c),
+                }
+            }
+            try writer.append(allocator, '"');
+        },
+        .list => |l| {
+            try writer.append(allocator, '[');
+            const items_slice = l.items();
+            if (items_slice.len > 0) {
+                try writer.append(allocator, '\n');
+                for (items_slice, 0..) |item, i| {
+                    if (i > 0) {
+                        try writer.appendSlice(allocator, ",\n");
+                    }
+                    // Indent
+                    for (0..(indent + 1) * 2) |_| {
+                        try writer.append(allocator, ' ');
+                    }
+                    try serializeValuePretty(allocator, writer, item.*, indent + 1);
+                }
+                try writer.append(allocator, '\n');
+                // Close bracket indent
+                for (0..indent * 2) |_| {
+                    try writer.append(allocator, ' ');
+                }
+            }
+            try writer.append(allocator, ']');
+        },
+        .map => |m| {
+            try writer.append(allocator, '{');
+            var it = m.iterator();
+            var first = true;
+            const has_items = m.size() > 0;
+            if (has_items) {
+                try writer.append(allocator, '\n');
+            }
+            while (it.next()) |entry| {
+                if (!first) {
+                    try writer.appendSlice(allocator, ",\n");
+                }
+                first = false;
+
+                // Indent
+                for (0..(indent + 1) * 2) |_| {
+                    try writer.append(allocator, ' ');
+                }
+
+                try serializeValuePretty(allocator, writer, .{ .string = entry.key }, indent + 1);
+                try writer.appendSlice(allocator, ": ");
+                try serializeValuePretty(allocator, writer, entry.value.*, indent + 1);
+            }
+            if (has_items) {
+                try writer.append(allocator, '\n');
+                // Close brace indent
+                for (0..indent * 2) |_| {
+                    try writer.append(allocator, ' ');
+                }
             }
             try writer.append(allocator, '}');
         },

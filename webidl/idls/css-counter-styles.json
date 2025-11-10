@@ -1,1 +1,184 @@
-{"definitions":[{"interface":{"name":"CSSRule","inherits":null,"partial":true,"extended_attributes":[],"members":[{"const":{"name":"COUNTER_STYLE_RULE","type":"unsigned short","value":{"value":11,"lexeme":"11"}}}]}},{"interface":{"name":"CSSCounterStyleRule","inherits":"CSSRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"system","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"symbols","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"additiveSymbols","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"negative","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"prefix","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"suffix","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"range","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pad","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"speakAs","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fallback","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "CSSRule",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "const": {
+              "name": "COUNTER_STYLE_RULE",
+              "type": "unsigned short",
+              "value": {
+                "value": 11,
+                "lexeme": "11"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSCounterStyleRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "system",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "symbols",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "additiveSymbols",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "negative",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "prefix",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "suffix",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "range",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pad",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "speakAs",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fallback",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

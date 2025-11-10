@@ -1,1 +1,52 @@
-{"definitions":[{"dictionary":{"name":"AudioEncoderConfig","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"aac","type":{"identifier":"AacEncoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AacEncoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"format","type":{"identifier":"AacBitstreamFormat"},"required":false,"default_value":"aac","extended_attributes":[]}]}},{"enum":{"name":"AacBitstreamFormat","values":["aac","adts"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "AudioEncoderConfig",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "aac",
+            "type": {
+              "identifier": "AacEncoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AacEncoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "format",
+            "type": {
+              "identifier": "AacBitstreamFormat"
+            },
+            "required": false,
+            "default_value": "aac",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AacBitstreamFormat",
+        "values": [
+          "aac",
+          "adts"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

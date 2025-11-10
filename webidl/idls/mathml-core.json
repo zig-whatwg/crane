@@ -1,1 +1,32 @@
-{"definitions":[{"interface":{"name":"MathMLElement","inherits":"Element","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[]}},{"includes":{"interface":"MathMLElement","mixin":"GlobalEventHandlers"}},{"includes":{"interface":"MathMLElement","mixin":"HTMLOrForeignElement"}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "MathMLElement",
+        "inherits": "Element",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "includes": {
+        "interface": "MathMLElement",
+        "mixin": "GlobalEventHandlers"
+      }
+    },
+    {
+      "includes": {
+        "interface": "MathMLElement",
+        "mixin": "HTMLOrForeignElement"
+      }
+    }
+  ]
+}

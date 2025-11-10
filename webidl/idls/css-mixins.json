@@ -1,1 +1,171 @@
-{"definitions":[{"interface":{"name":"CSSFunctionRule","inherits":"CSSGroupingRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getParameters","return_type":{"sequence":{"identifier":"FunctionParameter"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"returnType","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"FunctionParameter","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":{"identifier":"CSSOMString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"type","type":{"identifier":"CSSOMString"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"defaultValue","type":{"nullable":{"identifier":"CSSOMString"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"CSSFunctionDescriptors","inherits":"CSSStyleDeclaration","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"result","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CSSFunctionDeclarations","inherits":"CSSRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"style","type":{"identifier":"CSSFunctionDescriptors"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null},{"name":"PutForwards","value":{"identifier":"cssText"}}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "CSSFunctionRule",
+        "inherits": "CSSGroupingRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getParameters",
+              "return_type": {
+                "sequence": {
+                  "identifier": "FunctionParameter"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "returnType",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "FunctionParameter",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "defaultValue",
+            "type": {
+              "nullable": {
+                "identifier": "CSSOMString"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSFunctionDescriptors",
+        "inherits": "CSSStyleDeclaration",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "result",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSFunctionDeclarations",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSFunctionDescriptors"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                },
+                {
+                  "name": "PutForwards",
+                  "value": {
+                    "identifier": "cssText"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

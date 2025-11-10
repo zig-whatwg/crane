@@ -1,1 +1,251 @@
-{"definitions":[{"interface":{"name":"Profiler","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"sampleInterval","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"stopped","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"constructor":{"arguments":[{"name":"options","type":{"identifier":"ProfilerInitOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"stop","return_type":{"promise":{"identifier":"ProfilerTrace"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"typedef":{"name":"ProfilerResource","type":"DOMString","extended_attributes":[]}},{"dictionary":{"name":"ProfilerTrace","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"resources","type":{"sequence":{"identifier":"ProfilerResource"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"frames","type":{"sequence":{"identifier":"ProfilerFrame"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"stacks","type":{"sequence":{"identifier":"ProfilerStack"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"samples","type":{"sequence":{"identifier":"ProfilerSample"}},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ProfilerSample","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"timestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"stackId","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ProfilerStack","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"parentId","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frameId","type":"unsigned long long","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ProfilerFrame","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"resourceId","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"line","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"column","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ProfilerInitOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"sampleInterval","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"maxBufferSize","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Profiler",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "sampleInterval",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "stopped",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ProfilerInitOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "stop",
+              "return_type": {
+                "promise": {
+                  "identifier": "ProfilerTrace"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ProfilerResource",
+        "type": "DOMString",
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ProfilerTrace",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "resources",
+            "type": {
+              "sequence": {
+                "identifier": "ProfilerResource"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frames",
+            "type": {
+              "sequence": {
+                "identifier": "ProfilerFrame"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "stacks",
+            "type": {
+              "sequence": {
+                "identifier": "ProfilerStack"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "samples",
+            "type": {
+              "sequence": {
+                "identifier": "ProfilerSample"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ProfilerSample",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "timestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "stackId",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ProfilerStack",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "parentId",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameId",
+            "type": "unsigned long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ProfilerFrame",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "resourceId",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "line",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "column",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ProfilerInitOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "sampleInterval",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "maxBufferSize",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

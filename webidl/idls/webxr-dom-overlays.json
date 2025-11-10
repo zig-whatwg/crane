@@ -1,1 +1,121 @@
-{"definitions":[{"interface_mixin":{"name":"GlobalEventHandlers","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"onbeforexrselect","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"XRSessionInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"domOverlay","type":{"nullable":{"identifier":"XRDOMOverlayInit"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"XRSession","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"domOverlayState","type":{"nullable":{"identifier":"XRDOMOverlayState"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"XRDOMOverlayInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"root","type":{"identifier":"Element"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"XRDOMOverlayType","values":["screen","floating","head-locked"],"extended_attributes":[]}},{"dictionary":{"name":"XRDOMOverlayState","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"XRDOMOverlayType"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "GlobalEventHandlers",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "onbeforexrselect",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRSessionInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "domOverlay",
+            "type": {
+              "nullable": {
+                "identifier": "XRDOMOverlayInit"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSession",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "domOverlayState",
+              "type": {
+                "nullable": {
+                  "identifier": "XRDOMOverlayState"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRDOMOverlayInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "root",
+            "type": {
+              "identifier": "Element"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "XRDOMOverlayType",
+        "values": [
+          "screen",
+          "floating",
+          "head-locked"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRDOMOverlayState",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "XRDOMOverlayType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

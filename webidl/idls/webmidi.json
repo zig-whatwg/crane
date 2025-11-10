@@ -1,1 +1,685 @@
-{"definitions":[{"dictionary":{"name":"MidiPermissionDescriptor","inherits":"PermissionDescriptor","partial":false,"extended_attributes":[],"members":[{"name":"sysex","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestMIDIAccess","return_type":{"promise":{"identifier":"MIDIAccess"}},"arguments":[{"name":"options","type":{"identifier":"MIDIOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"SecureContext","value":null}]}}]}},{"dictionary":{"name":"MIDIOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"sysex","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"software","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"MIDIInputMap","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"maplike":{"key_type":"DOMString","value_type":{"identifier":"MIDIInput"},"readonly":true}}]}},{"interface":{"name":"MIDIOutputMap","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"maplike":{"key_type":"DOMString","value_type":{"identifier":"MIDIOutput"},"readonly":true}}]}},{"interface":{"name":"MIDIAccess","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"Transferable","value":null}],"members":[{"attribute":{"name":"inputs","type":{"identifier":"MIDIInputMap"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outputs","type":{"identifier":"MIDIOutputMap"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sysexEnabled","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"MIDIPort","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"id","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"manufacturer","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"name","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"MIDIPortType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"version","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"MIDIPortDeviceState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"connection","type":{"identifier":"MIDIPortConnectionState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"open","return_type":{"promise":{"identifier":"MIDIPort"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":{"promise":{"identifier":"MIDIPort"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"MIDIInput","inherits":"MIDIPort","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"onmidimessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"MIDIOutput","inherits":"MIDIPort","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"send","return_type":"undefined","arguments":[{"name":"data","type":{"sequence":"octet"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"timestamp","type":{"identifier":"DOMHighResTimeStamp"},"optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clear","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"MIDIPortType","values":["input","output"],"extended_attributes":[]}},{"enum":{"name":"MIDIPortDeviceState","values":["disconnected","connected"],"extended_attributes":[]}},{"enum":{"name":"MIDIPortConnectionState","values":["open","closed","pending"],"extended_attributes":[]}},{"interface":{"name":"MIDIMessageEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"MIDIMessageEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":{"identifier":"Uint8Array"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"MIDIMessageEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":{"identifier":"Uint8Array"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"MIDIConnectionEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"MIDIConnectionEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"port","type":{"nullable":{"identifier":"MIDIPort"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"MIDIConnectionEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"port","type":{"identifier":"MIDIPort"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "MidiPermissionDescriptor",
+        "inherits": "PermissionDescriptor",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "sysex",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestMIDIAccess",
+              "return_type": {
+                "promise": {
+                  "identifier": "MIDIAccess"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "MIDIOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MIDIOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "sysex",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "software",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIInputMap",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "maplike": {
+              "key_type": "DOMString",
+              "value_type": {
+                "identifier": "MIDIInput"
+              },
+              "readonly": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIOutputMap",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "maplike": {
+              "key_type": "DOMString",
+              "value_type": {
+                "identifier": "MIDIOutput"
+              },
+              "readonly": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIAccess",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "inputs",
+              "type": {
+                "identifier": "MIDIInputMap"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outputs",
+              "type": {
+                "identifier": "MIDIOutputMap"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sysexEnabled",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIPort",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "id",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "manufacturer",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "MIDIPortType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "version",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "MIDIPortDeviceState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "connection",
+              "type": {
+                "identifier": "MIDIPortConnectionState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "open",
+              "return_type": {
+                "promise": {
+                  "identifier": "MIDIPort"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": {
+                "promise": {
+                  "identifier": "MIDIPort"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIInput",
+        "inherits": "MIDIPort",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "onmidimessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIOutput",
+        "inherits": "MIDIPort",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "send",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "sequence": "octet"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "timestamp",
+                  "type": {
+                    "identifier": "DOMHighResTimeStamp"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clear",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "MIDIPortType",
+        "values": [
+          "input",
+          "output"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "MIDIPortDeviceState",
+        "values": [
+          "disconnected",
+          "connected"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "MIDIPortConnectionState",
+        "values": [
+          "open",
+          "closed",
+          "pending"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIMessageEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "MIDIMessageEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": {
+                  "identifier": "Uint8Array"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MIDIMessageEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": {
+              "identifier": "Uint8Array"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MIDIConnectionEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "MIDIConnectionEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "port",
+              "type": {
+                "nullable": {
+                  "identifier": "MIDIPort"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MIDIConnectionEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "port",
+            "type": {
+              "identifier": "MIDIPort"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

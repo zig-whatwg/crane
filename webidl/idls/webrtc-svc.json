@@ -1,1 +1,21 @@
-{"definitions":[{"dictionary":{"name":"RTCRtpEncodingParameters","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"scalabilityMode","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "RTCRtpEncodingParameters",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "scalabilityMode",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

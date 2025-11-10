@@ -1,1 +1,75 @@
-{"definitions":[{"interface":{"name":"InputEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"dataTransfer","type":{"nullable":{"identifier":"DataTransfer"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getTargetRanges","return_type":{"sequence":{"identifier":"StaticRange"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"InputEventInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"dataTransfer","type":{"nullable":{"identifier":"DataTransfer"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"targetRanges","type":{"sequence":{"identifier":"StaticRange"}},"required":false,"default_value":[],"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "InputEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "dataTransfer",
+              "type": {
+                "nullable": {
+                  "identifier": "DataTransfer"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getTargetRanges",
+              "return_type": {
+                "sequence": {
+                  "identifier": "StaticRange"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "InputEventInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "dataTransfer",
+            "type": {
+              "nullable": {
+                "identifier": "DataTransfer"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "targetRanges",
+            "type": {
+              "sequence": {
+                "identifier": "StaticRange"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

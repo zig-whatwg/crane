@@ -1,1 +1,1923 @@
-{"definitions":[{"interface":{"name":"ReadableStream","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}},{"name":"Transferable","value":null}],"members":[{"constructor":{"arguments":[{"name":"underlyingSource","type":"object","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"strategy","type":{"identifier":"QueuingStrategy"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"from","return_type":{"identifier":"ReadableStream"},"arguments":[{"name":"asyncIterable","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"attribute":{"name":"locked","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"cancel","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getReader","return_type":{"identifier":"ReadableStreamReader"},"arguments":[{"name":"options","type":{"identifier":"ReadableStreamGetReaderOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"pipeThrough","return_type":{"identifier":"ReadableStream"},"arguments":[{"name":"transform","type":{"identifier":"ReadableWritablePair"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"StreamPipeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"pipeTo","return_type":{"promise":"undefined"},"arguments":[{"name":"destination","type":{"identifier":"WritableStream"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"StreamPipeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"tee","return_type":{"sequence":{"identifier":"ReadableStream"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"async_iterable":{"key_type":null,"value_type":"any","arguments":[{"name":"options","type":{"identifier":"ReadableStreamIteratorOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}]}}]}},{"typedef":{"name":"ReadableStreamReader","type":{"union":[{"identifier":"ReadableStreamDefaultReader"},{"identifier":"ReadableStreamBYOBReader"}]},"extended_attributes":[]}},{"enum":{"name":"ReadableStreamReaderMode","values":["byob"],"extended_attributes":[]}},{"dictionary":{"name":"ReadableStreamGetReaderOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"mode","type":{"identifier":"ReadableStreamReaderMode"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ReadableStreamIteratorOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"preventCancel","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"ReadableWritablePair","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"readable","type":{"identifier":"ReadableStream"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"writable","type":{"identifier":"WritableStream"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"StreamPipeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"preventClose","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"preventAbort","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"preventCancel","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"UnderlyingSource","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"start","type":{"identifier":"UnderlyingSourceStartCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"pull","type":{"identifier":"UnderlyingSourcePullCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"cancel","type":{"identifier":"UnderlyingSourceCancelCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"type","type":{"identifier":"ReadableStreamType"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"autoAllocateChunkSize","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"typedef":{"name":"ReadableStreamController","type":{"union":[{"identifier":"ReadableStreamDefaultController"},{"identifier":"ReadableByteStreamController"}]},"extended_attributes":[]}},{"callback":{"name":"UnderlyingSourceStartCallback","return_type":"any","arguments":[{"name":"controller","type":{"identifier":"ReadableStreamController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"UnderlyingSourcePullCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"controller","type":{"identifier":"ReadableStreamController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"UnderlyingSourceCancelCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"enum":{"name":"ReadableStreamType","values":["bytes"],"extended_attributes":[]}},{"interface_mixin":{"name":"ReadableStreamGenericReader","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"closed","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"cancel","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"ReadableStreamDefaultReader","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"stream","type":{"identifier":"ReadableStream"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"read","return_type":{"promise":{"identifier":"ReadableStreamReadResult"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"releaseLock","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"includes":{"interface":"ReadableStreamDefaultReader","mixin":"ReadableStreamGenericReader"}},{"dictionary":{"name":"ReadableStreamReadResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"value","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"done","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ReadableStreamBYOBReader","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"stream","type":{"identifier":"ReadableStream"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"read","return_type":{"promise":{"identifier":"ReadableStreamReadResult"}},"arguments":[{"name":"view","type":{"identifier":"ArrayBufferView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"ReadableStreamBYOBReaderReadOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"releaseLock","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"includes":{"interface":"ReadableStreamBYOBReader","mixin":"ReadableStreamGenericReader"}},{"dictionary":{"name":"ReadableStreamBYOBReaderReadOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"min","type":"unsigned long long","required":false,"default_value":{"value":1,"lexeme":"1"},"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"interface":{"name":"ReadableStreamDefaultController","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"attribute":{"name":"desiredSize","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"enqueue","return_type":"undefined","arguments":[{"name":"chunk","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"e","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"ReadableByteStreamController","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"attribute":{"name":"byobRequest","type":{"nullable":{"identifier":"ReadableStreamBYOBRequest"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"desiredSize","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"enqueue","return_type":"undefined","arguments":[{"name":"chunk","type":{"identifier":"ArrayBufferView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"e","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"ReadableStreamBYOBRequest","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"attribute":{"name":"view","type":{"nullable":{"identifier":"ArrayBufferView"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"respond","return_type":"undefined","arguments":[{"name":"bytesWritten","type":"unsigned long long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"respondWithNewView","return_type":"undefined","arguments":[{"name":"view","type":{"identifier":"ArrayBufferView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"WritableStream","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}},{"name":"Transferable","value":null}],"members":[{"constructor":{"arguments":[{"name":"underlyingSink","type":"object","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"strategy","type":{"identifier":"QueuingStrategy"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"locked","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"abort","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getWriter","return_type":{"identifier":"WritableStreamDefaultWriter"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"UnderlyingSink","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"start","type":{"identifier":"UnderlyingSinkStartCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"write","type":{"identifier":"UnderlyingSinkWriteCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"close","type":{"identifier":"UnderlyingSinkCloseCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"abort","type":{"identifier":"UnderlyingSinkAbortCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"type","type":"any","required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"UnderlyingSinkStartCallback","return_type":"any","arguments":[{"name":"controller","type":{"identifier":"WritableStreamDefaultController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"UnderlyingSinkWriteCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"chunk","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"controller","type":{"identifier":"WritableStreamDefaultController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"UnderlyingSinkCloseCallback","return_type":{"promise":"undefined"},"arguments":[],"extended_attributes":[]}},{"callback":{"name":"UnderlyingSinkAbortCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"WritableStreamDefaultWriter","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"stream","type":{"identifier":"WritableStream"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"closed","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"desiredSize","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ready","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"abort","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"releaseLock","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"write","return_type":{"promise":"undefined"},"arguments":[{"name":"chunk","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"WritableStreamDefaultController","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"attribute":{"name":"signal","type":{"identifier":"AbortSignal"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"e","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"TransformStream","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}},{"name":"Transferable","value":null}],"members":[{"constructor":{"arguments":[{"name":"transformer","type":"object","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"writableStrategy","type":{"identifier":"QueuingStrategy"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]},{"name":"readableStrategy","type":{"identifier":"QueuingStrategy"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"readable","type":{"identifier":"ReadableStream"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"writable","type":{"identifier":"WritableStream"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"Transformer","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"start","type":{"identifier":"TransformerStartCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"transform","type":{"identifier":"TransformerTransformCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"flush","type":{"identifier":"TransformerFlushCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"cancel","type":{"identifier":"TransformerCancelCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"readableType","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"writableType","type":"any","required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"TransformerStartCallback","return_type":"any","arguments":[{"name":"controller","type":{"identifier":"TransformStreamDefaultController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"TransformerFlushCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"controller","type":{"identifier":"TransformStreamDefaultController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"TransformerTransformCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"chunk","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"controller","type":{"identifier":"TransformStreamDefaultController"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"TransformerCancelCallback","return_type":{"promise":"undefined"},"arguments":[{"name":"reason","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"TransformStreamDefaultController","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"attribute":{"name":"desiredSize","type":{"nullable":"unrestricted double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"enqueue","return_type":"undefined","arguments":[{"name":"chunk","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"error","return_type":"undefined","arguments":[{"name":"reason","type":"any","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"terminate","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"QueuingStrategy","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"highWaterMark","type":"unrestricted double","required":false,"default_value":null,"extended_attributes":[]},{"name":"size","type":{"identifier":"QueuingStrategySize"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"QueuingStrategySize","return_type":"unrestricted double","arguments":[{"name":"chunk","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"QueuingStrategyInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"highWaterMark","type":"unrestricted double","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ByteLengthQueuingStrategy","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"QueuingStrategyInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"highWaterMark","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"size","type":{"identifier":"Function"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"CountQueuingStrategy","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"*"}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"QueuingStrategyInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"highWaterMark","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"size","type":{"identifier":"Function"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"GenericTransformStream","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"readable","type":{"identifier":"ReadableStream"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"writable","type":{"identifier":"WritableStream"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "ReadableStream",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "underlyingSource",
+                  "type": "object",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "strategy",
+                  "type": {
+                    "identifier": "QueuingStrategy"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "from",
+              "return_type": {
+                "identifier": "ReadableStream"
+              },
+              "arguments": [
+                {
+                  "name": "asyncIterable",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "locked",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cancel",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "reason",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getReader",
+              "return_type": {
+                "identifier": "ReadableStreamReader"
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ReadableStreamGetReaderOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "pipeThrough",
+              "return_type": {
+                "identifier": "ReadableStream"
+              },
+              "arguments": [
+                {
+                  "name": "transform",
+                  "type": {
+                    "identifier": "ReadableWritablePair"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "StreamPipeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "pipeTo",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "destination",
+                  "type": {
+                    "identifier": "WritableStream"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "StreamPipeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "tee",
+              "return_type": {
+                "sequence": {
+                  "identifier": "ReadableStream"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "async_iterable": {
+              "key_type": null,
+              "value_type": "any",
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ReadableStreamIteratorOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ReadableStreamReader",
+        "type": {
+          "union": [
+            {
+              "identifier": "ReadableStreamDefaultReader"
+            },
+            {
+              "identifier": "ReadableStreamBYOBReader"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "ReadableStreamReaderMode",
+        "values": [
+          "byob"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadableStreamGetReaderOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "mode",
+            "type": {
+              "identifier": "ReadableStreamReaderMode"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadableStreamIteratorOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "preventCancel",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadableWritablePair",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "readable",
+            "type": {
+              "identifier": "ReadableStream"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "writable",
+            "type": {
+              "identifier": "WritableStream"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "StreamPipeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "preventClose",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "preventAbort",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "preventCancel",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "UnderlyingSource",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "start",
+            "type": {
+              "identifier": "UnderlyingSourceStartCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pull",
+            "type": {
+              "identifier": "UnderlyingSourcePullCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "cancel",
+            "type": {
+              "identifier": "UnderlyingSourceCancelCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": {
+              "identifier": "ReadableStreamType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "autoAllocateChunkSize",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ReadableStreamController",
+        "type": {
+          "union": [
+            {
+              "identifier": "ReadableStreamDefaultController"
+            },
+            {
+              "identifier": "ReadableByteStreamController"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSourceStartCallback",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "ReadableStreamController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSourcePullCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "ReadableStreamController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSourceCancelCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "reason",
+            "type": "any",
+            "optional": true,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "ReadableStreamType",
+        "values": [
+          "bytes"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "ReadableStreamGenericReader",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "closed",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cancel",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "reason",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ReadableStreamDefaultReader",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "stream",
+                  "type": {
+                    "identifier": "ReadableStream"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "read",
+              "return_type": {
+                "promise": {
+                  "identifier": "ReadableStreamReadResult"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "releaseLock",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "ReadableStreamDefaultReader",
+        "mixin": "ReadableStreamGenericReader"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadableStreamReadResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "value",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "done",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ReadableStreamBYOBReader",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "stream",
+                  "type": {
+                    "identifier": "ReadableStream"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "read",
+              "return_type": {
+                "promise": {
+                  "identifier": "ReadableStreamReadResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "view",
+                  "type": {
+                    "identifier": "ArrayBufferView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ReadableStreamBYOBReaderReadOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "releaseLock",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "ReadableStreamBYOBReader",
+        "mixin": "ReadableStreamGenericReader"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ReadableStreamBYOBReaderReadOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "min",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1"
+            },
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ReadableStreamDefaultController",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "desiredSize",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "enqueue",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "e",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ReadableByteStreamController",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "byobRequest",
+              "type": {
+                "nullable": {
+                  "identifier": "ReadableStreamBYOBRequest"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "desiredSize",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "enqueue",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": {
+                    "identifier": "ArrayBufferView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "e",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ReadableStreamBYOBRequest",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "view",
+              "type": {
+                "nullable": {
+                  "identifier": "ArrayBufferView"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "respond",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "bytesWritten",
+                  "type": "unsigned long long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": [
+                    {
+                      "name": "EnforceRange",
+                      "value": null
+                    }
+                  ]
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "respondWithNewView",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "view",
+                  "type": {
+                    "identifier": "ArrayBufferView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WritableStream",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "underlyingSink",
+                  "type": "object",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "strategy",
+                  "type": {
+                    "identifier": "QueuingStrategy"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "locked",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "abort",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "reason",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getWriter",
+              "return_type": {
+                "identifier": "WritableStreamDefaultWriter"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "UnderlyingSink",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "start",
+            "type": {
+              "identifier": "UnderlyingSinkStartCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "write",
+            "type": {
+              "identifier": "UnderlyingSinkWriteCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "close",
+            "type": {
+              "identifier": "UnderlyingSinkCloseCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "abort",
+            "type": {
+              "identifier": "UnderlyingSinkAbortCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSinkStartCallback",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "WritableStreamDefaultController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSinkWriteCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "chunk",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "WritableStreamDefaultController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSinkCloseCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "UnderlyingSinkAbortCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "reason",
+            "type": "any",
+            "optional": true,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "WritableStreamDefaultWriter",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "stream",
+                  "type": {
+                    "identifier": "WritableStream"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "closed",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "desiredSize",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ready",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "abort",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "reason",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "releaseLock",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "write",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WritableStreamDefaultController",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "signal",
+              "type": {
+                "identifier": "AbortSignal"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "e",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TransformStream",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "transformer",
+                  "type": "object",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "writableStrategy",
+                  "type": {
+                    "identifier": "QueuingStrategy"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                },
+                {
+                  "name": "readableStrategy",
+                  "type": {
+                    "identifier": "QueuingStrategy"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "readable",
+              "type": {
+                "identifier": "ReadableStream"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "writable",
+              "type": {
+                "identifier": "WritableStream"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "Transformer",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "start",
+            "type": {
+              "identifier": "TransformerStartCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transform",
+            "type": {
+              "identifier": "TransformerTransformCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "flush",
+            "type": {
+              "identifier": "TransformerFlushCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "cancel",
+            "type": {
+              "identifier": "TransformerCancelCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "readableType",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "writableType",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "TransformerStartCallback",
+        "return_type": "any",
+        "arguments": [
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "TransformStreamDefaultController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "TransformerFlushCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "TransformStreamDefaultController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "TransformerTransformCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "chunk",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "controller",
+            "type": {
+              "identifier": "TransformStreamDefaultController"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "TransformerCancelCallback",
+        "return_type": {
+          "promise": "undefined"
+        },
+        "arguments": [
+          {
+            "name": "reason",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "TransformStreamDefaultController",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "desiredSize",
+              "type": {
+                "nullable": "unrestricted double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "enqueue",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "error",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "reason",
+                  "type": "any",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "terminate",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "QueuingStrategy",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "highWaterMark",
+            "type": "unrestricted double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "size",
+            "type": {
+              "identifier": "QueuingStrategySize"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "QueuingStrategySize",
+        "return_type": "unrestricted double",
+        "arguments": [
+          {
+            "name": "chunk",
+            "type": "any",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "QueuingStrategyInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "highWaterMark",
+            "type": "unrestricted double",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ByteLengthQueuingStrategy",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "QueuingStrategyInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "highWaterMark",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "size",
+              "type": {
+                "identifier": "Function"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CountQueuingStrategy",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "*"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "QueuingStrategyInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "highWaterMark",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "size",
+              "type": {
+                "identifier": "Function"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "GenericTransformStream",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "readable",
+              "type": {
+                "identifier": "ReadableStream"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "writable",
+              "type": {
+                "identifier": "WritableStream"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

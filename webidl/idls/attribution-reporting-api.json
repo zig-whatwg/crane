@@ -1,1 +1,136 @@
-{"definitions":[{"interface_mixin":{"name":"HTMLAttributionSrcElementUtils","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"attributionSrc","type":"USVString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"CEReactions","value":null},{"name":"SecureContext","value":null}]}}]}},{"includes":{"interface":"HTMLAnchorElement","mixin":"HTMLAttributionSrcElementUtils"}},{"includes":{"interface":"HTMLAreaElement","mixin":"HTMLAttributionSrcElementUtils"}},{"includes":{"interface":"HTMLImageElement","mixin":"HTMLAttributionSrcElementUtils"}},{"includes":{"interface":"HTMLScriptElement","mixin":"HTMLAttributionSrcElementUtils"}},{"dictionary":{"name":"AttributionReportingRequestOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"eventSourceEligible","type":"boolean","required":true,"default_value":null,"extended_attributes":[]},{"name":"triggerEligible","type":"boolean","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RequestInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"attributionReporting","type":{"identifier":"AttributionReportingRequestOptions"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"XMLHttpRequest","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"setAttributionReporting","return_type":"undefined","arguments":[{"name":"options","type":{"identifier":"AttributionReportingRequestOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"SecureContext","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "HTMLAttributionSrcElementUtils",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "attributionSrc",
+              "type": "USVString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "CEReactions",
+                  "value": null
+                },
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "HTMLAnchorElement",
+        "mixin": "HTMLAttributionSrcElementUtils"
+      }
+    },
+    {
+      "includes": {
+        "interface": "HTMLAreaElement",
+        "mixin": "HTMLAttributionSrcElementUtils"
+      }
+    },
+    {
+      "includes": {
+        "interface": "HTMLImageElement",
+        "mixin": "HTMLAttributionSrcElementUtils"
+      }
+    },
+    {
+      "includes": {
+        "interface": "HTMLScriptElement",
+        "mixin": "HTMLAttributionSrcElementUtils"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AttributionReportingRequestOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "eventSourceEligible",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "triggerEligible",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RequestInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "attributionReporting",
+            "type": {
+              "identifier": "AttributionReportingRequestOptions"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XMLHttpRequest",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "setAttributionReporting",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AttributionReportingRequestOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

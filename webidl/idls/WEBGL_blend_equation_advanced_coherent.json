@@ -1,1 +1,208 @@
-{"definitions":[{"interface":{"name":"WEBGL_blend_equation_advanced_coherent","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"MULTIPLY","type":{"identifier":"GLenum"},"value":{"value":37524,"lexeme":"0x9294"}}},{"const":{"name":"SCREEN","type":{"identifier":"GLenum"},"value":{"value":37525,"lexeme":"0x9295"}}},{"const":{"name":"OVERLAY","type":{"identifier":"GLenum"},"value":{"value":37526,"lexeme":"0x9296"}}},{"const":{"name":"DARKEN","type":{"identifier":"GLenum"},"value":{"value":37527,"lexeme":"0x9297"}}},{"const":{"name":"LIGHTEN","type":{"identifier":"GLenum"},"value":{"value":37528,"lexeme":"0x9298"}}},{"const":{"name":"COLORDODGE","type":{"identifier":"GLenum"},"value":{"value":37529,"lexeme":"0x9299"}}},{"const":{"name":"COLORBURN","type":{"identifier":"GLenum"},"value":{"value":37530,"lexeme":"0x929A"}}},{"const":{"name":"HARDLIGHT","type":{"identifier":"GLenum"},"value":{"value":37531,"lexeme":"0x929B"}}},{"const":{"name":"SOFTLIGHT","type":{"identifier":"GLenum"},"value":{"value":37532,"lexeme":"0x929C"}}},{"const":{"name":"DIFFERENCE","type":{"identifier":"GLenum"},"value":{"value":37534,"lexeme":"0x929E"}}},{"const":{"name":"EXCLUSION","type":{"identifier":"GLenum"},"value":{"value":37536,"lexeme":"0x92A0"}}},{"const":{"name":"HSL_HUE","type":{"identifier":"GLenum"},"value":{"value":37549,"lexeme":"0x92AD"}}},{"const":{"name":"HSL_SATURATION","type":{"identifier":"GLenum"},"value":{"value":37550,"lexeme":"0x92AE"}}},{"const":{"name":"HSL_COLOR","type":{"identifier":"GLenum"},"value":{"value":37551,"lexeme":"0x92AF"}}},{"const":{"name":"HSL_LUMINOSITY","type":{"identifier":"GLenum"},"value":{"value":37552,"lexeme":"0x92B0"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_blend_equation_advanced_coherent",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "MULTIPLY",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37524,
+                "lexeme": "0x9294"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "SCREEN",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37525,
+                "lexeme": "0x9295"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "OVERLAY",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37526,
+                "lexeme": "0x9296"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DARKEN",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37527,
+                "lexeme": "0x9297"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "LIGHTEN",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37528,
+                "lexeme": "0x9298"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLORDODGE",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37529,
+                "lexeme": "0x9299"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLORBURN",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37530,
+                "lexeme": "0x929A"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "HARDLIGHT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37531,
+                "lexeme": "0x929B"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "SOFTLIGHT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37532,
+                "lexeme": "0x929C"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DIFFERENCE",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37534,
+                "lexeme": "0x929E"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "EXCLUSION",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37536,
+                "lexeme": "0x92A0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "HSL_HUE",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37549,
+                "lexeme": "0x92AD"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "HSL_SATURATION",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37550,
+                "lexeme": "0x92AE"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "HSL_COLOR",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37551,
+                "lexeme": "0x92AF"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "HSL_LUMINOSITY",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 37552,
+                "lexeme": "0x92B0"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

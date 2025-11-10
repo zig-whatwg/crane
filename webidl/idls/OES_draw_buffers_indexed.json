@@ -1,1 +1,325 @@
-{"definitions":[{"interface":{"name":"OES_draw_buffers_indexed","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"operation":{"name":"enableiOES","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"disableiOES","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"index","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"blendEquationiOES","return_type":"undefined","arguments":[{"name":"buf","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"mode","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"blendEquationSeparateiOES","return_type":"undefined","arguments":[{"name":"buf","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"modeRGB","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"modeAlpha","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"blendFunciOES","return_type":"undefined","arguments":[{"name":"buf","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"src","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"dst","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"blendFuncSeparateiOES","return_type":"undefined","arguments":[{"name":"buf","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"srcRGB","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"dstRGB","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"srcAlpha","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"dstAlpha","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"colorMaskiOES","return_type":"undefined","arguments":[{"name":"buf","type":{"identifier":"GLuint"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"r","type":{"identifier":"GLboolean"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"g","type":{"identifier":"GLboolean"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"b","type":{"identifier":"GLboolean"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"a","type":{"identifier":"GLboolean"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "OES_draw_buffers_indexed",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "enableiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "index",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "disableiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "index",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "blendEquationiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buf",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "mode",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "blendEquationSeparateiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buf",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "modeRGB",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "modeAlpha",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "blendFunciOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buf",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "src",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "dst",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "blendFuncSeparateiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buf",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "srcRGB",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "dstRGB",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "srcAlpha",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "dstAlpha",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "colorMaskiOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buf",
+                  "type": {
+                    "identifier": "GLuint"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "r",
+                  "type": {
+                    "identifier": "GLboolean"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "g",
+                  "type": {
+                    "identifier": "GLboolean"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "b",
+                  "type": {
+                    "identifier": "GLboolean"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "a",
+                  "type": {
+                    "identifier": "GLboolean"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

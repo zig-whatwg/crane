@@ -1,1 +1,141 @@
-{"definitions":[{"dictionary":{"name":"PropertyDefinition","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"syntax","type":"DOMString","required":false,"default_value":"*","extended_attributes":[]},{"name":"inherits","type":"boolean","required":true,"default_value":null,"extended_attributes":[]},{"name":"initialValue","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"namespace":{"name":"CSS","partial":true,"extended_attributes":[],"members":[{"operation":{"name":"registerProperty","return_type":"undefined","arguments":[{"name":"definition","type":{"identifier":"PropertyDefinition"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CSSPropertyRule","inherits":"CSSRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"name","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"syntax","type":{"identifier":"CSSOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inherits","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"initialValue","type":{"nullable":{"identifier":"CSSOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "PropertyDefinition",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "syntax",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "*",
+            "extended_attributes": []
+          },
+          {
+            "name": "inherits",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "initialValue",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "namespace": {
+        "name": "CSS",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "registerProperty",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "definition",
+                  "type": {
+                    "identifier": "PropertyDefinition"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSPropertyRule",
+        "inherits": "CSSRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "syntax",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inherits",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "initialValue",
+              "type": {
+                "nullable": {
+                  "identifier": "CSSOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

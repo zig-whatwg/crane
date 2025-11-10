@@ -1,1 +1,611 @@
-{"definitions":[{"dictionary":{"name":"PointerEventInit","inherits":"MouseEventInit","partial":false,"extended_attributes":[],"members":[{"name":"pointerId","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"width","type":"double","required":false,"default_value":{"value":1,"lexeme":"1"},"extended_attributes":[]},{"name":"height","type":"double","required":false,"default_value":{"value":1,"lexeme":"1"},"extended_attributes":[]},{"name":"pressure","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"tangentialPressure","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"tiltX","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"tiltY","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"twist","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"altitudeAngle","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"azimuthAngle","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"pointerType","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"isPrimary","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"persistentDeviceId","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"coalescedEvents","type":{"sequence":{"identifier":"PointerEvent"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"predictedEvents","type":{"sequence":{"identifier":"PointerEvent"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface":{"name":"PointerEvent","inherits":"MouseEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"PointerEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"pointerId","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"width","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"height","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pressure","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tangentialPressure","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tiltX","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tiltY","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"twist","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altitudeAngle","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"azimuthAngle","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"pointerType","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"isPrimary","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"persistentDeviceId","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getCoalescedEvents","return_type":{"sequence":{"identifier":"PointerEvent"}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"SecureContext","value":null}]}},{"operation":{"name":"getPredictedEvents","return_type":{"sequence":{"identifier":"PointerEvent"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"Element","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"setPointerCapture","return_type":"undefined","arguments":[{"name":"pointerId","type":"long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"releasePointerCapture","return_type":"undefined","arguments":[{"name":"pointerId","type":"long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"hasPointerCapture","return_type":"boolean","arguments":[{"name":"pointerId","type":"long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"GlobalEventHandlers","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"onpointerover","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointerenter","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointerdown","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointermove","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointerrawupdate","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null}]}},{"attribute":{"name":"onpointerup","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointercancel","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointerout","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onpointerleave","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ongotpointercapture","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onlostpointercapture","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"maxTouchPoints","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "PointerEventInit",
+        "inherits": "MouseEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "pointerId",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "pressure",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "tangentialPressure",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "tiltX",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "tiltY",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "twist",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "altitudeAngle",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "azimuthAngle",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pointerType",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "isPrimary",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "persistentDeviceId",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "coalescedEvents",
+            "type": {
+              "sequence": {
+                "identifier": "PointerEvent"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "predictedEvents",
+            "type": {
+              "sequence": {
+                "identifier": "PointerEvent"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PointerEvent",
+        "inherits": "MouseEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "PointerEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pointerId",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pressure",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tangentialPressure",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tiltX",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tiltY",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "twist",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altitudeAngle",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "azimuthAngle",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "pointerType",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "isPrimary",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "persistentDeviceId",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getCoalescedEvents",
+              "return_type": {
+                "sequence": {
+                  "identifier": "PointerEvent"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getPredictedEvents",
+              "return_type": {
+                "sequence": {
+                  "identifier": "PointerEvent"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Element",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "setPointerCapture",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "pointerId",
+                  "type": "long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "releasePointerCapture",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "pointerId",
+                  "type": "long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "hasPointerCapture",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "pointerId",
+                  "type": "long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "GlobalEventHandlers",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "onpointerover",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerenter",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerdown",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointermove",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerrawupdate",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerup",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointercancel",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerout",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onpointerleave",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ongotpointercapture",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onlostpointercapture",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "maxTouchPoints",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

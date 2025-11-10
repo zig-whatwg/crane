@@ -1,1 +1,186 @@
-{"definitions":[{"interface":{"name":"Accelerometer","inherits":"Sensor","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"options","type":{"identifier":"AccelerometerSensorOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"x","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"y","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"z","type":{"nullable":"double"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"AccelerometerLocalCoordinateSystem","values":["device","screen"],"extended_attributes":[]}},{"dictionary":{"name":"AccelerometerSensorOptions","inherits":"SensorOptions","partial":false,"extended_attributes":[],"members":[{"name":"referenceFrame","type":{"identifier":"AccelerometerLocalCoordinateSystem"},"required":false,"default_value":"device","extended_attributes":[]}]}},{"interface":{"name":"LinearAccelerationSensor","inherits":"Accelerometer","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"options","type":{"identifier":"AccelerometerSensorOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}}]}},{"interface":{"name":"GravitySensor","inherits":"Accelerometer","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"options","type":{"identifier":"AccelerometerSensorOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Accelerometer",
+        "inherits": "Sensor",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AccelerometerSensorOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "x",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "y",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "z",
+              "type": {
+                "nullable": "double"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AccelerometerLocalCoordinateSystem",
+        "values": [
+          "device",
+          "screen"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AccelerometerSensorOptions",
+        "inherits": "SensorOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "referenceFrame",
+            "type": {
+              "identifier": "AccelerometerLocalCoordinateSystem"
+            },
+            "required": false,
+            "default_value": "device",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "LinearAccelerationSensor",
+        "inherits": "Accelerometer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AccelerometerSensorOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "GravitySensor",
+        "inherits": "Accelerometer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AccelerometerSensorOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

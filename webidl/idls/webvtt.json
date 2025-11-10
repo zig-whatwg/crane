@@ -1,1 +1,383 @@
-{"definitions":[{"enum":{"name":"AutoKeyword","values":["auto"],"extended_attributes":[]}},{"typedef":{"name":"LineAndPositionSetting","type":{"union":["double",{"identifier":"AutoKeyword"}]},"extended_attributes":[]}},{"enum":{"name":"DirectionSetting","values":["","rl","lr"],"extended_attributes":[]}},{"enum":{"name":"LineAlignSetting","values":["start","center","end"],"extended_attributes":[]}},{"enum":{"name":"PositionAlignSetting","values":["line-left","center","line-right","auto"],"extended_attributes":[]}},{"enum":{"name":"AlignSetting","values":["start","center","end","left","right"],"extended_attributes":[]}},{"interface":{"name":"VTTCue","inherits":"TextTrackCue","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"startTime","type":"double","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"endTime","type":"unrestricted double","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"text","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"region","type":{"nullable":{"identifier":"VTTRegion"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"vertical","type":{"identifier":"DirectionSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"snapToLines","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"line","type":{"identifier":"LineAndPositionSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lineAlign","type":{"identifier":"LineAlignSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"position","type":{"identifier":"LineAndPositionSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"positionAlign","type":{"identifier":"PositionAlignSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"size","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"align","type":{"identifier":"AlignSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"text","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getCueAsHTML","return_type":{"identifier":"DocumentFragment"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"ScrollSetting","values":["","up"],"extended_attributes":[]}},{"interface":{"name":"VTTRegion","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[],"extended_attributes":[]}},{"attribute":{"name":"id","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"width","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lines","type":"unsigned long","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"regionAnchorX","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"regionAnchorY","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"viewportAnchorX","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"viewportAnchorY","type":"double","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"scroll","type":{"identifier":"ScrollSetting"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "AutoKeyword",
+        "values": [
+          "auto"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "LineAndPositionSetting",
+        "type": {
+          "union": [
+            "double",
+            {
+              "identifier": "AutoKeyword"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "DirectionSetting",
+        "values": [
+          "",
+          "rl",
+          "lr"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "LineAlignSetting",
+        "values": [
+          "start",
+          "center",
+          "end"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "PositionAlignSetting",
+        "values": [
+          "line-left",
+          "center",
+          "line-right",
+          "auto"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "AlignSetting",
+        "values": [
+          "start",
+          "center",
+          "end",
+          "left",
+          "right"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "VTTCue",
+        "inherits": "TextTrackCue",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "startTime",
+                  "type": "double",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "endTime",
+                  "type": "unrestricted double",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "text",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "region",
+              "type": {
+                "nullable": {
+                  "identifier": "VTTRegion"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "vertical",
+              "type": {
+                "identifier": "DirectionSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "snapToLines",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "line",
+              "type": {
+                "identifier": "LineAndPositionSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lineAlign",
+              "type": {
+                "identifier": "LineAlignSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "position",
+              "type": {
+                "identifier": "LineAndPositionSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "positionAlign",
+              "type": {
+                "identifier": "PositionAlignSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "size",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "align",
+              "type": {
+                "identifier": "AlignSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "text",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getCueAsHTML",
+              "return_type": {
+                "identifier": "DocumentFragment"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "ScrollSetting",
+        "values": [
+          "",
+          "up"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "VTTRegion",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "id",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lines",
+              "type": "unsigned long",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "regionAnchorX",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "regionAnchorY",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "viewportAnchorX",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "viewportAnchorY",
+              "type": "double",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "scroll",
+              "type": {
+                "identifier": "ScrollSetting"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

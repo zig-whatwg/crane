@@ -1,1 +1,15 @@
-{"definitions":[{"enum":{"name":"ForcedColorsModeAutomationTheme","values":["none","light","dark"],"extended_attributes":[]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "ForcedColorsModeAutomationTheme",
+        "values": [
+          "none",
+          "light",
+          "dark"
+        ],
+        "extended_attributes": []
+      }
+    }
+  ]
+}

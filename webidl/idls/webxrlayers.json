@@ -1,1 +1,1828 @@
-{"definitions":[{"enum":{"name":"XRLayerLayout","values":["default","mono","stereo","stereo-left-right","stereo-top-bottom"],"extended_attributes":[]}},{"enum":{"name":"XRLayerQuality","values":["default","text-optimized","graphics-optimized"],"extended_attributes":[]}},{"interface":{"name":"XRCompositionLayer","inherits":"XRLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"layout","type":{"identifier":"XRLayerLayout"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"blendTextureSourceAlpha","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"forceMonoPresentation","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"opacity","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"mipLevels","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"quality","type":{"identifier":"XRLayerQuality"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"needsRedraw","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"destroy","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"XRProjectionLayer","inherits":"XRCompositionLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"textureWidth","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textureHeight","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"textureArrayLength","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ignoreDepthValues","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fixedFoveation","type":{"nullable":"float"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deltaPose","type":{"nullable":{"identifier":"XRRigidTransform"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRQuadLayer","inherits":"XRCompositionLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"space","type":{"identifier":"XRSpace"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transform","type":{"identifier":"XRRigidTransform"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"width","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"height","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onredraw","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRCylinderLayer","inherits":"XRCompositionLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"space","type":{"identifier":"XRSpace"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transform","type":{"identifier":"XRRigidTransform"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"radius","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"centralAngle","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"aspectRatio","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onredraw","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XREquirectLayer","inherits":"XRCompositionLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"space","type":{"identifier":"XRSpace"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transform","type":{"identifier":"XRRigidTransform"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"radius","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"centralHorizontalAngle","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"upperVerticalAngle","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lowerVerticalAngle","type":"float","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onredraw","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRCubeLayer","inherits":"XRCompositionLayer","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"space","type":{"identifier":"XRSpace"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"orientation","type":{"identifier":"DOMPointReadOnly"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onredraw","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRSubImage","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"viewport","type":{"identifier":"XRViewport"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"XRWebGLSubImage","inherits":"XRSubImage","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"colorTexture","type":{"identifier":"WebGLTexture"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"depthStencilTexture","type":{"nullable":{"identifier":"WebGLTexture"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"motionVectorTexture","type":{"nullable":{"identifier":"WebGLTexture"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"imageIndex","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"colorTextureWidth","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"colorTextureHeight","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"depthStencilTextureWidth","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"depthStencilTextureHeight","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"motionVectorTextureWidth","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"motionVectorTextureHeight","type":{"nullable":"unsigned long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"XRTextureType","values":["texture","texture-array"],"extended_attributes":[]}},{"dictionary":{"name":"XRProjectionLayerInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"textureType","type":{"identifier":"XRTextureType"},"required":false,"default_value":"texture","extended_attributes":[]},{"name":"colorFormat","type":{"identifier":"GLenum"},"required":false,"default_value":{"value":6408,"lexeme":"0x1908"},"extended_attributes":[]},{"name":"depthFormat","type":{"identifier":"GLenum"},"required":false,"default_value":{"value":6402,"lexeme":"0x1902"},"extended_attributes":[]},{"name":"scaleFactor","type":"double","required":false,"default_value":{"value":1,"lexeme":"1.0"},"extended_attributes":[]},{"name":"clearOnAccess","type":"boolean","required":false,"default_value":true,"extended_attributes":[]}]}},{"dictionary":{"name":"XRLayerInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"space","type":{"identifier":"XRSpace"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"colorFormat","type":{"identifier":"GLenum"},"required":false,"default_value":{"value":6408,"lexeme":"0x1908"},"extended_attributes":[]},{"name":"depthFormat","type":{"nullable":{"identifier":"GLenum"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"mipLevels","type":"unsigned long","required":false,"default_value":{"value":1,"lexeme":"1"},"extended_attributes":[]},{"name":"viewPixelWidth","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"viewPixelHeight","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"layout","type":{"identifier":"XRLayerLayout"},"required":false,"default_value":"mono","extended_attributes":[]},{"name":"isStatic","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"clearOnAccess","type":"boolean","required":false,"default_value":true,"extended_attributes":[]}]}},{"dictionary":{"name":"XRQuadLayerInit","inherits":"XRLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"textureType","type":{"identifier":"XRTextureType"},"required":false,"default_value":"texture","extended_attributes":[]},{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"width","type":"float","required":false,"default_value":{"value":1,"lexeme":"1.0"},"extended_attributes":[]},{"name":"height","type":"float","required":false,"default_value":{"value":1,"lexeme":"1.0"},"extended_attributes":[]}]}},{"dictionary":{"name":"XRCylinderLayerInit","inherits":"XRLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"textureType","type":{"identifier":"XRTextureType"},"required":false,"default_value":"texture","extended_attributes":[]},{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"radius","type":"float","required":false,"default_value":{"value":2,"lexeme":"2.0"},"extended_attributes":[]},{"name":"centralAngle","type":"float","required":false,"default_value":{"value":0.78539,"lexeme":"0.78539"},"extended_attributes":[]},{"name":"aspectRatio","type":"float","required":false,"default_value":{"value":2,"lexeme":"2.0"},"extended_attributes":[]}]}},{"dictionary":{"name":"XREquirectLayerInit","inherits":"XRLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"textureType","type":{"identifier":"XRTextureType"},"required":false,"default_value":"texture","extended_attributes":[]},{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"radius","type":"float","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"centralHorizontalAngle","type":"float","required":false,"default_value":{"value":6.28318,"lexeme":"6.28318"},"extended_attributes":[]},{"name":"upperVerticalAngle","type":"float","required":false,"default_value":{"value":1.570795,"lexeme":"1.570795"},"extended_attributes":[]},{"name":"lowerVerticalAngle","type":"float","required":false,"default_value":{"value":-1.570795,"lexeme":"-1.570795"},"extended_attributes":[]}]}},{"dictionary":{"name":"XRCubeLayerInit","inherits":"XRLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"orientation","type":{"nullable":{"identifier":"DOMPointReadOnly"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"XRWebGLBinding","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"session","type":{"identifier":"XRSession"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"context","type":{"identifier":"XRWebGLRenderingContext"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"nativeProjectionScaleFactor","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usesDepthValues","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"createProjectionLayer","return_type":{"identifier":"XRProjectionLayer"},"arguments":[{"name":"init","type":{"identifier":"XRProjectionLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createQuadLayer","return_type":{"identifier":"XRQuadLayer"},"arguments":[{"name":"init","type":{"identifier":"XRQuadLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createCylinderLayer","return_type":{"identifier":"XRCylinderLayer"},"arguments":[{"name":"init","type":{"identifier":"XRCylinderLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createEquirectLayer","return_type":{"identifier":"XREquirectLayer"},"arguments":[{"name":"init","type":{"identifier":"XREquirectLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createCubeLayer","return_type":{"identifier":"XRCubeLayer"},"arguments":[{"name":"init","type":{"identifier":"XRCubeLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getSubImage","return_type":{"identifier":"XRWebGLSubImage"},"arguments":[{"name":"layer","type":{"identifier":"XRCompositionLayer"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"frame","type":{"identifier":"XRFrame"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eye","type":{"identifier":"XREye"},"optional":true,"variadic":false,"default_value":"none","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getViewSubImage","return_type":{"identifier":"XRWebGLSubImage"},"arguments":[{"name":"layer","type":{"identifier":"XRProjectionLayer"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"view","type":{"identifier":"XRView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"foveateBoundTexture","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"fixed_foveation","type":"float","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"XRMediaLayerInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"space","type":{"identifier":"XRSpace"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"layout","type":{"identifier":"XRLayerLayout"},"required":false,"default_value":"mono","extended_attributes":[]},{"name":"invertStereo","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"XRMediaQuadLayerInit","inherits":"XRMediaLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"width","type":{"nullable":"float"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"height","type":{"nullable":"float"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"XRMediaCylinderLayerInit","inherits":"XRMediaLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"radius","type":"float","required":false,"default_value":{"value":2,"lexeme":"2.0"},"extended_attributes":[]},{"name":"centralAngle","type":"float","required":false,"default_value":{"value":0.78539,"lexeme":"0.78539"},"extended_attributes":[]},{"name":"aspectRatio","type":{"nullable":"float"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"XRMediaEquirectLayerInit","inherits":"XRMediaLayerInit","partial":false,"extended_attributes":[],"members":[{"name":"transform","type":{"nullable":{"identifier":"XRRigidTransform"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"radius","type":"float","required":false,"default_value":{"value":0,"lexeme":"0.0"},"extended_attributes":[]},{"name":"centralHorizontalAngle","type":"float","required":false,"default_value":{"value":6.28318,"lexeme":"6.28318"},"extended_attributes":[]},{"name":"upperVerticalAngle","type":"float","required":false,"default_value":{"value":1.570795,"lexeme":"1.570795"},"extended_attributes":[]},{"name":"lowerVerticalAngle","type":"float","required":false,"default_value":{"value":-1.570795,"lexeme":"-1.570795"},"extended_attributes":[]}]}},{"interface":{"name":"XRMediaBinding","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"session","type":{"identifier":"XRSession"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"createQuadLayer","return_type":{"identifier":"XRQuadLayer"},"arguments":[{"name":"video","type":{"identifier":"HTMLVideoElement"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"XRMediaQuadLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createCylinderLayer","return_type":{"identifier":"XRCylinderLayer"},"arguments":[{"name":"video","type":{"identifier":"HTMLVideoElement"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"XRMediaCylinderLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createEquirectLayer","return_type":{"identifier":"XREquirectLayer"},"arguments":[{"name":"video","type":{"identifier":"HTMLVideoElement"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"XRMediaEquirectLayerInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"XRLayerEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"XRLayerEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"layer","type":{"identifier":"XRLayer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"XRLayerEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"layer","type":{"identifier":"XRLayer"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"XRRenderState","inherits":null,"partial":true,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"layers","type":{"frozen_array":{"identifier":"XRLayer"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "XRLayerLayout",
+        "values": [
+          "default",
+          "mono",
+          "stereo",
+          "stereo-left-right",
+          "stereo-top-bottom"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "XRLayerQuality",
+        "values": [
+          "default",
+          "text-optimized",
+          "graphics-optimized"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "XRCompositionLayer",
+        "inherits": "XRLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "layout",
+              "type": {
+                "identifier": "XRLayerLayout"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "blendTextureSourceAlpha",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "forceMonoPresentation",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "opacity",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "mipLevels",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "quality",
+              "type": {
+                "identifier": "XRLayerQuality"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "needsRedraw",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "destroy",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRProjectionLayer",
+        "inherits": "XRCompositionLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "textureWidth",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textureHeight",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "textureArrayLength",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ignoreDepthValues",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fixedFoveation",
+              "type": {
+                "nullable": "float"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deltaPose",
+              "type": {
+                "nullable": {
+                  "identifier": "XRRigidTransform"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRQuadLayer",
+        "inherits": "XRCompositionLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "space",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transform",
+              "type": {
+                "identifier": "XRRigidTransform"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "width",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "height",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onredraw",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRCylinderLayer",
+        "inherits": "XRCompositionLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "space",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transform",
+              "type": {
+                "identifier": "XRRigidTransform"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "radius",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "centralAngle",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "aspectRatio",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onredraw",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XREquirectLayer",
+        "inherits": "XRCompositionLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "space",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transform",
+              "type": {
+                "identifier": "XRRigidTransform"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "radius",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "centralHorizontalAngle",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "upperVerticalAngle",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lowerVerticalAngle",
+              "type": "float",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onredraw",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRCubeLayer",
+        "inherits": "XRCompositionLayer",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "space",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "orientation",
+              "type": {
+                "identifier": "DOMPointReadOnly"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onredraw",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSubImage",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "viewport",
+              "type": {
+                "identifier": "XRViewport"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRWebGLSubImage",
+        "inherits": "XRSubImage",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "colorTexture",
+              "type": {
+                "identifier": "WebGLTexture"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "depthStencilTexture",
+              "type": {
+                "nullable": {
+                  "identifier": "WebGLTexture"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "motionVectorTexture",
+              "type": {
+                "nullable": {
+                  "identifier": "WebGLTexture"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "imageIndex",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "colorTextureWidth",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "colorTextureHeight",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "depthStencilTextureWidth",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "depthStencilTextureHeight",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "motionVectorTextureWidth",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "motionVectorTextureHeight",
+              "type": {
+                "nullable": "unsigned long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "XRTextureType",
+        "values": [
+          "texture",
+          "texture-array"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRProjectionLayerInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "textureType",
+            "type": {
+              "identifier": "XRTextureType"
+            },
+            "required": false,
+            "default_value": "texture",
+            "extended_attributes": []
+          },
+          {
+            "name": "colorFormat",
+            "type": {
+              "identifier": "GLenum"
+            },
+            "required": false,
+            "default_value": {
+              "value": 6408,
+              "lexeme": "0x1908"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "depthFormat",
+            "type": {
+              "identifier": "GLenum"
+            },
+            "required": false,
+            "default_value": {
+              "value": 6402,
+              "lexeme": "0x1902"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "scaleFactor",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "clearOnAccess",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRLayerInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "space",
+            "type": {
+              "identifier": "XRSpace"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "colorFormat",
+            "type": {
+              "identifier": "GLenum"
+            },
+            "required": false,
+            "default_value": {
+              "value": 6408,
+              "lexeme": "0x1908"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "depthFormat",
+            "type": {
+              "nullable": {
+                "identifier": "GLenum"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mipLevels",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "viewPixelWidth",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "viewPixelHeight",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "layout",
+            "type": {
+              "identifier": "XRLayerLayout"
+            },
+            "required": false,
+            "default_value": "mono",
+            "extended_attributes": []
+          },
+          {
+            "name": "isStatic",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "clearOnAccess",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRQuadLayerInit",
+        "inherits": "XRLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "textureType",
+            "type": {
+              "identifier": "XRTextureType"
+            },
+            "required": false,
+            "default_value": "texture",
+            "extended_attributes": []
+          },
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 1,
+              "lexeme": "1.0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRCylinderLayerInit",
+        "inherits": "XRLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "textureType",
+            "type": {
+              "identifier": "XRTextureType"
+            },
+            "required": false,
+            "default_value": "texture",
+            "extended_attributes": []
+          },
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "radius",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 2,
+              "lexeme": "2.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "centralAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0.78539,
+              "lexeme": "0.78539"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "aspectRatio",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 2,
+              "lexeme": "2.0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XREquirectLayerInit",
+        "inherits": "XRLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "textureType",
+            "type": {
+              "identifier": "XRTextureType"
+            },
+            "required": false,
+            "default_value": "texture",
+            "extended_attributes": []
+          },
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "radius",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "centralHorizontalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 6.28318,
+              "lexeme": "6.28318"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "upperVerticalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 1.570795,
+              "lexeme": "1.570795"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "lowerVerticalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": -1.570795,
+              "lexeme": "-1.570795"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRCubeLayerInit",
+        "inherits": "XRLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "orientation",
+            "type": {
+              "nullable": {
+                "identifier": "DOMPointReadOnly"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRWebGLBinding",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "session",
+                  "type": {
+                    "identifier": "XRSession"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "context",
+                  "type": {
+                    "identifier": "XRWebGLRenderingContext"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "nativeProjectionScaleFactor",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usesDepthValues",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createProjectionLayer",
+              "return_type": {
+                "identifier": "XRProjectionLayer"
+              },
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRProjectionLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createQuadLayer",
+              "return_type": {
+                "identifier": "XRQuadLayer"
+              },
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRQuadLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createCylinderLayer",
+              "return_type": {
+                "identifier": "XRCylinderLayer"
+              },
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRCylinderLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createEquirectLayer",
+              "return_type": {
+                "identifier": "XREquirectLayer"
+              },
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XREquirectLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createCubeLayer",
+              "return_type": {
+                "identifier": "XRCubeLayer"
+              },
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRCubeLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getSubImage",
+              "return_type": {
+                "identifier": "XRWebGLSubImage"
+              },
+              "arguments": [
+                {
+                  "name": "layer",
+                  "type": {
+                    "identifier": "XRCompositionLayer"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "frame",
+                  "type": {
+                    "identifier": "XRFrame"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eye",
+                  "type": {
+                    "identifier": "XREye"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "none",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getViewSubImage",
+              "return_type": {
+                "identifier": "XRWebGLSubImage"
+              },
+              "arguments": [
+                {
+                  "name": "layer",
+                  "type": {
+                    "identifier": "XRProjectionLayer"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "view",
+                  "type": {
+                    "identifier": "XRView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "foveateBoundTexture",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "fixed_foveation",
+                  "type": "float",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRMediaLayerInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "space",
+            "type": {
+              "identifier": "XRSpace"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "layout",
+            "type": {
+              "identifier": "XRLayerLayout"
+            },
+            "required": false,
+            "default_value": "mono",
+            "extended_attributes": []
+          },
+          {
+            "name": "invertStereo",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRMediaQuadLayerInit",
+        "inherits": "XRMediaLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": {
+              "nullable": "float"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": {
+              "nullable": "float"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRMediaCylinderLayerInit",
+        "inherits": "XRMediaLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "radius",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 2,
+              "lexeme": "2.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "centralAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0.78539,
+              "lexeme": "0.78539"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "aspectRatio",
+            "type": {
+              "nullable": "float"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRMediaEquirectLayerInit",
+        "inherits": "XRMediaLayerInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transform",
+            "type": {
+              "nullable": {
+                "identifier": "XRRigidTransform"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "radius",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "centralHorizontalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 6.28318,
+              "lexeme": "6.28318"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "upperVerticalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": 1.570795,
+              "lexeme": "1.570795"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "lowerVerticalAngle",
+            "type": "float",
+            "required": false,
+            "default_value": {
+              "value": -1.570795,
+              "lexeme": "-1.570795"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRMediaBinding",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "session",
+                  "type": {
+                    "identifier": "XRSession"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createQuadLayer",
+              "return_type": {
+                "identifier": "XRQuadLayer"
+              },
+              "arguments": [
+                {
+                  "name": "video",
+                  "type": {
+                    "identifier": "HTMLVideoElement"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRMediaQuadLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createCylinderLayer",
+              "return_type": {
+                "identifier": "XRCylinderLayer"
+              },
+              "arguments": [
+                {
+                  "name": "video",
+                  "type": {
+                    "identifier": "HTMLVideoElement"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRMediaCylinderLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createEquirectLayer",
+              "return_type": {
+                "identifier": "XREquirectLayer"
+              },
+              "arguments": [
+                {
+                  "name": "video",
+                  "type": {
+                    "identifier": "HTMLVideoElement"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "XRMediaEquirectLayerInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRLayerEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "XRLayerEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "layer",
+              "type": {
+                "identifier": "XRLayer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRLayerEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "layer",
+            "type": {
+              "identifier": "XRLayer"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRRenderState",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "layers",
+              "type": {
+                "frozen_array": {
+                  "identifier": "XRLayer"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

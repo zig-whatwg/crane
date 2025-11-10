@@ -1,1 +1,42 @@
-{"definitions":[{"dictionary":{"name":"VideoEncoderEncodeOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"av1","type":{"identifier":"VideoEncoderEncodeOptionsForAv1"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoEncoderEncodeOptionsForAv1","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"quantizer","type":{"nullable":"unsigned short"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "VideoEncoderEncodeOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "av1",
+            "type": {
+              "identifier": "VideoEncoderEncodeOptionsForAv1"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderEncodeOptionsForAv1",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "quantizer",
+            "type": {
+              "nullable": "unsigned short"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

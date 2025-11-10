@@ -1,1 +1,120 @@
-{"definitions":[{"enum":{"name":"MockCapturePromptResult","values":["granted","denied"],"extended_attributes":[]}},{"dictionary":{"name":"MockCapturePromptResultConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"getUserMedia","type":{"identifier":"MockCapturePromptResult"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"getDisplayMedia","type":{"identifier":"MockCapturePromptResult"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MockCaptureDeviceConfiguration","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"label","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"deviceId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"groupId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"MockCameraConfiguration","inherits":"MockCaptureDeviceConfiguration","partial":false,"extended_attributes":[],"members":[{"name":"defaultFrameRate","type":"double","required":false,"default_value":{"value":30,"lexeme":"30"},"extended_attributes":[]},{"name":"facingMode","type":"DOMString","required":false,"default_value":"user","extended_attributes":[]}]}},{"dictionary":{"name":"MockMicrophoneConfiguration","inherits":"MockCaptureDeviceConfiguration","partial":false,"extended_attributes":[],"members":[{"name":"defaultSampleRate","type":"unsigned long","required":false,"default_value":{"value":44100,"lexeme":"44100"},"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "MockCapturePromptResult",
+        "values": [
+          "granted",
+          "denied"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MockCapturePromptResultConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "getUserMedia",
+            "type": {
+              "identifier": "MockCapturePromptResult"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "getDisplayMedia",
+            "type": {
+              "identifier": "MockCapturePromptResult"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MockCaptureDeviceConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "label",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "deviceId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "groupId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MockCameraConfiguration",
+        "inherits": "MockCaptureDeviceConfiguration",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "defaultFrameRate",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 30,
+              "lexeme": "30"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "facingMode",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "user",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MockMicrophoneConfiguration",
+        "inherits": "MockCaptureDeviceConfiguration",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "defaultSampleRate",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 44100,
+              "lexeme": "44100"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

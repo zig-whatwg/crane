@@ -1,1 +1,44 @@
-{"definitions":[{"dictionary":{"name":"CrashReportBody","inherits":"ReportBody","partial":false,"extended_attributes":[],"members":[{"name":"reason","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"stack","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"is_top_level","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"page_visibility","type":{"identifier":"DocumentVisibilityState"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "CrashReportBody",
+        "inherits": "ReportBody",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "reason",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "stack",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "is_top_level",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "page_visibility",
+            "type": {
+              "identifier": "DocumentVisibilityState"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,151 @@
-{"definitions":[{"interface":{"name":"WebGLVertexArrayObjectOES","inherits":"WebGLObject","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[]}},{"interface":{"name":"OES_vertex_array_object","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"VERTEX_ARRAY_BINDING_OES","type":{"identifier":"GLenum"},"value":{"value":34229,"lexeme":"0x85B5"}}},{"operation":{"name":"createVertexArrayOES","return_type":{"identifier":"WebGLVertexArrayObjectOES"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deleteVertexArrayOES","return_type":"undefined","arguments":[{"name":"arrayObject","type":{"nullable":{"identifier":"WebGLVertexArrayObjectOES"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isVertexArrayOES","return_type":{"identifier":"GLboolean"},"arguments":[{"name":"arrayObject","type":{"nullable":{"identifier":"WebGLVertexArrayObjectOES"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"WebGLHandlesContextLoss","value":null}]}},{"operation":{"name":"bindVertexArrayOES","return_type":"undefined","arguments":[{"name":"arrayObject","type":{"nullable":{"identifier":"WebGLVertexArrayObjectOES"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WebGLVertexArrayObjectOES",
+        "inherits": "WebGLObject",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "OES_vertex_array_object",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "VERTEX_ARRAY_BINDING_OES",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34229,
+                "lexeme": "0x85B5"
+              }
+            }
+          },
+          {
+            "operation": {
+              "name": "createVertexArrayOES",
+              "return_type": {
+                "identifier": "WebGLVertexArrayObjectOES"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteVertexArrayOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "arrayObject",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLVertexArrayObjectOES"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isVertexArrayOES",
+              "return_type": {
+                "identifier": "GLboolean"
+              },
+              "arguments": [
+                {
+                  "name": "arrayObject",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLVertexArrayObjectOES"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "WebGLHandlesContextLoss",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "bindVertexArrayOES",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "arrayObject",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLVertexArrayObjectOES"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

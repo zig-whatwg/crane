@@ -1,1 +1,459 @@
-{"definitions":[{"interface":{"name":"WEBGL_draw_buffers","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"COLOR_ATTACHMENT0_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36064,"lexeme":"0x8CE0"}}},{"const":{"name":"COLOR_ATTACHMENT1_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36065,"lexeme":"0x8CE1"}}},{"const":{"name":"COLOR_ATTACHMENT2_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36066,"lexeme":"0x8CE2"}}},{"const":{"name":"COLOR_ATTACHMENT3_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36067,"lexeme":"0x8CE3"}}},{"const":{"name":"COLOR_ATTACHMENT4_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36068,"lexeme":"0x8CE4"}}},{"const":{"name":"COLOR_ATTACHMENT5_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36069,"lexeme":"0x8CE5"}}},{"const":{"name":"COLOR_ATTACHMENT6_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36070,"lexeme":"0x8CE6"}}},{"const":{"name":"COLOR_ATTACHMENT7_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36071,"lexeme":"0x8CE7"}}},{"const":{"name":"COLOR_ATTACHMENT8_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36072,"lexeme":"0x8CE8"}}},{"const":{"name":"COLOR_ATTACHMENT9_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36073,"lexeme":"0x8CE9"}}},{"const":{"name":"COLOR_ATTACHMENT10_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36074,"lexeme":"0x8CEA"}}},{"const":{"name":"COLOR_ATTACHMENT11_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36075,"lexeme":"0x8CEB"}}},{"const":{"name":"COLOR_ATTACHMENT12_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36076,"lexeme":"0x8CEC"}}},{"const":{"name":"COLOR_ATTACHMENT13_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36077,"lexeme":"0x8CED"}}},{"const":{"name":"COLOR_ATTACHMENT14_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36078,"lexeme":"0x8CEE"}}},{"const":{"name":"COLOR_ATTACHMENT15_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36079,"lexeme":"0x8CEF"}}},{"const":{"name":"DRAW_BUFFER0_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34853,"lexeme":"0x8825"}}},{"const":{"name":"DRAW_BUFFER1_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34854,"lexeme":"0x8826"}}},{"const":{"name":"DRAW_BUFFER2_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34855,"lexeme":"0x8827"}}},{"const":{"name":"DRAW_BUFFER3_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34856,"lexeme":"0x8828"}}},{"const":{"name":"DRAW_BUFFER4_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34857,"lexeme":"0x8829"}}},{"const":{"name":"DRAW_BUFFER5_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34858,"lexeme":"0x882A"}}},{"const":{"name":"DRAW_BUFFER6_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34859,"lexeme":"0x882B"}}},{"const":{"name":"DRAW_BUFFER7_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34860,"lexeme":"0x882C"}}},{"const":{"name":"DRAW_BUFFER8_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34861,"lexeme":"0x882D"}}},{"const":{"name":"DRAW_BUFFER9_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34862,"lexeme":"0x882E"}}},{"const":{"name":"DRAW_BUFFER10_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34863,"lexeme":"0x882F"}}},{"const":{"name":"DRAW_BUFFER11_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34864,"lexeme":"0x8830"}}},{"const":{"name":"DRAW_BUFFER12_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34865,"lexeme":"0x8831"}}},{"const":{"name":"DRAW_BUFFER13_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34866,"lexeme":"0x8832"}}},{"const":{"name":"DRAW_BUFFER14_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34867,"lexeme":"0x8833"}}},{"const":{"name":"DRAW_BUFFER15_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34868,"lexeme":"0x8834"}}},{"const":{"name":"MAX_COLOR_ATTACHMENTS_WEBGL","type":{"identifier":"GLenum"},"value":{"value":36063,"lexeme":"0x8CDF"}}},{"const":{"name":"MAX_DRAW_BUFFERS_WEBGL","type":{"identifier":"GLenum"},"value":{"value":34852,"lexeme":"0x8824"}}},{"operation":{"name":"drawBuffersWEBGL","return_type":"undefined","arguments":[{"name":"buffers","type":{"sequence":{"identifier":"GLenum"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_draw_buffers",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT0_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36064,
+                "lexeme": "0x8CE0"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT1_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36065,
+                "lexeme": "0x8CE1"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT2_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36066,
+                "lexeme": "0x8CE2"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT3_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36067,
+                "lexeme": "0x8CE3"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT4_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36068,
+                "lexeme": "0x8CE4"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT5_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36069,
+                "lexeme": "0x8CE5"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT6_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36070,
+                "lexeme": "0x8CE6"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT7_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36071,
+                "lexeme": "0x8CE7"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT8_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36072,
+                "lexeme": "0x8CE8"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT9_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36073,
+                "lexeme": "0x8CE9"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT10_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36074,
+                "lexeme": "0x8CEA"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT11_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36075,
+                "lexeme": "0x8CEB"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT12_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36076,
+                "lexeme": "0x8CEC"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT13_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36077,
+                "lexeme": "0x8CED"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT14_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36078,
+                "lexeme": "0x8CEE"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "COLOR_ATTACHMENT15_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36079,
+                "lexeme": "0x8CEF"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER0_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34853,
+                "lexeme": "0x8825"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER1_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34854,
+                "lexeme": "0x8826"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER2_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34855,
+                "lexeme": "0x8827"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER3_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34856,
+                "lexeme": "0x8828"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER4_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34857,
+                "lexeme": "0x8829"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER5_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34858,
+                "lexeme": "0x882A"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER6_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34859,
+                "lexeme": "0x882B"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER7_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34860,
+                "lexeme": "0x882C"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER8_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34861,
+                "lexeme": "0x882D"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER9_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34862,
+                "lexeme": "0x882E"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER10_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34863,
+                "lexeme": "0x882F"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER11_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34864,
+                "lexeme": "0x8830"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER12_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34865,
+                "lexeme": "0x8831"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER13_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34866,
+                "lexeme": "0x8832"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER14_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34867,
+                "lexeme": "0x8833"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DRAW_BUFFER15_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34868,
+                "lexeme": "0x8834"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_COLOR_ATTACHMENTS_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36063,
+                "lexeme": "0x8CDF"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_DRAW_BUFFERS_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34852,
+                "lexeme": "0x8824"
+              }
+            }
+          },
+          {
+            "operation": {
+              "name": "drawBuffersWEBGL",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "buffers",
+                  "type": {
+                    "sequence": {
+                      "identifier": "GLenum"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,3612 @@
-{"definitions":[{"interface":{"name":"AudioDecoder","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"AudioDecoderInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"CodecState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"decodeQueueSize","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ondequeue","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"configure","return_type":"undefined","arguments":[{"name":"config","type":{"identifier":"AudioDecoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"decode","return_type":"undefined","arguments":[{"name":"chunk","type":{"identifier":"EncodedAudioChunk"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"flush","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isConfigSupported","return_type":{"promise":{"identifier":"AudioDecoderSupport"}},"arguments":[{"name":"config","type":{"identifier":"AudioDecoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"AudioDecoderInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"output","type":{"identifier":"AudioDataOutputCallback"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"WebCodecsErrorCallback"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"AudioDataOutputCallback","return_type":"undefined","arguments":[{"name":"output","type":{"identifier":"AudioData"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"VideoDecoder","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"VideoDecoderInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"CodecState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"decodeQueueSize","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ondequeue","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"configure","return_type":"undefined","arguments":[{"name":"config","type":{"identifier":"VideoDecoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"decode","return_type":"undefined","arguments":[{"name":"chunk","type":{"identifier":"EncodedVideoChunk"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"flush","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isConfigSupported","return_type":{"promise":{"identifier":"VideoDecoderSupport"}},"arguments":[{"name":"config","type":{"identifier":"VideoDecoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"VideoDecoderInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"output","type":{"identifier":"VideoFrameOutputCallback"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"WebCodecsErrorCallback"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"VideoFrameOutputCallback","return_type":"undefined","arguments":[{"name":"output","type":{"identifier":"VideoFrame"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"AudioEncoder","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"AudioEncoderInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"CodecState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"encodeQueueSize","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ondequeue","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"configure","return_type":"undefined","arguments":[{"name":"config","type":{"identifier":"AudioEncoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"encode","return_type":"undefined","arguments":[{"name":"data","type":{"identifier":"AudioData"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"flush","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isConfigSupported","return_type":{"promise":{"identifier":"AudioEncoderSupport"}},"arguments":[{"name":"config","type":{"identifier":"AudioEncoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"AudioEncoderInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"output","type":{"identifier":"EncodedAudioChunkOutputCallback"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"WebCodecsErrorCallback"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"EncodedAudioChunkOutputCallback","return_type":"undefined","arguments":[{"name":"output","type":{"identifier":"EncodedAudioChunk"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"metadata","type":{"identifier":"EncodedAudioChunkMetadata"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"EncodedAudioChunkMetadata","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"decoderConfig","type":{"identifier":"AudioDecoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"VideoEncoder","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"VideoEncoderInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"CodecState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"encodeQueueSize","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ondequeue","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"configure","return_type":"undefined","arguments":[{"name":"config","type":{"identifier":"VideoEncoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"encode","return_type":"undefined","arguments":[{"name":"frame","type":{"identifier":"VideoFrame"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"VideoEncoderEncodeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"flush","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isConfigSupported","return_type":{"promise":{"identifier":"VideoEncoderSupport"}},"arguments":[{"name":"config","type":{"identifier":"VideoEncoderConfig"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"VideoEncoderInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"output","type":{"identifier":"EncodedVideoChunkOutputCallback"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"error","type":{"identifier":"WebCodecsErrorCallback"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"EncodedVideoChunkOutputCallback","return_type":"undefined","arguments":[{"name":"chunk","type":{"identifier":"EncodedVideoChunk"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"metadata","type":{"identifier":"EncodedVideoChunkMetadata"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"EncodedVideoChunkMetadata","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"decoderConfig","type":{"identifier":"VideoDecoderConfig"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"svc","type":{"identifier":"SvcOutputMetadata"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"alphaSideData","type":{"identifier":"BufferSource"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SvcOutputMetadata","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"temporalLayerId","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AudioDecoderSupport","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"config","type":{"identifier":"AudioDecoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoDecoderSupport","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"config","type":{"identifier":"VideoDecoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AudioEncoderSupport","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"config","type":{"identifier":"AudioEncoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoEncoderSupport","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"supported","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"config","type":{"identifier":"VideoEncoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AudioDecoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"codec","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"sampleRate","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"numberOfChannels","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"description","type":{"identifier":"AllowSharedBufferSource"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoDecoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"codec","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"description","type":{"identifier":"AllowSharedBufferSource"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"codedWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"codedHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayAspectWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayAspectHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"colorSpace","type":{"identifier":"VideoColorSpaceInit"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"hardwareAcceleration","type":{"identifier":"HardwareAcceleration"},"required":false,"default_value":"no-preference","extended_attributes":[]},{"name":"optimizeForLatency","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"rotation","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"flip","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"dictionary":{"name":"AudioEncoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"codec","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"sampleRate","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"numberOfChannels","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"bitrate","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"bitrateMode","type":{"identifier":"BitrateMode"},"required":false,"default_value":"variable","extended_attributes":[]}]}},{"dictionary":{"name":"VideoEncoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"codec","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"width","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"height","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"bitrate","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"framerate","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"hardwareAcceleration","type":{"identifier":"HardwareAcceleration"},"required":false,"default_value":"no-preference","extended_attributes":[]},{"name":"alpha","type":{"identifier":"AlphaOption"},"required":false,"default_value":"discard","extended_attributes":[]},{"name":"scalabilityMode","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"bitrateMode","type":{"identifier":"VideoEncoderBitrateMode"},"required":false,"default_value":"variable","extended_attributes":[]},{"name":"latencyMode","type":{"identifier":"LatencyMode"},"required":false,"default_value":"quality","extended_attributes":[]},{"name":"contentHint","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"HardwareAcceleration","values":["no-preference","prefer-hardware","prefer-software"],"extended_attributes":[]}},{"enum":{"name":"AlphaOption","values":["keep","discard"],"extended_attributes":[]}},{"enum":{"name":"LatencyMode","values":["quality","realtime"],"extended_attributes":[]}},{"dictionary":{"name":"VideoEncoderEncodeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"keyFrame","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"enum":{"name":"VideoEncoderBitrateMode","values":["constant","variable","quantizer"],"extended_attributes":[]}},{"enum":{"name":"CodecState","values":["unconfigured","configured","closed"],"extended_attributes":[]}},{"callback":{"name":"WebCodecsErrorCallback","return_type":"undefined","arguments":[{"name":"error","type":{"identifier":"DOMException"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"EncodedAudioChunk","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"Serializable","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"EncodedAudioChunkInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"EncodedAudioChunkType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timestamp","type":"long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"duration","type":{"nullable":"unsigned long long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"byteLength","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"copyTo","return_type":"undefined","arguments":[{"name":"destination","type":{"identifier":"AllowSharedBufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"EncodedAudioChunkInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"EncodedAudioChunkType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timestamp","type":"long long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"duration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"data","type":{"identifier":"AllowSharedBufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":{"identifier":"ArrayBuffer"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"enum":{"name":"EncodedAudioChunkType","values":["key","delta"],"extended_attributes":[]}},{"interface":{"name":"EncodedVideoChunk","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"Serializable","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"EncodedVideoChunkInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"EncodedVideoChunkType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timestamp","type":"long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"duration","type":{"nullable":"unsigned long long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"byteLength","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"copyTo","return_type":"undefined","arguments":[{"name":"destination","type":{"identifier":"AllowSharedBufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"EncodedVideoChunkInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"EncodedVideoChunkType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timestamp","type":"long long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"duration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"data","type":{"identifier":"AllowSharedBufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":{"identifier":"ArrayBuffer"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"enum":{"name":"EncodedVideoChunkType","values":["key","delta"],"extended_attributes":[]}},{"interface":{"name":"AudioData","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"Serializable","value":null},{"name":"Transferable","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"AudioDataInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"format","type":{"nullable":{"identifier":"AudioSampleFormat"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"sampleRate","type":"float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"numberOfFrames","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"numberOfChannels","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"duration","type":"unsigned long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timestamp","type":"long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"allocationSize","return_type":"unsigned long","arguments":[{"name":"options","type":{"identifier":"AudioDataCopyToOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"copyTo","return_type":"undefined","arguments":[{"name":"destination","type":{"identifier":"AllowSharedBufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"AudioDataCopyToOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clone","return_type":{"identifier":"AudioData"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"AudioDataInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"format","type":{"identifier":"AudioSampleFormat"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"sampleRate","type":"float","required":true,"default_value":null,"extended_attributes":[]},{"name":"numberOfFrames","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"numberOfChannels","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"timestamp","type":"long long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"data","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":{"identifier":"ArrayBuffer"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"dictionary":{"name":"AudioDataCopyToOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"planeIndex","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"frameOffset","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"frameCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"format","type":{"identifier":"AudioSampleFormat"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"AudioSampleFormat","values":["u8","s16","s32","f32","u8-planar","s16-planar","s32-planar","f32-planar"],"extended_attributes":[]}},{"interface":{"name":"VideoFrame","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"Serializable","value":null},{"name":"Transferable","value":null}],"members":[{"constructor":{"arguments":[{"name":"image","type":{"identifier":"CanvasImageSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"VideoFrameInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"constructor":{"arguments":[{"name":"data","type":{"identifier":"AllowSharedBufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"init","type":{"identifier":"VideoFrameBufferInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"format","type":{"nullable":{"identifier":"VideoPixelFormat"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"codedWidth","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"codedHeight","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"codedRect","type":{"nullable":{"identifier":"DOMRectReadOnly"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"visibleRect","type":{"nullable":{"identifier":"DOMRectReadOnly"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"rotation","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"flip","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"displayWidth","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"displayHeight","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"duration","type":{"nullable":"unsigned long long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"timestamp","type":"long long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"colorSpace","type":{"identifier":"VideoColorSpace"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"metadata","return_type":{"identifier":"VideoFrameMetadata"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"allocationSize","return_type":"unsigned long","arguments":[{"name":"options","type":{"identifier":"VideoFrameCopyToOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"copyTo","return_type":{"promise":{"sequence":{"identifier":"PlaneLayout"}}},"arguments":[{"name":"destination","type":{"identifier":"AllowSharedBufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"VideoFrameCopyToOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clone","return_type":{"identifier":"VideoFrame"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"VideoFrameInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"duration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"timestamp","type":"long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"alpha","type":{"identifier":"AlphaOption"},"required":false,"default_value":"keep","extended_attributes":[]},{"name":"visibleRect","type":{"identifier":"DOMRectInit"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"rotation","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"flip","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"displayWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"metadata","type":{"identifier":"VideoFrameMetadata"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoFrameBufferInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"format","type":{"identifier":"VideoPixelFormat"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"codedWidth","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"codedHeight","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"timestamp","type":"long long","required":true,"default_value":null,"extended_attributes":[]},{"name":"duration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"layout","type":{"sequence":{"identifier":"PlaneLayout"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"visibleRect","type":{"identifier":"DOMRectInit"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"rotation","type":"double","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"flip","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"displayWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"displayHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"colorSpace","type":{"identifier":"VideoColorSpaceInit"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":{"identifier":"ArrayBuffer"}},"required":false,"default_value":[],"extended_attributes":[]},{"name":"metadata","type":{"identifier":"VideoFrameMetadata"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoFrameMetadata","inherits":null,"partial":false,"extended_attributes":[],"members":[]}},{"dictionary":{"name":"VideoFrameCopyToOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rect","type":{"identifier":"DOMRectInit"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"layout","type":{"sequence":{"identifier":"PlaneLayout"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"format","type":{"identifier":"VideoPixelFormat"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"colorSpace","type":{"identifier":"PredefinedColorSpace"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PlaneLayout","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"offset","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"stride","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"enum":{"name":"VideoPixelFormat","values":["I420","I420P10","I420P12","I420A","I420AP10","I420AP12","I422","I422P10","I422P12","I422A","I422AP10","I422AP12","I444","I444P10","I444P12","I444A","I444AP10","I444AP12","NV12","RGBA","RGBX","BGRA","BGRX"],"extended_attributes":[]}},{"interface":{"name":"VideoColorSpace","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"VideoColorSpaceInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"primaries","type":{"nullable":{"identifier":"VideoColorPrimaries"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"transfer","type":{"nullable":{"identifier":"VideoTransferCharacteristics"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"matrix","type":{"nullable":{"identifier":"VideoMatrixCoefficients"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"fullRange","type":{"nullable":"boolean"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"toJSON","return_type":{"identifier":"VideoColorSpaceInit"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"Default","value":null}]}}]}},{"dictionary":{"name":"VideoColorSpaceInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"primaries","type":{"nullable":{"identifier":"VideoColorPrimaries"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"nullable":{"identifier":"VideoTransferCharacteristics"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"matrix","type":{"nullable":{"identifier":"VideoMatrixCoefficients"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"fullRange","type":{"nullable":"boolean"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"VideoColorPrimaries","values":["bt709","bt470bg","smpte170m","bt2020","smpte432"],"extended_attributes":[]}},{"enum":{"name":"VideoTransferCharacteristics","values":["bt709","smpte170m","iec61966-2-1","linear","pq","hlg"],"extended_attributes":[]}},{"enum":{"name":"VideoMatrixCoefficients","values":["rgb","bt709","bt470bg","smpte170m","bt2020-ncl"],"extended_attributes":[]}},{"interface":{"name":"ImageDecoder","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"ImageDecoderInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"type","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"complete","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"completed","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tracks","type":{"identifier":"ImageTrackList"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"decode","return_type":{"promise":{"identifier":"ImageDecodeResult"}},"arguments":[{"name":"options","type":{"identifier":"ImageDecodeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isTypeSupported","return_type":{"promise":"boolean"},"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"typedef":{"name":"ImageBufferSource","type":{"union":[{"identifier":"AllowSharedBufferSource"},{"identifier":"ReadableStream"}]},"extended_attributes":[]}},{"dictionary":{"name":"ImageDecoderInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"ImageBufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"colorSpaceConversion","type":{"identifier":"ColorSpaceConversion"},"required":false,"default_value":"default","extended_attributes":[]},{"name":"desiredWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"desiredHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"preferAnimation","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":{"identifier":"ArrayBuffer"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"dictionary":{"name":"ImageDecodeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"frameIndex","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[{"name":"EnforceRange","value":null}]},{"name":"completeFramesOnly","type":"boolean","required":false,"default_value":true,"extended_attributes":[]}]}},{"dictionary":{"name":"ImageDecodeResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"image","type":{"identifier":"VideoFrame"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"complete","type":"boolean","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ImageTrackList","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}}],"members":[{"operation":{"name":null,"return_type":{"identifier":"ImageTrack"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":"getter","extended_attributes":[]}},{"attribute":{"name":"ready","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"selectedIndex","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"selectedTrack","type":{"nullable":{"identifier":"ImageTrack"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"ImageTrack","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","DedicatedWorker"]}}],"members":[{"attribute":{"name":"animated","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"frameCount","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"repetitionCount","type":"unrestricted float","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"selected","type":"boolean","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "AudioDecoder",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "AudioDecoderInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "CodecState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "decodeQueueSize",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondequeue",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "configure",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "AudioDecoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "decode",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": {
+                    "identifier": "EncodedAudioChunk"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "flush",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isConfigSupported",
+              "return_type": {
+                "promise": {
+                  "identifier": "AudioDecoderSupport"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "AudioDecoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioDecoderInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "AudioDataOutputCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "WebCodecsErrorCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "AudioDataOutputCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "AudioData"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "VideoDecoder",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "VideoDecoderInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "CodecState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "decodeQueueSize",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondequeue",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "configure",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "VideoDecoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "decode",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "chunk",
+                  "type": {
+                    "identifier": "EncodedVideoChunk"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "flush",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isConfigSupported",
+              "return_type": {
+                "promise": {
+                  "identifier": "VideoDecoderSupport"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "VideoDecoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoDecoderInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "VideoFrameOutputCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "WebCodecsErrorCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "VideoFrameOutputCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "VideoFrame"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "AudioEncoder",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "AudioEncoderInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "CodecState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "encodeQueueSize",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondequeue",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "configure",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "AudioEncoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "encode",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "AudioData"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "flush",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isConfigSupported",
+              "return_type": {
+                "promise": {
+                  "identifier": "AudioEncoderSupport"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "AudioEncoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioEncoderInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "EncodedAudioChunkOutputCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "WebCodecsErrorCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "EncodedAudioChunkOutputCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "EncodedAudioChunk"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "metadata",
+            "type": {
+              "identifier": "EncodedAudioChunkMetadata"
+            },
+            "optional": true,
+            "variadic": false,
+            "default_value": {},
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EncodedAudioChunkMetadata",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "decoderConfig",
+            "type": {
+              "identifier": "AudioDecoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "VideoEncoder",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "VideoEncoderInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "CodecState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "encodeQueueSize",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondequeue",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "configure",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "VideoEncoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "encode",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "frame",
+                  "type": {
+                    "identifier": "VideoFrame"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "VideoEncoderEncodeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "flush",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isConfigSupported",
+              "return_type": {
+                "promise": {
+                  "identifier": "VideoEncoderSupport"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "config",
+                  "type": {
+                    "identifier": "VideoEncoderConfig"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "output",
+            "type": {
+              "identifier": "EncodedVideoChunkOutputCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "error",
+            "type": {
+              "identifier": "WebCodecsErrorCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "EncodedVideoChunkOutputCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "chunk",
+            "type": {
+              "identifier": "EncodedVideoChunk"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "metadata",
+            "type": {
+              "identifier": "EncodedVideoChunkMetadata"
+            },
+            "optional": true,
+            "variadic": false,
+            "default_value": {},
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EncodedVideoChunkMetadata",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "decoderConfig",
+            "type": {
+              "identifier": "VideoDecoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "svc",
+            "type": {
+              "identifier": "SvcOutputMetadata"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "alphaSideData",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SvcOutputMetadata",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "temporalLayerId",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioDecoderSupport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "config",
+            "type": {
+              "identifier": "AudioDecoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoDecoderSupport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "config",
+            "type": {
+              "identifier": "VideoDecoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioEncoderSupport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "config",
+            "type": {
+              "identifier": "AudioEncoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderSupport",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "supported",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "config",
+            "type": {
+              "identifier": "VideoEncoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioDecoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "codec",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sampleRate",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "numberOfChannels",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "description",
+            "type": {
+              "identifier": "AllowSharedBufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoDecoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "codec",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "description",
+            "type": {
+              "identifier": "AllowSharedBufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "codedWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "codedHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayAspectWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayAspectHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "colorSpace",
+            "type": {
+              "identifier": "VideoColorSpaceInit"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hardwareAcceleration",
+            "type": {
+              "identifier": "HardwareAcceleration"
+            },
+            "required": false,
+            "default_value": "no-preference",
+            "extended_attributes": []
+          },
+          {
+            "name": "optimizeForLatency",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rotation",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "flip",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioEncoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "codec",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sampleRate",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "numberOfChannels",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "bitrate",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "bitrateMode",
+            "type": {
+              "identifier": "BitrateMode"
+            },
+            "required": false,
+            "default_value": "variable",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "codec",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "height",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "bitrate",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "framerate",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hardwareAcceleration",
+            "type": {
+              "identifier": "HardwareAcceleration"
+            },
+            "required": false,
+            "default_value": "no-preference",
+            "extended_attributes": []
+          },
+          {
+            "name": "alpha",
+            "type": {
+              "identifier": "AlphaOption"
+            },
+            "required": false,
+            "default_value": "discard",
+            "extended_attributes": []
+          },
+          {
+            "name": "scalabilityMode",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bitrateMode",
+            "type": {
+              "identifier": "VideoEncoderBitrateMode"
+            },
+            "required": false,
+            "default_value": "variable",
+            "extended_attributes": []
+          },
+          {
+            "name": "latencyMode",
+            "type": {
+              "identifier": "LatencyMode"
+            },
+            "required": false,
+            "default_value": "quality",
+            "extended_attributes": []
+          },
+          {
+            "name": "contentHint",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "HardwareAcceleration",
+        "values": [
+          "no-preference",
+          "prefer-hardware",
+          "prefer-software"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "AlphaOption",
+        "values": [
+          "keep",
+          "discard"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "LatencyMode",
+        "values": [
+          "quality",
+          "realtime"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderEncodeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "keyFrame",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "VideoEncoderBitrateMode",
+        "values": [
+          "constant",
+          "variable",
+          "quantizer"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "CodecState",
+        "values": [
+          "unconfigured",
+          "configured",
+          "closed"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "WebCodecsErrorCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "error",
+            "type": {
+              "identifier": "DOMException"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "EncodedAudioChunk",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "EncodedAudioChunkInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "EncodedAudioChunkType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timestamp",
+              "type": "long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "duration",
+              "type": {
+                "nullable": "unsigned long long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "byteLength",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "copyTo",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "destination",
+                  "type": {
+                    "identifier": "AllowSharedBufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EncodedAudioChunkInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "EncodedAudioChunkType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timestamp",
+            "type": "long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "duration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "data",
+            "type": {
+              "identifier": "AllowSharedBufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "sequence": {
+                "identifier": "ArrayBuffer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "EncodedAudioChunkType",
+        "values": [
+          "key",
+          "delta"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "EncodedVideoChunk",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "EncodedVideoChunkInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "EncodedVideoChunkType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timestamp",
+              "type": "long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "duration",
+              "type": {
+                "nullable": "unsigned long long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "byteLength",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "copyTo",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "destination",
+                  "type": {
+                    "identifier": "AllowSharedBufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EncodedVideoChunkInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "EncodedVideoChunkType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timestamp",
+            "type": "long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "duration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "data",
+            "type": {
+              "identifier": "AllowSharedBufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "sequence": {
+                "identifier": "ArrayBuffer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "EncodedVideoChunkType",
+        "values": [
+          "key",
+          "delta"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "AudioData",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "AudioDataInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "format",
+              "type": {
+                "nullable": {
+                  "identifier": "AudioSampleFormat"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sampleRate",
+              "type": "float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "numberOfFrames",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "numberOfChannels",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "duration",
+              "type": "unsigned long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timestamp",
+              "type": "long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "allocationSize",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AudioDataCopyToOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "copyTo",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "destination",
+                  "type": {
+                    "identifier": "AllowSharedBufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "AudioDataCopyToOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clone",
+              "return_type": {
+                "identifier": "AudioData"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioDataInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "format",
+            "type": {
+              "identifier": "AudioSampleFormat"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sampleRate",
+            "type": "float",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "numberOfFrames",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "numberOfChannels",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "timestamp",
+            "type": "long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "data",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "sequence": {
+                "identifier": "ArrayBuffer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AudioDataCopyToOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "planeIndex",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "frameOffset",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "frameCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "format",
+            "type": {
+              "identifier": "AudioSampleFormat"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AudioSampleFormat",
+        "values": [
+          "u8",
+          "s16",
+          "s32",
+          "f32",
+          "u8-planar",
+          "s16-planar",
+          "s32-planar",
+          "f32-planar"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "VideoFrame",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          },
+          {
+            "name": "Transferable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "image",
+                  "type": {
+                    "identifier": "CanvasImageSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "VideoFrameInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "AllowSharedBufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "VideoFrameBufferInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "format",
+              "type": {
+                "nullable": {
+                  "identifier": "VideoPixelFormat"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "codedWidth",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "codedHeight",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "codedRect",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMRectReadOnly"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "visibleRect",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMRectReadOnly"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "rotation",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "flip",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "displayWidth",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "displayHeight",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "duration",
+              "type": {
+                "nullable": "unsigned long long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "timestamp",
+              "type": "long long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "colorSpace",
+              "type": {
+                "identifier": "VideoColorSpace"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "metadata",
+              "return_type": {
+                "identifier": "VideoFrameMetadata"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "allocationSize",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "VideoFrameCopyToOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "copyTo",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "PlaneLayout"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "destination",
+                  "type": {
+                    "identifier": "AllowSharedBufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "VideoFrameCopyToOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clone",
+              "return_type": {
+                "identifier": "VideoFrame"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoFrameInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "duration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timestamp",
+            "type": "long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "alpha",
+            "type": {
+              "identifier": "AlphaOption"
+            },
+            "required": false,
+            "default_value": "keep",
+            "extended_attributes": []
+          },
+          {
+            "name": "visibleRect",
+            "type": {
+              "identifier": "DOMRectInit"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rotation",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "flip",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "displayWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "metadata",
+            "type": {
+              "identifier": "VideoFrameMetadata"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoFrameBufferInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "format",
+            "type": {
+              "identifier": "VideoPixelFormat"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "codedWidth",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "codedHeight",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timestamp",
+            "type": "long long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "duration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "layout",
+            "type": {
+              "sequence": {
+                "identifier": "PlaneLayout"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "visibleRect",
+            "type": {
+              "identifier": "DOMRectInit"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rotation",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "flip",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "displayWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "displayHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "colorSpace",
+            "type": {
+              "identifier": "VideoColorSpaceInit"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "sequence": {
+                "identifier": "ArrayBuffer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          },
+          {
+            "name": "metadata",
+            "type": {
+              "identifier": "VideoFrameMetadata"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoFrameMetadata",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoFrameCopyToOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rect",
+            "type": {
+              "identifier": "DOMRectInit"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "layout",
+            "type": {
+              "sequence": {
+                "identifier": "PlaneLayout"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "format",
+            "type": {
+              "identifier": "VideoPixelFormat"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "colorSpace",
+            "type": {
+              "identifier": "PredefinedColorSpace"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PlaneLayout",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "offset",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "stride",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "VideoPixelFormat",
+        "values": [
+          "I420",
+          "I420P10",
+          "I420P12",
+          "I420A",
+          "I420AP10",
+          "I420AP12",
+          "I422",
+          "I422P10",
+          "I422P12",
+          "I422A",
+          "I422AP10",
+          "I422AP12",
+          "I444",
+          "I444P10",
+          "I444P12",
+          "I444A",
+          "I444AP10",
+          "I444AP12",
+          "NV12",
+          "RGBA",
+          "RGBX",
+          "BGRA",
+          "BGRX"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "VideoColorSpace",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "VideoColorSpaceInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "primaries",
+              "type": {
+                "nullable": {
+                  "identifier": "VideoColorPrimaries"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "transfer",
+              "type": {
+                "nullable": {
+                  "identifier": "VideoTransferCharacteristics"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "matrix",
+              "type": {
+                "nullable": {
+                  "identifier": "VideoMatrixCoefficients"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fullRange",
+              "type": {
+                "nullable": "boolean"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": {
+                "identifier": "VideoColorSpaceInit"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "Default",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoColorSpaceInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "primaries",
+            "type": {
+              "nullable": {
+                "identifier": "VideoColorPrimaries"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "nullable": {
+                "identifier": "VideoTransferCharacteristics"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "matrix",
+            "type": {
+              "nullable": {
+                "identifier": "VideoMatrixCoefficients"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fullRange",
+            "type": {
+              "nullable": "boolean"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "VideoColorPrimaries",
+        "values": [
+          "bt709",
+          "bt470bg",
+          "smpte170m",
+          "bt2020",
+          "smpte432"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "VideoTransferCharacteristics",
+        "values": [
+          "bt709",
+          "smpte170m",
+          "iec61966-2-1",
+          "linear",
+          "pq",
+          "hlg"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "VideoMatrixCoefficients",
+        "values": [
+          "rgb",
+          "bt709",
+          "bt470bg",
+          "smpte170m",
+          "bt2020-ncl"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "ImageDecoder",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "ImageDecoderInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "complete",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "completed",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tracks",
+              "type": {
+                "identifier": "ImageTrackList"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "decode",
+              "return_type": {
+                "promise": {
+                  "identifier": "ImageDecodeResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ImageDecodeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isTypeSupported",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ImageBufferSource",
+        "type": {
+          "union": [
+            {
+              "identifier": "AllowSharedBufferSource"
+            },
+            {
+              "identifier": "ReadableStream"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ImageDecoderInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "data",
+            "type": {
+              "identifier": "ImageBufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "colorSpaceConversion",
+            "type": {
+              "identifier": "ColorSpaceConversion"
+            },
+            "required": false,
+            "default_value": "default",
+            "extended_attributes": []
+          },
+          {
+            "name": "desiredWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "desiredHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "preferAnimation",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transfer",
+            "type": {
+              "sequence": {
+                "identifier": "ArrayBuffer"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ImageDecodeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "frameIndex",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          },
+          {
+            "name": "completeFramesOnly",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ImageDecodeResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "image",
+            "type": {
+              "identifier": "VideoFrame"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "complete",
+            "type": "boolean",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ImageTrackList",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": null,
+              "return_type": {
+                "identifier": "ImageTrack"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": "getter",
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ready",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "selectedIndex",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "selectedTrack",
+              "type": {
+                "nullable": {
+                  "identifier": "ImageTrack"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ImageTrack",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "DedicatedWorker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "animated",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "frameCount",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "repetitionCount",
+              "type": "unrestricted float",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "selected",
+              "type": "boolean",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

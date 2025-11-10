@@ -1,1 +1,495 @@
-{"definitions":[{"dictionary":{"name":"SecurePaymentConfirmationRequest","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"challenge","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"rpId","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"credentialIds","type":{"sequence":{"identifier":"BufferSource"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"instrument","type":{"identifier":"PaymentCredentialInstrument"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"timeout","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"payeeName","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"payeeOrigin","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"paymentEntitiesLogos","type":{"sequence":{"identifier":"PaymentEntityLogo"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"extensions","type":{"identifier":"AuthenticationExtensionsClientInputs"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"browserBoundPubKeyCredParams","type":{"sequence":{"identifier":"PublicKeyCredentialParameters"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"locale","type":{"sequence":"USVString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"showOptOut","type":"boolean","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SecurePaymentConfirmationAvailability","values":["available","unavailable-unknown-reason","unavailable-feature-not-enabled","unavailable-no-permission-policy","unavailable-no-user-verifying-platform-authenticator"],"extended_attributes":[]}},{"interface":{"name":"PaymentRequest","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"securePaymentConfirmationAvailability","return_type":{"promise":{"identifier":"SecurePaymentConfirmationAvailability"}},"arguments":[],"static":true,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"AuthenticationExtensionsClientInputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"payment","type":{"identifier":"AuthenticationExtensionsPaymentInputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPaymentInputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"isPayment","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"browserBoundPubKeyCredParams","type":{"sequence":{"identifier":"PublicKeyCredentialParameters"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"rpId","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"topOrigin","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"payeeName","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"payeeOrigin","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"paymentEntitiesLogos","type":{"sequence":{"identifier":"PaymentEntityLogo"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"total","type":{"identifier":"PaymentCurrencyAmount"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"instrument","type":{"identifier":"PaymentCredentialInstrument"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsClientOutputs","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"payment","type":{"identifier":"AuthenticationExtensionsPaymentOutputs"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AuthenticationExtensionsPaymentOutputs","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"browserBoundSignature","type":{"identifier":"BrowserBoundSignature"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"BrowserBoundSignature","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"signature","type":{"identifier":"ArrayBuffer"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CollectedClientPaymentData","inherits":"CollectedClientData","partial":false,"extended_attributes":[],"members":[{"name":"payment","type":{"union":[{"identifier":"CollectedClientAdditionalPaymentData"},{"identifier":"CollectedClientAdditionalPaymentRegistrationData"}]},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CollectedClientAdditionalPaymentData","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"rpId","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"topOrigin","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"payeeName","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"payeeOrigin","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"paymentEntitiesLogos","type":{"sequence":{"identifier":"PaymentEntityLogo"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"total","type":{"identifier":"PaymentCurrencyAmount"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"instrument","type":{"identifier":"PaymentCredentialInstrument"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"browserBoundPublicKey","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"CollectedClientAdditionalPaymentRegistrationData","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"browserBoundPublicKey","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PaymentCredentialInstrument","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"displayName","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"icon","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"iconMustBeShown","type":"boolean","required":false,"default_value":true,"extended_attributes":[]},{"name":"details","type":"USVString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PaymentEntityLogo","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"url","type":"USVString","required":true,"default_value":null,"extended_attributes":[]},{"name":"label","type":"USVString","required":true,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "SecurePaymentConfirmationRequest",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "challenge",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rpId",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "credentialIds",
+            "type": {
+              "sequence": {
+                "identifier": "BufferSource"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "instrument",
+            "type": {
+              "identifier": "PaymentCredentialInstrument"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "timeout",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeName",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeOrigin",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "paymentEntitiesLogos",
+            "type": {
+              "sequence": {
+                "identifier": "PaymentEntityLogo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "extensions",
+            "type": {
+              "identifier": "AuthenticationExtensionsClientInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "browserBoundPubKeyCredParams",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialParameters"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "locale",
+            "type": {
+              "sequence": "USVString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "showOptOut",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SecurePaymentConfirmationAvailability",
+        "values": [
+          "available",
+          "unavailable-unknown-reason",
+          "unavailable-feature-not-enabled",
+          "unavailable-no-permission-policy",
+          "unavailable-no-user-verifying-platform-authenticator"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "PaymentRequest",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "securePaymentConfirmationAvailability",
+              "return_type": {
+                "promise": {
+                  "identifier": "SecurePaymentConfirmationAvailability"
+                }
+              },
+              "arguments": [],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientInputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "payment",
+            "type": {
+              "identifier": "AuthenticationExtensionsPaymentInputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPaymentInputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "isPayment",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "browserBoundPubKeyCredParams",
+            "type": {
+              "sequence": {
+                "identifier": "PublicKeyCredentialParameters"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rpId",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "topOrigin",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeName",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeOrigin",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "paymentEntitiesLogos",
+            "type": {
+              "sequence": {
+                "identifier": "PaymentEntityLogo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "total",
+            "type": {
+              "identifier": "PaymentCurrencyAmount"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "instrument",
+            "type": {
+              "identifier": "PaymentCredentialInstrument"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsClientOutputs",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "payment",
+            "type": {
+              "identifier": "AuthenticationExtensionsPaymentOutputs"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AuthenticationExtensionsPaymentOutputs",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "browserBoundSignature",
+            "type": {
+              "identifier": "BrowserBoundSignature"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "BrowserBoundSignature",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signature",
+            "type": {
+              "identifier": "ArrayBuffer"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CollectedClientPaymentData",
+        "inherits": "CollectedClientData",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "payment",
+            "type": {
+              "union": [
+                {
+                  "identifier": "CollectedClientAdditionalPaymentData"
+                },
+                {
+                  "identifier": "CollectedClientAdditionalPaymentRegistrationData"
+                }
+              ]
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CollectedClientAdditionalPaymentData",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "rpId",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "topOrigin",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeName",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "payeeOrigin",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "paymentEntitiesLogos",
+            "type": {
+              "sequence": {
+                "identifier": "PaymentEntityLogo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "total",
+            "type": {
+              "identifier": "PaymentCurrencyAmount"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "instrument",
+            "type": {
+              "identifier": "PaymentCredentialInstrument"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "browserBoundPublicKey",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CollectedClientAdditionalPaymentRegistrationData",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "browserBoundPublicKey",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PaymentCredentialInstrument",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "displayName",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "icon",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iconMustBeShown",
+            "type": "boolean",
+            "required": false,
+            "default_value": true,
+            "extended_attributes": []
+          },
+          {
+            "name": "details",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PaymentEntityLogo",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "url",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "label",
+            "type": "USVString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

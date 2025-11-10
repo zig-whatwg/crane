@@ -1,1 +1,161 @@
-{"definitions":[{"enum":{"name":"XRPlaneOrientation","values":["horizontal","vertical"],"extended_attributes":[]}},{"interface":{"name":"XRPlane","inherits":null,"partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"planeSpace","type":{"identifier":"XRSpace"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"polygon","type":{"frozen_array":{"identifier":"DOMPointReadOnly"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"orientation","type":{"nullable":{"identifier":"XRPlaneOrientation"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lastChangedTime","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"semanticLabel","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRPlaneSet","inherits":null,"partial":false,"extended_attributes":[],"members":[{"setlike":{"value_type":{"identifier":"XRPlane"},"readonly":true}}]}},{"interface":{"name":"XRFrame","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"detectedPlanes","type":{"identifier":"XRPlaneSet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRSession","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"initiateRoomCapture","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "XRPlaneOrientation",
+        "values": [
+          "horizontal",
+          "vertical"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "XRPlane",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "planeSpace",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "polygon",
+              "type": {
+                "frozen_array": {
+                  "identifier": "DOMPointReadOnly"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "orientation",
+              "type": {
+                "nullable": {
+                  "identifier": "XRPlaneOrientation"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lastChangedTime",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "semanticLabel",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRPlaneSet",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "setlike": {
+              "value_type": {
+                "identifier": "XRPlane"
+              },
+              "readonly": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRFrame",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "detectedPlanes",
+              "type": {
+                "identifier": "XRPlaneSet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSession",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "initiateRoomCapture",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,90 @@
-{"definitions":[{"dictionary":{"name":"VideoEncoderConfig","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"avc","type":{"identifier":"AvcEncoderConfig"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AvcEncoderConfig","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"format","type":{"identifier":"AvcBitstreamFormat"},"required":false,"default_value":"avc","extended_attributes":[]}]}},{"enum":{"name":"AvcBitstreamFormat","values":["annexb","avc"],"extended_attributes":[]}},{"dictionary":{"name":"VideoEncoderEncodeOptions","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"avc","type":{"identifier":"VideoEncoderEncodeOptionsForAvc"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"VideoEncoderEncodeOptionsForAvc","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"quantizer","type":{"nullable":"unsigned short"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "VideoEncoderConfig",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "avc",
+            "type": {
+              "identifier": "AvcEncoderConfig"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AvcEncoderConfig",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "format",
+            "type": {
+              "identifier": "AvcBitstreamFormat"
+            },
+            "required": false,
+            "default_value": "avc",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "AvcBitstreamFormat",
+        "values": [
+          "annexb",
+          "avc"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderEncodeOptions",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "avc",
+            "type": {
+              "identifier": "VideoEncoderEncodeOptionsForAvc"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "VideoEncoderEncodeOptionsForAvc",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "quantizer",
+            "type": {
+              "nullable": "unsigned short"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

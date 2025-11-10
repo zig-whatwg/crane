@@ -1,1 +1,1766 @@
-{"definitions":[{"interface":{"name":"UIEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"UIEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"view","type":{"nullable":{"identifier":"Window"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"detail","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"UIEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"view","type":{"nullable":{"identifier":"Window"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"detail","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}},{"interface":{"name":"FocusEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"FocusEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"relatedTarget","type":{"nullable":{"identifier":"EventTarget"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"FocusEventInit","inherits":"UIEventInit","partial":false,"extended_attributes":[],"members":[{"name":"relatedTarget","type":{"nullable":{"identifier":"EventTarget"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"MouseEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"MouseEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"screenX","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"screenY","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clientX","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clientY","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"layerX","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"layerY","type":"long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ctrlKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"shiftKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"metaKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"button","type":"short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"buttons","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"relatedTarget","type":{"nullable":{"identifier":"EventTarget"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getModifierState","return_type":"boolean","arguments":[{"name":"keyArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"MouseEventInit","inherits":"EventModifierInit","partial":false,"extended_attributes":[],"members":[{"name":"screenX","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"screenY","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"clientX","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"clientY","type":"long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"button","type":"short","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"buttons","type":"unsigned short","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"relatedTarget","type":{"nullable":{"identifier":"EventTarget"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"EventModifierInit","inherits":"UIEventInit","partial":false,"extended_attributes":[],"members":[{"name":"ctrlKey","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"shiftKey","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"altKey","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"metaKey","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierAltGraph","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierCapsLock","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierFn","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierFnLock","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierHyper","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierNumLock","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierScrollLock","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierSuper","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierSymbol","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"modifierSymbolLock","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"WheelEvent","inherits":"MouseEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"WheelEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"const":{"name":"DOM_DELTA_PIXEL","type":"unsigned long","value":{"value":0,"lexeme":"0x00"}}},{"const":{"name":"DOM_DELTA_LINE","type":"unsigned long","value":{"value":1,"lexeme":"0x01"}}},{"const":{"name":"DOM_DELTA_PAGE","type":"unsigned long","value":{"value":2,"lexeme":"0x02"}}},{"attribute":{"name":"deltaX","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deltaY","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deltaZ","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deltaMode","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"WheelEventInit","inherits":"MouseEventInit","partial":false,"extended_attributes":[],"members":[{"name":"deltaX","type":"double","required":false,"default_value":{"value":0,"lexeme":"0.0"},"extended_attributes":[]},{"name":"deltaY","type":"double","required":false,"default_value":{"value":0,"lexeme":"0.0"},"extended_attributes":[]},{"name":"deltaZ","type":"double","required":false,"default_value":{"value":0,"lexeme":"0.0"},"extended_attributes":[]},{"name":"deltaMode","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}},{"interface":{"name":"InputEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"InputEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":"USVString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"isComposing","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"inputType","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"InputEventInit","inherits":"UIEventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"isComposing","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"inputType","type":"DOMString","required":false,"default_value":"","extended_attributes":[]}]}},{"interface":{"name":"KeyboardEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"KeyboardEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"const":{"name":"DOM_KEY_LOCATION_STANDARD","type":"unsigned long","value":{"value":0,"lexeme":"0x00"}}},{"const":{"name":"DOM_KEY_LOCATION_LEFT","type":"unsigned long","value":{"value":1,"lexeme":"0x01"}}},{"const":{"name":"DOM_KEY_LOCATION_RIGHT","type":"unsigned long","value":{"value":2,"lexeme":"0x02"}}},{"const":{"name":"DOM_KEY_LOCATION_NUMPAD","type":"unsigned long","value":{"value":3,"lexeme":"0x03"}}},{"attribute":{"name":"key","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"code","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"location","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ctrlKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"shiftKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"altKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"metaKey","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"repeat","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"isComposing","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getModifierState","return_type":"boolean","arguments":[{"name":"keyArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"KeyboardEventInit","inherits":"EventModifierInit","partial":false,"extended_attributes":[],"members":[{"name":"key","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"code","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"location","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"repeat","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"isComposing","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"CompositionEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"CompositionEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"CompositionEventInit","inherits":"UIEventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":"DOMString","required":false,"default_value":"","extended_attributes":[]}]}},{"interface":{"name":"UIEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"initUIEvent","return_type":"undefined","arguments":[{"name":"typeArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bubblesArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"cancelableArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"viewArg","type":{"nullable":{"identifier":"Window"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"detailArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"MouseEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"initMouseEvent","return_type":"undefined","arguments":[{"name":"typeArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bubblesArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"cancelableArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"viewArg","type":{"nullable":{"identifier":"Window"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"detailArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"screenXArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"screenYArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"clientXArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"clientYArg","type":"long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"ctrlKeyArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"altKeyArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"shiftKeyArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"metaKeyArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"buttonArg","type":"short","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"relatedTargetArg","type":{"nullable":{"identifier":"EventTarget"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"KeyboardEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"initKeyboardEvent","return_type":"undefined","arguments":[{"name":"typeArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bubblesArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"cancelableArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"viewArg","type":{"nullable":{"identifier":"Window"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyArg","type":"DOMString","optional":true,"variadic":false,"default_value":"","extended_attributes":[]},{"name":"locationArg","type":"unsigned long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"ctrlKey","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"altKey","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"shiftKey","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"metaKey","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"CompositionEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"initCompositionEvent","return_type":"undefined","arguments":[{"name":"typeArg","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bubblesArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"cancelableArg","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"viewArg","type":{"nullable":{"identifier":"WindowProxy"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"dataArg","type":"DOMString","optional":true,"variadic":false,"default_value":"","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"UIEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"which","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"UIEventInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"which","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}},{"interface":{"name":"KeyboardEvent","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"charCode","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"keyCode","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"KeyboardEventInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"charCode","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]},{"name":"keyCode","type":"unsigned long","required":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}]}},{"interface":{"name":"TextEvent","inherits":"UIEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"data","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"initTextEvent","return_type":"undefined","arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bubbles","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"cancelable","type":"boolean","optional":true,"variadic":false,"default_value":false,"extended_attributes":[]},{"name":"view","type":{"nullable":{"identifier":"Window"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":"DOMString","optional":true,"variadic":false,"default_value":"undefined","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "UIEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "UIEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "view",
+              "type": {
+                "nullable": {
+                  "identifier": "Window"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "detail",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "UIEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "view",
+            "type": {
+              "nullable": {
+                "identifier": "Window"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "detail",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FocusEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "FocusEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "relatedTarget",
+              "type": {
+                "nullable": {
+                  "identifier": "EventTarget"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "FocusEventInit",
+        "inherits": "UIEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "relatedTarget",
+            "type": {
+              "nullable": {
+                "identifier": "EventTarget"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MouseEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "MouseEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "screenX",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "screenY",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clientX",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clientY",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "layerX",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "layerY",
+              "type": "long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ctrlKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "shiftKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "metaKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "button",
+              "type": "short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "buttons",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "relatedTarget",
+              "type": {
+                "nullable": {
+                  "identifier": "EventTarget"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getModifierState",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "keyArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MouseEventInit",
+        "inherits": "EventModifierInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "screenX",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "screenY",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "clientX",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "clientY",
+            "type": "long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "button",
+            "type": "short",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "buttons",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "relatedTarget",
+            "type": {
+              "nullable": {
+                "identifier": "EventTarget"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EventModifierInit",
+        "inherits": "UIEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "ctrlKey",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "shiftKey",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "altKey",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "metaKey",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierAltGraph",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierCapsLock",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierFn",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierFnLock",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierHyper",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierNumLock",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierScrollLock",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierSuper",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierSymbol",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "modifierSymbolLock",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WheelEvent",
+        "inherits": "MouseEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "WheelEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_DELTA_PIXEL",
+              "type": "unsigned long",
+              "value": {
+                "value": 0,
+                "lexeme": "0x00"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_DELTA_LINE",
+              "type": "unsigned long",
+              "value": {
+                "value": 1,
+                "lexeme": "0x01"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_DELTA_PAGE",
+              "type": "unsigned long",
+              "value": {
+                "value": 2,
+                "lexeme": "0x02"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "deltaX",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deltaY",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deltaZ",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deltaMode",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "WheelEventInit",
+        "inherits": "MouseEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "deltaX",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "deltaY",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "deltaZ",
+            "type": "double",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0.0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "deltaMode",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "InputEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "InputEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": "USVString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "isComposing",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inputType",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "InputEventInit",
+        "inherits": "UIEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "isComposing",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "inputType",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "KeyboardEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "KeyboardEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_KEY_LOCATION_STANDARD",
+              "type": "unsigned long",
+              "value": {
+                "value": 0,
+                "lexeme": "0x00"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_KEY_LOCATION_LEFT",
+              "type": "unsigned long",
+              "value": {
+                "value": 1,
+                "lexeme": "0x01"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_KEY_LOCATION_RIGHT",
+              "type": "unsigned long",
+              "value": {
+                "value": 2,
+                "lexeme": "0x02"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "DOM_KEY_LOCATION_NUMPAD",
+              "type": "unsigned long",
+              "value": {
+                "value": 3,
+                "lexeme": "0x03"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "key",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "code",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "location",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ctrlKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "shiftKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "altKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "metaKey",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "repeat",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "isComposing",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getModifierState",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "keyArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeyboardEventInit",
+        "inherits": "EventModifierInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "key",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "code",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "location",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "repeat",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "isComposing",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CompositionEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "CompositionEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CompositionEventInit",
+        "inherits": "UIEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "UIEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "initUIEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "typeArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bubblesArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "cancelableArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "viewArg",
+                  "type": {
+                    "nullable": {
+                      "identifier": "Window"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "detailArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MouseEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "initMouseEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "typeArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bubblesArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "cancelableArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "viewArg",
+                  "type": {
+                    "nullable": {
+                      "identifier": "Window"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "detailArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "screenXArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "screenYArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "clientXArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "clientYArg",
+                  "type": "long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "ctrlKeyArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "altKeyArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "shiftKeyArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "metaKeyArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "buttonArg",
+                  "type": "short",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "relatedTargetArg",
+                  "type": {
+                    "nullable": {
+                      "identifier": "EventTarget"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "KeyboardEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "initKeyboardEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "typeArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bubblesArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "cancelableArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "viewArg",
+                  "type": {
+                    "nullable": {
+                      "identifier": "Window"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyArg",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                },
+                {
+                  "name": "locationArg",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                },
+                {
+                  "name": "ctrlKey",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "altKey",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "shiftKey",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "metaKey",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CompositionEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "initCompositionEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "typeArg",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bubblesArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "cancelableArg",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "viewArg",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WindowProxy"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "dataArg",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "UIEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "which",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "UIEventInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "which",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "KeyboardEvent",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "charCode",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "keyCode",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeyboardEventInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "charCode",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          },
+          {
+            "name": "keyCode",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": {
+              "value": 0,
+              "lexeme": "0"
+            },
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "TextEvent",
+        "inherits": "UIEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "data",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "initTextEvent",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bubbles",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "cancelable",
+                  "type": "boolean",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": false,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "view",
+                  "type": {
+                    "nullable": {
+                      "identifier": "Window"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "undefined",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

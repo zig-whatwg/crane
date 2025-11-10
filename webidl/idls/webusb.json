@@ -1,1 +1,2080 @@
-{"definitions":[{"dictionary":{"name":"USBDeviceFilter","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"vendorId","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[]},{"name":"productId","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[]},{"name":"classCode","type":"octet","required":false,"default_value":null,"extended_attributes":[]},{"name":"subclassCode","type":"octet","required":false,"default_value":null,"extended_attributes":[]},{"name":"protocolCode","type":"octet","required":false,"default_value":null,"extended_attributes":[]},{"name":"serialNumber","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"USBDeviceRequestOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"filters","type":{"sequence":{"identifier":"USBDeviceFilter"}},"required":true,"default_value":null,"extended_attributes":[]},{"name":"exclusionFilters","type":{"sequence":{"identifier":"USBDeviceFilter"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface":{"name":"USB","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"onconnect","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ondisconnect","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getDevices","return_type":{"promise":{"sequence":{"identifier":"USBDevice"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"requestDevice","return_type":{"promise":{"identifier":"USBDevice"}},"arguments":[{"name":"options","type":{"identifier":"USBDeviceRequestOptions"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}]}}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"usb","type":{"identifier":"USB"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"WorkerNavigator","inherits":null,"partial":true,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Worker"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"usb","type":{"identifier":"USB"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"dictionary":{"name":"USBConnectionEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"device","type":{"identifier":"USBDevice"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"USBConnectionEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"USBConnectionEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"device","type":{"identifier":"USBDevice"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"enum":{"name":"USBTransferStatus","values":["ok","stall","babble"],"extended_attributes":[]}},{"interface":{"name":"USBInTransferResult","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"status","type":{"identifier":"USBTransferStatus"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"nullable":{"identifier":"DataView"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":{"identifier":"DataView"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"USBTransferStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBOutTransferResult","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"status","type":{"identifier":"USBTransferStatus"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bytesWritten","type":"unsigned long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"bytesWritten","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"USBTransferStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBIsochronousInTransferPacket","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"status","type":{"identifier":"USBTransferStatus"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"nullable":{"identifier":"DataView"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":{"identifier":"DataView"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"USBTransferStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBIsochronousInTransferResult","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"packets","type":{"sequence":{"identifier":"USBIsochronousInTransferPacket"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"nullable":{"identifier":"DataView"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":{"nullable":{"identifier":"DataView"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"packets","type":{"frozen_array":{"identifier":"USBIsochronousInTransferPacket"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBIsochronousOutTransferPacket","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"status","type":{"identifier":"USBTransferStatus"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"bytesWritten","type":"unsigned long","optional":true,"variadic":false,"default_value":{"value":0,"lexeme":"0"},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"bytesWritten","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"USBTransferStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBIsochronousOutTransferResult","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"packets","type":{"sequence":{"identifier":"USBIsochronousOutTransferPacket"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"packets","type":{"frozen_array":{"identifier":"USBIsochronousOutTransferPacket"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBDevice","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"usbVersionMajor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usbVersionMinor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usbVersionSubminor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceClass","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceSubclass","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceProtocol","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"vendorId","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"productId","type":"unsigned short","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceVersionMajor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceVersionMinor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"deviceVersionSubminor","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"manufacturerName","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"productName","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"serialNumber","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"configuration","type":{"nullable":{"identifier":"USBConfiguration"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"configurations","type":{"frozen_array":{"identifier":"USBConfiguration"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"opened","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"open","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"close","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"forget","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"selectConfiguration","return_type":{"promise":"undefined"},"arguments":[{"name":"configurationValue","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"claimInterface","return_type":{"promise":"undefined"},"arguments":[{"name":"interfaceNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"releaseInterface","return_type":{"promise":"undefined"},"arguments":[{"name":"interfaceNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"selectAlternateInterface","return_type":{"promise":"undefined"},"arguments":[{"name":"interfaceNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"alternateSetting","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"controlTransferIn","return_type":{"promise":{"identifier":"USBInTransferResult"}},"arguments":[{"name":"setup","type":{"identifier":"USBControlTransferParameters"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"length","type":"unsigned short","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"controlTransferOut","return_type":{"promise":{"identifier":"USBOutTransferResult"}},"arguments":[{"name":"setup","type":{"identifier":"USBControlTransferParameters"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clearHalt","return_type":{"promise":"undefined"},"arguments":[{"name":"direction","type":{"identifier":"USBDirection"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"transferIn","return_type":{"promise":{"identifier":"USBInTransferResult"}},"arguments":[{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"length","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"transferOut","return_type":{"promise":{"identifier":"USBOutTransferResult"}},"arguments":[{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isochronousTransferIn","return_type":{"promise":{"identifier":"USBIsochronousInTransferResult"}},"arguments":[{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"packetLengths","type":{"sequence":"unsigned long"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isochronousTransferOut","return_type":{"promise":{"identifier":"USBIsochronousOutTransferResult"}},"arguments":[{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"packetLengths","type":{"sequence":"unsigned long"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"reset","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"USBRequestType","values":["standard","class","vendor"],"extended_attributes":[]}},{"enum":{"name":"USBRecipient","values":["device","interface","endpoint","other"],"extended_attributes":[]}},{"dictionary":{"name":"USBControlTransferParameters","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"requestType","type":{"identifier":"USBRequestType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"recipient","type":{"identifier":"USBRecipient"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"request","type":"octet","required":true,"default_value":null,"extended_attributes":[]},{"name":"value","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]},{"name":"index","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"USBConfiguration","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"device","type":{"identifier":"USBDevice"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"configurationValue","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"configurationValue","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"configurationName","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"interfaces","type":{"frozen_array":{"identifier":"USBInterface"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBInterface","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"configuration","type":{"identifier":"USBConfiguration"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"interfaceNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"interfaceNumber","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"alternate","type":{"identifier":"USBAlternateInterface"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"alternates","type":{"frozen_array":{"identifier":"USBAlternateInterface"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"claimed","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"USBAlternateInterface","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"deviceInterface","type":{"identifier":"USBInterface"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"alternateSetting","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"alternateSetting","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"interfaceClass","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"interfaceSubclass","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"interfaceProtocol","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"interfaceName","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"endpoints","type":{"frozen_array":{"identifier":"USBEndpoint"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"USBDirection","values":["in","out"],"extended_attributes":[]}},{"enum":{"name":"USBEndpointType","values":["bulk","interrupt","isochronous"],"extended_attributes":[]}},{"interface":{"name":"USBEndpoint","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}},{"name":"SecureContext","value":null}],"members":[{"constructor":{"arguments":[{"name":"alternate","type":{"identifier":"USBAlternateInterface"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"endpointNumber","type":"octet","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"direction","type":{"identifier":"USBDirection"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"endpointNumber","type":"octet","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"direction","type":{"identifier":"USBDirection"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"USBEndpointType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"packetSize","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"USBBlocklistEntry","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"idVendor","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]},{"name":"idProduct","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]},{"name":"bcdDevice","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"USBPermissionDescriptor","inherits":"PermissionDescriptor","partial":false,"extended_attributes":[],"members":[{"name":"filters","type":{"sequence":{"identifier":"USBDeviceFilter"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"exclusionFilters","type":{"sequence":{"identifier":"USBDeviceFilter"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AllowedUSBDevice","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"vendorId","type":"octet","required":true,"default_value":null,"extended_attributes":[]},{"name":"productId","type":"octet","required":true,"default_value":null,"extended_attributes":[]},{"name":"serialNumber","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"USBPermissionStorage","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"allowedDevices","type":{"sequence":{"identifier":"AllowedUSBDevice"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface":{"name":"USBPermissionResult","inherits":"PermissionStatus","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Worker","Window"]}}],"members":[{"attribute":{"name":"devices","type":{"frozen_array":{"identifier":"USBDevice"}},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "USBDeviceFilter",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "vendorId",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "productId",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "classCode",
+            "type": "octet",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "subclassCode",
+            "type": "octet",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "protocolCode",
+            "type": "octet",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "serialNumber",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBDeviceRequestOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "filters",
+            "type": {
+              "sequence": {
+                "identifier": "USBDeviceFilter"
+              }
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "exclusionFilters",
+            "type": {
+              "sequence": {
+                "identifier": "USBDeviceFilter"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USB",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "onconnect",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ondisconnect",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getDevices",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "USBDevice"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "requestDevice",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBDevice"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "USBDeviceRequestOptions"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "Exposed",
+                  "value": {
+                    "identifier": "Window"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "usb",
+              "type": {
+                "identifier": "USB"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WorkerNavigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Worker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "usb",
+              "type": {
+                "identifier": "USB"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBConnectionEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "device",
+            "type": {
+              "identifier": "USBDevice"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBConnectionEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "USBConnectionEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "device",
+              "type": {
+                "identifier": "USBDevice"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "USBTransferStatus",
+        "values": [
+          "ok",
+          "stall",
+          "babble"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "USBInTransferResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "status",
+                  "type": {
+                    "identifier": "USBTransferStatus"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "nullable": {
+                      "identifier": "DataView"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": {
+                  "identifier": "DataView"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "USBTransferStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBOutTransferResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "status",
+                  "type": {
+                    "identifier": "USBTransferStatus"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bytesWritten",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bytesWritten",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "USBTransferStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBIsochronousInTransferPacket",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "status",
+                  "type": {
+                    "identifier": "USBTransferStatus"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "nullable": {
+                      "identifier": "DataView"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": {
+                  "identifier": "DataView"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "USBTransferStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBIsochronousInTransferResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "packets",
+                  "type": {
+                    "sequence": {
+                      "identifier": "USBIsochronousInTransferPacket"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "nullable": {
+                      "identifier": "DataView"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": {
+                "nullable": {
+                  "identifier": "DataView"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "packets",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBIsochronousInTransferPacket"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBIsochronousOutTransferPacket",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "status",
+                  "type": {
+                    "identifier": "USBTransferStatus"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "bytesWritten",
+                  "type": "unsigned long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {
+                    "value": 0,
+                    "lexeme": "0"
+                  },
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "bytesWritten",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "USBTransferStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBIsochronousOutTransferResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "packets",
+                  "type": {
+                    "sequence": {
+                      "identifier": "USBIsochronousOutTransferPacket"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "packets",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBIsochronousOutTransferPacket"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBDevice",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "usbVersionMajor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usbVersionMinor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usbVersionSubminor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceClass",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceSubclass",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceProtocol",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "vendorId",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "productId",
+              "type": "unsigned short",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceVersionMajor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceVersionMinor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "deviceVersionSubminor",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "manufacturerName",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "productName",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "serialNumber",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "configuration",
+              "type": {
+                "nullable": {
+                  "identifier": "USBConfiguration"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "configurations",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBConfiguration"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "opened",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "open",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "close",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "forget",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "selectConfiguration",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "configurationValue",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "claimInterface",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "interfaceNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "releaseInterface",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "interfaceNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "selectAlternateInterface",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "interfaceNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "alternateSetting",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "controlTransferIn",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBInTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "setup",
+                  "type": {
+                    "identifier": "USBControlTransferParameters"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "length",
+                  "type": "unsigned short",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "controlTransferOut",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBOutTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "setup",
+                  "type": {
+                    "identifier": "USBControlTransferParameters"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clearHalt",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "USBDirection"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "transferIn",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBInTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "length",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "transferOut",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBOutTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isochronousTransferIn",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBIsochronousInTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "packetLengths",
+                  "type": {
+                    "sequence": "unsigned long"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isochronousTransferOut",
+              "return_type": {
+                "promise": {
+                  "identifier": "USBIsochronousOutTransferResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "packetLengths",
+                  "type": {
+                    "sequence": "unsigned long"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "reset",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "USBRequestType",
+        "values": [
+          "standard",
+          "class",
+          "vendor"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "USBRecipient",
+        "values": [
+          "device",
+          "interface",
+          "endpoint",
+          "other"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBControlTransferParameters",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "requestType",
+            "type": {
+              "identifier": "USBRequestType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "recipient",
+            "type": {
+              "identifier": "USBRecipient"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "request",
+            "type": "octet",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "value",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "index",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBConfiguration",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "device",
+                  "type": {
+                    "identifier": "USBDevice"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "configurationValue",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "configurationValue",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "configurationName",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaces",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBInterface"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBInterface",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "configuration",
+                  "type": {
+                    "identifier": "USBConfiguration"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "interfaceNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaceNumber",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "alternate",
+              "type": {
+                "identifier": "USBAlternateInterface"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "alternates",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBAlternateInterface"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "claimed",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBAlternateInterface",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "deviceInterface",
+                  "type": {
+                    "identifier": "USBInterface"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "alternateSetting",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "alternateSetting",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaceClass",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaceSubclass",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaceProtocol",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "interfaceName",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "endpoints",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBEndpoint"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "USBDirection",
+        "values": [
+          "in",
+          "out"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "USBEndpointType",
+        "values": [
+          "bulk",
+          "interrupt",
+          "isochronous"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "USBEndpoint",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "alternate",
+                  "type": {
+                    "identifier": "USBAlternateInterface"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "endpointNumber",
+                  "type": "octet",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "direction",
+                  "type": {
+                    "identifier": "USBDirection"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "endpointNumber",
+              "type": "octet",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "direction",
+              "type": {
+                "identifier": "USBDirection"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "USBEndpointType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "packetSize",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBBlocklistEntry",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "idVendor",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "idProduct",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bcdDevice",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBPermissionDescriptor",
+        "inherits": "PermissionDescriptor",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "filters",
+            "type": {
+              "sequence": {
+                "identifier": "USBDeviceFilter"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "exclusionFilters",
+            "type": {
+              "sequence": {
+                "identifier": "USBDeviceFilter"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AllowedUSBDevice",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "vendorId",
+            "type": "octet",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "productId",
+            "type": "octet",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "serialNumber",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "USBPermissionStorage",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "allowedDevices",
+            "type": {
+              "sequence": {
+                "identifier": "AllowedUSBDevice"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "USBPermissionResult",
+        "inherits": "PermissionStatus",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "Window"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "devices",
+              "type": {
+                "frozen_array": {
+                  "identifier": "USBDevice"
+                }
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

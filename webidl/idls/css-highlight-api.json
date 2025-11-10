@@ -1,1 +1,231 @@
-{"definitions":[{"enum":{"name":"HighlightType","values":["highlight","spelling-error","grammar-error"],"extended_attributes":[]}},{"interface":{"name":"Highlight","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"initialRanges","type":{"identifier":"AbstractRange"},"optional":false,"variadic":true,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"setlike":{"value_type":{"identifier":"AbstractRange"},"readonly":false}},{"attribute":{"name":"priority","type":"long","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"HighlightType"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"namespace":{"name":"CSS","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"highlights","type":{"identifier":"HighlightRegistry"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"HighlightRegistry","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"maplike":{"key_type":"DOMString","value_type":{"identifier":"Highlight"},"readonly":false}}]}},{"interface":{"name":"HighlightRegistry","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"highlightsFromPoint","return_type":{"sequence":{"identifier":"HighlightHitResult"}},"arguments":[{"name":"x","type":"float","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"y","type":"float","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"HighlightsFromPointOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"HighlightHitResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"highlight","type":{"identifier":"Highlight"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"ranges","type":{"sequence":{"identifier":"AbstractRange"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"HighlightsFromPointOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"shadowRoots","type":{"sequence":{"identifier":"ShadowRoot"}},"required":false,"default_value":[],"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "HighlightType",
+        "values": [
+          "highlight",
+          "spelling-error",
+          "grammar-error"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Highlight",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "initialRanges",
+                  "type": {
+                    "identifier": "AbstractRange"
+                  },
+                  "optional": false,
+                  "variadic": true,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "setlike": {
+              "value_type": {
+                "identifier": "AbstractRange"
+              },
+              "readonly": false
+            }
+          },
+          {
+            "attribute": {
+              "name": "priority",
+              "type": "long",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "HighlightType"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "namespace": {
+        "name": "CSS",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "highlights",
+              "type": {
+                "identifier": "HighlightRegistry"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "HighlightRegistry",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "maplike": {
+              "key_type": "DOMString",
+              "value_type": {
+                "identifier": "Highlight"
+              },
+              "readonly": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "HighlightRegistry",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "highlightsFromPoint",
+              "return_type": {
+                "sequence": {
+                  "identifier": "HighlightHitResult"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "x",
+                  "type": "float",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "y",
+                  "type": "float",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "HighlightsFromPointOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HighlightHitResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "highlight",
+            "type": {
+              "identifier": "Highlight"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "ranges",
+            "type": {
+              "sequence": {
+                "identifier": "AbstractRange"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HighlightsFromPointOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "shadowRoots",
+            "type": {
+              "sequence": {
+                "identifier": "ShadowRoot"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

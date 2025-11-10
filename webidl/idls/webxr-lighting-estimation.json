@@ -1,1 +1,258 @@
-{"definitions":[{"interface":{"name":"XRLightProbe","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"probeSpace","type":{"identifier":"XRSpace"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onreflectionchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"XRReflectionFormat","values":["srgba8","rgba16f"],"extended_attributes":[]}},{"interface":{"name":"XRLightEstimate","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"sphericalHarmonicsCoefficients","type":{"identifier":"Float32Array"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"primaryLightDirection","type":{"identifier":"DOMPointReadOnly"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"primaryLightIntensity","type":{"identifier":"DOMPointReadOnly"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"XRLightProbeInit","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"reflectionFormat","type":{"identifier":"XRReflectionFormat"},"required":false,"default_value":"srgba8","extended_attributes":[]}]}},{"interface":{"name":"XRSession","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestLightProbe","return_type":{"promise":{"identifier":"XRLightProbe"}},"arguments":[{"name":"options","type":{"identifier":"XRLightProbeInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"preferredReflectionFormat","type":{"identifier":"XRReflectionFormat"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"XRFrame","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getLightEstimate","return_type":{"nullable":{"identifier":"XRLightEstimate"}},"arguments":[{"name":"lightProbe","type":{"identifier":"XRLightProbe"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"XRWebGLBinding","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getReflectionCubeMap","return_type":{"nullable":{"identifier":"WebGLTexture"}},"arguments":[{"name":"lightProbe","type":{"identifier":"XRLightProbe"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "XRLightProbe",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "probeSpace",
+              "type": {
+                "identifier": "XRSpace"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onreflectionchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "XRReflectionFormat",
+        "values": [
+          "srgba8",
+          "rgba16f"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "XRLightEstimate",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "sphericalHarmonicsCoefficients",
+              "type": {
+                "identifier": "Float32Array"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "primaryLightDirection",
+              "type": {
+                "identifier": "DOMPointReadOnly"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "primaryLightIntensity",
+              "type": {
+                "identifier": "DOMPointReadOnly"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "XRLightProbeInit",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "reflectionFormat",
+            "type": {
+              "identifier": "XRReflectionFormat"
+            },
+            "required": false,
+            "default_value": "srgba8",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRSession",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestLightProbe",
+              "return_type": {
+                "promise": {
+                  "identifier": "XRLightProbe"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "XRLightProbeInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "preferredReflectionFormat",
+              "type": {
+                "identifier": "XRReflectionFormat"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRFrame",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getLightEstimate",
+              "return_type": {
+                "nullable": {
+                  "identifier": "XRLightEstimate"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "lightProbe",
+                  "type": {
+                    "identifier": "XRLightProbe"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "XRWebGLBinding",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getReflectionCubeMap",
+              "return_type": {
+                "nullable": {
+                  "identifier": "WebGLTexture"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "lightProbe",
+                  "type": {
+                    "identifier": "XRLightProbe"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

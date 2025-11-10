@@ -1,1 +1,86 @@
-{"definitions":[{"interface_mixin":{"name":"PaintTimingMixin","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"paintTime","type":{"identifier":"DOMHighResTimeStamp"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"presentationTime","type":{"nullable":{"identifier":"DOMHighResTimeStamp"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PerformancePaintTiming","inherits":"PerformanceEntry","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"toJSON","return_type":"object","arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"Default","value":null}]}}]}},{"includes":{"interface":"PerformancePaintTiming","mixin":"PaintTimingMixin"}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "PaintTimingMixin",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "paintTime",
+              "type": {
+                "identifier": "DOMHighResTimeStamp"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "presentationTime",
+              "type": {
+                "nullable": {
+                  "identifier": "DOMHighResTimeStamp"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PerformancePaintTiming",
+        "inherits": "PerformanceEntry",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "toJSON",
+              "return_type": "object",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "Default",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "PerformancePaintTiming",
+        "mixin": "PaintTimingMixin"
+      }
+    }
+  ]
+}

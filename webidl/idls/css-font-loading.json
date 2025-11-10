@@ -1,1 +1,1023 @@
-{"definitions":[{"dictionary":{"name":"FontFaceDescriptors","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"style","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"weight","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"stretch","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"unicodeRange","type":{"identifier":"CSSOMString"},"required":false,"default_value":"U+0-10FFFF","extended_attributes":[]},{"name":"featureSettings","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"variationSettings","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"display","type":{"identifier":"CSSOMString"},"required":false,"default_value":"auto","extended_attributes":[]},{"name":"ascentOverride","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"descentOverride","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]},{"name":"lineGapOverride","type":{"identifier":"CSSOMString"},"required":false,"default_value":"normal","extended_attributes":[]}]}},{"enum":{"name":"FontFaceLoadStatus","values":["unloaded","loading","loaded","error"],"extended_attributes":[]}},{"interface":{"name":"FontFace","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"family","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"source","type":{"union":[{"identifier":"CSSOMString"},{"identifier":"BufferSource"}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"descriptors","type":{"identifier":"FontFaceDescriptors"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"family","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"style","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"weight","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"stretch","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"unicodeRange","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"featureSettings","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"variationSettings","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"display","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ascentOverride","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"descentOverride","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lineGapOverride","type":{"identifier":"CSSOMString"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"FontFaceLoadStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"load","return_type":{"promise":{"identifier":"FontFace"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"loaded","type":{"promise":{"identifier":"FontFace"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"FontFaceFeatures","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[]}},{"interface":{"name":"FontFaceVariationAxis","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"axisTag","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"minimumValue","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"maximumValue","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"defaultValue","type":"double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"FontFaceVariations","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"setlike":{"value_type":{"identifier":"FontFaceVariationAxis"},"readonly":true}}]}},{"interface":{"name":"FontFacePalette","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"iterable":{"key_type":null,"value_type":"DOMString"}},{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":null,"return_type":"DOMString","arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":"getter","extended_attributes":[]}},{"attribute":{"name":"usableWithLightBackground","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usableWithDarkBackground","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"FontFacePalettes","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"iterable":{"key_type":null,"value_type":{"identifier":"FontFacePalette"}}},{"attribute":{"name":"length","type":"unsigned long","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":null,"return_type":{"identifier":"FontFacePalette"},"arguments":[{"name":"index","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":"getter","extended_attributes":[]}}]}},{"interface":{"name":"FontFace","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"features","type":{"identifier":"FontFaceFeatures"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"variations","type":{"identifier":"FontFaceVariations"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"palettes","type":{"identifier":"FontFacePalettes"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"FontFaceSetLoadEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"fontfaces","type":{"sequence":{"identifier":"FontFace"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface":{"name":"FontFaceSetLoadEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"type","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"FontFaceSetLoadEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"fontfaces","type":{"frozen_array":{"identifier":"FontFace"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"enum":{"name":"FontFaceSetLoadStatus","values":["loading","loaded"],"extended_attributes":[]}},{"interface":{"name":"FontFaceSet","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"setlike":{"value_type":{"identifier":"FontFace"},"readonly":false}},{"operation":{"name":"add","return_type":{"identifier":"FontFaceSet"},"arguments":[{"name":"font","type":{"identifier":"FontFace"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"delete","return_type":"boolean","arguments":[{"name":"font","type":{"identifier":"FontFace"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clear","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onloading","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onloadingdone","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onloadingerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"load","return_type":{"promise":{"sequence":{"identifier":"FontFace"}}},"arguments":[{"name":"font","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"text","type":{"identifier":"CSSOMString"},"optional":true,"variadic":false,"default_value":" ","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"check","return_type":"boolean","arguments":[{"name":"font","type":{"identifier":"CSSOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"text","type":{"identifier":"CSSOMString"},"optional":true,"variadic":false,"default_value":" ","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"ready","type":{"promise":{"identifier":"FontFaceSet"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"status","type":{"identifier":"FontFaceSetLoadStatus"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface_mixin":{"name":"FontFaceSource","partial":false,"extended_attributes":[],"members":[{"attribute":{"name":"fonts","type":{"identifier":"FontFaceSet"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Document","mixin":"FontFaceSource"}},{"includes":{"interface":"WorkerGlobalScope","mixin":"FontFaceSource"}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "FontFaceDescriptors",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "style",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "weight",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "stretch",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "unicodeRange",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "U+0-10FFFF",
+            "extended_attributes": []
+          },
+          {
+            "name": "featureSettings",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "variationSettings",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "display",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "auto",
+            "extended_attributes": []
+          },
+          {
+            "name": "ascentOverride",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "descentOverride",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          },
+          {
+            "name": "lineGapOverride",
+            "type": {
+              "identifier": "CSSOMString"
+            },
+            "required": false,
+            "default_value": "normal",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "FontFaceLoadStatus",
+        "values": [
+          "unloaded",
+          "loading",
+          "loaded",
+          "error"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFace",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "family",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "source",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "CSSOMString"
+                      },
+                      {
+                        "identifier": "BufferSource"
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "descriptors",
+                  "type": {
+                    "identifier": "FontFaceDescriptors"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "family",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "style",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "weight",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "stretch",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "unicodeRange",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "featureSettings",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "variationSettings",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "display",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ascentOverride",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "descentOverride",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lineGapOverride",
+              "type": {
+                "identifier": "CSSOMString"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "FontFaceLoadStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "load",
+              "return_type": {
+                "promise": {
+                  "identifier": "FontFace"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "loaded",
+              "type": {
+                "promise": {
+                  "identifier": "FontFace"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFaceFeatures",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFaceVariationAxis",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "axisTag",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "minimumValue",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "maximumValue",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "defaultValue",
+              "type": "double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFaceVariations",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "setlike": {
+              "value_type": {
+                "identifier": "FontFaceVariationAxis"
+              },
+              "readonly": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFacePalette",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "iterable": {
+              "key_type": null,
+              "value_type": "DOMString"
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": null,
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": "getter",
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usableWithLightBackground",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usableWithDarkBackground",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFacePalettes",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "iterable": {
+              "key_type": null,
+              "value_type": {
+                "identifier": "FontFacePalette"
+              }
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": "unsigned long",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": null,
+              "return_type": {
+                "identifier": "FontFacePalette"
+              },
+              "arguments": [
+                {
+                  "name": "index",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": "getter",
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFace",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "features",
+              "type": {
+                "identifier": "FontFaceFeatures"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "variations",
+              "type": {
+                "identifier": "FontFaceVariations"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "palettes",
+              "type": {
+                "identifier": "FontFacePalettes"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "FontFaceSetLoadEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "fontfaces",
+            "type": {
+              "sequence": {
+                "identifier": "FontFace"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFaceSetLoadEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "FontFaceSetLoadEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "fontfaces",
+              "type": {
+                "frozen_array": {
+                  "identifier": "FontFace"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "FontFaceSetLoadStatus",
+        "values": [
+          "loading",
+          "loaded"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "FontFaceSet",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "setlike": {
+              "value_type": {
+                "identifier": "FontFace"
+              },
+              "readonly": false
+            }
+          },
+          {
+            "operation": {
+              "name": "add",
+              "return_type": {
+                "identifier": "FontFaceSet"
+              },
+              "arguments": [
+                {
+                  "name": "font",
+                  "type": {
+                    "identifier": "FontFace"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "font",
+                  "type": {
+                    "identifier": "FontFace"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clear",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onloading",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onloadingdone",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onloadingerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "load",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "FontFace"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "font",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "text",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": " ",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "check",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "font",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "text",
+                  "type": {
+                    "identifier": "CSSOMString"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": " ",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ready",
+              "type": {
+                "promise": {
+                  "identifier": "FontFaceSet"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "status",
+              "type": {
+                "identifier": "FontFaceSetLoadStatus"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "FontFaceSource",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "fonts",
+              "type": {
+                "identifier": "FontFaceSet"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Document",
+        "mixin": "FontFaceSource"
+      }
+    },
+    {
+      "includes": {
+        "interface": "WorkerGlobalScope",
+        "mixin": "FontFaceSource"
+      }
+    }
+  ]
+}

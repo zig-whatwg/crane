@@ -1,1 +1,160 @@
-{"definitions":[{"interface":{"name":"WEBGL_clip_cull_distance","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"MAX_CLIP_DISTANCES_WEBGL","type":{"identifier":"GLenum"},"value":{"value":3378,"lexeme":"0x0D32"}}},{"const":{"name":"MAX_CULL_DISTANCES_WEBGL","type":{"identifier":"GLenum"},"value":{"value":33529,"lexeme":"0x82F9"}}},{"const":{"name":"MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL","type":{"identifier":"GLenum"},"value":{"value":33530,"lexeme":"0x82FA"}}},{"const":{"name":"CLIP_DISTANCE0_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12288,"lexeme":"0x3000"}}},{"const":{"name":"CLIP_DISTANCE1_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12289,"lexeme":"0x3001"}}},{"const":{"name":"CLIP_DISTANCE2_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12290,"lexeme":"0x3002"}}},{"const":{"name":"CLIP_DISTANCE3_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12291,"lexeme":"0x3003"}}},{"const":{"name":"CLIP_DISTANCE4_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12292,"lexeme":"0x3004"}}},{"const":{"name":"CLIP_DISTANCE5_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12293,"lexeme":"0x3005"}}},{"const":{"name":"CLIP_DISTANCE6_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12294,"lexeme":"0x3006"}}},{"const":{"name":"CLIP_DISTANCE7_WEBGL","type":{"identifier":"GLenum"},"value":{"value":12295,"lexeme":"0x3007"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_clip_cull_distance",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "MAX_CLIP_DISTANCES_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 3378,
+                "lexeme": "0x0D32"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_CULL_DISTANCES_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 33529,
+                "lexeme": "0x82F9"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "MAX_COMBINED_CLIP_AND_CULL_DISTANCES_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 33530,
+                "lexeme": "0x82FA"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE0_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12288,
+                "lexeme": "0x3000"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE1_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12289,
+                "lexeme": "0x3001"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE2_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12290,
+                "lexeme": "0x3002"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE3_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12291,
+                "lexeme": "0x3003"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE4_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12292,
+                "lexeme": "0x3004"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE5_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12293,
+                "lexeme": "0x3005"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE6_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12294,
+                "lexeme": "0x3006"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CLIP_DISTANCE7_WEBGL",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 12295,
+                "lexeme": "0x3007"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

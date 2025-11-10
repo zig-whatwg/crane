@@ -1,1 +1,560 @@
-{"definitions":[{"interface":{"name":"RTCIdentityProviderGlobalScope","inherits":"WorkerGlobalScope","partial":false,"extended_attributes":[{"name":"Global","value":{"identifier_list":["Worker","RTCIdentityProvider"]}},{"name":"Exposed","value":{"identifier":"RTCIdentityProvider"}}],"members":[{"attribute":{"name":"rtcIdentityProvider","type":{"identifier":"RTCIdentityProviderRegistrar"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"RTCIdentityProviderRegistrar","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"RTCIdentityProvider"}}],"members":[{"operation":{"name":"register","return_type":"undefined","arguments":[{"name":"idp","type":{"identifier":"RTCIdentityProvider"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCIdentityProvider","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"generateAssertion","type":{"identifier":"GenerateAssertionCallback"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"validateAssertion","type":{"identifier":"ValidateAssertionCallback"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"GenerateAssertionCallback","return_type":{"promise":{"identifier":"RTCIdentityAssertionResult"}},"arguments":[{"name":"contents","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"origin","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RTCIdentityProviderOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"callback":{"name":"ValidateAssertionCallback","return_type":{"promise":{"identifier":"RTCIdentityValidationResult"}},"arguments":[{"name":"assertion","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"origin","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"dictionary":{"name":"RTCIdentityAssertionResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"idp","type":{"identifier":"RTCIdentityProviderDetails"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"assertion","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCIdentityProviderDetails","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"domain","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"protocol","type":"DOMString","required":false,"default_value":"default","extended_attributes":[]}]}},{"dictionary":{"name":"RTCIdentityValidationResult","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"identity","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"contents","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCPeerConnection","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"setIdentityProvider","return_type":"undefined","arguments":[{"name":"provider","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RTCIdentityProviderOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getIdentityAssertion","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"peerIdentity","type":{"promise":{"identifier":"RTCIdentityAssertion"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"idpLoginUrl","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"idpErrorInfo","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCConfiguration","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"peerIdentity","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCIdentityProviderOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"protocol","type":"DOMString","required":false,"default_value":"default","extended_attributes":[]},{"name":"usernameHint","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"peerIdentity","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"RTCIdentityAssertion","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"idp","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"idp","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"name","type":"DOMString","readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"RTCError","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"httpRequestStatusCode","type":{"nullable":"long"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RTCErrorInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"httpRequestStatusCode","type":"long","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCErrorDetailTypeIdp","values":["idp-bad-script-failure","idp-execution-failure","idp-load-failure","idp-need-login","idp-timeout","idp-tls-failure","idp-token-expired","idp-token-invalid"],"extended_attributes":[]}},{"dictionary":{"name":"MediaStreamConstraints","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"peerIdentity","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"MediaStreamTrack","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"isolated","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onisolationchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "RTCIdentityProviderGlobalScope",
+        "inherits": "WorkerGlobalScope",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Global",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "RTCIdentityProvider"
+              ]
+            }
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "RTCIdentityProvider"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "rtcIdentityProvider",
+              "type": {
+                "identifier": "RTCIdentityProviderRegistrar"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCIdentityProviderRegistrar",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "RTCIdentityProvider"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "register",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "idp",
+                  "type": {
+                    "identifier": "RTCIdentityProvider"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIdentityProvider",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "generateAssertion",
+            "type": {
+              "identifier": "GenerateAssertionCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "validateAssertion",
+            "type": {
+              "identifier": "ValidateAssertionCallback"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "GenerateAssertionCallback",
+        "return_type": {
+          "promise": {
+            "identifier": "RTCIdentityAssertionResult"
+          }
+        },
+        "arguments": [
+          {
+            "name": "contents",
+            "type": "DOMString",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "origin",
+            "type": "DOMString",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "options",
+            "type": {
+              "identifier": "RTCIdentityProviderOptions"
+            },
+            "optional": true,
+            "variadic": false,
+            "default_value": {},
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "callback": {
+        "name": "ValidateAssertionCallback",
+        "return_type": {
+          "promise": {
+            "identifier": "RTCIdentityValidationResult"
+          }
+        },
+        "arguments": [
+          {
+            "name": "assertion",
+            "type": "DOMString",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "origin",
+            "type": "DOMString",
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIdentityAssertionResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "idp",
+            "type": {
+              "identifier": "RTCIdentityProviderDetails"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "assertion",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIdentityProviderDetails",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "domain",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "protocol",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "default",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIdentityValidationResult",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "identity",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "contents",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCPeerConnection",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "setIdentityProvider",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "provider",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RTCIdentityProviderOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getIdentityAssertion",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "peerIdentity",
+              "type": {
+                "promise": {
+                  "identifier": "RTCIdentityAssertion"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "idpLoginUrl",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "idpErrorInfo",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCConfiguration",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "peerIdentity",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIdentityProviderOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "protocol",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "default",
+            "extended_attributes": []
+          },
+          {
+            "name": "usernameHint",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "peerIdentity",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCIdentityAssertion",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "idp",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "idp",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "RTCError",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "httpRequestStatusCode",
+              "type": {
+                "nullable": "long"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCErrorInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "httpRequestStatusCode",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCErrorDetailTypeIdp",
+        "values": [
+          "idp-bad-script-failure",
+          "idp-execution-failure",
+          "idp-load-failure",
+          "idp-need-login",
+          "idp-timeout",
+          "idp-tls-failure",
+          "idp-token-expired",
+          "idp-token-invalid"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MediaStreamConstraints",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "peerIdentity",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MediaStreamTrack",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "isolated",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onisolationchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

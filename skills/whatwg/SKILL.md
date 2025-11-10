@@ -718,6 +718,220 @@ pub fn parseURL(allocator: Allocator, input: []const u8) !URL {
 
 ---
 
+# Part 6: WebIDL Interface Naming Conventions
+
+## Critical Rules for WebIDL Interfaces
+
+**When implementing WebIDL interfaces, namespaces, mixins, or dictionaries:**
+
+### File Naming: PascalCase
+
+**All WebIDL interface files MUST use PascalCase naming:**
+
+```
+❌ WRONG:
+webidl/src/encoding/text_decoder.zig
+webidl/src/console/console.zig
+webidl/src/dom/abort_controller.zig
+
+✅ CORRECT:
+webidl/src/encoding/TextDecoder.zig
+webidl/src/console/Console.zig
+webidl/src/dom/AbortController.zig
+```
+
+**This applies to:**
+- **Interfaces**: `TextDecoder.zig`, `ReadableStream.zig`, `EventTarget.zig`
+- **Namespaces**: `Console.zig`
+- **Mixins**: `TextDecoderCommon.zig`, `EventTargetMixin.zig`
+- **Dictionaries**: `TextDecoderOptions.zig`, `ReadableStreamReadResult.zig`
+
+**Rationale:** File names should match the type they define for clarity and consistency.
+
+### Attribute Naming: camelCase
+
+**All WebIDL interface attributes MUST use camelCase:**
+
+```zig
+❌ WRONG:
+pub const TextDecoder = webidl.interface(struct {
+    encoding_name: []const u8,      // ❌ snake_case
+    do_not_flush: bool,              // ❌ snake_case
+    ignore_bom: bool,                // ❌ snake_case
+    reusable_utf16_buf: ?[]u16,     // ❌ snake_case
+});
+
+✅ CORRECT:
+pub const TextDecoder = webidl.interface(struct {
+    encodingName: []const u8,                // ✅ camelCase
+    doNotFlush: bool,                        // ✅ camelCase
+    ignoreBOM: bool,                         // ✅ camelCase
+    reusableUtf16Buffer: ?webidl.DOMString, // ✅ camelCase + WebIDL type
+});
+```
+
+**Rationale:** WebIDL attributes use camelCase per JavaScript naming conventions.
+
+### Method Naming: camelCase (No Prefixes)
+
+**WebIDL methods MUST use camelCase without prefixes:**
+
+```zig
+❌ WRONG:
+pub fn call_decode(...) ![]const u8 { }    // ❌ call_ prefix
+pub fn call_encode(...) ![]const u8 { }    // ❌ call_ prefix
+pub fn get_encoding() []const u8 { }       // ❌ get_ prefix for getter
+pub fn call_log(...) void { }              // ❌ call_ prefix
+
+✅ CORRECT:
+pub fn decode(...) ![]const u8 { }         // ✅ No prefix
+pub fn encode(...) ![]const u8 { }         // ✅ No prefix
+pub fn encoding() []const u8 { }           // ✅ No prefix (readonly attribute)
+pub fn log(...) void { }                   // ✅ No prefix
+```
+
+**Exception for getters:** Readonly attributes may use method names matching the attribute:
+- `readonly attribute DOMString encoding` → `pub fn encoding() []const u8`
+- `readonly attribute boolean fatal` → `pub fn getFatal() bool` (or just expose field)
+
+**Rationale:** WebIDL methods map directly to JavaScript methods, which use camelCase without prefixes.
+
+### Type Usage: WebIDL/Infra Types
+
+**ALWAYS use WebIDL/Infra type aliases instead of raw Zig primitives:**
+
+```zig
+❌ WRONG (raw Zig types):
+pub const TextDecoder = webidl.interface(struct {
+    fatal: bool,                   // ❌ Use webidl.boolean
+    reusable_buf: ?[]u16,          // ❌ Use webidl.DOMString
+    encoding_name: []const u8,     // ❌ For WebIDL string, consider DOMString
+});
+
+✅ CORRECT (WebIDL types):
+pub const TextDecoder = webidl.interface(struct {
+    fatal: webidl.boolean,                 // ✅ WebIDL type
+    reusableBuffer: ?webidl.DOMString,     // ✅ WebIDL type (UTF-16)
+    encodingName: []const u8,              // ✅ OK for internal UTF-8
+});
+```
+
+**Available WebIDL types** (from `src/webidl/root.zig`):
+
+```zig
+// Primitives
+webidl.boolean           // bool
+webidl.long              // i32
+webidl.@"unsigned long"  // u32
+webidl.double            // f64
+webidl.any               // JSValue
+
+// Strings
+webidl.DOMString         // UTF-16 string (infra.String)
+webidl.USVString         // UTF-16 scalar values (infra.String)
+webidl.ByteString        // Latin-1 string ([]const u8)
+
+// Complex types
+webidl.JSValue           // JavaScript value union
+webidl.JSObject          // JavaScript object
+webidl.Nullable(T)       // T or null
+webidl.Sequence(T)       // Array of T
+webidl.Record(K, V)      // Map/dictionary
+```
+
+**When to use WebIDL types vs Zig primitives:**
+
+| Use Case | Type Choice | Example |
+|----------|-------------|---------|
+| **WebIDL interface parameter** | WebIDL type | `fn decode(input: webidl.ByteString)` |
+| **WebIDL interface attribute** | WebIDL type | `fatal: webidl.boolean` |
+| **WebIDL interface return** | WebIDL type | `fn encode() !webidl.ByteString` |
+| **Internal implementation** | Zig primitive OK | `var index: usize = 0;` |
+| **Spec algorithm variable** | Zig primitive OK | `var found: bool = false;` |
+
+**Key principle:** Use WebIDL types at API boundaries, Zig primitives for internal implementation.
+
+### Complete Example
+
+**BEFORE (incorrect naming):**
+```zig
+// ❌ webidl/src/encoding/text_decoder.zig
+
+const TextDecoderOptions = @import("text_decoder_options.zig").TextDecoderOptions;
+
+pub const TextDecoder = webidl.interface(struct {
+    encoding_name: []const u8,     // ❌ snake_case
+    do_not_flush: bool,             // ❌ snake_case, raw type
+    ignore_bom: bool,               // ❌ snake_case, raw type
+    
+    pub fn get_encoding(self: *const TextDecoder) []const u8 {  // ❌ get_ prefix
+        return self.encoding_name;
+    }
+    
+    pub fn call_decode(                 // ❌ call_ prefix
+        self: *TextDecoder,
+        input: []const u8,
+        options: TextDecodeOptions,
+    ) ![]const u8 {
+        // ...
+    }
+});
+```
+
+**AFTER (correct naming):**
+```zig
+// ✅ webidl/src/encoding/TextDecoder.zig
+
+const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+
+pub const TextDecoder = webidl.interface(struct {
+    encodingName: []const u8,              // ✅ camelCase
+    doNotFlush: webidl.boolean,            // ✅ camelCase + WebIDL type
+    ignoreBOM: webidl.boolean,             // ✅ camelCase + WebIDL type
+    
+    pub fn encoding(self: *const TextDecoder) []const u8 {  // ✅ No prefix
+        return self.encodingName;
+    }
+    
+    pub fn decode(                          // ✅ No prefix
+        self: *TextDecoder,
+        input: []const u8,
+        options: TextDecodeOptions,
+    ) ![]const u8 {
+        // ...
+    }
+});
+```
+
+### Import Statements
+
+**Update imports to use PascalCase filenames:**
+
+```zig
+❌ WRONG:
+const TextDecoder = @import("text_decoder.zig").TextDecoder;
+const TextDecoderOptions = @import("text_decoder_options.zig").TextDecoderOptions;
+
+✅ CORRECT:
+const TextDecoder = @import("TextDecoder.zig").TextDecoder;
+const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+```
+
+### Checklist for WebIDL Interfaces
+
+When creating or modifying WebIDL interfaces:
+
+- [ ] **File named in PascalCase** (e.g., `TextDecoder.zig`, not `text_decoder.zig`)
+- [ ] **All attributes use camelCase** (e.g., `encodingName`, not `encoding_name`)
+- [ ] **All methods use camelCase without prefixes** (e.g., `decode()`, not `call_decode()`)
+- [ ] **Use WebIDL type aliases** (e.g., `webidl.boolean`, not `bool` for attributes)
+- [ ] **Use WebIDL string types appropriately** (e.g., `webidl.DOMString` for UTF-16)
+- [ ] **Import statements use PascalCase filenames**
+- [ ] **Tests updated to use camelCase method names**
+- [ ] **Documentation uses correct naming**
+
+---
+
 # Quick Reference
 
 ## Workflow Summary

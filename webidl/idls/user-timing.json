@@ -1,1 +1,294 @@
-{"definitions":[{"dictionary":{"name":"PerformanceMarkOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"detail","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"startTime","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"PerformanceMeasureOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"detail","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"start","type":{"union":["DOMString",{"identifier":"DOMHighResTimeStamp"}]},"required":false,"default_value":null,"extended_attributes":[]},{"name":"duration","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"end","type":{"union":["DOMString",{"identifier":"DOMHighResTimeStamp"}]},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Performance","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"mark","return_type":{"identifier":"PerformanceMark"},"arguments":[{"name":"markName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"markOptions","type":{"identifier":"PerformanceMarkOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clearMarks","return_type":"undefined","arguments":[{"name":"markName","type":"DOMString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"measure","return_type":{"identifier":"PerformanceMeasure"},"arguments":[{"name":"measureName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"startOrMeasureOptions","type":{"union":["DOMString",{"identifier":"PerformanceMeasureOptions"}]},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]},{"name":"endMark","type":"DOMString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clearMeasures","return_type":"undefined","arguments":[{"name":"measureName","type":"DOMString","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"PerformanceMark","inherits":"PerformanceEntry","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"constructor":{"arguments":[{"name":"markName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"markOptions","type":{"identifier":"PerformanceMarkOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"detail","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"PerformanceMeasure","inherits":"PerformanceEntry","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"detail","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "PerformanceMarkOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "detail",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "startTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "PerformanceMeasureOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "detail",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "start",
+            "type": {
+              "union": [
+                "DOMString",
+                {
+                  "identifier": "DOMHighResTimeStamp"
+                }
+              ]
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "duration",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "end",
+            "type": {
+              "union": [
+                "DOMString",
+                {
+                  "identifier": "DOMHighResTimeStamp"
+                }
+              ]
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Performance",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "mark",
+              "return_type": {
+                "identifier": "PerformanceMark"
+              },
+              "arguments": [
+                {
+                  "name": "markName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "markOptions",
+                  "type": {
+                    "identifier": "PerformanceMarkOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clearMarks",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "markName",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "measure",
+              "return_type": {
+                "identifier": "PerformanceMeasure"
+              },
+              "arguments": [
+                {
+                  "name": "measureName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "startOrMeasureOptions",
+                  "type": {
+                    "union": [
+                      "DOMString",
+                      {
+                        "identifier": "PerformanceMeasureOptions"
+                      }
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                },
+                {
+                  "name": "endMark",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clearMeasures",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "measureName",
+                  "type": "DOMString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PerformanceMark",
+        "inherits": "PerformanceEntry",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "markName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "markOptions",
+                  "type": {
+                    "identifier": "PerformanceMarkOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "detail",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "PerformanceMeasure",
+        "inherits": "PerformanceEntry",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "detail",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,171 @@
-{"definitions":[{"dictionary":{"name":"VideoFrameCallbackMetadata","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"presentationTime","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"expectedDisplayTime","type":{"identifier":"DOMHighResTimeStamp"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"width","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"height","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"mediaTime","type":"double","required":true,"default_value":null,"extended_attributes":[]},{"name":"presentedFrames","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"processingDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"captureTime","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"receiveTime","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"rtpTimestamp","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"callback":{"name":"VideoFrameRequestCallback","return_type":"undefined","arguments":[{"name":"now","type":{"identifier":"DOMHighResTimeStamp"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"metadata","type":{"identifier":"VideoFrameCallbackMetadata"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"interface":{"name":"HTMLVideoElement","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"requestVideoFrameCallback","return_type":"unsigned long","arguments":[{"name":"callback","type":{"identifier":"VideoFrameRequestCallback"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"cancelVideoFrameCallback","return_type":"undefined","arguments":[{"name":"handle","type":"unsigned long","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "VideoFrameCallbackMetadata",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "presentationTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedDisplayTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "width",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mediaTime",
+            "type": "double",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "presentedFrames",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "processingDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "captureTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "receiveTime",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rtpTimestamp",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "VideoFrameRequestCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "now",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "metadata",
+            "type": {
+              "identifier": "VideoFrameCallbackMetadata"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "HTMLVideoElement",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "requestVideoFrameCallback",
+              "return_type": "unsigned long",
+              "arguments": [
+                {
+                  "name": "callback",
+                  "type": {
+                    "identifier": "VideoFrameRequestCallback"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "cancelVideoFrameCallback",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "handle",
+                  "type": "unsigned long",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

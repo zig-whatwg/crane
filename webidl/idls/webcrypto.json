@@ -1,1 +1,1691 @@
-{"definitions":[{"interface_mixin":{"name":"WindowOrWorkerGlobalScope","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"crypto","type":{"identifier":"Crypto"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"Crypto","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"subtle","type":{"identifier":"SubtleCrypto"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null}]}},{"operation":{"name":"getRandomValues","return_type":{"identifier":"ArrayBufferView"},"arguments":[{"name":"array","type":{"identifier":"ArrayBufferView"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"randomUUID","return_type":"DOMString","arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"SecureContext","value":null}]}}]}},{"typedef":{"name":"AlgorithmIdentifier","type":{"union":["object","DOMString"]},"extended_attributes":[]}},{"typedef":{"name":"HashAlgorithmIdentifier","type":{"identifier":"AlgorithmIdentifier"},"extended_attributes":[]}},{"dictionary":{"name":"Algorithm","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"KeyAlgorithm","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"name","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"KeyType","values":["public","private","secret"],"extended_attributes":[]}},{"enum":{"name":"KeyUsage","values":["encrypt","decrypt","sign","verify","deriveKey","deriveBits","wrapKey","unwrapKey"],"extended_attributes":[]}},{"interface":{"name":"CryptoKey","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"Serializable","value":null}],"members":[{"attribute":{"name":"type","type":{"identifier":"KeyType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"extractable","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"algorithm","type":"object","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"usages","type":"object","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"KeyFormat","values":["raw","spki","pkcs8","jwk"],"extended_attributes":[]}},{"interface":{"name":"SubtleCrypto","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"encrypt","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"decrypt","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"sign","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"verify","return_type":{"promise":"boolean"},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"signature","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"digest","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"data","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"generateKey","return_type":{"promise":{"union":[{"identifier":"CryptoKey"},{"identifier":"CryptoKeyPair"}]}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"extractable","type":"boolean","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyUsages","type":{"sequence":{"identifier":"KeyUsage"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deriveKey","return_type":{"promise":{"identifier":"CryptoKey"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"baseKey","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"derivedKeyType","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"extractable","type":"boolean","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyUsages","type":{"sequence":{"identifier":"KeyUsage"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deriveBits","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"baseKey","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"length","type":{"nullable":"unsigned long"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"importKey","return_type":{"promise":{"identifier":"CryptoKey"}},"arguments":[{"name":"format","type":{"identifier":"KeyFormat"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyData","type":{"union":[{"identifier":"BufferSource"},{"identifier":"JsonWebKey"}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"algorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"extractable","type":"boolean","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyUsages","type":{"sequence":{"identifier":"KeyUsage"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"exportKey","return_type":{"promise":{"union":[{"identifier":"ArrayBuffer"},{"identifier":"JsonWebKey"}]}},"arguments":[{"name":"format","type":{"identifier":"KeyFormat"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"wrapKey","return_type":{"promise":{"identifier":"ArrayBuffer"}},"arguments":[{"name":"format","type":{"identifier":"KeyFormat"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"key","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"wrappingKey","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"wrapAlgorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"unwrapKey","return_type":{"promise":{"identifier":"CryptoKey"}},"arguments":[{"name":"format","type":{"identifier":"KeyFormat"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"wrappedKey","type":{"identifier":"BufferSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"unwrappingKey","type":{"identifier":"CryptoKey"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"unwrapAlgorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"unwrappedKeyAlgorithm","type":{"identifier":"AlgorithmIdentifier"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"extractable","type":"boolean","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"keyUsages","type":{"sequence":{"identifier":"KeyUsage"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RsaOtherPrimesInfo","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"r","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"d","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"t","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"JsonWebKey","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"kty","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"use","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"key_ops","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"alg","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"ext","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"crv","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"x","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"y","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"d","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"n","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"e","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"p","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"q","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dp","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dq","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"qi","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"oth","type":{"sequence":{"identifier":"RsaOtherPrimesInfo"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"k","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"BigInteger","type":{"identifier":"Uint8Array"},"extended_attributes":[]}},{"dictionary":{"name":"CryptoKeyPair","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"publicKey","type":{"identifier":"CryptoKey"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"privateKey","type":{"identifier":"CryptoKey"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaKeyGenParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"modulusLength","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"publicExponent","type":{"identifier":"BigInteger"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaHashedKeyGenParams","inherits":"RsaKeyGenParams","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaKeyAlgorithm","inherits":"KeyAlgorithm","partial":false,"extended_attributes":[],"members":[{"name":"modulusLength","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"publicExponent","type":{"identifier":"BigInteger"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaHashedKeyAlgorithm","inherits":"RsaKeyAlgorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"KeyAlgorithm"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaHashedImportParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaPssParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"saltLength","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RsaOaepParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"label","type":{"identifier":"BufferSource"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"EcdsaParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"NamedCurve","type":"DOMString","extended_attributes":[]}},{"dictionary":{"name":"EcKeyGenParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"namedCurve","type":{"identifier":"NamedCurve"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"EcKeyAlgorithm","inherits":"KeyAlgorithm","partial":false,"extended_attributes":[],"members":[{"name":"namedCurve","type":{"identifier":"NamedCurve"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"EcKeyImportParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"namedCurve","type":{"identifier":"NamedCurve"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"EcdhKeyDeriveParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"public","type":{"identifier":"CryptoKey"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesCtrParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"counter","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"length","type":"octet","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesKeyAlgorithm","inherits":"KeyAlgorithm","partial":false,"extended_attributes":[],"members":[{"name":"length","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesKeyGenParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"length","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesDerivedKeyParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"length","type":"unsigned short","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesCbcParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"iv","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"AesGcmParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"iv","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"additionalData","type":{"identifier":"BufferSource"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"tagLength","type":"octet","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"dictionary":{"name":"HmacImportParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"length","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"dictionary":{"name":"HmacKeyAlgorithm","inherits":"KeyAlgorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"KeyAlgorithm"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"length","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"HmacKeyGenParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"length","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[{"name":"EnforceRange","value":null}]}]}},{"dictionary":{"name":"HkdfParams","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"salt","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"info","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"Pbkdf2Params","inherits":"Algorithm","partial":false,"extended_attributes":[],"members":[{"name":"salt","type":{"identifier":"BufferSource"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"iterations","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"hash","type":{"identifier":"HashAlgorithmIdentifier"},"required":true,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "WindowOrWorkerGlobalScope",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "crypto",
+              "type": {
+                "identifier": "Crypto"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Crypto",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "subtle",
+              "type": {
+                "identifier": "SubtleCrypto"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getRandomValues",
+              "return_type": {
+                "identifier": "ArrayBufferView"
+              },
+              "arguments": [
+                {
+                  "name": "array",
+                  "type": {
+                    "identifier": "ArrayBufferView"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "randomUUID",
+              "return_type": "DOMString",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "AlgorithmIdentifier",
+        "type": {
+          "union": [
+            "object",
+            "DOMString"
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "HashAlgorithmIdentifier",
+        "type": {
+          "identifier": "AlgorithmIdentifier"
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "Algorithm",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "KeyAlgorithm",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "name",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "KeyType",
+        "values": [
+          "public",
+          "private",
+          "secret"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "KeyUsage",
+        "values": [
+          "encrypt",
+          "decrypt",
+          "sign",
+          "verify",
+          "deriveKey",
+          "deriveBits",
+          "wrapKey",
+          "unwrapKey"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CryptoKey",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "Serializable",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "KeyType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "extractable",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "algorithm",
+              "type": "object",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "usages",
+              "type": "object",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "KeyFormat",
+        "values": [
+          "raw",
+          "spki",
+          "pkcs8",
+          "jwk"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "SubtleCrypto",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "encrypt",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "decrypt",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "sign",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "verify",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "signature",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "digest",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "generateKey",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "CryptoKey"
+                    },
+                    {
+                      "identifier": "CryptoKeyPair"
+                    }
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "extractable",
+                  "type": "boolean",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyUsages",
+                  "type": {
+                    "sequence": {
+                      "identifier": "KeyUsage"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deriveKey",
+              "return_type": {
+                "promise": {
+                  "identifier": "CryptoKey"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "baseKey",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "derivedKeyType",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "extractable",
+                  "type": "boolean",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyUsages",
+                  "type": {
+                    "sequence": {
+                      "identifier": "KeyUsage"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deriveBits",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "baseKey",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "length",
+                  "type": {
+                    "nullable": "unsigned long"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "importKey",
+              "return_type": {
+                "promise": {
+                  "identifier": "CryptoKey"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "format",
+                  "type": {
+                    "identifier": "KeyFormat"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyData",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "BufferSource"
+                      },
+                      {
+                        "identifier": "JsonWebKey"
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "algorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "extractable",
+                  "type": "boolean",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyUsages",
+                  "type": {
+                    "sequence": {
+                      "identifier": "KeyUsage"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "exportKey",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "ArrayBuffer"
+                    },
+                    {
+                      "identifier": "JsonWebKey"
+                    }
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "format",
+                  "type": {
+                    "identifier": "KeyFormat"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "wrapKey",
+              "return_type": {
+                "promise": {
+                  "identifier": "ArrayBuffer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "format",
+                  "type": {
+                    "identifier": "KeyFormat"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "key",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "wrappingKey",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "wrapAlgorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "unwrapKey",
+              "return_type": {
+                "promise": {
+                  "identifier": "CryptoKey"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "format",
+                  "type": {
+                    "identifier": "KeyFormat"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "wrappedKey",
+                  "type": {
+                    "identifier": "BufferSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "unwrappingKey",
+                  "type": {
+                    "identifier": "CryptoKey"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "unwrapAlgorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "unwrappedKeyAlgorithm",
+                  "type": {
+                    "identifier": "AlgorithmIdentifier"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "extractable",
+                  "type": "boolean",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "keyUsages",
+                  "type": {
+                    "sequence": {
+                      "identifier": "KeyUsage"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaOtherPrimesInfo",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "r",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "d",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "t",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "JsonWebKey",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "kty",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "use",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "key_ops",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "alg",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "ext",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "crv",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "x",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "y",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "d",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "n",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "e",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "p",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "q",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dp",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dq",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qi",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "oth",
+            "type": {
+              "sequence": {
+                "identifier": "RsaOtherPrimesInfo"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "k",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "BigInteger",
+        "type": {
+          "identifier": "Uint8Array"
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CryptoKeyPair",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "publicKey",
+            "type": {
+              "identifier": "CryptoKey"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "privateKey",
+            "type": {
+              "identifier": "CryptoKey"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaKeyGenParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "modulusLength",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "publicExponent",
+            "type": {
+              "identifier": "BigInteger"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaHashedKeyGenParams",
+        "inherits": "RsaKeyGenParams",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaKeyAlgorithm",
+        "inherits": "KeyAlgorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "modulusLength",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "publicExponent",
+            "type": {
+              "identifier": "BigInteger"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaHashedKeyAlgorithm",
+        "inherits": "RsaKeyAlgorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "KeyAlgorithm"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaHashedImportParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaPssParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "saltLength",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RsaOaepParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "label",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EcdsaParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "NamedCurve",
+        "type": "DOMString",
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EcKeyGenParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "namedCurve",
+            "type": {
+              "identifier": "NamedCurve"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EcKeyAlgorithm",
+        "inherits": "KeyAlgorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "namedCurve",
+            "type": {
+              "identifier": "NamedCurve"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EcKeyImportParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "namedCurve",
+            "type": {
+              "identifier": "NamedCurve"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "EcdhKeyDeriveParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "public",
+            "type": {
+              "identifier": "CryptoKey"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesCtrParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "counter",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": "octet",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesKeyAlgorithm",
+        "inherits": "KeyAlgorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "length",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesKeyGenParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "length",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesDerivedKeyParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "length",
+            "type": "unsigned short",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesCbcParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "iv",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "AesGcmParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "iv",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "additionalData",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "tagLength",
+            "type": "octet",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HmacImportParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HmacKeyAlgorithm",
+        "inherits": "KeyAlgorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "KeyAlgorithm"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HmacKeyGenParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": [
+              {
+                "name": "EnforceRange",
+                "value": null
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "HkdfParams",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "salt",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "info",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "Pbkdf2Params",
+        "inherits": "Algorithm",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "salt",
+            "type": {
+              "identifier": "BufferSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iterations",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hash",
+            "type": {
+              "identifier": "HashAlgorithmIdentifier"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

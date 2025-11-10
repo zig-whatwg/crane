@@ -1,1 +1,430 @@
-{"definitions":[{"dictionary":{"name":"ClipboardEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"clipboardData","type":{"nullable":{"identifier":"DataTransfer"}},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ClipboardEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"ClipboardEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"clipboardData","type":{"nullable":{"identifier":"DataTransfer"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"clipboard","type":{"identifier":"Clipboard"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"SameObject","value":null}]}}]}},{"typedef":{"name":"ClipboardItemData","type":{"promise":{"union":["DOMString",{"identifier":"Blob"}]}},"extended_attributes":[]}},{"interface":{"name":"ClipboardItem","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"items","type":{"record":{"key":"DOMString","value":{"identifier":"ClipboardItemData"}}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"ClipboardItemOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"presentationStyle","type":{"identifier":"PresentationStyle"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"types","type":{"frozen_array":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getType","return_type":{"promise":{"identifier":"Blob"}},"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"supports","return_type":"boolean","arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"PresentationStyle","values":["unspecified","inline","attachment"],"extended_attributes":[]}},{"dictionary":{"name":"ClipboardItemOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"presentationStyle","type":{"identifier":"PresentationStyle"},"required":false,"default_value":"unspecified","extended_attributes":[]}]}},{"typedef":{"name":"ClipboardItems","type":{"sequence":{"identifier":"ClipboardItem"}},"extended_attributes":[]}},{"interface":{"name":"Clipboard","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"operation":{"name":"read","return_type":{"promise":{"identifier":"ClipboardItems"}},"arguments":[{"name":"formats","type":{"identifier":"ClipboardUnsanitizedFormats"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"readText","return_type":{"promise":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"write","return_type":{"promise":"undefined"},"arguments":[{"name":"data","type":{"identifier":"ClipboardItems"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"writeText","return_type":{"promise":"undefined"},"arguments":[{"name":"data","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"ClipboardUnsanitizedFormats","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"unsanitized","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"ClipboardPermissionDescriptor","inherits":"PermissionDescriptor","partial":false,"extended_attributes":[],"members":[{"name":"allowWithoutGesture","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "ClipboardEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "clipboardData",
+            "type": {
+              "nullable": {
+                "identifier": "DataTransfer"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ClipboardEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "ClipboardEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clipboardData",
+              "type": {
+                "nullable": {
+                  "identifier": "DataTransfer"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "clipboard",
+              "type": {
+                "identifier": "Clipboard"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                },
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ClipboardItemData",
+        "type": {
+          "promise": {
+            "union": [
+              "DOMString",
+              {
+                "identifier": "Blob"
+              }
+            ]
+          }
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "ClipboardItem",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "items",
+                  "type": {
+                    "record": {
+                      "key": "DOMString",
+                      "value": {
+                        "identifier": "ClipboardItemData"
+                      }
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ClipboardItemOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "presentationStyle",
+              "type": {
+                "identifier": "PresentationStyle"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "types",
+              "type": {
+                "frozen_array": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getType",
+              "return_type": {
+                "promise": {
+                  "identifier": "Blob"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "supports",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "PresentationStyle",
+        "values": [
+          "unspecified",
+          "inline",
+          "attachment"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ClipboardItemOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "presentationStyle",
+            "type": {
+              "identifier": "PresentationStyle"
+            },
+            "required": false,
+            "default_value": "unspecified",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "ClipboardItems",
+        "type": {
+          "sequence": {
+            "identifier": "ClipboardItem"
+          }
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Clipboard",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "read",
+              "return_type": {
+                "promise": {
+                  "identifier": "ClipboardItems"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "formats",
+                  "type": {
+                    "identifier": "ClipboardUnsanitizedFormats"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "readText",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "write",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": {
+                    "identifier": "ClipboardItems"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "writeText",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "data",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ClipboardUnsanitizedFormats",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "unsanitized",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ClipboardPermissionDescriptor",
+        "inherits": "PermissionDescriptor",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "allowWithoutGesture",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

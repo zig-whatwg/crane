@@ -1,1 +1,1377 @@
-{"definitions":[{"interface":{"name":"Summarizer","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"create","return_type":{"promise":{"identifier":"Summarizer"}},"arguments":[{"name":"options","type":{"identifier":"SummarizerCreateOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"availability","return_type":{"promise":{"identifier":"Availability"}},"arguments":[{"name":"options","type":{"identifier":"SummarizerCreateCoreOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"summarize","return_type":{"promise":"DOMString"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SummarizerSummarizeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"summarizeStreaming","return_type":{"identifier":"ReadableStream"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SummarizerSummarizeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"sharedContext","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"SummarizerType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"format","type":{"identifier":"SummarizerFormat"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"length","type":{"identifier":"SummarizerLength"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedInputLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedContextLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outputLanguage","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"measureInputUsage","return_type":{"promise":"double"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"SummarizerSummarizeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"inputQuota","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Summarizer","mixin":"DestroyableModel"}},{"dictionary":{"name":"SummarizerCreateCoreOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"type","type":{"identifier":"SummarizerType"},"required":false,"default_value":"key-points","extended_attributes":[]},{"name":"format","type":{"identifier":"SummarizerFormat"},"required":false,"default_value":"markdown","extended_attributes":[]},{"name":"length","type":{"identifier":"SummarizerLength"},"required":false,"default_value":"short","extended_attributes":[]},{"name":"expectedInputLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"expectedContextLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"outputLanguage","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SummarizerCreateOptions","inherits":"SummarizerCreateCoreOptions","partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"monitor","type":{"identifier":"CreateMonitorCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sharedContext","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"SummarizerSummarizeOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"context","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"SummarizerType","values":["tldr","teaser","key-points","headline"],"extended_attributes":[]}},{"enum":{"name":"SummarizerFormat","values":["plain-text","markdown"],"extended_attributes":[]}},{"enum":{"name":"SummarizerLength","values":["short","medium","long"],"extended_attributes":[]}},{"interface":{"name":"Writer","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"create","return_type":{"promise":{"identifier":"Writer"}},"arguments":[{"name":"options","type":{"identifier":"WriterCreateOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"availability","return_type":{"promise":{"identifier":"Availability"}},"arguments":[{"name":"options","type":{"identifier":"WriterCreateCoreOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"write","return_type":{"promise":"DOMString"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"WriterWriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"writeStreaming","return_type":{"identifier":"ReadableStream"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"WriterWriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"sharedContext","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tone","type":{"identifier":"WriterTone"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"format","type":{"identifier":"WriterFormat"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"length","type":{"identifier":"WriterLength"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedInputLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedContextLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outputLanguage","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"measureInputUsage","return_type":{"promise":"double"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"WriterWriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"inputQuota","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Writer","mixin":"DestroyableModel"}},{"dictionary":{"name":"WriterCreateCoreOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"tone","type":{"identifier":"WriterTone"},"required":false,"default_value":"neutral","extended_attributes":[]},{"name":"format","type":{"identifier":"WriterFormat"},"required":false,"default_value":"markdown","extended_attributes":[]},{"name":"length","type":{"identifier":"WriterLength"},"required":false,"default_value":"short","extended_attributes":[]},{"name":"expectedInputLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"expectedContextLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"outputLanguage","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"WriterCreateOptions","inherits":"WriterCreateCoreOptions","partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"monitor","type":{"identifier":"CreateMonitorCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sharedContext","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"WriterWriteOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"context","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"WriterTone","values":["formal","neutral","casual"],"extended_attributes":[]}},{"enum":{"name":"WriterFormat","values":["plain-text","markdown"],"extended_attributes":[]}},{"enum":{"name":"WriterLength","values":["short","medium","long"],"extended_attributes":[]}},{"interface":{"name":"Rewriter","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"create","return_type":{"promise":{"identifier":"Rewriter"}},"arguments":[{"name":"options","type":{"identifier":"RewriterCreateOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"availability","return_type":{"promise":{"identifier":"Availability"}},"arguments":[{"name":"options","type":{"identifier":"RewriterCreateCoreOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":true,"special":null,"extended_attributes":[]}},{"operation":{"name":"rewrite","return_type":{"promise":"DOMString"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RewriterRewriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"rewriteStreaming","return_type":{"identifier":"ReadableStream"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RewriterRewriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"sharedContext","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"tone","type":{"identifier":"RewriterTone"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"format","type":{"identifier":"RewriterFormat"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"length","type":{"identifier":"RewriterLength"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedInputLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"expectedContextLanguages","type":{"nullable":{"frozen_array":"DOMString"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"outputLanguage","type":{"nullable":"DOMString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"measureInputUsage","return_type":{"promise":"double"},"arguments":[{"name":"input","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RewriterRewriteOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"inputQuota","type":"unrestricted double","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"Rewriter","mixin":"DestroyableModel"}},{"dictionary":{"name":"RewriterCreateCoreOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"tone","type":{"identifier":"RewriterTone"},"required":false,"default_value":"as-is","extended_attributes":[]},{"name":"format","type":{"identifier":"RewriterFormat"},"required":false,"default_value":"as-is","extended_attributes":[]},{"name":"length","type":{"identifier":"RewriterLength"},"required":false,"default_value":"as-is","extended_attributes":[]},{"name":"expectedInputLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"expectedContextLanguages","type":{"sequence":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"outputLanguage","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RewriterCreateOptions","inherits":"RewriterCreateCoreOptions","partial":false,"extended_attributes":[],"members":[{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"monitor","type":{"identifier":"CreateMonitorCallback"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"sharedContext","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RewriterRewriteOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"context","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"signal","type":{"identifier":"AbortSignal"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RewriterTone","values":["as-is","more-formal","more-casual"],"extended_attributes":[]}},{"enum":{"name":"RewriterFormat","values":["as-is","plain-text","markdown"],"extended_attributes":[]}},{"enum":{"name":"RewriterLength","values":["as-is","shorter","longer"],"extended_attributes":[]}},{"interface":{"name":"CreateMonitor","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"ondownloadprogress","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"callback":{"name":"CreateMonitorCallback","return_type":"undefined","arguments":[{"name":"monitor","type":{"identifier":"CreateMonitor"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"enum":{"name":"Availability","values":["unavailable","downloadable","downloading","available"],"extended_attributes":[]}},{"interface_mixin":{"name":"DestroyableModel","partial":false,"extended_attributes":[],"members":[{"operation":{"name":"destroy","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "Summarizer",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "create",
+              "return_type": {
+                "promise": {
+                  "identifier": "Summarizer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SummarizerCreateOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "availability",
+              "return_type": {
+                "promise": {
+                  "identifier": "Availability"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SummarizerCreateCoreOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "summarize",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SummarizerSummarizeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "summarizeStreaming",
+              "return_type": {
+                "identifier": "ReadableStream"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SummarizerSummarizeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sharedContext",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "SummarizerType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "format",
+              "type": {
+                "identifier": "SummarizerFormat"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": {
+                "identifier": "SummarizerLength"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedInputLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedContextLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outputLanguage",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "measureInputUsage",
+              "return_type": {
+                "promise": "double"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "SummarizerSummarizeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inputQuota",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Summarizer",
+        "mixin": "DestroyableModel"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SummarizerCreateCoreOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "type",
+            "type": {
+              "identifier": "SummarizerType"
+            },
+            "required": false,
+            "default_value": "key-points",
+            "extended_attributes": []
+          },
+          {
+            "name": "format",
+            "type": {
+              "identifier": "SummarizerFormat"
+            },
+            "required": false,
+            "default_value": "markdown",
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": {
+              "identifier": "SummarizerLength"
+            },
+            "required": false,
+            "default_value": "short",
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedInputLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedContextLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "outputLanguage",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SummarizerCreateOptions",
+        "inherits": "SummarizerCreateCoreOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "monitor",
+            "type": {
+              "identifier": "CreateMonitorCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sharedContext",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SummarizerSummarizeOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "context",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SummarizerType",
+        "values": [
+          "tldr",
+          "teaser",
+          "key-points",
+          "headline"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "SummarizerFormat",
+        "values": [
+          "plain-text",
+          "markdown"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "SummarizerLength",
+        "values": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Writer",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "create",
+              "return_type": {
+                "promise": {
+                  "identifier": "Writer"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WriterCreateOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "availability",
+              "return_type": {
+                "promise": {
+                  "identifier": "Availability"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WriterCreateCoreOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "write",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WriterWriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "writeStreaming",
+              "return_type": {
+                "identifier": "ReadableStream"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WriterWriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sharedContext",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tone",
+              "type": {
+                "identifier": "WriterTone"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "format",
+              "type": {
+                "identifier": "WriterFormat"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": {
+                "identifier": "WriterLength"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedInputLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedContextLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outputLanguage",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "measureInputUsage",
+              "return_type": {
+                "promise": "double"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "WriterWriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inputQuota",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Writer",
+        "mixin": "DestroyableModel"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "WriterCreateCoreOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "tone",
+            "type": {
+              "identifier": "WriterTone"
+            },
+            "required": false,
+            "default_value": "neutral",
+            "extended_attributes": []
+          },
+          {
+            "name": "format",
+            "type": {
+              "identifier": "WriterFormat"
+            },
+            "required": false,
+            "default_value": "markdown",
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": {
+              "identifier": "WriterLength"
+            },
+            "required": false,
+            "default_value": "short",
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedInputLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedContextLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "outputLanguage",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "WriterCreateOptions",
+        "inherits": "WriterCreateCoreOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "monitor",
+            "type": {
+              "identifier": "CreateMonitorCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sharedContext",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "WriterWriteOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "context",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "WriterTone",
+        "values": [
+          "formal",
+          "neutral",
+          "casual"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "WriterFormat",
+        "values": [
+          "plain-text",
+          "markdown"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "WriterLength",
+        "values": [
+          "short",
+          "medium",
+          "long"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Rewriter",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "create",
+              "return_type": {
+                "promise": {
+                  "identifier": "Rewriter"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RewriterCreateOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "availability",
+              "return_type": {
+                "promise": {
+                  "identifier": "Availability"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RewriterCreateCoreOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": true,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "rewrite",
+              "return_type": {
+                "promise": "DOMString"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RewriterRewriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "rewriteStreaming",
+              "return_type": {
+                "identifier": "ReadableStream"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RewriterRewriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "sharedContext",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "tone",
+              "type": {
+                "identifier": "RewriterTone"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "format",
+              "type": {
+                "identifier": "RewriterFormat"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "length",
+              "type": {
+                "identifier": "RewriterLength"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedInputLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "expectedContextLanguages",
+              "type": {
+                "nullable": {
+                  "frozen_array": "DOMString"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "outputLanguage",
+              "type": {
+                "nullable": "DOMString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "measureInputUsage",
+              "return_type": {
+                "promise": "double"
+              },
+              "arguments": [
+                {
+                  "name": "input",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RewriterRewriteOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "inputQuota",
+              "type": "unrestricted double",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Rewriter",
+        "mixin": "DestroyableModel"
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RewriterCreateCoreOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "tone",
+            "type": {
+              "identifier": "RewriterTone"
+            },
+            "required": false,
+            "default_value": "as-is",
+            "extended_attributes": []
+          },
+          {
+            "name": "format",
+            "type": {
+              "identifier": "RewriterFormat"
+            },
+            "required": false,
+            "default_value": "as-is",
+            "extended_attributes": []
+          },
+          {
+            "name": "length",
+            "type": {
+              "identifier": "RewriterLength"
+            },
+            "required": false,
+            "default_value": "as-is",
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedInputLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "expectedContextLanguages",
+            "type": {
+              "sequence": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "outputLanguage",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RewriterCreateOptions",
+        "inherits": "RewriterCreateCoreOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "monitor",
+            "type": {
+              "identifier": "CreateMonitorCallback"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sharedContext",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RewriterRewriteOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "context",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "signal",
+            "type": {
+              "identifier": "AbortSignal"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RewriterTone",
+        "values": [
+          "as-is",
+          "more-formal",
+          "more-casual"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RewriterFormat",
+        "values": [
+          "as-is",
+          "plain-text",
+          "markdown"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RewriterLength",
+        "values": [
+          "as-is",
+          "shorter",
+          "longer"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CreateMonitor",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "ondownloadprogress",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "callback": {
+        "name": "CreateMonitorCallback",
+        "return_type": "undefined",
+        "arguments": [
+          {
+            "name": "monitor",
+            "type": {
+              "identifier": "CreateMonitor"
+            },
+            "optional": false,
+            "variadic": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "Availability",
+        "values": [
+          "unavailable",
+          "downloadable",
+          "downloading",
+          "available"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "DestroyableModel",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "destroy",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

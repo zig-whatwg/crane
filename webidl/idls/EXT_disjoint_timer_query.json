@@ -1,1 +1,350 @@
-{"definitions":[{"typedef":{"name":"GLuint64EXT","type":"unsigned long long","extended_attributes":[]}},{"interface":{"name":"WebGLTimerQueryEXT","inherits":"WebGLObject","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[]}},{"interface":{"name":"EXT_disjoint_timer_query","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"QUERY_COUNTER_BITS_EXT","type":{"identifier":"GLenum"},"value":{"value":34916,"lexeme":"0x8864"}}},{"const":{"name":"CURRENT_QUERY_EXT","type":{"identifier":"GLenum"},"value":{"value":34917,"lexeme":"0x8865"}}},{"const":{"name":"QUERY_RESULT_EXT","type":{"identifier":"GLenum"},"value":{"value":34918,"lexeme":"0x8866"}}},{"const":{"name":"QUERY_RESULT_AVAILABLE_EXT","type":{"identifier":"GLenum"},"value":{"value":34919,"lexeme":"0x8867"}}},{"const":{"name":"TIME_ELAPSED_EXT","type":{"identifier":"GLenum"},"value":{"value":35007,"lexeme":"0x88BF"}}},{"const":{"name":"TIMESTAMP_EXT","type":{"identifier":"GLenum"},"value":{"value":36392,"lexeme":"0x8E28"}}},{"const":{"name":"GPU_DISJOINT_EXT","type":{"identifier":"GLenum"},"value":{"value":36795,"lexeme":"0x8FBB"}}},{"operation":{"name":"createQueryEXT","return_type":{"identifier":"WebGLTimerQueryEXT"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"deleteQueryEXT","return_type":"undefined","arguments":[{"name":"query","type":{"nullable":{"identifier":"WebGLTimerQueryEXT"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"isQueryEXT","return_type":"boolean","arguments":[{"name":"query","type":{"nullable":{"identifier":"WebGLTimerQueryEXT"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"WebGLHandlesContextLoss","value":null}]}},{"operation":{"name":"beginQueryEXT","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"query","type":{"identifier":"WebGLTimerQueryEXT"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"endQueryEXT","return_type":"undefined","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"queryCounterEXT","return_type":"undefined","arguments":[{"name":"query","type":{"identifier":"WebGLTimerQueryEXT"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getQueryEXT","return_type":"any","arguments":[{"name":"target","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"pname","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getQueryObjectEXT","return_type":"any","arguments":[{"name":"query","type":{"identifier":"WebGLTimerQueryEXT"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"pname","type":{"identifier":"GLenum"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "typedef": {
+        "name": "GLuint64EXT",
+        "type": "unsigned long long",
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "WebGLTimerQueryEXT",
+        "inherits": "WebGLObject",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "EXT_disjoint_timer_query",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "QUERY_COUNTER_BITS_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34916,
+                "lexeme": "0x8864"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "CURRENT_QUERY_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34917,
+                "lexeme": "0x8865"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "QUERY_RESULT_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34918,
+                "lexeme": "0x8866"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "QUERY_RESULT_AVAILABLE_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34919,
+                "lexeme": "0x8867"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "TIME_ELAPSED_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35007,
+                "lexeme": "0x88BF"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "TIMESTAMP_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36392,
+                "lexeme": "0x8E28"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "GPU_DISJOINT_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 36795,
+                "lexeme": "0x8FBB"
+              }
+            }
+          },
+          {
+            "operation": {
+              "name": "createQueryEXT",
+              "return_type": {
+                "identifier": "WebGLTimerQueryEXT"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "deleteQueryEXT",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLTimerQueryEXT"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "isQueryEXT",
+              "return_type": "boolean",
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": {
+                    "nullable": {
+                      "identifier": "WebGLTimerQueryEXT"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "WebGLHandlesContextLoss",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "beginQueryEXT",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "query",
+                  "type": {
+                    "identifier": "WebGLTimerQueryEXT"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "endQueryEXT",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "queryCounterEXT",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": {
+                    "identifier": "WebGLTimerQueryEXT"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getQueryEXT",
+              "return_type": "any",
+              "arguments": [
+                {
+                  "name": "target",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "pname",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getQueryObjectEXT",
+              "return_type": "any",
+              "arguments": [
+                {
+                  "name": "query",
+                  "type": {
+                    "identifier": "WebGLTimerQueryEXT"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "pname",
+                  "type": {
+                    "identifier": "GLenum"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

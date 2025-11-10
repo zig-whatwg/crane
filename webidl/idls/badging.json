@@ -1,1 +1,63 @@
-{"definitions":[{"interface_mixin":{"name":"NavigatorBadge","partial":false,"extended_attributes":[{"name":"SecureContext","value":null}],"members":[{"operation":{"name":"setAppBadge","return_type":{"promise":"undefined"},"arguments":[{"name":"contents","type":"unsigned long long","optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"clearAppBadge","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"includes":{"interface":"Navigator","mixin":"NavigatorBadge"}},{"includes":{"interface":"WorkerNavigator","mixin":"NavigatorBadge"}}]}
+{
+  "definitions": [
+    {
+      "interface_mixin": {
+        "name": "NavigatorBadge",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "setAppBadge",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "contents",
+                  "type": "unsigned long long",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "clearAppBadge",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "Navigator",
+        "mixin": "NavigatorBadge"
+      }
+    },
+    {
+      "includes": {
+        "interface": "WorkerNavigator",
+        "mixin": "NavigatorBadge"
+      }
+    }
+  ]
+}

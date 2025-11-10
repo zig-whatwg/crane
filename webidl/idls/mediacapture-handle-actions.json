@@ -1,1 +1,169 @@
-{"definitions":[{"interface":{"name":"MediaDevices","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"setSupportedCaptureActions","return_type":"undefined","arguments":[{"name":"actions","type":{"sequence":"DOMString"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"oncaptureaction","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"CaptureAction","values":["next","previous","first","last"],"extended_attributes":[]}},{"interface":{"name":"CaptureActionEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"init","type":{"identifier":"CaptureActionEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"action","type":{"identifier":"CaptureAction"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"CaptureActionEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[{"name":"action","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"MediaStreamTrack","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"getSupportedCaptureActions","return_type":{"sequence":"DOMString"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"sendCaptureAction","return_type":{"promise":"undefined"},"arguments":[{"name":"action","type":{"identifier":"CaptureAction"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "MediaDevices",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "setSupportedCaptureActions",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "actions",
+                  "type": {
+                    "sequence": "DOMString"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oncaptureaction",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "CaptureAction",
+        "values": [
+          "next",
+          "previous",
+          "first",
+          "last"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CaptureActionEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "init",
+                  "type": {
+                    "identifier": "CaptureActionEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "action",
+              "type": {
+                "identifier": "CaptureAction"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CaptureActionEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "action",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "MediaStreamTrack",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "getSupportedCaptureActions",
+              "return_type": {
+                "sequence": "DOMString"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "sendCaptureAction",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "action",
+                  "type": {
+                    "identifier": "CaptureAction"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

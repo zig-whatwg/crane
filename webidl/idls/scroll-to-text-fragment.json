@@ -1,1 +1,48 @@
-{"definitions":[{"interface":{"name":"FragmentDirective","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[]}},{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"fragmentDirective","type":{"identifier":"FragmentDirective"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "FragmentDirective",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "fragmentDirective",
+              "type": {
+                "identifier": "FragmentDirective"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,1 +1,29 @@
-{"definitions":[{"namespace":{"name":"CSS","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"elementSources","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "namespace": {
+        "name": "CSS",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "elementSources",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

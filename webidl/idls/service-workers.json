@@ -1,1 +1,2517 @@
-{"definitions":[{"interface":{"name":"ServiceWorker","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"scriptURL","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"state","type":{"identifier":"ServiceWorkerState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":"object"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"StructuredSerializeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"onstatechange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"includes":{"interface":"ServiceWorker","mixin":"AbstractWorker"}},{"enum":{"name":"ServiceWorkerState","values":["parsed","installing","installed","activating","activated","redundant"],"extended_attributes":[]}},{"interface":{"name":"ServiceWorkerRegistration","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"installing","type":{"nullable":{"identifier":"ServiceWorker"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"waiting","type":{"nullable":{"identifier":"ServiceWorker"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"active","type":{"nullable":{"identifier":"ServiceWorker"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"navigationPreload","type":{"identifier":"NavigationPreloadManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"scope","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"updateViaCache","type":{"identifier":"ServiceWorkerUpdateViaCache"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"update","return_type":{"promise":{"identifier":"ServiceWorkerRegistration"}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"unregister","return_type":{"promise":"boolean"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"attribute":{"name":"onupdatefound","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"enum":{"name":"ServiceWorkerUpdateViaCache","values":["imports","all","none"],"extended_attributes":[]}},{"interface":{"name":"Navigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"serviceWorker","type":{"identifier":"ServiceWorkerContainer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"WorkerNavigator","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"serviceWorker","type":{"identifier":"ServiceWorkerContainer"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"ServiceWorkerContainer","inherits":"EventTarget","partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"attribute":{"name":"controller","type":{"nullable":{"identifier":"ServiceWorker"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ready","type":{"promise":{"identifier":"ServiceWorkerRegistration"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"register","return_type":{"promise":{"identifier":"ServiceWorkerRegistration"}},"arguments":[{"name":"scriptURL","type":{"union":[{"identifier":"TrustedScriptURL"},"USVString"]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"RegistrationOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getRegistration","return_type":{"promise":{"union":[{"identifier":"ServiceWorkerRegistration"},"undefined"]}},"arguments":[{"name":"clientURL","type":"USVString","optional":true,"variadic":false,"default_value":"","extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"getRegistrations","return_type":{"promise":{"frozen_array":{"identifier":"ServiceWorkerRegistration"}}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"startMessages","return_type":"undefined","arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"attribute":{"name":"oncontrollerchange","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessageerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"RegistrationOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"scope","type":"USVString","required":false,"default_value":null,"extended_attributes":[]},{"name":"type","type":{"identifier":"WorkerType"},"required":false,"default_value":"classic","extended_attributes":[]},{"name":"updateViaCache","type":{"identifier":"ServiceWorkerUpdateViaCache"},"required":false,"default_value":"imports","extended_attributes":[]}]}},{"interface":{"name":"NavigationPreloadManager","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"enable","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"disable","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"setHeaderValue","return_type":{"promise":"undefined"},"arguments":[{"name":"value","type":"ByteString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"getState","return_type":{"promise":{"identifier":"NavigationPreloadState"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"NavigationPreloadState","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"enabled","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"headerValue","type":"ByteString","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ServiceWorkerGlobalScope","inherits":"WorkerGlobalScope","partial":false,"extended_attributes":[{"name":"Global","value":{"identifier_list":["Worker","ServiceWorker"]}},{"name":"Exposed","value":{"identifier":"ServiceWorker"}},{"name":"SecureContext","value":null}],"members":[{"attribute":{"name":"clients","type":{"identifier":"Clients"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"registration","type":{"identifier":"ServiceWorkerRegistration"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"serviceWorker","type":{"identifier":"ServiceWorker"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"skipWaiting","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"attribute":{"name":"oninstall","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onactivate","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onfetch","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessage","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"onmessageerror","type":{"identifier":"EventHandler"},"readonly":false,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"interface":{"name":"Client","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"attribute":{"name":"url","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"frameType","type":{"identifier":"FrameType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"id","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"type","type":{"identifier":"ClientType"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"transfer","type":{"sequence":"object"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"postMessage","return_type":"undefined","arguments":[{"name":"message","type":"any","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"StructuredSerializeOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"WindowClient","inherits":"Client","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"attribute":{"name":"visibilityState","type":{"identifier":"VisibilityState"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"focused","type":"boolean","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"ancestorOrigins","type":{"frozen_array":"USVString"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"operation":{"name":"focus","return_type":{"promise":{"identifier":"WindowClient"}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"navigate","return_type":{"promise":{"nullable":{"identifier":"WindowClient"}}},"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"enum":{"name":"FrameType","values":["auxiliary","top-level","nested","none"],"extended_attributes":[]}},{"interface":{"name":"Clients","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"operation":{"name":"get","return_type":{"promise":{"union":[{"identifier":"Client"},"undefined"]}},"arguments":[{"name":"id","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"matchAll","return_type":{"promise":{"frozen_array":{"identifier":"Client"}}},"arguments":[{"name":"options","type":{"identifier":"ClientQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"openWindow","return_type":{"promise":{"nullable":{"identifier":"WindowClient"}}},"arguments":[{"name":"url","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"claim","return_type":{"promise":"undefined"},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"dictionary":{"name":"ClientQueryOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"includeUncontrolled","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"type","type":{"identifier":"ClientType"},"required":false,"default_value":"window","extended_attributes":[]}]}},{"enum":{"name":"ClientType","values":["window","worker","sharedworker","all"],"extended_attributes":[]}},{"interface":{"name":"ExtendableEvent","inherits":"Event","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"ExtendableEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"waitUntil","return_type":"undefined","arguments":[{"name":"f","type":{"promise":"any"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"ExtendableEventInit","inherits":"EventInit","partial":false,"extended_attributes":[],"members":[]}},{"interface":{"name":"InstallEvent","inherits":"ExtendableEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"ExtendableEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"operation":{"name":"addRoutes","return_type":{"promise":"undefined"},"arguments":[{"name":"rules","type":{"union":[{"identifier":"RouterRule"},{"sequence":{"identifier":"RouterRule"}}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"RouterRule","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"condition","type":{"identifier":"RouterCondition"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"source","type":{"identifier":"RouterSource"},"required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RouterCondition","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"urlPattern","type":{"identifier":"URLPatternCompatible"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"requestMethod","type":"ByteString","required":false,"default_value":null,"extended_attributes":[]},{"name":"requestMode","type":{"identifier":"RequestMode"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"requestDestination","type":{"identifier":"RequestDestination"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"runningStatus","type":{"identifier":"RunningStatus"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"_or","type":{"sequence":{"identifier":"RouterCondition"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"not","type":{"identifier":"RouterCondition"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"typedef":{"name":"RouterSource","type":{"union":[{"identifier":"RouterSourceDict"},{"identifier":"RouterSourceEnum"}]},"extended_attributes":[]}},{"dictionary":{"name":"RouterSourceDict","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"cacheName","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RunningStatus","values":["running","not-running"],"extended_attributes":[]}},{"enum":{"name":"RouterSourceEnum","values":["cache","fetch-event","network","race-network-and-fetch-handler"],"extended_attributes":[]}},{"interface":{"name":"FetchEvent","inherits":"ExtendableEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"FetchEventInit"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"request","type":{"identifier":"Request"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"preloadResponse","type":{"promise":"any"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"clientId","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"resultingClientId","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"replacesClientId","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"handled","type":{"promise":"undefined"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"respondWith","return_type":"undefined","arguments":[{"name":"r","type":{"promise":{"identifier":"Response"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"FetchEventInit","inherits":"ExtendableEventInit","partial":false,"extended_attributes":[],"members":[{"name":"request","type":{"identifier":"Request"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"preloadResponse","type":{"promise":"any"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"clientId","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"resultingClientId","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"replacesClientId","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"handled","type":{"promise":"undefined"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"ExtendableMessageEvent","inherits":"ExtendableEvent","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"ServiceWorker"}}],"members":[{"constructor":{"arguments":[{"name":"type","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"eventInitDict","type":{"identifier":"ExtendableMessageEventInit"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"data","type":"any","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"origin","type":"USVString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"lastEventId","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"source","type":{"nullable":{"union":[{"identifier":"Client"},{"identifier":"ServiceWorker"},{"identifier":"MessagePort"}]}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}},{"attribute":{"name":"ports","type":{"frozen_array":{"identifier":"MessagePort"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}},{"dictionary":{"name":"ExtendableMessageEventInit","inherits":"ExtendableEventInit","partial":false,"extended_attributes":[],"members":[{"name":"data","type":"any","required":false,"default_value":null,"extended_attributes":[]},{"name":"origin","type":"USVString","required":false,"default_value":"","extended_attributes":[]},{"name":"lastEventId","type":"DOMString","required":false,"default_value":"","extended_attributes":[]},{"name":"source","type":{"nullable":{"union":[{"identifier":"Client"},{"identifier":"ServiceWorker"},{"identifier":"MessagePort"}]}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"ports","type":{"sequence":{"identifier":"MessagePort"}},"required":false,"default_value":[],"extended_attributes":[]}]}},{"interface_mixin":{"name":"WindowOrWorkerGlobalScope","partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"caches","type":{"identifier":"CacheStorage"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"SameObject","value":null}]}}]}},{"interface":{"name":"Cache","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"match","return_type":{"promise":{"union":[{"identifier":"Response"},"undefined"]}},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CacheQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"matchAll","return_type":{"promise":{"frozen_array":{"identifier":"Response"}}},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CacheQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"add","return_type":{"promise":"undefined"},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"addAll","return_type":{"promise":"undefined"},"arguments":[{"name":"requests","type":{"sequence":{"identifier":"RequestInfo"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"put","return_type":{"promise":"undefined"},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"response","type":{"identifier":"Response"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"delete","return_type":{"promise":"boolean"},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CacheQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"keys","return_type":{"promise":{"frozen_array":{"identifier":"Request"}}},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CacheQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"dictionary":{"name":"CacheQueryOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"ignoreSearch","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"ignoreMethod","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"ignoreVary","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"CacheStorage","inherits":null,"partial":false,"extended_attributes":[{"name":"SecureContext","value":null},{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}}],"members":[{"operation":{"name":"match","return_type":{"promise":{"union":[{"identifier":"Response"},"undefined"]}},"arguments":[{"name":"request","type":{"identifier":"RequestInfo"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"MultiCacheQueryOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"has","return_type":{"promise":"boolean"},"arguments":[{"name":"cacheName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"open","return_type":{"promise":{"identifier":"Cache"}},"arguments":[{"name":"cacheName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"delete","return_type":{"promise":"boolean"},"arguments":[{"name":"cacheName","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}},{"operation":{"name":"keys","return_type":{"promise":{"sequence":"DOMString"}},"arguments":[],"static":false,"special":null,"extended_attributes":[{"name":"NewObject","value":null}]}}]}},{"dictionary":{"name":"MultiCacheQueryOptions","inherits":"CacheQueryOptions","partial":false,"extended_attributes":[],"members":[{"name":"cacheName","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "ServiceWorker",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "scriptURL",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "state",
+              "type": {
+                "identifier": "ServiceWorkerState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "transfer",
+                  "type": {
+                    "sequence": "object"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "StructuredSerializeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onstatechange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "includes": {
+        "interface": "ServiceWorker",
+        "mixin": "AbstractWorker"
+      }
+    },
+    {
+      "enum": {
+        "name": "ServiceWorkerState",
+        "values": [
+          "parsed",
+          "installing",
+          "installed",
+          "activating",
+          "activated",
+          "redundant"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "ServiceWorkerRegistration",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "installing",
+              "type": {
+                "nullable": {
+                  "identifier": "ServiceWorker"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "waiting",
+              "type": {
+                "nullable": {
+                  "identifier": "ServiceWorker"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "active",
+              "type": {
+                "nullable": {
+                  "identifier": "ServiceWorker"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "navigationPreload",
+              "type": {
+                "identifier": "NavigationPreloadManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "scope",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "updateViaCache",
+              "type": {
+                "identifier": "ServiceWorkerUpdateViaCache"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "update",
+              "return_type": {
+                "promise": {
+                  "identifier": "ServiceWorkerRegistration"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "unregister",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "onupdatefound",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "ServiceWorkerUpdateViaCache",
+        "values": [
+          "imports",
+          "all",
+          "none"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Navigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "serviceWorker",
+              "type": {
+                "identifier": "ServiceWorkerContainer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                },
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WorkerNavigator",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "serviceWorker",
+              "type": {
+                "identifier": "ServiceWorkerContainer"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                },
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ServiceWorkerContainer",
+        "inherits": "EventTarget",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "controller",
+              "type": {
+                "nullable": {
+                  "identifier": "ServiceWorker"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ready",
+              "type": {
+                "promise": {
+                  "identifier": "ServiceWorkerRegistration"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "register",
+              "return_type": {
+                "promise": {
+                  "identifier": "ServiceWorkerRegistration"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "scriptURL",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "TrustedScriptURL"
+                      },
+                      "USVString"
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "RegistrationOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getRegistration",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "ServiceWorkerRegistration"
+                    },
+                    "undefined"
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "clientURL",
+                  "type": "USVString",
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": "",
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "getRegistrations",
+              "return_type": {
+                "promise": {
+                  "frozen_array": {
+                    "identifier": "ServiceWorkerRegistration"
+                  }
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "startMessages",
+              "return_type": "undefined",
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "oncontrollerchange",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessageerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RegistrationOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "scope",
+            "type": "USVString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": {
+              "identifier": "WorkerType"
+            },
+            "required": false,
+            "default_value": "classic",
+            "extended_attributes": []
+          },
+          {
+            "name": "updateViaCache",
+            "type": {
+              "identifier": "ServiceWorkerUpdateViaCache"
+            },
+            "required": false,
+            "default_value": "imports",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "NavigationPreloadManager",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "enable",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "disable",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "setHeaderValue",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "value",
+                  "type": "ByteString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getState",
+              "return_type": {
+                "promise": {
+                  "identifier": "NavigationPreloadState"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "NavigationPreloadState",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "enabled",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "headerValue",
+            "type": "ByteString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ServiceWorkerGlobalScope",
+        "inherits": "WorkerGlobalScope",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Global",
+            "value": {
+              "identifier_list": [
+                "Worker",
+                "ServiceWorker"
+              ]
+            }
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          },
+          {
+            "name": "SecureContext",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "clients",
+              "type": {
+                "identifier": "Clients"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "registration",
+              "type": {
+                "identifier": "ServiceWorkerRegistration"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "serviceWorker",
+              "type": {
+                "identifier": "ServiceWorker"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "skipWaiting",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "oninstall",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onactivate",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onfetch",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessage",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "onmessageerror",
+              "type": {
+                "identifier": "EventHandler"
+              },
+              "readonly": false,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Client",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "url",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "frameType",
+              "type": {
+                "identifier": "FrameType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "id",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "type",
+              "type": {
+                "identifier": "ClientType"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "transfer",
+                  "type": {
+                    "sequence": "object"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "postMessage",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "message",
+                  "type": "any",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "StructuredSerializeOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "WindowClient",
+        "inherits": "Client",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "visibilityState",
+              "type": {
+                "identifier": "VisibilityState"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "focused",
+              "type": "boolean",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "ancestorOrigins",
+              "type": {
+                "frozen_array": "USVString"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "focus",
+              "return_type": {
+                "promise": {
+                  "identifier": "WindowClient"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "navigate",
+              "return_type": {
+                "promise": {
+                  "nullable": {
+                    "identifier": "WindowClient"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "FrameType",
+        "values": [
+          "auxiliary",
+          "top-level",
+          "nested",
+          "none"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "Clients",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "get",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "Client"
+                    },
+                    "undefined"
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "id",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "matchAll",
+              "return_type": {
+                "promise": {
+                  "frozen_array": {
+                    "identifier": "Client"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "ClientQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "openWindow",
+              "return_type": {
+                "promise": {
+                  "nullable": {
+                    "identifier": "WindowClient"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "claim",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ClientQueryOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "includeUncontrolled",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "type",
+            "type": {
+              "identifier": "ClientType"
+            },
+            "required": false,
+            "default_value": "window",
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "ClientType",
+        "values": [
+          "window",
+          "worker",
+          "sharedworker",
+          "all"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "ExtendableEvent",
+        "inherits": "Event",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "ExtendableEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "waitUntil",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "f",
+                  "type": {
+                    "promise": "any"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ExtendableEventInit",
+        "inherits": "EventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "InstallEvent",
+        "inherits": "ExtendableEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "ExtendableEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "addRoutes",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "rules",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "RouterRule"
+                      },
+                      {
+                        "sequence": {
+                          "identifier": "RouterRule"
+                        }
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RouterRule",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "condition",
+            "type": {
+              "identifier": "RouterCondition"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "source",
+            "type": {
+              "identifier": "RouterSource"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RouterCondition",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "urlPattern",
+            "type": {
+              "identifier": "URLPatternCompatible"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requestMethod",
+            "type": "ByteString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requestMode",
+            "type": {
+              "identifier": "RequestMode"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requestDestination",
+            "type": {
+              "identifier": "RequestDestination"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "runningStatus",
+            "type": {
+              "identifier": "RunningStatus"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "_or",
+            "type": {
+              "sequence": {
+                "identifier": "RouterCondition"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "not",
+            "type": {
+              "identifier": "RouterCondition"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "typedef": {
+        "name": "RouterSource",
+        "type": {
+          "union": [
+            {
+              "identifier": "RouterSourceDict"
+            },
+            {
+              "identifier": "RouterSourceEnum"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RouterSourceDict",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "cacheName",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RunningStatus",
+        "values": [
+          "running",
+          "not-running"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "enum": {
+        "name": "RouterSourceEnum",
+        "values": [
+          "cache",
+          "fetch-event",
+          "network",
+          "race-network-and-fetch-handler"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "interface": {
+        "name": "FetchEvent",
+        "inherits": "ExtendableEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "FetchEventInit"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "request",
+              "type": {
+                "identifier": "Request"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "preloadResponse",
+              "type": {
+                "promise": "any"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "clientId",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "resultingClientId",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "replacesClientId",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "handled",
+              "type": {
+                "promise": "undefined"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "respondWith",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "r",
+                  "type": {
+                    "promise": {
+                      "identifier": "Response"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "FetchEventInit",
+        "inherits": "ExtendableEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "request",
+            "type": {
+              "identifier": "Request"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "preloadResponse",
+            "type": {
+              "promise": "any"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clientId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "resultingClientId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "replacesClientId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "handled",
+            "type": {
+              "promise": "undefined"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "ExtendableMessageEvent",
+        "inherits": "ExtendableEvent",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "ServiceWorker"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "type",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "eventInitDict",
+                  "type": {
+                    "identifier": "ExtendableMessageEventInit"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "data",
+              "type": "any",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "origin",
+              "type": "USVString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "lastEventId",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "source",
+              "type": {
+                "nullable": {
+                  "union": [
+                    {
+                      "identifier": "Client"
+                    },
+                    {
+                      "identifier": "ServiceWorker"
+                    },
+                    {
+                      "identifier": "MessagePort"
+                    }
+                  ]
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "attribute": {
+              "name": "ports",
+              "type": {
+                "frozen_array": {
+                  "identifier": "MessagePort"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "ExtendableMessageEventInit",
+        "inherits": "ExtendableEventInit",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "data",
+            "type": "any",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "origin",
+            "type": "USVString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "lastEventId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": "",
+            "extended_attributes": []
+          },
+          {
+            "name": "source",
+            "type": {
+              "nullable": {
+                "union": [
+                  {
+                    "identifier": "Client"
+                  },
+                  {
+                    "identifier": "ServiceWorker"
+                  },
+                  {
+                    "identifier": "MessagePort"
+                  }
+                ]
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "ports",
+            "type": {
+              "sequence": {
+                "identifier": "MessagePort"
+              }
+            },
+            "required": false,
+            "default_value": [],
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface_mixin": {
+        "name": "WindowOrWorkerGlobalScope",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "caches",
+              "type": {
+                "identifier": "CacheStorage"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SecureContext",
+                  "value": null
+                },
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Cache",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "match",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "Response"
+                    },
+                    "undefined"
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CacheQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "matchAll",
+              "return_type": {
+                "promise": {
+                  "frozen_array": {
+                    "identifier": "Response"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CacheQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "add",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "addAll",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "requests",
+                  "type": {
+                    "sequence": {
+                      "identifier": "RequestInfo"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "put",
+              "return_type": {
+                "promise": "undefined"
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "response",
+                  "type": {
+                    "identifier": "Response"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CacheQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "keys",
+              "return_type": {
+                "promise": {
+                  "frozen_array": {
+                    "identifier": "Request"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CacheQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CacheQueryOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "ignoreSearch",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "ignoreMethod",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "ignoreVary",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CacheStorage",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "SecureContext",
+            "value": null
+          },
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          }
+        ],
+        "members": [
+          {
+            "operation": {
+              "name": "match",
+              "return_type": {
+                "promise": {
+                  "union": [
+                    {
+                      "identifier": "Response"
+                    },
+                    "undefined"
+                  ]
+                }
+              },
+              "arguments": [
+                {
+                  "name": "request",
+                  "type": {
+                    "identifier": "RequestInfo"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "MultiCacheQueryOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "has",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "cacheName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "open",
+              "return_type": {
+                "promise": {
+                  "identifier": "Cache"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "cacheName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "delete",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [
+                {
+                  "name": "cacheName",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          },
+          {
+            "operation": {
+              "name": "keys",
+              "return_type": {
+                "promise": {
+                  "sequence": "DOMString"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": [
+                {
+                  "name": "NewObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "MultiCacheQueryOptions",
+        "inherits": "CacheQueryOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "cacheName",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -52,29 +52,29 @@
 //!     defer console.deinit();
 //!
 //!     // Logging
-//!     console.call_log(&.{.{ .string = "Hello, world!" }});
-//!     console.call_error(&.{.{ .string = "Error message" }});
+//!     console.log(&.{.{ .string = "Hello, world!" }});
+//!     console.error(&.{.{ .string = "Error message" }});
 //!
 //!     // Format specifiers
-//!     console.call_log(&.{
+//!     console.log(&.{
 //!         .{ .string = "Value: %d, Name: %s" },
 //!         .{ .number = 42 },
 //!         .{ .string = "example" },
 //!     });
 //!
 //!     // Timing
-//!     console.call_time("operation");
+//!     console.time("operation");
 //!     // ... do work ...
-//!     console.call_timeEnd("operation");
+//!     console.timeEnd("operation");
 //!
 //!     // Counting
-//!     console.call_count("clicks");
-//!     console.call_count("clicks");
+//!     console.count("clicks");
+//!     console.count("clicks");
 //!
 //!     // Grouping
-//!     console.call_group(&.{.{ .string = "Group 1" }});
-//!     console.call_log(&.{.{ .string = "Indented message" }});
-//!     console.call_groupEnd();
+//!     console.group(&.{.{ .string = "Group 1" }});
+//!     console.log(&.{.{ .string = "Indented message" }});
+//!     console.groupEnd();
 //! }
 //! ```
 //!
@@ -91,8 +91,8 @@
 //! console.runtime = &runtime.interface;
 //!
 //! // Now console can use ECMAScript type conversions
-//! console.call_log(&.{my_js_object});
-//! console.call_table(my_js_array, null);
+//! console.log(&.{my_js_object});
+//! console.table(my_js_array, null);
 //! ```
 //!
 //! ## Custom Output
@@ -104,7 +104,7 @@
 //! }
 //!
 //! var console = try Console.init(allocator);
-//! console.print_fn = myCustomPrinter;
+//! console.printFn = myCustomPrinter;
 //! ```
 //!
 //! # Memory Management
@@ -154,7 +154,7 @@ pub const PrintFn = *const fn (message: []const u8) void;
 
 /// Default printer function that outputs to stderr.
 ///
-/// This is the default value for Console.print_fn.
+/// This is the default value for Console.printFn.
 /// Outputs messages using std.debug.print with newline.
 fn defaultPrinter(message: []const u8) void {
     std.debug.print("{s}\n", .{message});
@@ -198,37 +198,37 @@ fn defaultPrinter(message: []const u8) void {
 /// # State Management
 ///
 /// Each console namespace object has associated state:
-/// - **count_map**: Map of labels to counts (for count/countReset)
-/// - **timer_table**: Map of labels to start times (for time/timeLog/timeEnd)
-/// - **group_stack**: Stack of active groups (for group/groupCollapsed/groupEnd)
-/// - **message_buffer**: Circular buffer of messages (for history/DevTools)
-/// - **label_pool**: Interned strings for performance
+/// - **countMap**: Map of labels to counts (for count/countReset)
+/// - **timerTable**: Map of labels to start times (for time/timeLog/timeEnd)
+/// - **groupStack**: Stack of active groups (for group/groupCollapsed/groupEnd)
+/// - **messageBuffer**: Circular buffer of messages (for history/DevTools)
+/// - **labelPool**: Interned strings for performance
 ///
 /// # Fields
 ///
 /// - `allocator`: Memory allocator for all operations
 /// - `enabled`: Fast disable path (set to false to disable all output)
-/// - `print_fn`: Optional custom printer function (default: stderr)
+/// - `printFn`: Optional custom printer function (default: stderr)
 /// - `runtime`: Optional JavaScript runtime for ECMAScript type conversions
-/// - `count_map`: Label→count mapping for count() operations
-/// - `timer_table`: Label→timestamp mapping for timing operations
-/// - `group_stack`: Stack of active groups for indentation
-/// - `message_buffer`: Circular buffer for message history (default 1000)
-/// - `label_pool`: Interned label strings for performance
+/// - `countMap`: Label→count mapping for count() operations
+/// - `timerTable`: Label→timestamp mapping for timing operations
+/// - `groupStack`: Stack of active groups for indentation
+/// - `messageBuffer`: Circular buffer for message history (default 1000)
+/// - `labelPool`: Interned label strings for performance
 pub const Console = webidl.namespace(struct {
     allocator: Allocator,
     enabled: bool,
-    print_fn: ?PrintFn,
+    printFn: ?PrintFn,
     runtime: ?*types.RuntimeInterface,
-    count_map: infra.OrderedMap(webidl.DOMString, u32),
-    timer_table: infra.OrderedMap(webidl.DOMString, infra.Moment),
-    group_stack: infra.Stack(Group),
-    message_buffer: CircularMessageBuffer,
-    label_pool: std.StringHashMap(void),
+    countMap: infra.OrderedMap(webidl.DOMString, u32),
+    timerTable: infra.OrderedMap(webidl.DOMString, infra.Moment),
+    groupStack: infra.Stack(Group),
+    messageBuffer: CircularMessageBuffer,
+    labelPool: std.StringHashMap(void),
 
     /// Initialize a new Console namespace object with default buffer size (1000 messages).
     ///
-    /// All state (count_map, timer_table, group_stack, message_buffer, label_pool) is initialized empty.
+    /// All state (countMap, timerTable, groupStack, messageBuffer, labelPool) is initialized empty.
     /// Console is enabled by default with immediate output to stderr.
     ///
     /// # Example
@@ -255,41 +255,41 @@ pub const Console = webidl.namespace(struct {
     /// defer console.deinit();
     /// ```
     pub fn initWithBufferSize(allocator: Allocator, buffer_size: usize) !Console {
-        var label_pool = std.StringHashMap(void).init(allocator);
+        var labelPool = std.StringHashMap(void).init(allocator);
         errdefer {
-            var it = label_pool.keyIterator();
+            var it = labelPool.keyIterator();
             while (it.next()) |key| {
                 allocator.free(key.*);
             }
-            label_pool.deinit();
+            labelPool.deinit();
         }
 
         // Pre-intern the "default" label (used 90% of the time)
         const default_label = try allocator.dupe(u8, "default");
         errdefer allocator.free(default_label);
-        try label_pool.put(default_label, {});
+        try labelPool.put(default_label, {});
 
-        var message_buffer = try CircularMessageBuffer.init(allocator, buffer_size);
-        errdefer message_buffer.deinit();
+        var messageBuffer = try CircularMessageBuffer.init(allocator, buffer_size);
+        errdefer messageBuffer.deinit();
 
         return .{
             .allocator = allocator,
             .enabled = true, // Browser optimization: fast disabled path
-            .print_fn = defaultPrinter,
+            .printFn = defaultPrinter,
             .runtime = null, // No runtime by default (standalone mode)
-            .count_map = infra.OrderedMap(webidl.DOMString, u32).init(allocator),
-            .timer_table = infra.OrderedMap(webidl.DOMString, infra.Moment).init(allocator),
-            .group_stack = infra.Stack(Group).init(allocator),
-            .message_buffer = message_buffer,
-            .label_pool = label_pool,
+            .countMap = infra.OrderedMap(webidl.DOMString, u32).init(allocator),
+            .timerTable = infra.OrderedMap(webidl.DOMString, infra.Moment).init(allocator),
+            .groupStack = infra.Stack(Group).init(allocator),
+            .messageBuffer = messageBuffer,
+            .labelPool = labelPool,
         };
     }
 
     /// Clean up all resources.
     ///
     /// This must be called when the Console object is no longer needed.
-    /// Frees all allocated memory for count_map, timer_table, group_stack,
-    /// message_buffer, and label_pool.
+    /// Frees all allocated memory for countMap, timerTable, groupStack,
+    /// messageBuffer, and labelPool.
     ///
     /// # Example
     /// ```zig
@@ -297,24 +297,24 @@ pub const Console = webidl.namespace(struct {
     /// defer console.deinit(); // Always clean up
     /// ```
     pub fn deinit(self: *Console) void {
-        self.count_map.deinit();
-        self.timer_table.deinit();
+        self.countMap.deinit();
+        self.timerTable.deinit();
 
         // Free all groups with labels
-        while (self.group_stack.pop()) |group| {
+        while (self.groupStack.pop()) |group| {
             var g = group;
             g.deinit(self.allocator);
         }
-        self.group_stack.deinit();
+        self.groupStack.deinit();
 
-        self.message_buffer.deinit();
+        self.messageBuffer.deinit();
 
         // Free all interned label strings
-        var it = self.label_pool.keyIterator();
+        var it = self.labelPool.keyIterator();
         while (it.next()) |key| {
             self.allocator.free(key.*);
         }
-        self.label_pool.deinit();
+        self.labelPool.deinit();
     }
 
     /// Intern a label string (UTF-8) for reuse.
@@ -331,7 +331,7 @@ pub const Console = webidl.namespace(struct {
     /// - "default" label: pre-interned in init(), zero-cost
     fn internLabel(self: *Console, label_utf8: []const u8) ![]const u8 {
         // Check if already in pool
-        if (self.label_pool.getKey(label_utf8)) |existing| {
+        if (self.labelPool.getKey(label_utf8)) |existing| {
             return existing;
         }
 
@@ -339,15 +339,15 @@ pub const Console = webidl.namespace(struct {
         const owned = try self.allocator.dupe(u8, label_utf8);
         errdefer self.allocator.free(owned);
 
-        try self.label_pool.put(owned, {});
+        try self.labelPool.put(owned, {});
 
         // Return the owned string from the pool
-        return self.label_pool.getKey(owned).?;
+        return self.labelPool.getKey(owned).?;
     }
 
     /// assert(condition, ...data)
     /// Spec: https://console.spec.whatwg.org/#assert
-    pub fn call_assert(self: *Console, condition: bool, data: []const webidl.JSValue) void {
+    pub fn assert(self: *Console, condition: bool, data: []const webidl.JSValue) void {
         // 1. If condition is true, return.
         if (condition) return;
 
@@ -414,38 +414,38 @@ pub const Console = webidl.namespace(struct {
 
     /// clear()
     /// Spec: https://console.spec.whatwg.org/#clear
-    pub fn call_clear(self: *Console) void {
+    pub fn clear(self: *Console) void {
         // Step 1: Empty the appropriate group stack
-        while (self.group_stack.pop()) |group| {
+        while (self.groupStack.pop()) |group| {
             var g = group;
             g.deinit(self.allocator);
         }
 
         // Step 2: If possible for the environment, clear the console
-        self.message_buffer.clear();
+        self.messageBuffer.clear();
     }
 
     /// debug(...data)
     /// Spec: https://console.spec.whatwg.org/#debug
-    pub fn call_debug(self: *Console, data: []const webidl.JSValue) void {
+    pub fn debug(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.debug, data);
     }
 
     /// error(...data)
     /// Spec: https://console.spec.whatwg.org/#error
-    pub fn call_error(self: *Console, data: []const webidl.JSValue) void {
+    pub fn error(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.error_level, data);
     }
 
     /// info(...data)
     /// Spec: https://console.spec.whatwg.org/#info
-    pub fn call_info(self: *Console, data: []const webidl.JSValue) void {
+    pub fn info(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.info, data);
     }
 
     /// log(...data)
     /// Spec: https://console.spec.whatwg.org/#log
-    pub fn call_log(self: *Console, data: []const webidl.JSValue) void {
+    pub fn log(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.log, data);
     }
 
@@ -456,7 +456,7 @@ pub const Console = webidl.namespace(struct {
     /// Falls back to logging if it can't be parsed as tabular.
     ///
     /// IDL: undefined table(optional any tabularData, optional sequence<DOMString> properties);
-    pub fn call_table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
+    pub fn table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
         if (tabular_data == null) {
             self.logger(.log, &.{});
             return;
@@ -710,7 +710,7 @@ pub const Console = webidl.namespace(struct {
     /// Get the call stack and log it with optional formatted data as label.
     ///
     /// IDL: undefined trace(any... data);
-    pub fn call_trace(self: *Console, data: []const webidl.JSValue) void {
+    pub fn trace(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let trace be some implementation-defined stack trace representation
         // Step 2: Optionally, let formattedData be the result of Formatter(data)
         // Step 3: Incorporate formattedData as a label for trace
@@ -772,13 +772,13 @@ pub const Console = webidl.namespace(struct {
 
     /// warn(...data)
     /// Spec: https://console.spec.whatwg.org/#warn
-    pub fn call_warn(self: *Console, data: []const webidl.JSValue) void {
+    pub fn warn(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.warn, data);
     }
 
     /// dir(item, options)
     /// Spec: https://console.spec.whatwg.org/#dir
-    pub fn call_dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
+    pub fn dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
         _ = options;
         if (item) |obj| {
             const args: [1]webidl.JSValue = .{obj};
@@ -790,22 +790,22 @@ pub const Console = webidl.namespace(struct {
 
     /// dirxml(...data)
     /// Spec: https://console.spec.whatwg.org/#dirxml
-    pub fn call_dirxml(self: *Console, data: []const webidl.JSValue) void {
+    pub fn dirxml(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.dirxml, data);
     }
 
     /// count(label)
     /// Spec: https://console.spec.whatwg.org/#count
-    pub fn call_count(self: *Console, label: []const u8) void {
+    pub fn count(self: *Console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         // Step 2-3: Get or create count
         const interned = self.internLabel(label) catch label;
 
         var count: u32 = 1;
-        if (self.count_map.get(interned)) |existing| {
+        if (self.countMap.get(interned)) |existing| {
             count = existing + 1;
         }
-        self.count_map.set(interned, count) catch return;
+        self.countMap.set(interned, count) catch return;
 
         // Step 4: Let concat be the concatenation of label, ":", " ", and ToString(map[label])
         const concat = std.fmt.allocPrint(self.allocator, "{s}: {d}", .{ label, count }) catch return;
@@ -818,13 +818,13 @@ pub const Console = webidl.namespace(struct {
 
     /// countReset(label)
     /// Spec: https://console.spec.whatwg.org/#countreset
-    pub fn call_countReset(self: *Console, label: []const u8) void {
+    pub fn countReset(self: *Console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         const interned = self.internLabel(label) catch label;
 
         // Step 2: If map[label] exists, set map[label] to 0
-        if (self.count_map.contains(interned)) {
-            self.count_map.set(interned, 0) catch return;
+        if (self.countMap.contains(interned)) {
+            self.countMap.set(interned, 0) catch return;
         } else {
             // Step 3: Otherwise - log warning message
             const message = std.fmt.allocPrint(
@@ -841,7 +841,7 @@ pub const Console = webidl.namespace(struct {
 
     /// group(...data)
     /// Spec: https://console.spec.whatwg.org/#group
-    pub fn call_group(self: *Console, data: []const webidl.JSValue) void {
+    pub fn group(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -865,12 +865,12 @@ pub const Console = webidl.namespace(struct {
         self.logger(.group, data);
 
         // Step 6: Push group onto the appropriate group stack
-        self.group_stack.push(group) catch {};
+        self.groupStack.push(group) catch {};
     }
 
     /// groupCollapsed(...data)
     /// Spec: https://console.spec.whatwg.org/#groupcollapsed
-    pub fn call_groupCollapsed(self: *Console, data: []const webidl.JSValue) void {
+    pub fn groupCollapsed(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -893,14 +893,14 @@ pub const Console = webidl.namespace(struct {
         self.logger(.group_collapsed, data);
 
         // Step 6: Push group onto the appropriate group stack
-        self.group_stack.push(group) catch {};
+        self.groupStack.push(group) catch {};
     }
 
     /// groupEnd()
     /// Spec: https://console.spec.whatwg.org/#groupend
-    pub fn call_groupEnd(self: *Console) void {
+    pub fn groupEnd(self: *Console) void {
         // Step 1: Pop the last group from the group stack
-        if (self.group_stack.pop()) |group| {
+        if (self.groupStack.pop()) |group| {
             var g = group;
             g.deinit(self.allocator);
         }
@@ -908,28 +908,28 @@ pub const Console = webidl.namespace(struct {
 
     /// time(label)
     /// Spec: https://console.spec.whatwg.org/#time
-    pub fn call_time(self: *Console, label: []const u8) void {
+    pub fn time(self: *Console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: If the associated timer table contains an entry with key label, return
-        if (self.timer_table.contains(interned)) {
+        if (self.timerTable.contains(interned)) {
             // Optionally report warning (spec lines 223-224)
             return;
         }
 
         // Step 2: Otherwise, set value to current time
         const now = infra.Moment.now();
-        self.timer_table.set(interned, now) catch return;
+        self.timerTable.set(interned, now) catch return;
     }
 
     /// timeLog(label, ...data)
     /// Spec: https://console.spec.whatwg.org/#timelog
-    pub fn call_timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void {
+    pub fn timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table
         // Step 2: Let startTime be timerTable[label]
-        const start_time = self.timer_table.get(interned) orelse return;
+        const start_time = self.timerTable.get(interned) orelse return;
 
         // Step 3: Let duration be string representing difference
         const now = infra.Moment.now();
@@ -960,15 +960,15 @@ pub const Console = webidl.namespace(struct {
 
     /// timeEnd(label)
     /// Spec: https://console.spec.whatwg.org/#timeend
-    pub fn call_timeEnd(self: *Console, label: []const u8) void {
+    pub fn timeEnd(self: *Console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table
         // Step 2: Let startTime be timerTable[label]
-        const start_time = self.timer_table.get(interned) orelse return;
+        const start_time = self.timerTable.get(interned) orelse return;
 
         // Step 3: Remove timerTable[label]
-        self.timer_table.remove(interned);
+        self.timerTable.remove(interned);
 
         // Step 4: Let duration be string representing difference
         const now = infra.Moment.now();
@@ -1187,7 +1187,7 @@ pub const Console = webidl.namespace(struct {
     }
 
     fn printerWithOwnedStrings(self: *Console, log_level: LogLevel, args: []const webidl.JSValue, owned_strings: []const []const u8) void {
-        const indent = self.group_stack.size();
+        const indent = self.groupStack.size();
         const timestamp = infra.Moment.now();
 
         // Create message
@@ -1199,13 +1199,13 @@ pub const Console = webidl.namespace(struct {
         }
 
         // Add to buffer
-        self.message_buffer.push(message);
+        self.messageBuffer.push(message);
 
         // If print function is set, format and output immediately
-        if (self.print_fn) |print_fn| {
+        if (self.printFn) |printFn| {
             const formatted = message.format(self.allocator) catch return;
             defer self.allocator.free(formatted);
-            print_fn(formatted);
+            printFn(formatted);
         }
     }
 });

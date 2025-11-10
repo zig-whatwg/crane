@@ -1,1 +1,749 @@
-{"definitions":[{"typedef":{"name":"CSSStringSource","type":{"union":["DOMString",{"identifier":"ReadableStream"}]},"extended_attributes":[]}},{"typedef":{"name":"CSSToken","type":{"union":["DOMString",{"identifier":"CSSStyleValue"},{"identifier":"CSSParserValue"}]},"extended_attributes":[]}},{"namespace":{"name":"CSS","partial":true,"extended_attributes":[],"members":[{"operation":{"name":"parseStylesheet","return_type":{"promise":{"sequence":{"identifier":"CSSParserRule"}}},"arguments":[{"name":"css","type":{"identifier":"CSSStringSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CSSParserOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseRuleList","return_type":{"promise":{"sequence":{"identifier":"CSSParserRule"}}},"arguments":[{"name":"css","type":{"identifier":"CSSStringSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CSSParserOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseRule","return_type":{"promise":{"identifier":"CSSParserRule"}},"arguments":[{"name":"css","type":{"identifier":"CSSStringSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CSSParserOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseDeclarationList","return_type":{"promise":{"sequence":{"identifier":"CSSParserRule"}}},"arguments":[{"name":"css","type":{"identifier":"CSSStringSource"},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CSSParserOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseDeclaration","return_type":{"identifier":"CSSParserDeclaration"},"arguments":[{"name":"css","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"identifier":"CSSParserOptions"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseValue","return_type":{"identifier":"CSSToken"},"arguments":[{"name":"css","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseValueList","return_type":{"sequence":{"identifier":"CSSToken"}},"arguments":[{"name":"css","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"parseCommaValueList","return_type":{"sequence":{"sequence":{"identifier":"CSSToken"}}},"arguments":[{"name":"css","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"dictionary":{"name":"CSSParserOptions","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"atRules","type":"object","required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"CSSParserRule","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[]}},{"interface":{"name":"CSSParserAtRule","inherits":"CSSParserRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"prelude","type":{"sequence":{"identifier":"CSSToken"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"body","type":{"nullable":{"sequence":{"identifier":"CSSParserRule"}}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"prelude","type":{"frozen_array":{"identifier":"CSSParserValue"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"body","type":{"nullable":{"frozen_array":{"identifier":"CSSParserRule"}}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"stringifier":"keyword"}]}},{"interface":{"name":"CSSParserQualifiedRule","inherits":"CSSParserRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"prelude","type":{"sequence":{"identifier":"CSSToken"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"body","type":{"nullable":{"sequence":{"identifier":"CSSParserRule"}}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"prelude","type":{"frozen_array":{"identifier":"CSSParserValue"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"body","type":{"frozen_array":{"identifier":"CSSParserRule"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"stringifier":"keyword"}]}},{"interface":{"name":"CSSParserDeclaration","inherits":"CSSParserRule","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"body","type":{"sequence":{"identifier":"CSSParserRule"}},"optional":true,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"body","type":{"frozen_array":{"identifier":"CSSParserValue"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"stringifier":"keyword"}]}},{"interface":{"name":"CSSParserValue","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[]}},{"interface":{"name":"CSSParserBlock","inherits":"CSSParserValue","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"body","type":{"sequence":{"identifier":"CSSParserValue"}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"body","type":{"frozen_array":{"identifier":"CSSParserValue"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"stringifier":"keyword"}]}},{"interface":{"name":"CSSParserFunction","inherits":"CSSParserValue","partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"constructor":{"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"args","type":{"sequence":{"sequence":{"identifier":"CSSParserValue"}}},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"extended_attributes":[]}},{"attribute":{"name":"name","type":"DOMString","readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"args","type":{"frozen_array":{"frozen_array":{"identifier":"CSSParserValue"}}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"stringifier":"keyword"}]}}]}
+{
+  "definitions": [
+    {
+      "typedef": {
+        "name": "CSSStringSource",
+        "type": {
+          "union": [
+            "DOMString",
+            {
+              "identifier": "ReadableStream"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "typedef": {
+        "name": "CSSToken",
+        "type": {
+          "union": [
+            "DOMString",
+            {
+              "identifier": "CSSStyleValue"
+            },
+            {
+              "identifier": "CSSParserValue"
+            }
+          ]
+        },
+        "extended_attributes": []
+      }
+    },
+    {
+      "namespace": {
+        "name": "CSS",
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "parseStylesheet",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "CSSParserRule"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": {
+                    "identifier": "CSSStringSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CSSParserOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseRuleList",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "CSSParserRule"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": {
+                    "identifier": "CSSStringSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CSSParserOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseRule",
+              "return_type": {
+                "promise": {
+                  "identifier": "CSSParserRule"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": {
+                    "identifier": "CSSStringSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CSSParserOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseDeclarationList",
+              "return_type": {
+                "promise": {
+                  "sequence": {
+                    "identifier": "CSSParserRule"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": {
+                    "identifier": "CSSStringSource"
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CSSParserOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseDeclaration",
+              "return_type": {
+                "identifier": "CSSParserDeclaration"
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "identifier": "CSSParserOptions"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseValue",
+              "return_type": {
+                "identifier": "CSSToken"
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseValueList",
+              "return_type": {
+                "sequence": {
+                  "identifier": "CSSToken"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "parseCommaValueList",
+              "return_type": {
+                "sequence": {
+                  "sequence": {
+                    "identifier": "CSSToken"
+                  }
+                }
+              },
+              "arguments": [
+                {
+                  "name": "css",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "CSSParserOptions",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "atRules",
+            "type": "object",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserRule",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserAtRule",
+        "inherits": "CSSParserRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "prelude",
+                  "type": {
+                    "sequence": {
+                      "identifier": "CSSToken"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "body",
+                  "type": {
+                    "nullable": {
+                      "sequence": {
+                        "identifier": "CSSParserRule"
+                      }
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "prelude",
+              "type": {
+                "frozen_array": {
+                  "identifier": "CSSParserValue"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "body",
+              "type": {
+                "nullable": {
+                  "frozen_array": {
+                    "identifier": "CSSParserRule"
+                  }
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserQualifiedRule",
+        "inherits": "CSSParserRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "prelude",
+                  "type": {
+                    "sequence": {
+                      "identifier": "CSSToken"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "body",
+                  "type": {
+                    "nullable": {
+                      "sequence": {
+                        "identifier": "CSSParserRule"
+                      }
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "prelude",
+              "type": {
+                "frozen_array": {
+                  "identifier": "CSSParserValue"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "body",
+              "type": {
+                "frozen_array": {
+                  "identifier": "CSSParserRule"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserDeclaration",
+        "inherits": "CSSParserRule",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "body",
+                  "type": {
+                    "sequence": {
+                      "identifier": "CSSParserRule"
+                    }
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "body",
+              "type": {
+                "frozen_array": {
+                  "identifier": "CSSParserValue"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserValue",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": []
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserBlock",
+        "inherits": "CSSParserValue",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "body",
+                  "type": {
+                    "sequence": {
+                      "identifier": "CSSParserValue"
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "body",
+              "type": {
+                "frozen_array": {
+                  "identifier": "CSSParserValue"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "CSSParserFunction",
+        "inherits": "CSSParserValue",
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "constructor": {
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "args",
+                  "type": {
+                    "sequence": {
+                      "sequence": {
+                        "identifier": "CSSParserValue"
+                      }
+                    }
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "name",
+              "type": "DOMString",
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "args",
+              "type": {
+                "frozen_array": {
+                  "frozen_array": {
+                    "identifier": "CSSParserValue"
+                  }
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "stringifier": "keyword"
+          }
+        ]
+      }
+    }
+  ]
+}

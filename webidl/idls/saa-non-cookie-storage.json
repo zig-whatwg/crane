@@ -1,1 +1,395 @@
-{"definitions":[{"dictionary":{"name":"StorageAccessTypes","inherits":null,"partial":false,"extended_attributes":[],"members":[{"name":"all","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"cookies","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"sessionStorage","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"localStorage","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"indexedDB","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"locks","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"caches","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"getDirectory","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"estimate","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"createObjectURL","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"revokeObjectURL","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"BroadcastChannel","type":"boolean","required":false,"default_value":false,"extended_attributes":[]},{"name":"SharedWorker","type":"boolean","required":false,"default_value":false,"extended_attributes":[]}]}},{"interface":{"name":"StorageAccessHandle","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier":"Window"}}],"members":[{"attribute":{"name":"sessionStorage","type":{"identifier":"Storage"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"localStorage","type":{"identifier":"Storage"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"indexedDB","type":{"identifier":"IDBFactory"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"locks","type":{"identifier":"LockManager"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"attribute":{"name":"caches","type":{"identifier":"CacheStorage"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}},{"operation":{"name":"getDirectory","return_type":{"promise":{"identifier":"FileSystemDirectoryHandle"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"estimate","return_type":{"promise":{"identifier":"StorageEstimate"}},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"createObjectURL","return_type":"DOMString","arguments":[{"name":"obj","type":{"union":[{"identifier":"Blob"},{"identifier":"MediaSource"}]},"optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"revokeObjectURL","return_type":"undefined","arguments":[{"name":"url","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"BroadcastChannel","return_type":{"identifier":"BroadcastChannel"},"arguments":[{"name":"name","type":"DOMString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"SharedWorker","return_type":{"identifier":"SharedWorker"},"arguments":[{"name":"scriptURL","type":"USVString","optional":false,"variadic":false,"default_value":null,"extended_attributes":[]},{"name":"options","type":{"union":["DOMString",{"identifier":"SharedWorkerOptions"}]},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"interface":{"name":"Document","inherits":null,"partial":true,"extended_attributes":[],"members":[{"operation":{"name":"hasUnpartitionedCookieAccess","return_type":{"promise":"boolean"},"arguments":[],"static":false,"special":null,"extended_attributes":[]}},{"operation":{"name":"requestStorageAccess","return_type":{"promise":{"identifier":"StorageAccessHandle"}},"arguments":[{"name":"types","type":{"identifier":"StorageAccessTypes"},"optional":true,"variadic":false,"default_value":{},"extended_attributes":[]}],"static":false,"special":null,"extended_attributes":[]}}]}},{"enum":{"name":"SameSiteCookiesType","values":["all","none"],"extended_attributes":[]}},{"dictionary":{"name":"SharedWorkerOptions","inherits":"WorkerOptions","partial":false,"extended_attributes":[],"members":[{"name":"sameSiteCookies","type":{"identifier":"SameSiteCookiesType"},"required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "dictionary": {
+        "name": "StorageAccessTypes",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "all",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "cookies",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "sessionStorage",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "localStorage",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "indexedDB",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "locks",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "caches",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "getDirectory",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "estimate",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "createObjectURL",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "revokeObjectURL",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "BroadcastChannel",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          },
+          {
+            "name": "SharedWorker",
+            "type": "boolean",
+            "required": false,
+            "default_value": false,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "StorageAccessHandle",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier": "Window"
+            }
+          }
+        ],
+        "members": [
+          {
+            "attribute": {
+              "name": "sessionStorage",
+              "type": {
+                "identifier": "Storage"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "localStorage",
+              "type": {
+                "identifier": "Storage"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "indexedDB",
+              "type": {
+                "identifier": "IDBFactory"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "locks",
+              "type": {
+                "identifier": "LockManager"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "attribute": {
+              "name": "caches",
+              "type": {
+                "identifier": "CacheStorage"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "getDirectory",
+              "return_type": {
+                "promise": {
+                  "identifier": "FileSystemDirectoryHandle"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "estimate",
+              "return_type": {
+                "promise": {
+                  "identifier": "StorageEstimate"
+                }
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "createObjectURL",
+              "return_type": "DOMString",
+              "arguments": [
+                {
+                  "name": "obj",
+                  "type": {
+                    "union": [
+                      {
+                        "identifier": "Blob"
+                      },
+                      {
+                        "identifier": "MediaSource"
+                      }
+                    ]
+                  },
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "revokeObjectURL",
+              "return_type": "undefined",
+              "arguments": [
+                {
+                  "name": "url",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "BroadcastChannel",
+              "return_type": {
+                "identifier": "BroadcastChannel"
+              },
+              "arguments": [
+                {
+                  "name": "name",
+                  "type": "DOMString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "SharedWorker",
+              "return_type": {
+                "identifier": "SharedWorker"
+              },
+              "arguments": [
+                {
+                  "name": "scriptURL",
+                  "type": "USVString",
+                  "optional": false,
+                  "variadic": false,
+                  "default_value": null,
+                  "extended_attributes": []
+                },
+                {
+                  "name": "options",
+                  "type": {
+                    "union": [
+                      "DOMString",
+                      {
+                        "identifier": "SharedWorkerOptions"
+                      }
+                    ]
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Document",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "operation": {
+              "name": "hasUnpartitionedCookieAccess",
+              "return_type": {
+                "promise": "boolean"
+              },
+              "arguments": [],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          },
+          {
+            "operation": {
+              "name": "requestStorageAccess",
+              "return_type": {
+                "promise": {
+                  "identifier": "StorageAccessHandle"
+                }
+              },
+              "arguments": [
+                {
+                  "name": "types",
+                  "type": {
+                    "identifier": "StorageAccessTypes"
+                  },
+                  "optional": true,
+                  "variadic": false,
+                  "default_value": {},
+                  "extended_attributes": []
+                }
+              ],
+              "static": false,
+              "special": null,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "SameSiteCookiesType",
+        "values": [
+          "all",
+          "none"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "SharedWorkerOptions",
+        "inherits": "WorkerOptions",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "sameSiteCookies",
+            "type": {
+              "identifier": "SameSiteCookiesType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

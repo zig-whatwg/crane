@@ -1,0 +1,142 @@
+{
+  "spec": {
+    "title": "CSS Color Module Level 5",
+    "url": "https://drafts.csswg.org/css-color-5/"
+  },
+  "algorithms": [
+    {
+      "name": "calculate a color-mix()",
+      "href": "https://drafts.csswg.org/css-color-5/#calculate-a-color-mix",
+      "html": "To <dfn class=\"dfn-paneled has-dfn-panel\" data-dfn-type=\"dfn\" data-export=\"\" id=\"calculate-a-color-mix\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\">calculate a color-mix()</dfn>:",
+      "rationale": ".algorithm",
+      "steps": [
+        {
+          "html": "<p><a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-values-5/#normalize-mix-percentages\" id=\"ref-for-normalize-mix-percentages①\">Normalize mix percentages</a> from the list of <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-values-5/#mix-item\" id=\"ref-for-mix-item\">mix items</a> passed to the function,\nwith the \"forced normalization\" flag set to true,\nletting <var>items</var> and <var>leftover</var> be the result.</p>"
+        },
+        {
+          "html": "<p>If <var>leftover</var> is 100%,\nreturn <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-color-4/#transparent-black\" id=\"ref-for-transparent-black\">transparent black</a>,\nconverted to the specified interpolation <a class=\"production css\" data-link-type=\"type\" href=\"https://drafts.csswg.org/css-color-5/#typedef-color-space\" id=\"ref-for-typedef-color-space①\">&lt;color-space&gt;</a>.</p>"
+        },
+        {
+          "html": "<p>Let <var>alpha mult</var> be <code>1 - <var>leftover</var></code>,\ninterpreting <var>leftover</var> as a number between 0 and 1.</p>"
+        },
+        {
+          "html": "Otherwise:",
+          "rationale": "let",
+          "steps": [
+            {
+              "html": "<p>Let <var>item stack</var> be a <a data-link-type=\"dfn\" href=\"https://infra.spec.whatwg.org/#stack\" id=\"ref-for-stack\">stack</a> made by reversing <var>items</var>.\n(Thus, with the first item at the top of the stack.)</p>"
+            },
+            {
+              "html": "While <var>item stack</var> has length 2 or greater:",
+              "rationale": "pop",
+              "steps": [
+                {
+                  "html": "<p><a data-link-type=\"dfn\" href=\"https://infra.spec.whatwg.org/#stack-pop\" id=\"ref-for-stack-pop\">Pop</a> from <var>item stack</var> twice,\nletting <var>a</var> and <var>b</var> be the two results in order.\nLet <var>combined percentage</var> be the sum of <var>a</var> and <var>b</var>’s percentages.</p>"
+                },
+                {
+                  "html": "<p>Interpolate <var>a</var> and <var>b</var>’s colors\nas described in <a href=\"https://drafts.csswg.org/css-color-4/#interpolation\"><cite>CSS Color 4</cite> §  12. Color Interpolation</a>,\nwith a progress percentage equal to <code>(<var>b</var>’s percentage) / <var>combined percentage</var>)</code>.\nIf the specified color space is a <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-color-4/#cylindrical-polar-color\" id=\"ref-for-cylindrical-polar-color①\">cylindrical polar color</a> space,\nthen the <a class=\"production css\" data-link-type=\"type\" href=\"https://drafts.csswg.org/css-color-5/#typedef-hue-interpolation-method\" id=\"ref-for-typedef-hue-interpolation-method\">&lt;hue-interpolation-method&gt;</a> controls the\ninterpolation of hue, as described in\n<a href=\"https://drafts.csswg.org/css-color-4/#hue-interpolation\"><cite>CSS Color 4</cite> § 12.4 Hue Interpolation</a>.\nIf no <span class=\"production\" id=\"ref-for-typedef-hue-interpolation-method①\">&lt;hue-interpolation-method&gt;</span> is specified,\nassume <span class=\"css\">shorter</span>.</p>"
+                },
+                {
+                  "html": "<p>Create a new <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-values-5/#mix-item\" id=\"ref-for-mix-item①\">mix item</a> with the resulting color\nand a percentage of <var>combined percentage</var>,\nand <a data-link-type=\"dfn\" href=\"https://infra.spec.whatwg.org/#stack-push\" id=\"ref-for-stack-push\">push</a> it onto <var>item stack</var>.</p>"
+                }
+              ]
+            },
+            {
+              "html": "<p>Set <var>color</var> to the color of the sole remaining item in <var>item stack</var>.</p>"
+            }
+          ]
+        },
+        {
+          "html": "<p>Multiply the alpha component of <var>color</var> by <var>alpha mult</var>.</p>"
+        },
+        {
+          "html": "<p>Return <var>color</var>.</p>"
+        }
+      ]
+    },
+    {
+      "name": "fetch an external color profile",
+      "href": "https://drafts.csswg.org/css-color-5/#fetch-an-external-color-profile",
+      "html": "To <dfn class=\"dfn-paneled has-dfn-panel\" data-dfn-type=\"dfn\" data-export=\"\" id=\"fetch-an-external-color-profile\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\">fetch an external color profile</dfn>, given a\n\t\t<a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#at-ruledef-profile\" id=\"ref-for-at-ruledef-profile⑥\">@color-profile</a> rule <var>rule</var>,\n\t\t\t<a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-values-4/#fetch-a-style-resource\" id=\"ref-for-fetch-a-style-resource\">fetch a style resource</a> given <var>rule</var>’s URL,\n\t\t\twith ruleOrDeclaration being <var>rule</var>,\n\t\t\tdestination \"color-profile\",\n\t\t\tCORS mode \"cors\",\n\t\t\tand processResponse being the following steps given <a data-link-type=\"dfn\" href=\"https://fetch.spec.whatwg.org/#concept-response\" id=\"ref-for-concept-response\">response</a> |/res| and null, failure or\n\t\t\ta byte stream <var>byteStream</var>:\n\t\t\t\tIf <var>byteStream</var> is a byte stream,\n\t\t\t\tapply the color profile as parsed from |byteStream.",
+      "rationale": "To <dfn>"
+    },
+    {
+      "html": "As such, Device CMYK colors must be converted to an equivalent color.\n\t\tThis is not trivial, like the conversion from HSL or HWB to RGB;\n\t\tthe precise conversion depends on the precise characteristics of the output device.",
+      "rationale": "if",
+      "steps": [
+        {
+          "html": "If the user, author, or user-agent stylesheet\n\t\t\t\thas an <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#at-ruledef-profile\" id=\"ref-for-at-ruledef-profile①⓪\">@color-profile</a> definition for device-cmyk,\n\t\t\t\tand the resource specified by the src descriptor can be retrieved,\n\t\t\t\tand the resource is a valid CMYK ICC profile,\n\t\t\t\tand the user agent can process ICC profiles,\n\t\t\t\tthe computed value of the <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-device-cmyk\" id=\"ref-for-funcdef-device-cmyk⑧\">device-cmyk()</a> function\n\t\t\t\tmust be the Lab value of the CMYK color."
+        },
+        {
+          "html": "Otherwise,\n\t\t\t\tthe computed value of the <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-device-cmyk\" id=\"ref-for-funcdef-device-cmyk⑨\">device-cmyk()</a> function must be\n\t\t\t\tthe sRGB value of the CMYK color,\n\t\t\t\tas converted with the following naive conversion algorithm."
+        }
+      ]
+    },
+    {
+      "name": "naively convert from CMYK to RGBA",
+      "href": "https://drafts.csswg.org/css-color-5/#naively-convert-from-cmyk-to-rgba",
+      "html": "To <dfn class=\"dfn-paneled has-dfn-panel\" data-dfn-type=\"dfn\" data-export=\"\" data-lt=\"naively convert from CMYK to RGBA | naively converted to RGBA\" id=\"naively-convert-from-cmyk-to-rgba\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\">naively convert from CMYK to RGBA</dfn>:",
+      "rationale": "To <dfn>"
+    },
+    {
+      "name": "naively convert from RGBA to CMYK",
+      "href": "https://drafts.csswg.org/css-color-5/#naively-convert-from-rgba-to-cmyk",
+      "html": "To <dfn class=\"dfn-paneled has-dfn-panel\" data-dfn-type=\"dfn\" data-export=\"\" data-lt=\"naively convert from RGBA to CMYK | naively converted to CMYK\" id=\"naively-convert-from-rgba-to-cmyk\" role=\"button\" aria-expanded=\"false\" tabindex=\"0\">naively convert from RGBA to CMYK</dfn>:",
+      "rationale": "To <dfn>"
+    },
+    {
+      "html": "The serialization of a the declared value of a color\nused as the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-color-5/#origin-color\" id=\"ref-for-origin-color④②\">origin color</a> inside of another color function \nas components of a declared value is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-rgb\" id=\"ref-for-funcdef-rgb⑥\">rgb()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-rgba\" id=\"ref-for-funcdef-rgba⑤\">rgba()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-hsl\" id=\"ref-for-funcdef-hsl⑥\">hsl()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-hsla\" id=\"ref-for-funcdef-hsla⑥\">hsla()</a></p>"
+        }
+      ]
+    },
+    {
+      "html": "The serialization of a the declared value of a color\nused as the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-color-5/#origin-color\" id=\"ref-for-origin-color④②\">origin color</a> inside of another color function \nas components of a declared value is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-hwb\" id=\"ref-for-funcdef-hwb⑤\">hwb()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-lab\" id=\"ref-for-funcdef-lab④\">lab()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-lch\" id=\"ref-for-funcdef-lch⑤\">lch()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-oklab\" id=\"ref-for-funcdef-oklab③\">oklab()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-oklch\" id=\"ref-for-funcdef-oklch⑤\">oklch()</a></p>"
+        }
+      ]
+    },
+    {
+      "html": "The serialization of a the declared value of a color\nused as the <a data-link-type=\"dfn\" href=\"https://drafts.csswg.org/css-color-5/#origin-color\" id=\"ref-for-origin-color④②\">origin color</a> inside of another color function \nas components of a declared value is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-color\" id=\"ref-for-funcdef-color①⓪\">color()</a></p>"
+        }
+      ]
+    },
+    {
+      "html": "The serialization of the declared value of a relative color is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-rgb\" id=\"ref-for-funcdef-rgb⑧\">rgb()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-rgba\" id=\"ref-for-funcdef-rgba⑦\">rgba()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-hsl\" id=\"ref-for-funcdef-hsl⑧\">hsl()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-4/#funcdef-hsla\" id=\"ref-for-funcdef-hsla⑧\">hsla()</a></p>"
+        }
+      ]
+    },
+    {
+      "html": "The serialization of the declared value of a relative color is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-hwb\" id=\"ref-for-funcdef-hwb⑥\">hwb()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-lab\" id=\"ref-for-funcdef-lab⑤\">lab()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-lch\" id=\"ref-for-funcdef-lch⑥\">lch()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-oklab\" id=\"ref-for-funcdef-oklab④\">oklab()</a>, <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-oklch\" id=\"ref-for-funcdef-oklch⑥\">oklch()</a></p>"
+        }
+      ]
+    },
+    {
+      "html": "The serialization of the declared value of a relative color is:",
+      "rationale": "for",
+      "steps": [
+        {
+          "html": "<p>For <a class=\"css\" data-link-type=\"maybe\" href=\"https://drafts.csswg.org/css-color-5/#funcdef-color\" id=\"ref-for-funcdef-color①①\">color()</a></p>"
+        }
+      ]
+    }
+  ]
+}

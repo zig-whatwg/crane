@@ -1,1 +1,1719 @@
-{"definitions":[{"enum":{"name":"RTCStatsType","values":["codec","inbound-rtp","outbound-rtp","remote-inbound-rtp","remote-outbound-rtp","media-source","media-playout","peer-connection","data-channel","transport","candidate-pair","local-candidate","remote-candidate","certificate"],"extended_attributes":[]}},{"dictionary":{"name":"RTCRtpStreamStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"ssrc","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"kind","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"transportId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"codecId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCCodecStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"payloadType","type":"unsigned long","required":true,"default_value":null,"extended_attributes":[]},{"name":"transportId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"mimeType","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"clockRate","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"channels","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"sdpFmtpLine","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCReceivedRtpStreamStats","inherits":"RTCRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"packetsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReceivedWithEct1","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReceivedWithCe","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReportedAsLost","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReportedAsLostButRecovered","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsLost","type":"long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"jitter","type":"double","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCInboundRtpStreamStats","inherits":"RTCReceivedRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"trackIdentifier","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"mid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"remoteId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesDecoded","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"keyFramesDecoded","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesRendered","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesDropped","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frameWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frameHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesPerSecond","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"qpSum","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalDecodeTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalInterFrameDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSquaredInterFrameDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"pauseCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalPausesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"freezeCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalFreezesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"lastPacketReceivedTimestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"headerBytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsDiscarded","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"fecBytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"fecPacketsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"fecPacketsDiscarded","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"nackCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"firCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"pliCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalProcessingDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"estimatedPlayoutTimestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"jitterBufferDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"jitterBufferTargetDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"jitterBufferEmittedCount","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"jitterBufferMinimumDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSamplesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"concealedSamples","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"silentConcealedSamples","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"concealmentEvents","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"insertedSamplesForDeceleration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"removedSamplesForAcceleration","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"audioLevel","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalAudioEnergy","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSamplesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesReceived","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"decoderImplementation","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"playoutId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"powerEfficientDecoder","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesAssembledFromMultiplePackets","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalAssemblyTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"retransmittedPacketsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"retransmittedBytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"rtxSsrc","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"fecSsrc","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalCorruptionProbability","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSquaredCorruptionProbability","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"corruptionMeasurements","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCRemoteInboundRtpStreamStats","inherits":"RTCReceivedRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"localId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"roundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalRoundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"fractionLost","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"roundTripTimeMeasurements","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsWithBleachedEct1Marking","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCSentRtpStreamStats","inherits":"RTCRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"packetsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCOutboundRtpStreamStats","inherits":"RTCSentRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"mid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"mediaSourceId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"remoteId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"rid","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"encodingIndex","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"headerBytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"retransmittedPacketsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"retransmittedBytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"rtxSsrc","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"targetBitrate","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalEncodedBytesTarget","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frameWidth","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frameHeight","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesPerSecond","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesSent","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"hugeFramesSent","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesEncoded","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"keyFramesEncoded","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"qpSum","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"psnrSum","type":{"record":{"key":"DOMString","value":"double"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"psnrMeasurements","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalEncodeTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalPacketSendDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"qualityLimitationReason","type":{"identifier":"RTCQualityLimitationReason"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"qualityLimitationDurations","type":{"record":{"key":"DOMString","value":"double"}},"required":false,"default_value":null,"extended_attributes":[]},{"name":"qualityLimitationResolutionChanges","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"nackCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"firCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"pliCount","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"encoderImplementation","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"powerEfficientEncoder","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"active","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"scalabilityMode","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsSentWithEct1","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCQualityLimitationReason","values":["none","cpu","bandwidth","other"],"extended_attributes":[]}},{"dictionary":{"name":"RTCRemoteOutboundRtpStreamStats","inherits":"RTCSentRtpStreamStats","partial":false,"extended_attributes":[],"members":[{"name":"localId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"remoteTimestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"reportsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"roundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalRoundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"roundTripTimeMeasurements","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCMediaSourceStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"trackIdentifier","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"kind","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCAudioSourceStats","inherits":"RTCMediaSourceStats","partial":false,"extended_attributes":[],"members":[{"name":"audioLevel","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalAudioEnergy","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSamplesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"echoReturnLoss","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"echoReturnLossEnhancement","type":"double","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCVideoSourceStats","inherits":"RTCMediaSourceStats","partial":false,"extended_attributes":[],"members":[{"name":"width","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"height","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"frames","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"framesPerSecond","type":"double","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCAudioPlayoutStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"kind","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"synthesizedSamplesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"synthesizedSamplesEvents","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSamplesDuration","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalPlayoutDelay","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"totalSamplesCount","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCPeerConnectionStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"dataChannelsOpened","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"dataChannelsClosed","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCDataChannelStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"label","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"protocol","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dataChannelIdentifier","type":"unsigned short","required":false,"default_value":null,"extended_attributes":[]},{"name":"state","type":{"identifier":"RTCDataChannelState"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"messagesSent","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"messagesReceived","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCTransportStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"packetsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"iceRole","type":{"identifier":"RTCIceRole"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"iceLocalUsernameFragment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dtlsState","type":{"identifier":"RTCDtlsTransportState"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"iceState","type":{"identifier":"RTCIceTransportState"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"selectedCandidatePairId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"localCertificateId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"remoteCertificateId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"tlsVersion","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dtlsCipher","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"dtlsRole","type":{"identifier":"RTCDtlsRole"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"srtpCipher","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"selectedCandidatePairChanges","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"ccfbMessagesSent","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"ccfbMessagesReceived","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCDtlsRole","values":["client","server","unknown"],"extended_attributes":[]}},{"dictionary":{"name":"RTCIceCandidateStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"transportId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"address","type":{"nullable":"DOMString"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"port","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"protocol","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"candidateType","type":{"identifier":"RTCIceCandidateType"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"priority","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"url","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"relayProtocol","type":{"identifier":"RTCIceServerTransportProtocol"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"foundation","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"relatedAddress","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"relatedPort","type":"long","required":false,"default_value":null,"extended_attributes":[]},{"name":"usernameFragment","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]},{"name":"tcpType","type":{"identifier":"RTCIceTcpCandidateType"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"dictionary":{"name":"RTCIceCandidatePairStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"transportId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"localCandidateId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"remoteCandidateId","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"state","type":{"identifier":"RTCStatsIceCandidatePairState"},"required":true,"default_value":null,"extended_attributes":[]},{"name":"nominated","type":"boolean","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"lastPacketSentTimestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"lastPacketReceivedTimestamp","type":{"identifier":"DOMHighResTimeStamp"},"required":false,"default_value":null,"extended_attributes":[]},{"name":"totalRoundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"currentRoundTripTime","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"availableOutgoingBitrate","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"availableIncomingBitrate","type":"double","required":false,"default_value":null,"extended_attributes":[]},{"name":"requestsReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"requestsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"responsesReceived","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"responsesSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"consentRequestsSent","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]},{"name":"packetsDiscardedOnSend","type":"unsigned long","required":false,"default_value":null,"extended_attributes":[]},{"name":"bytesDiscardedOnSend","type":"unsigned long long","required":false,"default_value":null,"extended_attributes":[]}]}},{"enum":{"name":"RTCStatsIceCandidatePairState","values":["frozen","waiting","in-progress","failed","succeeded"],"extended_attributes":[]}},{"dictionary":{"name":"RTCCertificateStats","inherits":"RTCStats","partial":false,"extended_attributes":[],"members":[{"name":"fingerprint","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"fingerprintAlgorithm","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"base64Certificate","type":"DOMString","required":true,"default_value":null,"extended_attributes":[]},{"name":"issuerCertificateId","type":"DOMString","required":false,"default_value":null,"extended_attributes":[]}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "RTCStatsType",
+        "values": [
+          "codec",
+          "inbound-rtp",
+          "outbound-rtp",
+          "remote-inbound-rtp",
+          "remote-outbound-rtp",
+          "media-source",
+          "media-playout",
+          "peer-connection",
+          "data-channel",
+          "transport",
+          "candidate-pair",
+          "local-candidate",
+          "remote-candidate",
+          "certificate"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRtpStreamStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "ssrc",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "kind",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transportId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "codecId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCCodecStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "payloadType",
+            "type": "unsigned long",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "transportId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mimeType",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "clockRate",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "channels",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "sdpFmtpLine",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCReceivedRtpStreamStats",
+        "inherits": "RTCRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "packetsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReceivedWithEct1",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReceivedWithCe",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReportedAsLost",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReportedAsLostButRecovered",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsLost",
+            "type": "long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "jitter",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCInboundRtpStreamStats",
+        "inherits": "RTCReceivedRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "trackIdentifier",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "remoteId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesDecoded",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "keyFramesDecoded",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesRendered",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesDropped",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesPerSecond",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qpSum",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalDecodeTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalInterFrameDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSquaredInterFrameDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pauseCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalPausesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "freezeCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalFreezesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "lastPacketReceivedTimestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "headerBytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsDiscarded",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fecBytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fecPacketsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fecPacketsDiscarded",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "nackCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "firCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pliCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalProcessingDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "estimatedPlayoutTimestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "jitterBufferDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "jitterBufferTargetDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "jitterBufferEmittedCount",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "jitterBufferMinimumDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSamplesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "concealedSamples",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "silentConcealedSamples",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "concealmentEvents",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "insertedSamplesForDeceleration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "removedSamplesForAcceleration",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "audioLevel",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalAudioEnergy",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSamplesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesReceived",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "decoderImplementation",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "playoutId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "powerEfficientDecoder",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesAssembledFromMultiplePackets",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalAssemblyTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "retransmittedPacketsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "retransmittedBytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rtxSsrc",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fecSsrc",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalCorruptionProbability",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSquaredCorruptionProbability",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "corruptionMeasurements",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRemoteInboundRtpStreamStats",
+        "inherits": "RTCReceivedRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "localId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "roundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalRoundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fractionLost",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "roundTripTimeMeasurements",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsWithBleachedEct1Marking",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCSentRtpStreamStats",
+        "inherits": "RTCRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "packetsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCOutboundRtpStreamStats",
+        "inherits": "RTCSentRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "mid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "mediaSourceId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "remoteId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rid",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "encodingIndex",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "headerBytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "retransmittedPacketsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "retransmittedBytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "rtxSsrc",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "targetBitrate",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalEncodedBytesTarget",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameWidth",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frameHeight",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesPerSecond",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesSent",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "hugeFramesSent",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesEncoded",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "keyFramesEncoded",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qpSum",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "psnrSum",
+            "type": {
+              "record": {
+                "key": "DOMString",
+                "value": "double"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "psnrMeasurements",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalEncodeTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalPacketSendDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qualityLimitationReason",
+            "type": {
+              "identifier": "RTCQualityLimitationReason"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qualityLimitationDurations",
+            "type": {
+              "record": {
+                "key": "DOMString",
+                "value": "double"
+              }
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "qualityLimitationResolutionChanges",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "nackCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "firCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "pliCount",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "encoderImplementation",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "powerEfficientEncoder",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "active",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "scalabilityMode",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsSentWithEct1",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCQualityLimitationReason",
+        "values": [
+          "none",
+          "cpu",
+          "bandwidth",
+          "other"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCRemoteOutboundRtpStreamStats",
+        "inherits": "RTCSentRtpStreamStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "localId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "remoteTimestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "reportsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "roundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalRoundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "roundTripTimeMeasurements",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCMediaSourceStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "trackIdentifier",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "kind",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCAudioSourceStats",
+        "inherits": "RTCMediaSourceStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "audioLevel",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalAudioEnergy",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSamplesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "echoReturnLoss",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "echoReturnLossEnhancement",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCVideoSourceStats",
+        "inherits": "RTCMediaSourceStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "width",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "height",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "frames",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "framesPerSecond",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCAudioPlayoutStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "kind",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "synthesizedSamplesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "synthesizedSamplesEvents",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSamplesDuration",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalPlayoutDelay",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalSamplesCount",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCPeerConnectionStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "dataChannelsOpened",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dataChannelsClosed",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCDataChannelStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "label",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "protocol",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dataChannelIdentifier",
+            "type": "unsigned short",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "state",
+            "type": {
+              "identifier": "RTCDataChannelState"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "messagesSent",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "messagesReceived",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCTransportStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "packetsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iceRole",
+            "type": {
+              "identifier": "RTCIceRole"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iceLocalUsernameFragment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dtlsState",
+            "type": {
+              "identifier": "RTCDtlsTransportState"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "iceState",
+            "type": {
+              "identifier": "RTCIceTransportState"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "selectedCandidatePairId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "localCertificateId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "remoteCertificateId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "tlsVersion",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dtlsCipher",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "dtlsRole",
+            "type": {
+              "identifier": "RTCDtlsRole"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "srtpCipher",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "selectedCandidatePairChanges",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "ccfbMessagesSent",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "ccfbMessagesReceived",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCDtlsRole",
+        "values": [
+          "client",
+          "server",
+          "unknown"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIceCandidateStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transportId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "address",
+            "type": {
+              "nullable": "DOMString"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "port",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "protocol",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "candidateType",
+            "type": {
+              "identifier": "RTCIceCandidateType"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "priority",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "url",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "relayProtocol",
+            "type": {
+              "identifier": "RTCIceServerTransportProtocol"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "foundation",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "relatedAddress",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "relatedPort",
+            "type": "long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "usernameFragment",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "tcpType",
+            "type": {
+              "identifier": "RTCIceTcpCandidateType"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCIceCandidatePairStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "transportId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "localCandidateId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "remoteCandidateId",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "state",
+            "type": {
+              "identifier": "RTCStatsIceCandidatePairState"
+            },
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "nominated",
+            "type": "boolean",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "lastPacketSentTimestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "lastPacketReceivedTimestamp",
+            "type": {
+              "identifier": "DOMHighResTimeStamp"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "totalRoundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "currentRoundTripTime",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "availableOutgoingBitrate",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "availableIncomingBitrate",
+            "type": "double",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requestsReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "requestsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "responsesReceived",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "responsesSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "consentRequestsSent",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "packetsDiscardedOnSend",
+            "type": "unsigned long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "bytesDiscardedOnSend",
+            "type": "unsigned long long",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "enum": {
+        "name": "RTCStatsIceCandidatePairState",
+        "values": [
+          "frozen",
+          "waiting",
+          "in-progress",
+          "failed",
+          "succeeded"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RTCCertificateStats",
+        "inherits": "RTCStats",
+        "partial": false,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "fingerprint",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "fingerprintAlgorithm",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "base64Certificate",
+            "type": "DOMString",
+            "required": true,
+            "default_value": null,
+            "extended_attributes": []
+          },
+          {
+            "name": "issuerCertificateId",
+            "type": "DOMString",
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    }
+  ]
+}

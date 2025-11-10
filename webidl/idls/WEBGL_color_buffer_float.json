@@ -1,1 +1,64 @@
-{"definitions":[{"interface":{"name":"WEBGL_color_buffer_float","inherits":null,"partial":false,"extended_attributes":[{"name":"Exposed","value":{"identifier_list":["Window","Worker"]}},{"name":"LegacyNoInterfaceObject","value":null}],"members":[{"const":{"name":"RGBA32F_EXT","type":{"identifier":"GLenum"},"value":{"value":34836,"lexeme":"0x8814"}}},{"const":{"name":"FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT","type":{"identifier":"GLenum"},"value":{"value":33297,"lexeme":"0x8211"}}},{"const":{"name":"UNSIGNED_NORMALIZED_EXT","type":{"identifier":"GLenum"},"value":{"value":35863,"lexeme":"0x8C17"}}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "WEBGL_color_buffer_float",
+        "inherits": null,
+        "partial": false,
+        "extended_attributes": [
+          {
+            "name": "Exposed",
+            "value": {
+              "identifier_list": [
+                "Window",
+                "Worker"
+              ]
+            }
+          },
+          {
+            "name": "LegacyNoInterfaceObject",
+            "value": null
+          }
+        ],
+        "members": [
+          {
+            "const": {
+              "name": "RGBA32F_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 34836,
+                "lexeme": "0x8814"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "FRAMEBUFFER_ATTACHMENT_COMPONENT_TYPE_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 33297,
+                "lexeme": "0x8211"
+              }
+            }
+          },
+          {
+            "const": {
+              "name": "UNSIGNED_NORMALIZED_EXT",
+              "type": {
+                "identifier": "GLenum"
+              },
+              "value": {
+                "value": 35863,
+                "lexeme": "0x8C17"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

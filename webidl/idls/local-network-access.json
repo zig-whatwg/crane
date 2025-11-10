@@ -1,1 +1,57 @@
-{"definitions":[{"enum":{"name":"IPAddressSpace","values":["public","local","loopback"],"extended_attributes":[]}},{"dictionary":{"name":"RequestInit","inherits":null,"partial":true,"extended_attributes":[],"members":[{"name":"targetAddressSpace","type":{"identifier":"IPAddressSpace"},"required":false,"default_value":null,"extended_attributes":[]}]}},{"interface":{"name":"Request","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"targetAddressSpace","type":{"identifier":"IPAddressSpace"},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[]}}]}}]}
+{
+  "definitions": [
+    {
+      "enum": {
+        "name": "IPAddressSpace",
+        "values": [
+          "public",
+          "local",
+          "loopback"
+        ],
+        "extended_attributes": []
+      }
+    },
+    {
+      "dictionary": {
+        "name": "RequestInit",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "name": "targetAddressSpace",
+            "type": {
+              "identifier": "IPAddressSpace"
+            },
+            "required": false,
+            "default_value": null,
+            "extended_attributes": []
+          }
+        ]
+      }
+    },
+    {
+      "interface": {
+        "name": "Request",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "targetAddressSpace",
+              "type": {
+                "identifier": "IPAddressSpace"
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": []
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

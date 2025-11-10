@@ -1,1 +1,34 @@
-{"definitions":[{"interface":{"name":"XRInputSource","inherits":null,"partial":true,"extended_attributes":[],"members":[{"attribute":{"name":"gamepad","type":{"nullable":{"identifier":"Gamepad"}},"readonly":true,"static":false,"stringifier":false,"inherit":false,"extended_attributes":[{"name":"SameObject","value":null}]}}]}}]}
+{
+  "definitions": [
+    {
+      "interface": {
+        "name": "XRInputSource",
+        "inherits": null,
+        "partial": true,
+        "extended_attributes": [],
+        "members": [
+          {
+            "attribute": {
+              "name": "gamepad",
+              "type": {
+                "nullable": {
+                  "identifier": "Gamepad"
+                }
+              },
+              "readonly": true,
+              "static": false,
+              "stringifier": false,
+              "inherit": false,
+              "extended_attributes": [
+                {
+                  "name": "SameObject",
+                  "value": null
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
