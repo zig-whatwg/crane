@@ -79,10 +79,10 @@ pub const TransformStream = struct {
 
         return stream;
     }
-    pub fn readable(self: *const TransformStream) *ReadableStream {
+    pub fn get_readable(self: *const TransformStream) *ReadableStream {
         return self.readableStream;
     }
-    pub fn writable(self: *const TransformStream) *WritableStream {
+    pub fn get_writable(self: *const TransformStream) *WritableStream {
         return self.writableStream;
     }
 };

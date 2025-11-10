@@ -286,7 +286,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.4 "The getReader(options) method steps are:"
     /// Creates a reader and locks the stream to it.
-    pub fn getReader(
+    pub fn call_getReader(
         self: *ReadableStream,
         options: ?webidl.JSValue,
     ) !Reader {
@@ -306,7 +306,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.5 "The pipeTo(destination, options) method steps are:"
     /// Pipes this readable stream to a writable stream.
-    pub fn pipeTo(
+    pub fn call_pipeTo(
         self: *ReadableStream,
         destination: *WritableStream,
         options: ?PipeOptions,
@@ -364,7 +364,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.6 "The pipeThrough(transform, options) method steps are:"
     /// Pipes this readable stream through a transform stream.
-    pub fn pipeThrough(
+    pub fn call_pipeThrough(
         self: *ReadableStream,
         transform: *TransformPair,
         options: ?PipeOptions,
@@ -399,7 +399,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.7 "The tee() method steps are:"
     /// Creates two branches that can be consumed independently.
-    pub fn tee(self: *ReadableStream) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
+    pub fn call_tee(self: *ReadableStream) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
         // Step 1: Let branches be ? ReadableStreamTee(this, false).
         return self.teeInternal(false);
     }
@@ -410,7 +410,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 4.1.8 "The static from(asyncIterable) method steps are:"
     /// Creates a ReadableStream from an async iterable.
-    pub fn from(allocator: std.mem.Allocator, loop: eventLoop.EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream {
+    pub fn call_from(allocator: std.mem.Allocator, loop: eventLoop.EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream {
         _ = asyncIterable;
 
         // Simplified implementation - create an empty stream
@@ -429,7 +429,7 @@ pub const ReadableStream = webidl.interface(struct {
     ///
     /// Spec: § 3.2.6 "Asynchronous iteration"
     /// Returns an async iterator for the stream with optional preventCancel setting.
-    pub fn values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
+    pub fn call_values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
         return ReadableStreamAsyncIterator.init(
             self.allocator,
             self,
@@ -441,7 +441,7 @@ pub const ReadableStream = webidl.interface(struct {
     /// Get an async iterator with default options (preventCancel = false)
     ///
     /// This is the default async iterator used by for-await loops
-    pub fn asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
+    pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
         return self.values(false);
     }
 

@@ -217,7 +217,7 @@ pub const WritableStream = webidl.interface(struct {
     }
 
     /// getWriter() method
-    pub fn getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
+    pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
     }
 

@@ -1065,7 +1065,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     /// Get BYOB request for this controller
     ///
     /// Spec: § 4.10.11 "ReadableByteStreamControllerGetBYOBRequest"
-    pub fn getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest {
+    pub fn call_getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest {
         // Step 1: If byobRequest is null and pendingPullIntos is not empty
         if (self.byobRequest == null and self.pendingPullIntos.items.len > 0) {
             const firstDescriptor = self.pendingPullIntos.items[0];

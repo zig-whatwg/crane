@@ -30,7 +30,7 @@ pub const ReadableStreamBYOBRequest = webidl.interface(struct {
     // WebIDL Interface Methods
     // ============================================================================
 
-    pub fn viewAttr(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
+    pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
         return self.view;
     }
 

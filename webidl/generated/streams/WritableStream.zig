@@ -202,7 +202,7 @@ pub const WritableStream = struct {
         return self.closeInternal();
     }
     /// getWriter() method
-    pub fn getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
+    pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
     }
     fn isLocked(self: *const WritableStream) bool {

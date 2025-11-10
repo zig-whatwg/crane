@@ -347,7 +347,7 @@ pub const Console = webidl.namespace(struct {
 
     /// assert(condition, ...data)
     /// Spec: https://console.spec.whatwg.org/#assert
-    pub fn assert(self: *Console, condition: bool, data: []const webidl.JSValue) void {
+    pub fn call_assert(self: *Console, condition: bool, data: []const webidl.JSValue) void {
         // 1. If condition is true, return.
         if (condition) return;
 
@@ -414,7 +414,7 @@ pub const Console = webidl.namespace(struct {
 
     /// clear()
     /// Spec: https://console.spec.whatwg.org/#clear
-    pub fn clear(self: *Console) void {
+    pub fn call_clear(self: *Console) void {
         // Step 1: Empty the appropriate group stack
         while (self.groupStack.pop()) |group| {
             var g = group;
@@ -427,25 +427,25 @@ pub const Console = webidl.namespace(struct {
 
     /// debug(...data)
     /// Spec: https://console.spec.whatwg.org/#debug
-    pub fn debug(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_debug(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.debug, data);
     }
 
     /// error(...data)
     /// Spec: https://console.spec.whatwg.org/#error
-    pub fn error(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_error(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.error_level, data);
     }
 
     /// info(...data)
     /// Spec: https://console.spec.whatwg.org/#info
-    pub fn info(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_info(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.info, data);
     }
 
     /// log(...data)
     /// Spec: https://console.spec.whatwg.org/#log
-    pub fn log(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_log(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.log, data);
     }
 
@@ -456,7 +456,7 @@ pub const Console = webidl.namespace(struct {
     /// Falls back to logging if it can't be parsed as tabular.
     ///
     /// IDL: undefined table(optional any tabularData, optional sequence<DOMString> properties);
-    pub fn table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
+    pub fn call_table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
         if (tabular_data == null) {
             self.logger(.log, &.{});
             return;
@@ -710,7 +710,7 @@ pub const Console = webidl.namespace(struct {
     /// Get the call stack and log it with optional formatted data as label.
     ///
     /// IDL: undefined trace(any... data);
-    pub fn trace(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_trace(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let trace be some implementation-defined stack trace representation
         // Step 2: Optionally, let formattedData be the result of Formatter(data)
         // Step 3: Incorporate formattedData as a label for trace
@@ -772,13 +772,13 @@ pub const Console = webidl.namespace(struct {
 
     /// warn(...data)
     /// Spec: https://console.spec.whatwg.org/#warn
-    pub fn warn(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_warn(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.warn, data);
     }
 
     /// dir(item, options)
     /// Spec: https://console.spec.whatwg.org/#dir
-    pub fn dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
+    pub fn call_dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
         _ = options;
         if (item) |obj| {
             const args: [1]webidl.JSValue = .{obj};
@@ -790,13 +790,13 @@ pub const Console = webidl.namespace(struct {
 
     /// dirxml(...data)
     /// Spec: https://console.spec.whatwg.org/#dirxml
-    pub fn dirxml(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_dirxml(self: *Console, data: []const webidl.JSValue) void {
         self.logger(.dirxml, data);
     }
 
     /// count(label)
     /// Spec: https://console.spec.whatwg.org/#count
-    pub fn count(self: *Console, label: []const u8) void {
+    pub fn call_count(self: *Console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         // Step 2-3: Get or create count
         const interned = self.internLabel(label) catch label;
@@ -818,7 +818,7 @@ pub const Console = webidl.namespace(struct {
 
     /// countReset(label)
     /// Spec: https://console.spec.whatwg.org/#countreset
-    pub fn countReset(self: *Console, label: []const u8) void {
+    pub fn call_countReset(self: *Console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         const interned = self.internLabel(label) catch label;
 
@@ -841,7 +841,7 @@ pub const Console = webidl.namespace(struct {
 
     /// group(...data)
     /// Spec: https://console.spec.whatwg.org/#group
-    pub fn group(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_group(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -870,7 +870,7 @@ pub const Console = webidl.namespace(struct {
 
     /// groupCollapsed(...data)
     /// Spec: https://console.spec.whatwg.org/#groupcollapsed
-    pub fn groupCollapsed(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_groupCollapsed(self: *Console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -898,7 +898,7 @@ pub const Console = webidl.namespace(struct {
 
     /// groupEnd()
     /// Spec: https://console.spec.whatwg.org/#groupend
-    pub fn groupEnd(self: *Console) void {
+    pub fn call_groupEnd(self: *Console) void {
         // Step 1: Pop the last group from the group stack
         if (self.groupStack.pop()) |group| {
             var g = group;
@@ -908,7 +908,7 @@ pub const Console = webidl.namespace(struct {
 
     /// time(label)
     /// Spec: https://console.spec.whatwg.org/#time
-    pub fn time(self: *Console, label: []const u8) void {
+    pub fn call_time(self: *Console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: If the associated timer table contains an entry with key label, return
@@ -924,7 +924,7 @@ pub const Console = webidl.namespace(struct {
 
     /// timeLog(label, ...data)
     /// Spec: https://console.spec.whatwg.org/#timelog
-    pub fn timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void {
+    pub fn call_timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table
@@ -960,7 +960,7 @@ pub const Console = webidl.namespace(struct {
 
     /// timeEnd(label)
     /// Spec: https://console.spec.whatwg.org/#timeend
-    pub fn timeEnd(self: *Console, label: []const u8) void {
+    pub fn call_timeEnd(self: *Console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table

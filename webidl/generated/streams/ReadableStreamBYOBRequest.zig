@@ -30,7 +30,7 @@ pub const ReadableStreamBYOBRequest = struct {
         };
     }
     pub fn deinit(_: *ReadableStreamBYOBRequest) void {}
-    pub fn viewAttr(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
+    pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
         return self.view;
     }
     pub fn call_respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
