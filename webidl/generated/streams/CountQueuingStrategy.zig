@@ -16,6 +16,9 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const CountQueuingStrategy = struct {
+    // ========================================================================
+    // CountQueuingStrategy fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[highWaterMark]]: The high water mark
     highWaterMark: f64,
@@ -27,6 +30,10 @@ pub const CountQueuingStrategy = struct {
         };
     }
     pub fn deinit(_: *CountQueuingStrategy) void {}
+    // ========================================================================
+    // CountQueuingStrategy methods
+    // ========================================================================
+
     pub fn call_size(_: *const CountQueuingStrategy, _: ?webidl.JSValue) f64 {
         // Always returns 1 for count-based strategy
         return 1.0;

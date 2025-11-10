@@ -35,6 +35,9 @@ const ReadableStream = @import("readable_stream").ReadableStream;
 /// This mixin defines the shared interface between ReadableStreamDefaultReader
 /// and ReadableStreamBYOBReader.
 pub const ReadableStreamGenericReader = struct {
+    // ========================================================================
+    // ReadableStreamGenericReader fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
@@ -60,6 +63,10 @@ pub const ReadableStreamGenericReader = struct {
             .eventLoop = fields.eventLoop,
         };
     }
+    // ========================================================================
+    // ReadableStreamGenericReader methods
+    // ========================================================================
+
     /// closed attribute getter
     /// 
     /// IDL: readonly attribute Promise<undefined> closed;

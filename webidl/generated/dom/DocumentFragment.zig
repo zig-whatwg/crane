@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 pub const DocumentFragment = struct {
+    // ========================================================================
+    // DocumentFragment fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     node: Node,
 

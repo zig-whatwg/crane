@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Event = @import("event").Event;
 pub const CustomEvent = struct {
+    // ========================================================================
+    // CustomEvent fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     event: Event,
     detail: ?webidl.JSValue,
@@ -29,6 +32,10 @@ pub const CustomEvent = struct {
     pub fn deinit(self: *CustomEvent) void {
         self.event.deinit();
     }
+    // ========================================================================
+    // CustomEvent methods
+    // ========================================================================
+
     pub fn get_detail(self: *const CustomEvent) ?webidl.JSValue {
         return self.detail;
     }

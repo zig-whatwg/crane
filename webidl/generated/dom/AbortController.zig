@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const AbortSignal = @import("abort_signal").AbortSignal;
 pub const AbortController = struct {
+    // ========================================================================
+    // AbortController fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     signal: AbortSignal,
 
@@ -25,6 +28,10 @@ pub const AbortController = struct {
     pub fn deinit(self: *AbortController) void {
         self.signal.deinit();
     }
+    // ========================================================================
+    // AbortController methods
+    // ========================================================================
+
     pub fn call_abort(self: *AbortController, reason: ?webidl.JSValue) void {
         self.signal.aborted = true;
         self.signal.reason = reason;

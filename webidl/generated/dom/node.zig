@@ -18,6 +18,9 @@ const Allocator = std.mem.Allocator;
 const EventTarget = @import("event_target").EventTarget;
 /// Node WebIDL interface
 pub const Node = struct {
+    // ========================================================================
+    // Node fields
+    // ========================================================================
     allocator: Allocator,
     event_target: EventTarget,
     node_type: u16,
@@ -59,6 +62,10 @@ pub const Node = struct {
         self.event_target.deinit();
         self.child_nodes.deinit();
     }
+    // ========================================================================
+    // Node methods
+    // ========================================================================
+
     /// appendChild(node)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *Node, node: *Node) !*Node {

@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 pub const DocumentType = struct {
+    // ========================================================================
+    // DocumentType fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     node: Node,
     name: []const u8,
@@ -27,6 +30,10 @@ pub const DocumentType = struct {
     pub fn deinit(self: *DocumentType) void {
         self.node.deinit();
     }
+    // ========================================================================
+    // DocumentType methods
+    // ========================================================================
+
     pub fn get_name(self: *const DocumentType) []const u8 {
         return self.name;
     }

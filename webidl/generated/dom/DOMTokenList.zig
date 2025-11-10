@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
 pub const DOMTokenList = struct {
+    // ========================================================================
+    // DOMTokenList fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     tokens: std.ArrayList([]const u8),
 
@@ -25,6 +28,10 @@ pub const DOMTokenList = struct {
     pub fn deinit(self: *DOMTokenList) void {
         self.tokens.deinit();
     }
+    // ========================================================================
+    // DOMTokenList methods
+    // ========================================================================
+
     pub fn call_add(self: *DOMTokenList, token: []const u8) !void {
         for (self.tokens.items) |t| {
             if (std.mem.eql(u8, t, token)) return;

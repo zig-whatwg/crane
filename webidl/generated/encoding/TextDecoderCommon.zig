@@ -45,6 +45,9 @@ const webidl = @import("webidl");
 pub const TextDecoderCommon = struct {
     allocator: std.mem.Allocator,
 
+    // ========================================================================
+    // TextDecoderCommon fields
+    // ========================================================================
     /// The encoding name (WHATWG canonical name, lowercase ASCII)
     /// 
     /// Examples: "utf-8", "windows-1252", "iso-8859-1"

@@ -14,6 +14,9 @@ const webidl = @import("webidl");
 pub const Attr = struct {
     allocator: std.mem.Allocator,
 
+    // ========================================================================
+    // Attr fields
+    // ========================================================================
     name: []const u8,
     value: []const u8,
     pub fn init(allocator: std.mem.Allocator, name: []const u8, value: []const u8) !Attr {

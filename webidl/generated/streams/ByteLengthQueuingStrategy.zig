@@ -16,6 +16,9 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const ByteLengthQueuingStrategy = struct {
+    // ========================================================================
+    // ByteLengthQueuingStrategy fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[highWaterMark]]: The high water mark
     highWaterMark: f64,
@@ -27,6 +30,10 @@ pub const ByteLengthQueuingStrategy = struct {
         };
     }
     pub fn deinit(_: *ByteLengthQueuingStrategy) void {}
+    // ========================================================================
+    // ByteLengthQueuingStrategy methods
+    // ========================================================================
+
     pub fn size(_: *const ByteLengthQueuingStrategy, chunk: ?webidl.JSValue) f64 {
         _ = chunk;
         // Should return chunk.byteLength, but simplified for now

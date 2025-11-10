@@ -43,6 +43,9 @@ pub const Writer = union(enum) {
     default: *WritableStreamDefaultWriter,
 };
 pub const WritableStream = struct {
+    // ========================================================================
+    // WritableStream fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[backpressure]]: boolean - whether backpressure is being applied
     backpressure: bool,
@@ -102,6 +105,10 @@ pub const WritableStream = struct {
             self.allocator.destroy(loop_ptr);
         }
     }
+    // ========================================================================
+    // WritableStream methods
+    // ========================================================================
+
     /// Initialize with underlying sink and strategy
     /// 
     /// Spec: § 5.1.3 "new WritableStream(underlyingSink, strategy)"

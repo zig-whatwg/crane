@@ -47,6 +47,9 @@ const ByteStreamQueueEntry = struct {
     byteLength: u64,
 };
 pub const ReadableByteStreamController = struct {
+    // ========================================================================
+    // ReadableByteStreamController fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[autoAllocateChunkSize]]: Size for auto-allocated buffers
     autoAllocateChunkSize: ?u64,
@@ -124,6 +127,10 @@ pub const ReadableByteStreamController = struct {
             self.allocator.destroy(req);
         }
     }
+    // ========================================================================
+    // ReadableByteStreamController methods
+    // ========================================================================
+
     /// Calculate desired size (internal helper)
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerGetDesiredSize(controller)"

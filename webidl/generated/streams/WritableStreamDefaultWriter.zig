@@ -22,6 +22,9 @@ const AsyncPromise = @import("async_promise").AsyncPromise;
 
 const WritableStream = @import("writable_stream").WritableStream;
 pub const WritableStreamDefaultWriter = struct {
+    // ========================================================================
+    // WritableStreamDefaultWriter fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
@@ -53,6 +56,10 @@ pub const WritableStreamDefaultWriter = struct {
         };
     }
     pub fn deinit(_: *WritableStreamDefaultWriter) void {}
+    // ========================================================================
+    // WritableStreamDefaultWriter methods
+    // ========================================================================
+
     pub fn closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});

@@ -18,6 +18,9 @@ const webidl = @import("webidl");
 
 const common = @import("common");
 pub const TransformStreamDefaultController = struct {
+    // ========================================================================
+    // TransformStreamDefaultController fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[stream]]: The TransformStream instance controlled
     stream: ?*anyopaque,
@@ -32,6 +35,10 @@ pub const TransformStreamDefaultController = struct {
         };
     }
     pub fn deinit(_: *TransformStreamDefaultController) void {}
+    // ========================================================================
+    // TransformStreamDefaultController methods
+    // ========================================================================
+
     pub fn call_enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void {
         const chunk_value = if (chunk) |c| common.JSValue.fromWebIDL(c) else common.JSValue.undefined_value();
         try self.enqueueInternal(chunk_value);

@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 pub const NodeList = struct {
+    // ========================================================================
+    // NodeList fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     nodes: std.ArrayList(*Node),
 
@@ -25,6 +28,10 @@ pub const NodeList = struct {
     pub fn deinit(self: *NodeList) void {
         self.nodes.deinit();
     }
+    // ========================================================================
+    // NodeList methods
+    // ========================================================================
+
     pub fn call_item(self: *const NodeList, index: u32) ?*Node {
         if (index < self.nodes.items.len) {
             return self.nodes.items[index];

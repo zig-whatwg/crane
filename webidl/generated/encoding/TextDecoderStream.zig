@@ -49,6 +49,9 @@ const Decoder = encoding_mod.Decoder;
 /// TextDecoderStream includes GenericTransformStream;
 /// ```
 pub const TextDecoderStream = struct {
+    // ========================================================================
+    // TextDecoderStream fields
+    // ========================================================================
     /// Mixin: TextDecoderCommon (encoding, fatal, ignoreBOM)
     decoderMixin: TextDecoderCommon,
     /// Mixin: GenericTransformStream (readable, writable)
@@ -112,6 +115,10 @@ pub const TextDecoderStream = struct {
         self.transformMixin.transform.deinit();
         self.allocator.destroy(self.transformMixin.transform);
     }
+    // ========================================================================
+    // TextDecoderStream methods
+    // ========================================================================
+
     /// Get the encoding name
     /// 
     /// TextDecoderCommon.encoding getter

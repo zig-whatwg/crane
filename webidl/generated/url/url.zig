@@ -10,6 +10,9 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const URL = struct {
+    // ========================================================================
+    // URL fields
+    // ========================================================================
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !URL { return .{ .allocator = allocator }; }

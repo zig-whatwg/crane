@@ -70,6 +70,9 @@ pub const TransformPair = struct {
     writable: *WritableStream,
 };
 pub const ReadableStream = struct {
+    // ========================================================================
+    // ReadableStream fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[controller]]: ReadableStreamDefaultController or ReadableByteStreamController
     /// Spec: § 4.1 Internal slot [[controller]]
@@ -161,6 +164,10 @@ pub const ReadableStream = struct {
             teeState.release();
         }
     }
+    // ========================================================================
+    // ReadableStream methods
+    // ========================================================================
+
     /// Initialize a ReadableStream with an underlying source
     /// 
     /// Spec: § 4.1.1 "new ReadableStream(underlyingSource = {}, strategy = {})"

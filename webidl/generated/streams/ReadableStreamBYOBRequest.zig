@@ -16,6 +16,9 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const ReadableStreamBYOBRequest = struct {
+    // ========================================================================
+    // ReadableStreamBYOBRequest fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[controller]]: The parent controller
     controller: ?*anyopaque,
@@ -30,6 +33,10 @@ pub const ReadableStreamBYOBRequest = struct {
         };
     }
     pub fn deinit(_: *ReadableStreamBYOBRequest) void {}
+    // ========================================================================
+    // ReadableStreamBYOBRequest methods
+    // ========================================================================
+
     pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
         return self.view;
     }

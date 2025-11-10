@@ -22,6 +22,9 @@ const ReadableStream = @import("readable_stream").ReadableStream;
 const WritableStream = @import("writable_stream").WritableStream;
 const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
 pub const TransformStream = struct {
+    // ========================================================================
+    // TransformStream fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[backpressure]]: boolean - whether backpressure signal has been sent
     backpressure: bool,
@@ -43,6 +46,10 @@ pub const TransformStream = struct {
         self.controller.deinit();
         self.allocator.destroy(self.controller);
     }
+    // ========================================================================
+    // TransformStream methods
+    // ========================================================================
+
     pub fn initWithTransformer(
         allocator: std.mem.Allocator,
         transformer: ?webidl.JSValue,

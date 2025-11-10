@@ -41,6 +41,9 @@ const WritableStream = streams.WritableStream;
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
 pub const TextEncoderStream = struct {
+    // ========================================================================
+    // TextEncoderStream fields
+    // ========================================================================
     /// Mixin: TextEncoderCommon (encoding)
     encoderMixin: TextEncoderCommon,
     /// Mixin: GenericTransformStream (readable, writable)
@@ -79,6 +82,10 @@ pub const TextEncoderStream = struct {
         self.transformMixin.transform.deinit();
         self.allocator.destroy(self.transformMixin.transform);
     }
+    // ========================================================================
+    // TextEncoderStream methods
+    // ========================================================================
+
     /// Get the encoding name (always "utf-8")
     /// 
     /// TextEncoderCommon.encoding getter

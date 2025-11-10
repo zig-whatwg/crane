@@ -58,6 +58,9 @@ pub const CompressionStream = struct {
 /// });
 /// ```
 pub const GenericTransformStream = struct {
+    // ========================================================================
+    // GenericTransformStream fields
+    // ========================================================================
     /// [[transform]]: The actual TransformStream backing this object
     /// 
     /// Spec: "Any platform object that includes the GenericTransformStream
@@ -75,6 +78,10 @@ pub const GenericTransformStream = struct {
             .transform = fields.transform,
         };
     }
+    // ========================================================================
+    // GenericTransformStream methods
+    // ========================================================================
+
     /// readable attribute getter
     /// 
     /// IDL: readonly attribute ReadableStream readable;

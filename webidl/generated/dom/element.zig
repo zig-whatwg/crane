@@ -18,6 +18,9 @@ const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 /// Element WebIDL interface
 pub const Element = struct {
+    // ========================================================================
+    // Element fields
+    // ========================================================================
     allocator: Allocator,
     node: Node,
     tag_name: []const u8,
@@ -37,6 +40,10 @@ pub const Element = struct {
         self.node.deinit();
         self.attributes.deinit();
     }
+    // ========================================================================
+    // Element methods
+    // ========================================================================
+
     /// getAttribute(qualifiedName)
     /// Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
     pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {

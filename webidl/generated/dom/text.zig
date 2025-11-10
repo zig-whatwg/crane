@@ -16,6 +16,9 @@ const CharacterData = @import("character_data").CharacterData;
 
 const Allocator = std.mem.Allocator;
 pub const Text = struct {
+    // ========================================================================
+    // Text fields
+    // ========================================================================
     allocator: Allocator,
     character_data: CharacterData,
 

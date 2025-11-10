@@ -158,6 +158,9 @@ const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 /// Note: TextEncoder only supports UTF-8 encoding (no label argument).
 /// Note: TextEncoder offers no stream option (no buffering needed).
 pub const TextEncoder = struct {
+    // ========================================================================
+    // TextEncoder fields
+    // ========================================================================
     /// Mixin: TextEncoderCommon (encoding)
     mixin: TextEncoderCommon,
     allocator: std.mem.Allocator,
@@ -209,6 +212,10 @@ pub const TextEncoder = struct {
         _ = self;
         // No resources to clean up (stateless)
     }
+    // ========================================================================
+    // TextEncoder methods
+    // ========================================================================
+
     /// Get the encoding name (always "utf-8")
     /// 
     /// WHATWG Encoding Standard § 5.2.1

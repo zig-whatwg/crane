@@ -17,6 +17,9 @@ const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 /// Event WebIDL interface
 pub const Event = struct {
+    // ========================================================================
+    // Event fields
+    // ========================================================================
     allocator: Allocator,
     event_type: []const u8,
     target: ?*EventTarget,
@@ -59,6 +62,10 @@ pub const Event = struct {
     pub fn deinit(self: *Event) void {
         _ = self;
     }
+    // ========================================================================
+    // Event methods
+    // ========================================================================
+
     /// stopPropagation()
     /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
     pub fn call_stopPropagation(self: *Event) void {

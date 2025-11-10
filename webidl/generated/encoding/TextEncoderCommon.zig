@@ -41,6 +41,9 @@ const webidl = @import("webidl");
 pub const TextEncoderCommon = struct {
     allocator: std.mem.Allocator,
 
+    // ========================================================================
+    // TextEncoderCommon fields
+    // ========================================================================
     /// The encoding name (always "utf-8")
     /// 
     /// TextEncoder and TextEncoderStream only support UTF-8 encoding,

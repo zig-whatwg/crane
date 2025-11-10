@@ -17,6 +17,9 @@ const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 /// EventTarget WebIDL interface
 pub const EventTarget = struct {
+    // ========================================================================
+    // EventTarget fields
+    // ========================================================================
     allocator: Allocator,
     event_listener_list: std.ArrayList(EventListener),
 
@@ -29,6 +32,10 @@ pub const EventTarget = struct {
     pub fn deinit(self: *EventTarget) void {
         self.event_listener_list.deinit();
     }
+    // ========================================================================
+    // EventTarget methods
+    // ========================================================================
+
     /// addEventListener(type, callback, options)
     /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
     pub fn call_addEventListener(

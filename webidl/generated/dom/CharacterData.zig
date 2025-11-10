@@ -16,6 +16,9 @@ const Node = @import("node").Node;
 
 const Allocator = std.mem.Allocator;
 pub const CharacterData = struct {
+    // ========================================================================
+    // CharacterData fields
+    // ========================================================================
     allocator: Allocator,
     node: Node,
     data: []const u8,
@@ -30,6 +33,10 @@ pub const CharacterData = struct {
     pub fn deinit(self: *CharacterData) void {
         self.node.deinit();
     }
+    // ========================================================================
+    // CharacterData methods
+    // ========================================================================
+
     pub fn get_data(self: *const CharacterData) []const u8 {
         return self.data;
     }

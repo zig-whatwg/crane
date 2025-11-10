@@ -21,6 +21,9 @@ const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 pub const WritableStreamDefaultController = struct {
+    // ========================================================================
+    // WritableStreamDefaultController fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[abortAlgorithm]]: Promise-returning algorithm for abort
     abortAlgorithm: common.AbortAlgorithm,
@@ -66,6 +69,10 @@ pub const WritableStreamDefaultController = struct {
     pub fn deinit(self: *WritableStreamDefaultController) void {
         self.queue.deinit();
     }
+    // ========================================================================
+    // WritableStreamDefaultController methods
+    // ========================================================================
+
     pub fn errorStream(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         self.errorInternal(error_value);

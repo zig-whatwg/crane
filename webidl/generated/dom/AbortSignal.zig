@@ -13,6 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const EventTarget = @import("event_target").EventTarget;
 pub const AbortSignal = struct {
+    // ========================================================================
+    // AbortSignal fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     event_target: EventTarget,
     aborted: bool,
@@ -29,6 +32,10 @@ pub const AbortSignal = struct {
     pub fn deinit(self: *AbortSignal) void {
         self.event_target.deinit();
     }
+    // ========================================================================
+    // AbortSignal methods
+    // ========================================================================
+
     pub fn get_aborted(self: *const AbortSignal) bool {
         return self.aborted;
     }

@@ -17,6 +17,9 @@ const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
 pub const Document = struct {
+    // ========================================================================
+    // Document fields
+    // ========================================================================
     allocator: Allocator,
     node: Node,
 
@@ -29,6 +32,10 @@ pub const Document = struct {
     pub fn deinit(self: *Document) void {
         self.node.deinit();
     }
+    // ========================================================================
+    // Document methods
+    // ========================================================================
+
     /// createElement(localName)
     /// Spec: https://dom.spec.whatwg.org/#dom-document-createelement
     pub fn call_createElement(self: *Document, local_name: []const u8) !*Element {

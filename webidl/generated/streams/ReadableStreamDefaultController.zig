@@ -44,6 +44,9 @@ const ReadableStreamDefaultReader = @import("readable_stream_default_reader").Re
 /// };
 /// ```
 pub const ReadableStreamDefaultController = struct {
+    // ========================================================================
+    // ReadableStreamDefaultController fields
+    // ========================================================================
     allocator: std.mem.Allocator,
     /// [[cancelAlgorithm]]: Promise-returning algorithm for cancelation
     /// 
@@ -121,6 +124,10 @@ pub const ReadableStreamDefaultController = struct {
     pub fn deinit(self: *ReadableStreamDefaultController) void {
         self.queue.deinit();
     }
+    // ========================================================================
+    // ReadableStreamDefaultController methods
+    // ========================================================================
+
     /// desiredSize attribute getter
     /// 
     /// IDL: readonly attribute unrestricted double? desiredSize;
