@@ -431,7 +431,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
             // Step 2: If controller.[[queue]] is not empty,
             if (!self.queue.isEmpty()) {
                 // Step 2.1: Let chunk be ! DequeueValue(controller).
-                const chunk = self.queue.dequeueValue();
+                const chunk = self.queue.dequeueValue() catch unreachable;
 
                 // Step 2.2: If controller.[[closeRequested]] is true and controller.[[queue]] is empty,
                 if (self.closeRequested and self.queue.isEmpty()) {
@@ -456,7 +456,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
 
             // Step 3: Let pendingPromise be ! ReadableStreamAddReadRequest(stream).
             const pendingPromise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-            try reader.readRequests.append(pendingPromise);
+            try reader.readRequests.append(reader.allocator, pendingPromise);
 
             // Step 4: Perform ! ReadableStreamDefaultControllerCallPullIfNeeded(controller).
             self.callPullIfNeeded();
@@ -479,8 +479,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         self.queue.resetQueue();
 
         // Step 2: Let result be the result of performing controller.[[cancelAlgorithm]], passing reason.
-        _ = reason;
-        const result = self.cancelAlgorithm.call();
+        const result = self.cancelAlgorithm.call(reason);
 
         // Step 3: Perform ! ReadableStreamDefaultControllerClearAlgorithms(controller).
         self.clearAlgorithms();

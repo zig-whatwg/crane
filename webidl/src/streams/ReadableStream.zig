@@ -1252,9 +1252,9 @@ const FromIterableState = struct {
             } else {
                 // Spec step 4.4.4: Otherwise, let value be ? IteratorValue(iterResult)
                 // Spec step 4.4.4.2: Perform ! ReadableStreamDefaultControllerEnqueue(stream.[[controller]], value)
-                self.stream.controller.enqueueInternal(iterResult.value) catch {
+                self.stream.controller.enqueueInternal(iterResult.value.toWebIDL()) catch {
                     // If enqueue fails, error the stream
-                    self.stream.controller.errorInternal(common.JSValue{ .string = "Enqueue failed" });
+                    self.stream.controller.errorInternal(webidl.JSValue.undefined);
                 };
             }
         }

@@ -60,11 +60,11 @@ pub const ReadableStreamBYOBReader = struct {
             .closedPromise = closedPromise,
             .stream = stream,
             .eventLoop = loop,
-            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).init(allocator),
+            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).empty,
         };
     }
     pub fn deinit(self: *ReadableStreamBYOBReader) void {
-        self.readIntoRequests.deinit();
+        self.readIntoRequests.deinit(self.allocator);
     }
 
     // ========================================================================

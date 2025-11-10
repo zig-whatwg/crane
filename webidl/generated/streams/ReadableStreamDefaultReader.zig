@@ -84,7 +84,7 @@ pub const ReadableStreamDefaultReader = struct {
             .eventLoop = loop,
             .closedPromise = closedPromise,
             .stream = stream,
-            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).init(allocator),
+            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).empty,
         };
     }
     /// Deinitialize the reader
@@ -92,7 +92,7 @@ pub const ReadableStreamDefaultReader = struct {
     /// Spec: Cleanup internal slots
     pub fn deinit(self: *ReadableStreamDefaultReader) void {
         // Note: readRequests promises are owned by callers, just clear the list
-        self.readRequests.deinit();
+        self.readRequests.deinit(self.allocator);
     }
 
     // ========================================================================

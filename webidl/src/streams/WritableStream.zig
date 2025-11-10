@@ -167,7 +167,7 @@ pub const WritableStream = webidl.interface(struct {
             .state = .writable,
             .storedError = null,
             .writer = .none,
-            .writeRequests = std.ArrayList(*AsyncPromise(void)).init(allocator),
+            .writeRequests = std.ArrayList(*AsyncPromise(void)).empty,
             .eventLoop = loop,
             .eventLoop_storage = null,
         };

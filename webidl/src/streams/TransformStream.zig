@@ -168,7 +168,7 @@ pub const TransformStream = webidl.interface(struct {
     /// Spec: § 6.3.1 "Error both sides of the transform stream"
     pub fn errorStream(self: *TransformStream, e: common.JSValue) void {
         // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
-        self.readableStream.controller.errorInternal(e);
+        self.readableStream.controller.errorInternal(e.toWebIDL());
 
         // Spec step 2: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, e)
         self.errorWritableAndUnblockWrite(e);

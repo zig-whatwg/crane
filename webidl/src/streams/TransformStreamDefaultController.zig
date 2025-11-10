@@ -118,7 +118,7 @@ pub const TransformStreamDefaultController = webidl.interface(struct {
         }
 
         // Spec step 4: Let enqueueResult be ReadableStreamDefaultControllerEnqueue(readableController, chunk)
-        readable_controller.enqueueInternal(chunk) catch |err| {
+        readable_controller.enqueueInternal(chunk.toWebIDL()) catch |err| {
             // Spec step 5: If enqueueResult is an abrupt completion
             // Spec step 5.1: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, enqueueResult.[[Value]])
             stream.errorWritableAndUnblockWrite(common.JSValue{ .string = "Enqueue failed" });
