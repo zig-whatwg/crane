@@ -5,7 +5,7 @@
 //!
 //! Spec: https://streams.spec.whatwg.org/
 //!
-//! Current Status: Phase 3 - ReadableStream + DefaultReader (In Progress)
+//! Current Status: Phases 1-6 & 8 Complete, Phase 5 & 7 In Progress
 //!
 //! Phase 1 - Foundational Types (Complete):
 //! - Queue-with-sizes (§8.1) ✅
@@ -28,6 +28,29 @@
 //! Phase 4 - WritableStream + Writer (Complete):
 //! - WritableStreamDefaultWriter ✅
 //! - WritableStream class (constructor, write/close/abort operations) ✅
+//!
+//! Phase 5 - TransformStream (In Progress):
+//! - TransformStream class (constructor, transform operations) 🚧
+//!
+//! Phase 6 - Piping Operations (Complete):
+//! - pipeTo() with error/close propagation ✅
+//! - pipeThrough() for stream composition ✅
+//! - PipeState coordinator with backpressure handling ✅
+//!
+//! Phase 7 - BYOB (Bring Your Own Buffer) Streams (In Progress):
+//! - ReadableByteStreamController 🚧
+//! - ReadableStreamBYOBReader 🚧
+//! - Byte stream integration 🚧
+//!
+//! Phase 8 - Async Iteration (Complete):
+//! - ReadableStream.values() ✅
+//! - ReadableStream[@@asyncIterator]() ✅
+//! - ReadableStreamAsyncIterator protocol ✅
+//!
+//! Phase 9 - Transfer/Serialization (Not Implemented):
+//! - Transfer steps ❌
+//! - Transfer-receiving steps ❌
+//! - Requires: HTML Standard's MessagePort infrastructure
 
 const std = @import("std");
 
