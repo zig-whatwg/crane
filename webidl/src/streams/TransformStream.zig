@@ -41,15 +41,41 @@ pub const TransformStream = webidl.interface(struct {
         self.allocator.destroy(self.controller);
     }
 
+    /// new TransformStream(transformer, writableStrategy, readableStrategy)
+    ///
+    /// Spec: § 6.1.3 "Constructor steps"
     pub fn initWithTransformer(
         allocator: std.mem.Allocator,
         transformer: ?webidl.JSValue,
         writableStrategy: ?webidl.JSValue,
         readableStrategy: ?webidl.JSValue,
     ) !TransformStream {
-        _ = transformer;
-        _ = writableStrategy;
-        _ = readableStrategy;
+        // Spec step 1-2: If transformer is missing, set it to null; convert to Transformer dict
+        const transformer_dict = try dict_parsing.parseTransformer(allocator, transformer);
+
+        // Spec step 3: If transformerDict["readableType"] exists, throw RangeError
+        if (transformer_dict.readable_type) |_| {
+            return error.RangeError;
+        }
+
+        // Spec step 4: If transformerDict["writableType"] exists, throw RangeError
+        if (transformer_dict.writable_type) |_| {
+            return error.RangeError;
+        }
+
+        // Spec step 5-8: Extract high water marks and size algorithms
+        // TODO: Use these for proper stream initialization
+        _ = try dict_parsing.parseQueuingStrategy(allocator, readableStrategy);
+        // const readable_hwm = readable_strategy_dict.high_water_mark orelse 0.0;
+
+        _ = try dict_parsing.parseQueuingStrategy(allocator, writableStrategy);
+        // const writable_hwm = writable_strategy_dict.high_water_mark orelse 1.0;
+
+        // Spec step 9: Let startPromise be a new promise
+        // (We'll use a simplified synchronous initialization for now)
+
+        // Spec step 10-11: Initialize transform stream and set up controller
+        // For now, we create a simple pass-through transform stream
 
         const readable_stream = try allocator.create(ReadableStream);
         errdefer allocator.destroy(readable_stream);
@@ -59,9 +85,18 @@ pub const TransformStream = webidl.interface(struct {
         errdefer allocator.destroy(writable_stream);
         writable_stream.* = try WritableStream.init(allocator);
 
+        // Create controller with extracted algorithms
         const ctrl = try allocator.create(TransformStreamDefaultController);
         errdefer allocator.destroy(ctrl);
-        ctrl.* = TransformStreamDefaultController.init(allocator, null);
+
+        // Use default algorithms for now
+        // TODO: Extract transform/flush/cancel from transformer_dict
+        ctrl.* = TransformStreamDefaultController.init(
+            allocator,
+            common.defaultTransformAlgorithm(),
+            common.defaultFlushAlgorithm(),
+            common.defaultCancelAlgorithm(),
+        );
 
         var stream = TransformStream{
             .allocator = allocator,
@@ -74,6 +109,10 @@ pub const TransformStream = webidl.interface(struct {
         ctrl.stream = @ptrCast(&stream);
         readable_stream.controller.stream = @ptrCast(readable_stream);
         writable_stream.controller.stream = @ptrCast(writable_stream);
+
+        // Spec step 12-13: Call start() if it exists
+        // TODO: Invoke transformer_dict.start with controller
+        // TODO: Use readable_hwm and writable_hwm for stream initialization
 
         return stream;
     }
