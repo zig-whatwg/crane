@@ -1,14 +1,14 @@
-//! WHATWG Console Standard Implementation
+//! WHATWG console Standard Implementation
 //!
 //! Spec: https://console.spec.whatwg.org/
 //!
 //! This module implements the console namespace object as defined by the
-//! WHATWG Console Standard. The console provides logging, timing, counting,
+//! WHATWG console Standard. The console provides logging, timing, counting,
 //! and grouping operations for debugging and development.
 //!
 //! # Architecture
 //!
-//! This implementation follows the WHATWG Console specification exactly:
+//! This implementation follows the WHATWG console specification exactly:
 //! - **Logger** operation: Handles format specifier processing
 //! - **Formatter** operation: Recursive format specifier replacement
 //! - **Printer** operation: Message buffering and output
@@ -40,7 +40,7 @@
 //!
 //! ```zig
 //! const std = @import("std");
-//! const Console = @import("console").Console;
+//! const console = @import("console").console;
 //!
 //! pub fn main() !void {
 //!     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -48,7 +48,7 @@
 //!     const allocator = gpa.allocator();
 //!
 //!     // Initialize console
-//!     var console = try Console.init(allocator);
+//!     var console = try console.init(allocator);
 //!     defer console.deinit();
 //!
 //!     // Logging
@@ -86,7 +86,7 @@
 //! defer runtime.deinit();
 //!
 //! // Initialize console with runtime
-//! var console = try Console.init(allocator);
+//! var console = try console.init(allocator);
 //! defer console.deinit();
 //! console.runtime = &runtime.interface;
 //!
@@ -103,7 +103,7 @@
 //!     std.log.info("{s}", .{message});
 //! }
 //!
-//! var console = try Console.init(allocator);
+//! var console = try console.init(allocator);
 //! console.printFn = myCustomPrinter;
 //! ```
 //!
@@ -119,13 +119,13 @@
 //!
 //! # Thread Safety
 //!
-//! Console is NOT thread-safe. Use one Console instance per thread,
+//! console is NOT thread-safe. Use one console instance per thread,
 //! or synchronize access externally.
 //!
 //! # See Also
 //! - `types.zig` - Supporting types and RuntimeInterface
 //! - `format.zig` - Format specifier processing
-//! - WHATWG Console Spec: https://console.spec.whatwg.org/
+//! - WHATWG console Spec: https://console.spec.whatwg.org/
 
 const std = @import("std");
 const webidl = @import("webidl");
@@ -154,15 +154,15 @@ pub const PrintFn = *const fn (message: []const u8) void;
 
 /// Default printer function that outputs to stderr.
 ///
-/// This is the default value for Console.printFn.
+/// This is the default value for console.printFn.
 /// Outputs messages using std.debug.print with newline.
 fn defaultPrinter(message: []const u8) void {
     std.debug.print("{s}\n", .{message});
 }
 
-/// Console namespace object per WHATWG Console Standard
+/// console namespace object per WHATWG console Standard
 ///
-/// WHATWG Console Standard lines 8-39 (WebIDL):
+/// WHATWG console Standard lines 8-39 (WebIDL):
 /// ```webidl
 /// [Exposed=*]
 /// namespace console {
@@ -215,7 +215,7 @@ fn defaultPrinter(message: []const u8) void {
 /// - `groupStack`: Stack of active groups for indentation
 /// - `messageBuffer`: Circular buffer for message history (default 1000)
 /// - `labelPool`: Interned label strings for performance
-pub const Console = webidl.namespace(struct {
+pub const console = webidl.namespace(struct {
     allocator: Allocator,
     enabled: bool,
     printFn: ?PrintFn,
@@ -226,21 +226,21 @@ pub const Console = webidl.namespace(struct {
     messageBuffer: CircularMessageBuffer,
     labelPool: std.StringHashMap(void),
 
-    /// Initialize a new Console namespace object with default buffer size (1000 messages).
+    /// Initialize a new console namespace object with default buffer size (1000 messages).
     ///
     /// All state (countMap, timerTable, groupStack, messageBuffer, labelPool) is initialized empty.
-    /// Console is enabled by default with immediate output to stderr.
+    /// console is enabled by default with immediate output to stderr.
     ///
     /// # Example
     /// ```zig
-    /// var console = try Console.init(allocator);
+    /// var console = try console.init(allocator);
     /// defer console.deinit();
     /// ```
-    pub fn init(allocator: Allocator) !Console {
+    pub fn init(allocator: Allocator) !console {
         return initWithBufferSize(allocator, 1000);
     }
 
-    /// Initialize a new Console namespace object with custom buffer size.
+    /// Initialize a new console namespace object with custom buffer size.
     ///
     /// Allows customization of message buffer size for different deployment scenarios:
     /// - Embedded systems: small buffer (e.g., 100)
@@ -251,10 +251,10 @@ pub const Console = webidl.namespace(struct {
     /// # Example
     /// ```zig
     /// // Large buffer for server logging
-    /// var console = try Console.initWithBufferSize(allocator, 10000);
+    /// var console = try console.initWithBufferSize(allocator, 10000);
     /// defer console.deinit();
     /// ```
-    pub fn initWithBufferSize(allocator: Allocator, buffer_size: usize) !Console {
+    pub fn initWithBufferSize(allocator: Allocator, buffer_size: usize) !console {
         var labelPool = std.StringHashMap(void).init(allocator);
         errdefer {
             var it = labelPool.keyIterator();
@@ -287,16 +287,16 @@ pub const Console = webidl.namespace(struct {
 
     /// Clean up all resources.
     ///
-    /// This must be called when the Console object is no longer needed.
+    /// This must be called when the console object is no longer needed.
     /// Frees all allocated memory for countMap, timerTable, groupStack,
     /// messageBuffer, and labelPool.
     ///
     /// # Example
     /// ```zig
-    /// var console = try Console.init(allocator);
+    /// var console = try console.init(allocator);
     /// defer console.deinit(); // Always clean up
     /// ```
-    pub fn deinit(self: *Console) void {
+    pub fn deinit(self: *console) void {
         self.countMap.deinit();
         self.timerTable.deinit();
 
@@ -329,7 +329,7 @@ pub const Console = webidl.namespace(struct {
     /// - First call for a label: allocates and stores in pool
     /// - Subsequent calls: O(1) lookup, no allocation
     /// - "default" label: pre-interned in init(), zero-cost
-    fn internLabel(self: *Console, label_utf8: []const u8) ![]const u8 {
+    fn internLabel(self: *console, label_utf8: []const u8) ![]const u8 {
         // Check if already in pool
         if (self.labelPool.getKey(label_utf8)) |existing| {
             return existing;
@@ -347,7 +347,7 @@ pub const Console = webidl.namespace(struct {
 
     /// assert(condition, ...data)
     /// Spec: https://console.spec.whatwg.org/#assert
-    pub fn call_assert(self: *Console, condition: bool, data: []const webidl.JSValue) void {
+    pub fn call_assert(self: *console, condition: bool, data: []const webidl.JSValue) void {
         // 1. If condition is true, return.
         if (condition) return;
 
@@ -414,7 +414,7 @@ pub const Console = webidl.namespace(struct {
 
     /// clear()
     /// Spec: https://console.spec.whatwg.org/#clear
-    pub fn call_clear(self: *Console) void {
+    pub fn call_clear(self: *console) void {
         // Step 1: Empty the appropriate group stack
         while (self.groupStack.pop()) |group| {
             var g = group;
@@ -427,36 +427,36 @@ pub const Console = webidl.namespace(struct {
 
     /// debug(...data)
     /// Spec: https://console.spec.whatwg.org/#debug
-    pub fn call_debug(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_debug(self: *console, data: []const webidl.JSValue) void {
         self.logger(.debug, data);
     }
 
     /// error(...data)
     /// Spec: https://console.spec.whatwg.org/#error
-    pub fn call_error(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_error(self: *console, data: []const webidl.JSValue) void {
         self.logger(.error_level, data);
     }
 
     /// info(...data)
     /// Spec: https://console.spec.whatwg.org/#info
-    pub fn call_info(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_info(self: *console, data: []const webidl.JSValue) void {
         self.logger(.info, data);
     }
 
     /// log(...data)
     /// Spec: https://console.spec.whatwg.org/#log
-    pub fn call_log(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_log(self: *console, data: []const webidl.JSValue) void {
         self.logger(.log, data);
     }
 
     /// table(tabularData, properties)
     ///
-    /// WHATWG Console Standard lines 102-106:
+    /// WHATWG console Standard lines 102-106:
     /// Try to construct a table with columns of properties and rows of tabularData.
     /// Falls back to logging if it can't be parsed as tabular.
     ///
     /// IDL: undefined table(optional any tabularData, optional sequence<DOMString> properties);
-    pub fn call_table(self: *Console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
+    pub fn call_table(self: *console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
         if (tabular_data == null) {
             self.logger(.log, &.{});
             return;
@@ -487,7 +487,7 @@ pub const Console = webidl.namespace(struct {
     /// 3. Build ASCII table with proper alignment and borders
     /// 4. Support primitives and objects as array elements
     fn constructTable(
-        self: *Console,
+        self: *console,
         rt: *types.RuntimeInterface,
         data: webidl.JSValue,
         properties: ?[]const webidl.DOMString,
@@ -706,11 +706,11 @@ pub const Console = webidl.namespace(struct {
 
     /// trace(...data)
     ///
-    /// WHATWG Console Standard lines 109-117:
+    /// WHATWG console Standard lines 109-117:
     /// Get the call stack and log it with optional formatted data as label.
     ///
     /// IDL: undefined trace(any... data);
-    pub fn call_trace(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_trace(self: *console, data: []const webidl.JSValue) void {
         // Step 1: Let trace be some implementation-defined stack trace representation
         // Step 2: Optionally, let formattedData be the result of Formatter(data)
         // Step 3: Incorporate formattedData as a label for trace
@@ -772,13 +772,13 @@ pub const Console = webidl.namespace(struct {
 
     /// warn(...data)
     /// Spec: https://console.spec.whatwg.org/#warn
-    pub fn call_warn(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_warn(self: *console, data: []const webidl.JSValue) void {
         self.logger(.warn, data);
     }
 
     /// dir(item, options)
     /// Spec: https://console.spec.whatwg.org/#dir
-    pub fn call_dir(self: *Console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
+    pub fn call_dir(self: *console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
         _ = options;
         if (item) |obj| {
             const args: [1]webidl.JSValue = .{obj};
@@ -790,13 +790,13 @@ pub const Console = webidl.namespace(struct {
 
     /// dirxml(...data)
     /// Spec: https://console.spec.whatwg.org/#dirxml
-    pub fn call_dirxml(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_dirxml(self: *console, data: []const webidl.JSValue) void {
         self.logger(.dirxml, data);
     }
 
     /// count(label)
     /// Spec: https://console.spec.whatwg.org/#count
-    pub fn call_count(self: *Console, label: []const u8) void {
+    pub fn call_count(self: *console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         // Step 2-3: Get or create count
         const interned = self.internLabel(label) catch label;
@@ -818,7 +818,7 @@ pub const Console = webidl.namespace(struct {
 
     /// countReset(label)
     /// Spec: https://console.spec.whatwg.org/#countreset
-    pub fn call_countReset(self: *Console, label: []const u8) void {
+    pub fn call_countReset(self: *console, label: []const u8) void {
         // Step 1: Let map be the associated count map
         const interned = self.internLabel(label) catch label;
 
@@ -841,7 +841,7 @@ pub const Console = webidl.namespace(struct {
 
     /// group(...data)
     /// Spec: https://console.spec.whatwg.org/#group
-    pub fn call_group(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_group(self: *console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -870,7 +870,7 @@ pub const Console = webidl.namespace(struct {
 
     /// groupCollapsed(...data)
     /// Spec: https://console.spec.whatwg.org/#groupcollapsed
-    pub fn call_groupCollapsed(self: *Console, data: []const webidl.JSValue) void {
+    pub fn call_groupCollapsed(self: *console, data: []const webidl.JSValue) void {
         // Step 1: Let group be a new group
         // Step 2: If data is not empty, let groupLabel be result of Formatter(data)
         var group_label: ?[]const u8 = null;
@@ -898,7 +898,7 @@ pub const Console = webidl.namespace(struct {
 
     /// groupEnd()
     /// Spec: https://console.spec.whatwg.org/#groupend
-    pub fn call_groupEnd(self: *Console) void {
+    pub fn call_groupEnd(self: *console) void {
         // Step 1: Pop the last group from the group stack
         if (self.groupStack.pop()) |group| {
             var g = group;
@@ -908,7 +908,7 @@ pub const Console = webidl.namespace(struct {
 
     /// time(label)
     /// Spec: https://console.spec.whatwg.org/#time
-    pub fn call_time(self: *Console, label: []const u8) void {
+    pub fn call_time(self: *console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: If the associated timer table contains an entry with key label, return
@@ -924,7 +924,7 @@ pub const Console = webidl.namespace(struct {
 
     /// timeLog(label, ...data)
     /// Spec: https://console.spec.whatwg.org/#timelog
-    pub fn call_timeLog(self: *Console, label: []const u8, data: []const webidl.JSValue) void {
+    pub fn call_timeLog(self: *console, label: []const u8, data: []const webidl.JSValue) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table
@@ -960,7 +960,7 @@ pub const Console = webidl.namespace(struct {
 
     /// timeEnd(label)
     /// Spec: https://console.spec.whatwg.org/#timeend
-    pub fn call_timeEnd(self: *Console, label: []const u8) void {
+    pub fn call_timeEnd(self: *console, label: []const u8) void {
         const interned = self.internLabel(label) catch label;
 
         // Step 1: Let timerTable be the associated timer table
@@ -990,10 +990,10 @@ pub const Console = webidl.namespace(struct {
 
     /// Logger(logLevel, args)
     ///
-    /// WHATWG Console Standard lines 278-293:
+    /// WHATWG console Standard lines 278-293:
     /// The logger operation accepts a log level and a list of arguments.
     /// Its main output is printing the result to the console.
-    fn logger(self: *Console, log_level: LogLevel, args: []const webidl.JSValue) void {
+    fn logger(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
         // Fast path if disabled
         if (!self.enabled) return;
 
@@ -1027,11 +1027,11 @@ pub const Console = webidl.namespace(struct {
 
     /// Formatter(args)
     ///
-    /// WHATWG Console Standard lines 297-338:
+    /// WHATWG console Standard lines 297-338:
     /// The formatter operation tries to format the first argument using format specifiers.
     /// Returns a list of objects suitable for printing.
     /// This is RECURSIVE following the spec step 8.
-    fn formatter(self: *Console, args: []const webidl.JSValue) ![]const webidl.JSValue {
+    fn formatter(self: *console, args: []const webidl.JSValue) ![]const webidl.JSValue {
         // Step 1: If args's size is 1, return args
         if (args.len == 1) return args;
 
@@ -1119,8 +1119,8 @@ pub const Console = webidl.namespace(struct {
 
     /// Convert a JSValue based on format specifier type.
     ///
-    /// WHATWG Console Standard lines 313-333 (Formatter algorithm steps 6.1-6.5)
-    fn convertForSpecifier(self: *Console, value: webidl.JSValue, spec: format.FormatSpec) ![]const u8 {
+    /// WHATWG console Standard lines 313-333 (Formatter algorithm steps 6.1-6.5)
+    fn convertForSpecifier(self: *console, value: webidl.JSValue, spec: format.FormatSpec) ![]const u8 {
         // If runtime is available, use it for type conversions
         if (self.runtime) |rt| {
             return switch (spec) {
@@ -1180,13 +1180,13 @@ pub const Console = webidl.namespace(struct {
 
     /// Printer(logLevel, args[, options])
     ///
-    /// WHATWG Console Standard lines 354-371:
+    /// WHATWG console Standard lines 354-371:
     /// The printer operation is implementation-defined.
-    fn printer(self: *Console, log_level: LogLevel, args: []const webidl.JSValue) void {
+    fn printer(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
         self.printerWithOwnedStrings(log_level, args, &.{});
     }
 
-    fn printerWithOwnedStrings(self: *Console, log_level: LogLevel, args: []const webidl.JSValue, owned_strings: []const []const u8) void {
+    fn printerWithOwnedStrings(self: *console, log_level: LogLevel, args: []const webidl.JSValue, owned_strings: []const []const u8) void {
         const indent = self.groupStack.size();
         const timestamp = infra.Moment.now();
 
