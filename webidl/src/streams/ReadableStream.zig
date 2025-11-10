@@ -423,6 +423,28 @@ pub const ReadableStream = webidl.interface(struct {
         return stream;
     }
 
+    /// values(options) method for async iteration
+    ///
+    /// IDL: async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
+    ///
+    /// Spec: § 3.2.6 "Asynchronous iteration"
+    /// Returns an async iterator for the stream with optional preventCancel setting.
+    pub fn values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
+        return ReadableStreamAsyncIterator.init(
+            self.allocator,
+            self,
+            self.eventLoop,
+            preventCancel,
+        );
+    }
+
+    /// Get an async iterator with default options (preventCancel = false)
+    ///
+    /// This is the default async iterator used by for-await loops
+    pub fn asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
+        return self.values(false);
+    }
+
     // ============================================================================
     // Internal Algorithms (Abstract Operations)
     // ============================================================================
@@ -1180,33 +1202,42 @@ pub const TeeState = struct {
     }
 };
 
-/// Iterator for reading chunks from a ReadableStream
+/// Async Iterator for reading chunks from a ReadableStream
 ///
-/// Spec: § 4.1.4 "Asynchronous iteration"
+/// Spec: § 3.2.6 "Asynchronous iteration"
+///
+/// This implements the async iterator protocol for ReadableStream, enabling
+/// for-await loops and the values() method.
 ///
 /// Usage:
 /// ```zig
-/// var iter = stream.iterator(allocator, loop);
+/// var iter = try stream.asyncIterator();
 /// defer iter.deinit();
 /// while (try iter.next()) |chunk| {
 ///     // process chunk
 /// }
 /// ```
-pub const ReadableStreamIterator = struct {
+pub const ReadableStreamAsyncIterator = struct {
     allocator: std.mem.Allocator,
     reader: *ReadableStreamDefaultReader,
     preventCancel: bool,
     done: bool,
 
+    /// Initialize async iterator
+    ///
+    /// Spec: § 3.2.6 "Initialization steps"
     pub fn init(
         allocator: std.mem.Allocator,
         stream: *ReadableStream,
         loop: eventLoop.EventLoop,
         preventCancel: bool,
-    ) !ReadableStreamIterator {
-        // Acquire reader (locks the stream)
+    ) !ReadableStreamAsyncIterator {
+        // Spec step 1: Let reader be ? AcquireReadableStreamDefaultReader(stream)
         const reader = try stream.acquireDefaultReader(loop);
 
+        // Spec step 2: Set iterator's reader to reader
+        // Spec step 3: Let preventCancel be args[0]["preventCancel"]
+        // Spec step 4: Set iterator's prevent cancel to preventCancel
         return .{
             .allocator = allocator,
             .reader = reader,
@@ -1215,43 +1246,119 @@ pub const ReadableStreamIterator = struct {
         };
     }
 
-    pub fn deinit(self: *ReadableStreamIterator) void {
-        // Release reader (unlocks the stream)
-        self.reader.releaseLock();
+    /// Release the iterator and unlock the stream
+    ///
+    /// This should be called when done iterating (via defer or explicit call)
+    pub fn deinit(self: *ReadableStreamAsyncIterator) void {
+        if (!self.done) {
+            // Release reader (unlocks the stream)
+            self.reader.releaseLock();
+            self.done = true;
+        }
     }
 
-    /// Get next chunk from stream
+    /// Get next iteration result
     ///
-    /// Returns null when stream is closed/done
-    /// Returns error if stream errors
-    pub fn next(self: *ReadableStreamIterator) !?common.JSValue {
+    /// Spec: § 3.2.6 "Get the next iteration result"
+    ///
+    /// Returns:
+    /// - `chunk` if there's data available
+    /// - `null` when stream is closed/done
+    /// - `error` if stream errors
+    pub fn next(self: *ReadableStreamAsyncIterator) !?common.JSValue {
         if (self.done) {
             return null;
         }
 
-        // Read from stream
+        // Spec step 1: Let reader be iterator's reader
+        // Spec step 2: Assert: reader.[[stream]] is not undefined
+        // (Checked by reader being non-null)
+
+        // Spec step 3: Let promise be a new promise
+        // Spec step 4: Let readRequest be a new read request
+        // Spec step 5: Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
         const read_promise = try self.reader.read();
 
         // Process microtasks to settle the promise
-        // (In a full async implementation, this would await the promise)
+        // In a full async implementation, this would await the promise
         self.reader.eventLoop.runMicrotasks();
 
         if (read_promise.isFulfilled()) {
             const result = read_promise.state.fulfilled;
             defer read_promise.deinit();
+
             if (result.done) {
+                // Spec: close steps
+                // Step 1: Perform ! ReadableStreamDefaultReaderRelease(reader)
+                self.reader.releaseLock();
                 self.done = true;
+
+                // Step 2: Resolve promise with end of iteration
                 return null;
+            } else {
+                // Spec: chunk steps, given chunk
+                // Step 1: Resolve promise with chunk
+                return result.value;
             }
-            return result.value;
         } else if (read_promise.isRejected()) {
+            // Spec: error steps, given e
+            const err = read_promise.state.rejected;
             defer read_promise.deinit();
+
+            // Step 1: Perform ! ReadableStreamDefaultReaderRelease(reader)
+            self.reader.releaseLock();
             self.done = true;
+
+            // Step 2: Reject promise with e
+            _ = err; // Error is captured, would be thrown in full async
             return error.StreamError;
         } else {
-            // Still pending
+            // Still pending - in full async implementation, would await
             self.done = true;
             return error.ReadPending;
         }
     }
+
+    /// Return from async iteration (early termination)
+    ///
+    /// Spec: § 3.2.6 "Asynchronous iterator return steps"
+    ///
+    /// This is called when breaking out of a for-await loop early.
+    /// If preventCancel is false, it cancels the stream.
+    pub fn returnEarly(self: *ReadableStreamAsyncIterator, reason: ?common.JSValue) !*AsyncPromise(void) {
+        if (self.done) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.reader.eventLoop);
+            promise.fulfill({});
+            return promise;
+        }
+
+        // Spec step 1: Let reader be iterator's reader
+        // Spec step 2: Assert: reader.[[stream]] is not undefined
+        // Spec step 3: Assert: reader.[[readRequests]] is empty
+
+        // Spec step 4: If iterator's prevent cancel is false:
+        if (!self.preventCancel) {
+            // Step 4.1: Let result be ! ReadableStreamReaderGenericCancel(reader, arg)
+            const cancelPromise = try self.reader.cancelInternal(reason);
+
+            // Step 4.2: Perform ! ReadableStreamDefaultReaderRelease(reader)
+            self.reader.releaseLock();
+            self.done = true;
+
+            // Step 4.3: Return result
+            return cancelPromise;
+        }
+
+        // Spec step 5: Perform ! ReadableStreamDefaultReaderRelease(reader)
+        self.reader.releaseLock();
+        self.done = true;
+
+        // Spec step 6: Return a promise resolved with undefined
+        const promise = try AsyncPromise(void).init(self.allocator, self.reader.eventLoop);
+        promise.fulfill({});
+        return promise;
+    }
 };
+
+// Backward compatibility alias
+pub const ReadableStreamIterator = ReadableStreamAsyncIterator;
