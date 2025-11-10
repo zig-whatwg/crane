@@ -82,19 +82,19 @@ pub const TextEncoderStream = struct {
     /// Get the encoding name (always "utf-8")
     /// 
     /// TextEncoderCommon.encoding getter
-    pub inline fn encoding(self: *const TextEncoderStream) []const u8 {
+    pub inline fn get_encoding(self: *const TextEncoderStream) []const u8 {
         return self.encoderMixin.encoding;
     }
     /// Get the readable stream
     /// 
     /// GenericTransformStream.readable getter
-    pub inline fn readable(self: *const TextEncoderStream) *ReadableStream {
+    pub inline fn get_readable(self: *const TextEncoderStream) *ReadableStream {
         return self.transformMixin.readable();
     }
     /// Get the writable stream
     /// 
     /// GenericTransformStream.writable getter
-    pub inline fn writable(self: *const TextEncoderStream) *WritableStream {
+    pub inline fn get_writable(self: *const TextEncoderStream) *WritableStream {
         return self.transformMixin.writable();
     }
     /// Transform algorithm - encode chunk and enqueue

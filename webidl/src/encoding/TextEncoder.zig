@@ -215,7 +215,7 @@ pub const TextEncoder = webidl.interface(struct {
     /// ```
     ///
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
-    pub inline fn encoding(self: *const TextEncoder) []const u8 {
+    pub inline fn get_encoding(self: *const TextEncoder) []const u8 {
         return self.mixin.encoding;
     }
 

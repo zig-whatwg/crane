@@ -117,7 +117,7 @@ pub const TextDecoderStream = webidl.interface(struct {
     /// Get the encoding name
     ///
     /// TextDecoderCommon.encoding getter
-    pub inline fn encoding(self: *const TextDecoderStream) []const u8 {
+    pub inline fn get_encoding(self: *const TextDecoderStream) []const u8 {
         return self.decoderMixin.encoding;
     }
 
@@ -142,14 +142,14 @@ pub const TextDecoderStream = webidl.interface(struct {
     /// Get the readable stream
     ///
     /// GenericTransformStream.readable getter
-    pub inline fn readable(self: *const TextDecoderStream) *ReadableStream {
+    pub inline fn get_readable(self: *const TextDecoderStream) *ReadableStream {
         return self.transformMixin.readable();
     }
 
     /// Get the writable stream
     ///
     /// GenericTransformStream.writable getter
-    pub inline fn writable(self: *const TextDecoderStream) *WritableStream {
+    pub inline fn get_writable(self: *const TextDecoderStream) *WritableStream {
         return self.transformMixin.writable();
     }
 
