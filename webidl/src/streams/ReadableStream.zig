@@ -656,10 +656,256 @@ pub const PipeState = struct {
     }
 
     /// Start the shuttling loop
+    ///
+    /// Spec: § 4.7.4 step 15 "read all chunks from source and write them to dest"
     pub fn startShuttling(self: *PipeState) !void {
-        // Simplified implementation - just fulfill the promise
-        // Full implementation would recursively read and write chunks
-        self.promise.fulfill({});
+        // Set source.[[disturbed]] to true (spec step 11)
+        self.source.disturbed = true;
+
+        // Set up error and close propagation watchers
+        try self.setupPropagationHandlers();
+
+        // Start the read-write loop
+        try self.shuttleLoop();
+    }
+
+    /// Set up propagation handlers for errors and close events
+    ///
+    /// Spec: § 4.7.4 step 15 "Error and close states must be propagated"
+    fn setupPropagationHandlers(self: *PipeState) !void {
+        // These will be checked during the shuttle loop
+        // For now, we implement a simplified version that checks state at each iteration
+        _ = self;
+    }
+
+    /// Main shuttling loop - reads chunks and writes them
+    ///
+    /// Spec: § 4.7.4 step 15 "read all chunks from source and write them to dest"
+    fn shuttleLoop(self: *PipeState) !void {
+        // Check if we should shutdown before reading
+        if (self.shuttingDown) {
+            return self.finalize(self.shutdownError);
+        }
+
+        // Check propagation conditions
+        try self.checkPropagationConditions();
+
+        if (self.shuttingDown) {
+            return self.finalize(self.shutdownError);
+        }
+
+        // Check backpressure: don't read if writer's desiredSize <= 0
+        // Spec: "While WritableStreamDefaultWriterGetDesiredSize(writer) is ≤ 0 or is null,
+        //        the user agent must not read from reader."
+        const desiredSize = self.writer.desiredSize();
+        if (desiredSize == null or desiredSize.? <= 0) {
+            // Wait for ready promise to fulfill (backpressure)
+            // In a full async implementation, we'd await writer.ready
+            // For now, we'll just finish - a complete impl would register a callback
+            self.promise.fulfill({});
+            return;
+        }
+
+        // Read a chunk from the source
+        const readPromise = try self.reader.read();
+        self.pendingRead = readPromise;
+
+        // Process the read result
+        // In a full async implementation, this would be a then() callback
+        // For this simplified version, we handle it synchronously
+        self.eventLoop.runMicrotasks();
+
+        if (readPromise.isFulfilled()) {
+            const result = readPromise.state.fulfilled;
+
+            if (result.done) {
+                // Source is closed - propagate close forward
+                self.handleSourceClosed();
+                return;
+            }
+
+            // Write the chunk to the destination
+            if (result.value) |chunk| {
+                const writePromise = try self.writer.write(webidl.JSValue.fromCommon(chunk));
+                self.pendingWrite = writePromise;
+
+                // Wait for write to complete
+                self.eventLoop.runMicrotasks();
+
+                if (writePromise.isFulfilled()) {
+                    // Continue shuttling
+                    writePromise.deinit();
+                    readPromise.deinit();
+                    self.pendingWrite = null;
+                    self.pendingRead = null;
+
+                    // Recursive call to continue the loop
+                    // In a real async implementation, this would be a promise chain
+                    return try self.shuttleLoop();
+                } else if (writePromise.isRejected()) {
+                    // Write failed - propagate error
+                    self.shutdownWithError(writePromise.state.rejected);
+                    return;
+                }
+            }
+
+            // No chunk (shouldn't happen if !done, but handle it)
+            readPromise.deinit();
+            self.pendingRead = null;
+            self.promise.fulfill({});
+        } else if (readPromise.isRejected()) {
+            // Read failed - propagate error
+            self.shutdownWithError(readPromise.state.rejected);
+        } else {
+            // Read is still pending - in a full async implementation, we'd wait
+            // For now, just fulfill
+            self.promise.fulfill({});
+        }
+    }
+
+    /// Check propagation conditions and initiate shutdown if needed
+    ///
+    /// Spec: § 4.7.4 step 15 "Error and close states must be propagated"
+    fn checkPropagationConditions(self: *PipeState) !void {
+        // 1. Error propagation forward: source errored -> abort dest
+        if (self.source.state == .errored) {
+            if (!self.preventAbort and self.dest.state == .writable) {
+                // Shutdown with action of WritableStreamAbort(dest, source.storedError)
+                const err_value = self.source.storedError orelse common.JSValue{ .string = "Source errored" };
+                const abortPromise = try self.dest.abort(webidl.JSValue.fromCommon(err_value));
+                self.shutdownWithAction(abortPromise, err_value);
+            } else {
+                // Shutdown with error but no action
+                const err_value = self.source.storedError orelse common.JSValue{ .string = "Source errored" };
+                self.shutdownWithError(err_value);
+            }
+            return;
+        }
+
+        // 2. Error propagation backward: dest errored -> cancel source
+        if (self.dest.state == .errored) {
+            if (!self.preventCancel and self.source.state == .readable) {
+                // Shutdown with action of ReadableStreamCancel(source, dest.storedError)
+                const err_value = self.dest.storedError orelse common.JSValue{ .string = "Destination errored" };
+                const cancelPromise = try self.source.cancel(webidl.JSValue.fromCommon(err_value));
+                self.shutdownWithAction(cancelPromise, err_value);
+            } else {
+                // Shutdown with error but no action
+                const err_value = self.dest.storedError orelse common.JSValue{ .string = "Destination errored" };
+                self.shutdownWithError(err_value);
+            }
+            return;
+        }
+
+        // 3. Close propagation forward: source closed -> close dest
+        if (self.source.state == .closed) {
+            self.handleSourceClosed();
+            return;
+        }
+
+        // 4. Close propagation backward: dest close queued or closed -> cancel source
+        if (self.dest.state == .closed) {
+            if (!self.preventCancel) {
+                const err_value = common.JSValue{ .string = "Destination closed" };
+                const cancelPromise = try self.source.cancel(webidl.JSValue.fromCommon(err_value));
+                self.shutdownWithAction(cancelPromise, err_value);
+            } else {
+                const err_value = common.JSValue{ .string = "Destination closed" };
+                self.shutdownWithError(err_value);
+            }
+            return;
+        }
+    }
+
+    /// Handle source stream being closed
+    fn handleSourceClosed(self: *PipeState) void {
+        if (!self.preventClose) {
+            // Close the writer with error propagation
+            // Spec: WritableStreamDefaultWriterCloseWithErrorPropagation(writer)
+            // For now, simplified to just close
+            const closePromise = self.writer.close() catch {
+                self.finalize(null);
+                return;
+            };
+            self.shutdownWithAction(closePromise, null);
+        } else {
+            // Shutdown without closing dest
+            self.shutdownWithoutAction(null);
+        }
+    }
+
+    /// Shutdown with an action (abort/cancel/close)
+    ///
+    /// Spec: § 4.7.4 step 15 "Shutdown with an action"
+    fn shutdownWithAction(self: *PipeState, action: *AsyncPromise(void), originalError: ?common.JSValue) void {
+        if (self.shuttingDown) {
+            return; // Already shutting down
+        }
+
+        self.shuttingDown = true;
+        self.shutdownError = originalError;
+
+        // Wait for pending writes to complete (simplified)
+        // TODO: Properly wait for all pending writes
+
+        // Wait for action to complete
+        self.eventLoop.runMicrotasks();
+
+        if (action.isFulfilled()) {
+            action.deinit();
+            self.finalize(originalError);
+        } else if (action.isRejected()) {
+            const err_value = action.state.rejected;
+            action.deinit();
+            self.finalize(err_value);
+        } else {
+            // Action still pending - in full async impl, would await
+            action.deinit();
+            self.finalize(originalError);
+        }
+    }
+
+    /// Shutdown without an action
+    ///
+    /// Spec: § 4.7.4 step 15 "Shutdown"
+    fn shutdownWithoutAction(self: *PipeState, err_value: ?common.JSValue) void {
+        if (self.shuttingDown) {
+            return;
+        }
+
+        self.shuttingDown = true;
+        self.shutdownError = err_value;
+
+        // Wait for pending writes to complete (simplified)
+        // TODO: Properly wait for all pending writes
+
+        self.finalize(err_value);
+    }
+
+    /// Shutdown with an error
+    fn shutdownWithError(self: *PipeState, err_value: common.JSValue) void {
+        self.shutdownWithoutAction(err_value);
+    }
+
+    /// Finalize the pipe operation
+    ///
+    /// Spec: § 4.7.4 step 15 "Finalize"
+    fn finalize(self: *PipeState, err: ?common.JSValue) void {
+        // 1. Release writer
+        self.writer.releaseLock();
+
+        // 2. Release reader
+        self.reader.releaseLock();
+
+        // 3. Remove abort algorithm from signal (if signal is not undefined)
+        // TODO: Implement AbortSignal support
+
+        // 4. Resolve or reject the promise
+        if (err) |e| {
+            self.promise.reject(e);
+        } else {
+            self.promise.fulfill({});
+        }
     }
 };
 
