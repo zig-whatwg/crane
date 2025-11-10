@@ -38,11 +38,11 @@ const ReadableStreamGenericReader = @import("readable_stream_generic_reader").Re
 /// - readonly attribute Promise<undefined> closed;
 /// - Promise<undefined> cancel(optional any reason);
 pub const ReadableStreamDefaultReader = webidl.interface(struct {
-    /// Mixin: ReadableStreamGenericReader (provides closed, cancel)
+    /// WebIDL includes: ReadableStreamGenericReader (provides closed, cancel, and shared fields)
     ///
-    /// The generic reader mixin is embedded to provide shared functionality
-    /// between ReadableStreamDefaultReader and ReadableStreamBYOBReader
-    mixin: ReadableStreamGenericReader,
+    /// The generic reader mixin is flattened into this interface by the codegen
+    /// to provide shared functionality between ReadableStreamDefaultReader and ReadableStreamBYOBReader
+    pub const includes = .{ReadableStreamGenericReader};
 
     /// [[readRequests]]: List of pending read requests (async promises)
     ///
@@ -62,12 +62,10 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
         const closedPromise = try AsyncPromise(void).init(allocator, loop);
 
         return .{
-            .mixin = .{
-                .allocator = allocator,
-                .eventLoop = loop,
-                .closedPromise = closedPromise,
-                .stream = stream,
-            },
+            .allocator = allocator,
+            .eventLoop = loop,
+            .closedPromise = closedPromise,
+            .stream = stream,
             .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     }
@@ -81,32 +79,9 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     }
 
     // ============================================================================
-    // WebIDL Interface Methods (from ReadableStreamGenericReader mixin)
-    // ============================================================================
-
-    /// closed attribute getter (delegated to mixin)
-    ///
-    /// IDL: readonly attribute Promise<undefined> closed;
-    ///
-    /// Spec: § 4.2.3 "The closed getter steps are:"
-    /// Returns a promise that fulfills when the stream closes or rejects if it errors.
-    pub fn closed(self: *const ReadableStreamDefaultReader) webidl.Promise(void) {
-        return self.mixin.closed();
-    }
-
-    /// cancel(reason) method (delegated to mixin)
-    ///
-    /// IDL: Promise<undefined> cancel(optional any reason);
-    ///
-    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
-    /// Cancels the stream with the given reason.
-    pub fn cancel(self: *ReadableStreamDefaultReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        return self.mixin.cancel(reason);
-    }
-
-    // ============================================================================
     // WebIDL Interface Methods (ReadableStreamDefaultReader)
     // ============================================================================
+    // Note: closed() and cancel() methods are included from ReadableStreamGenericReader mixin
 
     /// read() method (ASYNC VERSION)
     ///
@@ -121,10 +96,10 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     /// **IMPORTANT**: Caller owns the returned promise and must call deinit()
     pub fn read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             const promise = try AsyncPromise(common.ReadResult).init(
-                self.mixin.allocator,
-                self.mixin.eventLoop,
+                self.allocator,
+                self.eventLoop,
             );
             promise.reject(common.JSValue{ .string = "Reader released" });
             return promise;
@@ -142,13 +117,13 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     /// Releases the reader's lock on the stream.
     pub fn call_releaseLock(self: *ReadableStreamDefaultReader) void {
         // Step 1: If this.[[stream]] is undefined, return.
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             return;
         }
 
         // Step 2: Perform ! ReadableStreamDefaultReaderRelease(this).
         // Delegate to mixin's generic release
-        self.mixin.genericRelease();
+        self.genericRelease();
     }
 
     // ============================================================================
@@ -165,7 +140,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     /// - Rejected promise if stream is errored
     fn readInternal(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
         // Step 1: Let stream be reader.[[stream]].
-        const stream = self.mixin.stream.?;
+        const stream = self.stream.?;
 
         // Step 2: Assert: stream.[[reader]] is reader.
         std.debug.assert(stream.reader == .default);
@@ -175,14 +150,14 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
 
         // Step 4: If stream.[[state]] is "closed", return a promise fulfilled with {value: undefined, done: true}.
         if (stream.state == .closed) {
-            const promise = try AsyncPromise(common.ReadResult).init(self.mixin.allocator, self.mixin.eventLoop);
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
             promise.fulfill(common.ReadResult{ .value = null, .done = true });
             return promise;
         }
 
         // Step 5: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
         if (stream.state == .errored) {
-            const promise = try AsyncPromise(common.ReadResult).init(self.mixin.allocator, self.mixin.eventLoop);
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
             promise.reject(stream.storedError orelse common.JSValue.undefined_value());
             return promise;
         }

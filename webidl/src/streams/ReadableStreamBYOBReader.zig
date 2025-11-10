@@ -21,11 +21,11 @@ const ReadableByteStreamController = @import("readable_byte_stream_controller").
 const DictionaryParsing = @import("dictionary_parsing");
 
 pub const ReadableStreamBYOBReader = webidl.interface(struct {
-    /// Mixin: ReadableStreamGenericReader (provides closed, cancel)
+    /// WebIDL includes: ReadableStreamGenericReader (provides closed, cancel, and shared fields)
     ///
-    /// The generic reader mixin is embedded to provide shared functionality
-    /// between ReadableStreamDefaultReader and ReadableStreamBYOBReader
-    mixin: ReadableStreamGenericReader,
+    /// The generic reader mixin is flattened into this interface by the codegen
+    /// to provide shared functionality between ReadableStreamDefaultReader and ReadableStreamBYOBReader
+    pub const includes = .{ReadableStreamGenericReader};
 
     /// [[readIntoRequests]]: List of pending read-into requests
     readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
@@ -38,30 +38,16 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         const closedPromise = try AsyncPromise(void).init(allocator, loop);
 
         return .{
-            .mixin = .{
-                .allocator = allocator,
-                .closedPromise = closedPromise,
-                .stream = stream,
-                .eventLoop = loop,
-            },
+            .allocator = allocator,
+            .closedPromise = closedPromise,
+            .stream = stream,
+            .eventLoop = loop,
             .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     }
 
     pub fn deinit(self: *ReadableStreamBYOBReader) void {
         self.readIntoRequests.deinit();
-    }
-
-    // ============================================================================
-    // WebIDL Interface Methods (from ReadableStreamGenericReader mixin)
-    // ============================================================================
-
-    pub fn closed(self: *const ReadableStreamBYOBReader) webidl.Promise(void) {
-        return self.mixin.closed();
-    }
-
-    pub fn cancel(self: *ReadableStreamBYOBReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        return self.mixin.cancel(reason);
     }
 
     /// Read data into the provided view
@@ -72,8 +58,8 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         view: webidl.ArrayBufferView,
         options: ?webidl.JSValue,
     ) !*AsyncPromise(common.ReadResult) {
-        const allocator = self.mixin.allocator;
-        const loop = self.mixin.eventLoop;
+        const allocator = self.allocator;
+        const loop = self.eventLoop;
 
         // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
         if (view.getByteLength() == 0) {
@@ -98,7 +84,7 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         }
 
         // Step 4: If stream is undefined, reject with TypeError
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
             promise.reject(common.JSValue{ .string = "Reader released" });
             return promise;
@@ -126,12 +112,12 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         view: webidl.ArrayBufferView,
         min: u64,
     ) !*AsyncPromise(common.ReadResult) {
-        const allocator = self.mixin.allocator;
-        const loop = self.mixin.eventLoop;
+        const allocator = self.allocator;
+        const loop = self.eventLoop;
         const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
 
         // Step 1: Let stream be reader.[[stream]]
-        const stream_ptr = self.mixin.stream orelse {
+        const stream_ptr = self.stream orelse {
             promise.reject(common.JSValue{ .string = "Reader has no stream" });
             return promise;
         };
@@ -209,10 +195,10 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
     }
 
     pub fn call_releaseLock(self: *ReadableStreamBYOBReader) void {
-        if (self.mixin.stream == null) {
+        if (self.stream == null) {
             return;
         }
         // Delegate to mixin's generic release
-        self.mixin.genericRelease();
+        self.genericRelease();
     }
 });
