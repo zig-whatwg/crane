@@ -1,5 +1,82 @@
 const std = @import("std");
 
+/// Auto-discover and create modules for all .zig files in webidl/generated/
+fn createWebIDLModules(
+    b: *std.Build,
+    allocator: std.mem.Allocator,
+    target: std.Build.ResolvedTarget,
+    infra_mod: *std.Build.Module,
+    webidl_mod: *std.Build.Module,
+) !std.StringHashMap(*std.Build.Module) {
+    var modules = std.StringHashMap(*std.Build.Module).init(allocator);
+
+    const webidl_dir = "webidl/generated";
+    var dir = try std.fs.cwd().openDir(webidl_dir, .{ .iterate = true });
+    defer dir.close();
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
+
+        // Build full path: webidl/generated/subdir/File.zig
+        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ webidl_dir, entry.path });
+        defer allocator.free(full_path);
+
+        // Create module name from file path: subdir/File.zig -> subdir_file
+        const module_name = try filePathToModuleName(allocator, entry.path);
+
+        // Create module with common dependencies (infra, webidl)
+        const mod = b.createModule(.{
+            .root_source_file = b.path(full_path),
+            .target = target,
+            .imports = &.{
+                .{ .name = "infra", .module = infra_mod },
+                .{ .name = "webidl", .module = webidl_mod },
+            },
+        });
+
+        try modules.put(module_name, mod);
+    }
+
+    return modules;
+}
+
+/// Convert file path to module name: encoding/TextEncoder.zig -> encoding_text_encoder
+fn filePathToModuleName(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    // Remove .zig extension
+    const without_ext = if (std.mem.endsWith(u8, path, ".zig"))
+        path[0 .. path.len - 4]
+    else
+        path;
+
+    // Replace / and convert PascalCase to snake_case
+    var result = std.ArrayList(u8).init(allocator);
+    defer result.deinit();
+
+    var prev_was_upper = false;
+    for (without_ext, 0..) |c, i| {
+        if (c == '/' or c == '\\') {
+            try result.append('_');
+            prev_was_upper = false;
+        } else if (std.ascii.isUpper(c)) {
+            // Add underscore before uppercase if previous wasn't uppercase (except at start or after separator)
+            if (i > 0 and result.items.len > 0 and result.items[result.items.len - 1] != '_' and !prev_was_upper) {
+                try result.append('_');
+            }
+            try result.append(std.ascii.toLower(c));
+            prev_was_upper = true;
+        } else {
+            try result.append(c);
+            prev_was_upper = false;
+        }
+    }
+
+    return result.toOwnedSlice();
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -291,6 +368,8 @@ pub fn build(b: *std.Build) void {
     encoding_mod.addImport("webidl", webidl_mod);
 
     // Create interface modules with proper dependencies
+    // Note: TextEncoderEncodeIntoResult.zig is a dictionary used by TextEncoder
+    // and should be imported as a regular file, not registered as a separate module
     const text_encoder_mod = b.createModule(.{
         .root_source_file = b.path("webidl/generated/encoding/TextEncoder.zig"),
         .target = target,
@@ -300,49 +379,23 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const text_encoder_result_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/TextEncoderEncodeIntoResult.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-    text_encoder_mod.addImport("text_encoder_encode_into_result", text_encoder_result_mod);
-
-    const text_decoder_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/TextDecoderOptions.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const text_decode_options_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/TextDecodeOptions.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
+    // Note: TextDecoderOptions and TextDecodeOptions are dictionaries used by TextDecoder
+    // and should be imported as regular files, not registered as separate modules
     const text_decoder_mod = b.createModule(.{
         .root_source_file = b.path("webidl/generated/encoding/TextDecoder.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "text_decoder_options", .module = text_decoder_options_mod },
-            .{ .name = "text_decode_options", .module = text_decode_options_mod },
             .{ .name = "encoding", .module = encoding_mod },
         },
     });
 
     // Add anonymous imports for generated files
+    // Note: Dictionary types (TextEncoderEncodeIntoResult, TextDecoderOptions, TextDecodeOptions)
+    // are NOT added as modules - they're regular file imports within their parent files
     encoding_mod.addImport("text_encoder", text_encoder_mod);
     encoding_mod.addImport("text_decoder", text_decoder_mod);
-    encoding_mod.addImport("text_encoder_encode_into_result", text_encoder_result_mod);
-    encoding_mod.addImport("text_decoder_options", text_decoder_options_mod);
-    encoding_mod.addImport("text_decode_options", text_decode_options_mod);
 
     // URL internal modules that generated interfaces need
     // URL internal modules need to be created first for cross-dependencies

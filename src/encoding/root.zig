@@ -98,22 +98,27 @@ test "label resolution" {
 }
 
 // WebIDL API exports (§7) - from interfaces/
-pub const TextEncoder = @import("text_encoder").TextEncoder;
-pub const TextEncoderEncodeIntoResult = @import("text_encoder_encode_into_result").TextEncoderEncodeIntoResult;
-pub const TextDecoder = @import("text_decoder").TextDecoder;
-pub const TextDecoderOptions = @import("text_decoder_options").TextDecoderOptions;
-pub const TextDecodeOptions = @import("text_decode_options").TextDecodeOptions;
+// Note: Dictionary types (TextEncoderEncodeIntoResult, TextDecoderOptions, TextDecodeOptions)
+// are now exported from their parent modules since they're not separate modules
+const text_encoder_mod = @import("text_encoder");
+pub const TextEncoder = text_encoder_mod.TextEncoder;
+pub const TextEncoderEncodeIntoResult = text_encoder_mod.TextEncoderEncodeIntoResult;
+
+const text_decoder_mod = @import("text_decoder");
+pub const TextDecoder = text_decoder_mod.TextDecoder;
+pub const TextDecoderOptions = text_decoder_mod.TextDecoderOptions;
+pub const TextDecodeOptions = text_decoder_mod.TextDecodeOptions;
 
 // Test generated interfaces with mixin composition
 test "generated TextDecoder mixin delegation" {
     const allocator = std.testing.allocator;
-    
+
     var decoder = try TextDecoder.init(allocator, "utf-8", .{
         .fatal = true,
         .ignoreBOM = false,
     });
     defer decoder.deinit();
-    
+
     // Verify mixin fields are accessible through delegation
     try std.testing.expectEqualStrings("utf-8", decoder.encoding());
     try std.testing.expectEqual(true, decoder.getFatal());
@@ -122,10 +127,10 @@ test "generated TextDecoder mixin delegation" {
 
 test "generated TextEncoder mixin delegation" {
     const allocator = std.testing.allocator;
-    
+
     var encoder = TextEncoder.init(allocator);
     defer encoder.deinit();
-    
+
     // Verify mixin field is accessible through delegation
     try std.testing.expectEqualStrings("utf-8", encoder.encoding());
 }
