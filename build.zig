@@ -606,7 +606,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const console_console_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/console/Console.zig"),
+        .root_source_file = b.path("webidl/generated/console/console.zig"),
         .target = target,
         .imports = &.{
             .{ .name = "infra", .module = infra_mod },
