@@ -77,10 +77,12 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     }
 
     // ============================================================================
-    // WebIDL Interface Methods
+    // WebIDL Interface: Instance Methods
     // ============================================================================
 
-    pub fn errorStream(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
+    /// undefined error(optional any e)
+    /// Spec: § 5.4.3 "The error(e) method steps are:"
+    pub fn call_error(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         self.errorInternal(error_value);
     }
