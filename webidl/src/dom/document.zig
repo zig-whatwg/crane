@@ -5,10 +5,12 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 const Element = @import("element").Element;
+const ParentNode = @import("ParentNode.zig").ParentNode;
 
 const Allocator = std.mem.Allocator;
 
 pub const Document = webidl.interface(struct {
+    pub const includes = .{ParentNode};
     allocator: Allocator,
     node: Node,
 
