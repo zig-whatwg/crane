@@ -161,6 +161,16 @@ pub const URL = webidl.interface(struct {
         return url_serializer.serialize(self.allocator, &self.url_record, false);
     }
 
+    /// origin getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
+    /// Returns serialization of this's URL's origin
+    pub fn origin(self: *const URL) ![]const u8 {
+        const origin_module = @import("origin");
+        const url_origin = try origin_module.getOrigin(self.allocator, &self.url_record);
+        defer url_origin.deinit(self.allocator);
+        return url_origin.serialize(self.allocator);
+    }
+
     /// protocol getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
     /// Returns scheme + ":"
