@@ -975,3 +975,415 @@ test "BYOB Integration - respondInClosedState with reader type none" {
     allocator.destroy(buffer);
     allocator.destroy(descriptor);
 }
+
+// ============================================================================
+// Edge Case Tests - Detached Buffers, Alignment, Zero-Length
+// ============================================================================
+
+test "BYOB Edge Case - detached buffer in enqueue" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create a detached buffer view
+    const webidl = @import("../src/webidl/root.zig");
+    var buffer_data = try allocator.alloc(u8, 100);
+    defer allocator.free(buffer_data);
+    
+    var buffer = webidl.ArrayBuffer{
+        .data = buffer_data,
+        .detached = true, // Detached!
+    };
+    
+    const Uint8ArrayType = webidl.TypedArray(u8);
+    const uint8_view = try Uint8ArrayType.init(&buffer, 0, 100);
+    const view = webidl.ArrayBufferView{ .uint8_array = uint8_view };
+
+    // Try to enqueue with detached buffer - should error
+    const result = controller.call_enqueue(view);
+    try testing.expectError(error.TypeError, result);
+}
+
+test "BYOB Edge Case - minimum fill alignment" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    // Create descriptor with element_size=4 (e.g., Uint32Array)
+    // and minimum_fill that requires alignment
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        16,   // minimum_fill = 16 bytes (4 elements × 4 bytes)
+        4,    // element_size = 4 bytes (Uint32Array)
+        .uint32_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Enqueue 18 bytes to the queue (not aligned to element_size=4)
+    const chunk_buffer = try allocator.create(ArrayBuffer);
+    chunk_buffer.* = .{
+        .data = try allocator.alloc(u8, 18),
+        .byte_length = 18,
+        .detached = false,
+    };
+    @memset(chunk_buffer.data, 0xCC);
+    try controller.enqueueChunkToQueue(chunk_buffer, 0, 18);
+
+    // Fill descriptor from queue
+    const ready = controller.fillPullIntoDescriptorFromQueue(descriptor);
+    
+    // Should have filled 16 bytes (aligned to element_size=4)
+    // 18 bytes available, but must align: 18 / 4 = 4 elements, 4 × 4 = 16 bytes
+    try testing.expectEqual(@as(u64, 16), descriptor.bytes_filled);
+    try testing.expect(ready); // Should be ready (16 >= minimum_fill of 16)
+    
+    // Should have 2 bytes remaining in queue (18 - 16 = 2)
+    try testing.expectEqual(@as(f64, 2.0), controller.queueTotalSize);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Edge Case - zero-length read on close" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .closed;
+
+    // Create descriptor for closed stream
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        1,
+        .uint8_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Respond with 0 bytes on closed stream - should succeed
+    try controller.respond(0);
+    
+    // Verify no bytes filled
+    try testing.expectEqual(@as(u64, 0), descriptor.bytes_filled);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Edge Case - partial fill less than minimum" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create descriptor with minimum_fill = 50
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        50,   // minimum_fill = 50 bytes
+        1,
+        .uint8_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Enqueue only 30 bytes (less than minimum_fill)
+    const chunk_buffer = try allocator.create(ArrayBuffer);
+    chunk_buffer.* = .{
+        .data = try allocator.alloc(u8, 30),
+        .byte_length = 30,
+        .detached = false,
+    };
+    @memset(chunk_buffer.data, 0xDD);
+    try controller.enqueueChunkToQueue(chunk_buffer, 0, 30);
+
+    // Fill descriptor from queue
+    const ready = controller.fillPullIntoDescriptorFromQueue(descriptor);
+    
+    // Should have filled 30 bytes but not be ready
+    try testing.expectEqual(@as(u64, 30), descriptor.bytes_filled);
+    try testing.expect(!ready); // Not ready (30 < minimum_fill of 50)
+    try testing.expectEqual(@as(f64, 0.0), controller.queueTotalSize);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Edge Case - multiple partial fills reaching minimum" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create descriptor with minimum_fill = 50
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        50,   // minimum_fill = 50 bytes
+        1,
+        .uint8_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Enqueue first chunk: 30 bytes
+    const chunk1_buffer = try allocator.create(ArrayBuffer);
+    chunk1_buffer.* = .{
+        .data = try allocator.alloc(u8, 30),
+        .byte_length = 30,
+        .detached = false,
+    };
+    @memset(chunk1_buffer.data, 0x11);
+    try controller.enqueueChunkToQueue(chunk1_buffer, 0, 30);
+
+    // First fill: 30 bytes, not ready
+    var ready = controller.fillPullIntoDescriptorFromQueue(descriptor);
+    try testing.expectEqual(@as(u64, 30), descriptor.bytes_filled);
+    try testing.expect(!ready);
+
+    // Enqueue second chunk: 25 bytes
+    const chunk2_buffer = try allocator.create(ArrayBuffer);
+    chunk2_buffer.* = .{
+        .data = try allocator.alloc(u8, 25),
+        .byte_length = 25,
+        .detached = false,
+    };
+    @memset(chunk2_buffer.data, 0x22);
+    try controller.enqueueChunkToQueue(chunk2_buffer, 0, 25);
+
+    // Second fill: 30 + 25 = 55 bytes, now ready
+    ready = controller.fillPullIntoDescriptorFromQueue(descriptor);
+    try testing.expectEqual(@as(u64, 55), descriptor.bytes_filled);
+    try testing.expect(ready); // Now ready (55 >= minimum_fill of 50)
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Edge Case - enqueue with zero byte length" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create a zero-length view
+    const webidl = @import("../src/webidl/root.zig");
+    var buffer_data = try allocator.alloc(u8, 100);
+    defer allocator.free(buffer_data);
+    
+    var buffer = webidl.ArrayBuffer{
+        .data = buffer_data,
+        .detached = false,
+    };
+    
+    const Uint8ArrayType = webidl.TypedArray(u8);
+    const uint8_view = try Uint8ArrayType.init(&buffer, 0, 0); // Zero length!
+    const view = webidl.ArrayBufferView{ .uint8_array = uint8_view };
+
+    // Try to enqueue with zero-length view - should error
+    const result = controller.call_enqueue(view);
+    try testing.expectError(error.TypeError, result);
+}
+
+test "BYOB Edge Case - close with pending unaligned bytes" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+    controller.started = true;
+
+    // Create descriptor with element_size=4 and some unaligned bytes filled
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        4,    // element_size = 4 bytes
+        .uint32_array,
+        .byob,
+    );
+    descriptor.bytes_filled = 7; // 7 bytes (not aligned to 4!)
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Try to close with unaligned bytes - should error
+    const result = controller.close();
+    try testing.expectError(error.TypeError, result);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+    controller.pendingPullIntos.clearRetainingCapacity();
+}
