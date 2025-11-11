@@ -1180,7 +1180,8 @@ pub const ReadableByteStreamController = struct {
 
         // Step 8: On rejection
         if (pull_result.isRejected()) {
-            const error_value = pull_result.error_value orelse common.JSValue{ .string = "Pull failed" };
+            const exception = pull_result.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Pull failed") catch return;
+            const error_value = common.JSValue{ .string = exception.toString() };
             self.errorInternal(error_value);
         }
     }

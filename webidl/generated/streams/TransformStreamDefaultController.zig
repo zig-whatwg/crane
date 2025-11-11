@@ -186,7 +186,8 @@ pub const TransformStreamDefaultController = struct {
         // If the transform promise is rejected, error the stream
         if (transform_promise.isRejected()) {
             const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
-            const error_value = transform_promise.error_value orelse common.JSValue{ .string = "Transform failed" };
+            const exception = transform_promise.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Transform failed") catch return transform_promise;
+            const error_value = common.JSValue{ .string = exception.toString() };
             stream.errorStream(error_value);
         }
 

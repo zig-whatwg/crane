@@ -291,7 +291,7 @@ pub const TransformStream = struct {
             // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
             if (readable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(allocator, "Readable errored") catch return);
+                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch return);
                 }
             } else {
                 // Spec step 7.2: Otherwise, error readable and resolve finishPromise
@@ -302,10 +302,11 @@ pub const TransformStream = struct {
             }
         } else if (cancel_promise.isRejected()) {
             // Spec step 7.2: Handle rejection
-            const err = cancel_promise.error_value orelse common.JSValue{ .string = "Cancel failed" };
-            readable.controller.errorInternal(err.toWebIDL());
+            const err_exception = cancel_promise.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Cancel failed") catch return controller.finishPromise orelse common.Promise(void).fulfilled({});
+            const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
+            readable.controller.errorInternal(err_jsvalue.toWebIDL());
             if (controller.finishPromise) |*fp| {
-                fp.reject(err);
+                fp.reject(err_exception);
             }
         }
 
@@ -341,7 +342,7 @@ pub const TransformStream = struct {
             // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
             if (readable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(allocator, "Readable errored") catch return);
+                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch return);
                 }
             } else {
                 // Spec step 7.2: Otherwise, close readable and resolve finishPromise
@@ -409,7 +410,7 @@ pub const TransformStream = struct {
             // Spec step 7.1: If writable.[[state]] is "errored", reject finishPromise
             if (writable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(allocator, "Writable errored") catch return);
+                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Writable errored") catch return);
                 }
             } else {
                 // Spec step 7.2: Otherwise, error writable, unblock, and resolve finishPromise
@@ -421,11 +422,12 @@ pub const TransformStream = struct {
             }
         } else if (cancel_promise.isRejected()) {
             // Spec step 7.2: Handle rejection
-            const err = cancel_promise.error_value orelse common.JSValue{ .string = "Cancel failed" };
-            writable.controller.errorIfNeeded(err);
+            const err_exception = cancel_promise.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Cancel failed") catch return controller.finishPromise orelse common.Promise(void).fulfilled({});
+            const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
+            writable.controller.errorIfNeeded(err_jsvalue);
             self.unblockWrite();
             if (controller.finishPromise) |*fp| {
-                fp.reject(err);
+                fp.reject(err_exception);
             }
         }
 
