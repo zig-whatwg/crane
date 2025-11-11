@@ -13,6 +13,7 @@ const dict_parsing = @import("dict_parsing");
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
+const structured_clone = @import("structured_clone");
 
 // Import related types
 const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
@@ -232,6 +233,78 @@ pub const WritableStream = webidl.interface(struct {
     /// Spec: https://streams.spec.whatwg.org/#ws-get-writer
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
+    }
+
+    // ============================================================================
+    // Transfer/Serialization Support
+    // ============================================================================
+
+    /// [[TransferSteps]](dataHolder)
+    ///
+    /// Spec: § 5.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#ws-transfer
+    ///
+    /// Steps for transferring a WritableStream via postMessage().
+    /// Creates a MessagePort pair, sets up a readable that pipes to the writable,
+    /// and serializes the receiving port for transfer to another realm.
+    pub fn transferSteps(self: *WritableStream) !*structured_clone.SerializedData {
+        const cross_realm_transform = @import("cross_realm_transform");
+        const message_port = @import("message_port");
+        const ReadableStream = @import("readable_stream").ReadableStream;
+
+        // Spec step 1: If ! IsWritableStreamLocked(value) is true, throw DataCloneError
+        if (self.writer != null) {
+            return error.DataCloneError;
+        }
+
+        // Spec step 2-3: Create MessagePort pair
+        const ports = try message_port.createMessagePortPair(self.allocator);
+        const port1 = ports[0];
+        const port2 = ports[1];
+
+        // Spec step 4: Entangle (already done in createMessagePortPair)
+
+        // Spec step 5: Create ReadableStream in current realm
+        const readable = try ReadableStream.init(self.allocator);
+        errdefer readable.deinit();
+
+        // Spec step 6: SetUpCrossRealmTransformReadable(readable, port1)
+        try cross_realm_transform.setupCrossRealmTransformReadable(self.allocator, readable, port1);
+
+        // Spec step 7: Let promise = ! ReadableStreamPipeTo(readable, value, false, false, false)
+        // Note: We're not awaiting the promise - it runs in the background
+        _ = try readable.pipeToInternal(self, false, false, false, null);
+
+        // Spec step 8: Set promise.[[PromiseIsHandled]] to true
+        // (Promise error handling is internal to pipeTo)
+
+        // Spec step 9: Serialize port2 with transfer
+        const serialized = try structured_clone.structuredSerializeWithTransfer(self.allocator, port2);
+
+        return serialized;
+    }
+
+    /// [[TransferReceivingSteps]](dataHolder)
+    ///
+    /// Spec: § 5.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#ws-transfer
+    ///
+    /// Steps for receiving a transferred WritableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that writes to it.
+    pub fn transferReceivingSteps(
+        self: *WritableStream,
+        serialized: *structured_clone.SerializedData,
+    ) !void {
+        const cross_realm_transform = @import("cross_realm_transform");
+
+        // Spec step 1: Let deserializedRecord = ! StructuredDeserializeWithTransfer(dataHolder.[[port]], current Realm)
+        const deserialized = try structured_clone.structuredDeserializeWithTransfer(self.allocator, serialized);
+
+        // Spec step 2: Let port = deserializedRecord.[[Deserialized]]
+        const port = deserialized.port;
+
+        // Spec step 3: Perform ! SetUpCrossRealmTransformWritable(value, port)
+        try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, self, port);
     }
 
     // ============================================================================
