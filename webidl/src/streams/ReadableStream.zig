@@ -22,6 +22,7 @@ const dict_parsing = @import("dict_parsing");
 const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
 const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
 const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
+const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const WritableStream = @import("writable_stream").WritableStream;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 
@@ -653,6 +654,89 @@ pub const ReadableStream = webidl.interface(struct {
         self.reader = .{ .default = reader };
 
         return reader;
+    }
+
+    /// AcquireReadableStreamBYOBReader(stream)
+    ///
+    /// Spec: § 4.2.3 "Creates a BYOB reader and locks the stream to it."
+    fn acquireBYOBReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamBYOBReader {
+        // Step 1: If stream is locked, throw TypeError
+        if (self.isLocked()) {
+            return error.TypeError;
+        }
+
+        // Step 2: If controller is not ReadableByteStreamController, throw TypeError
+        switch (self.controller) {
+            .byte => {},
+            else => return error.TypeError,
+        }
+
+        // Create reader on heap
+        const reader = try self.allocator.create(ReadableStreamBYOBReader);
+        errdefer self.allocator.destroy(reader);
+
+        // Initialize reader (this performs ReadableStreamReaderGenericInitialize + sets readIntoRequests)
+        reader.* = try ReadableStreamBYOBReader.init(self.allocator, self, loop);
+
+        // Lock stream to reader
+        self.reader = .{ .byob = reader };
+
+        return reader;
+    }
+
+    /// CreateReadableByteStream(startAlgorithm, pullAlgorithm, cancelAlgorithm)
+    ///
+    /// Spec: § 4.2.3 "Create a byte stream with custom algorithms"
+    pub fn createByteStream(
+        allocator: std.mem.Allocator,
+        startAlgorithm: common.StartAlgorithm,
+        pullAlgorithm: common.PullAlgorithm,
+        cancelAlgorithm: common.CancelAlgorithm,
+        loop: eventLoop.EventLoop,
+    ) !*ReadableStream {
+        // Step 1: Let stream be a new ReadableStream
+        const stream = try allocator.create(ReadableStream);
+        errdefer allocator.destroy(stream);
+
+        // Step 2: Perform InitializeReadableStream(stream)
+        stream.* = ReadableStream{
+            .allocator = allocator,
+            .state = .readable,
+            .reader = .none,
+            .storedError = null,
+            .disturbed = false,
+            .controller = undefined, // Will be set below
+            .eventLoop = loop,
+        };
+
+        // Step 3: Let controller be a new ReadableByteStreamController
+        // Step 4: Perform SetUpReadableByteStreamController with hwm=0, autoAllocate=undefined
+        const controller = ReadableByteStreamController.init(
+            allocator,
+            cancelAlgorithm,
+            pullAlgorithm,
+            0.0, // highWaterMark = 0
+            null, // autoAllocateChunkSize = undefined
+            loop,
+        );
+
+        // Allocate controller on heap
+        const controller_ptr = try allocator.create(ReadableByteStreamController);
+        controller_ptr.* = controller;
+        controller_ptr.stream = stream;
+        controller_ptr.started = false;
+
+        // Set stream's controller
+        stream.controller = .{ .byte = controller_ptr };
+
+        // Execute start algorithm
+        if (startAlgorithm) |start| {
+            try start(controller_ptr);
+        }
+        controller_ptr.started = true;
+
+        // Step 5: Return stream
+        return stream;
     }
 
     /// ReadableStreamGetNumReadRequests(stream)
