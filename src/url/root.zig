@@ -53,9 +53,12 @@ pub const origin = @import("origin");
 pub const blob_url = @import("blob_url");
 pub const equivalence = @import("equivalence");
 
-// Phase 7: Public WebIDL API (WebIDL-generated from interfaces/)
-pub const URL = @import("url").URL;
-pub const URLSearchParams = @import("url_search_params").URLSearchParams;
+// Phase 7: Public WebIDL API (WebIDL-generated classes)
+// Note: URL and URLSearchParams are separate modules in build.zig
+// They import this module, so we can't import them here (circular dependency)
+// Users should import them directly via build.zig module system:
+//   const URL = @import("url").URL;  // This works from external code
+//   const URLSearchParams = @import("url_search_params").URLSearchParams;
 
 // Test helpers
 pub const test_helpers = @import("test_helpers.zig");
