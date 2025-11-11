@@ -8,10 +8,11 @@ const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 const ChildNode = @import("ChildNode.zig").ChildNode;
+const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocumentTypeChildNode;
 
 /// Element WebIDL interface
 pub const Element = webidl.interface(struct {
-    pub const includes = .{ChildNode};
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode };
     allocator: Allocator,
     node: Node,
     tag_name: []const u8,
