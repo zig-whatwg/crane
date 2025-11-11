@@ -10,6 +10,7 @@ const webidl = @import("webidl");
 const common = @import("common");
 const eventLoop = @import("event_loop");
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+const AbortController = @import("dom").AbortController;
 
 // BYOB infrastructure imports
 const PullIntoDescriptorModule = @import("pull_into_descriptor");
@@ -40,6 +41,10 @@ const ByteStreamQueueEntry = struct {
 
 pub const ReadableByteStreamController = webidl.interface(struct {
     allocator: std.mem.Allocator,
+
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablebytestreamcontroller-abortcontroller
+    abortController: AbortController,
 
     /// [[autoAllocateChunkSize]]: Size for auto-allocated buffers
     autoAllocateChunkSize: ?u64,
@@ -90,9 +95,10 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         strategyHwm: f64,
         autoAllocateChunkSize: ?u64,
         loop: eventLoop.EventLoop,
-    ) ReadableByteStreamController {
+    ) !ReadableByteStreamController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .autoAllocateChunkSize = autoAllocateChunkSize,
             .byobRequest = null,
             .cancelAlgorithm = cancelAlgorithm,
@@ -111,6 +117,8 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     }
 
     pub fn deinit(self: *ReadableByteStreamController) void {
+        self.abortController.deinit();
+
         // Clean up byte queue buffers
         for (self.byteQueue.items) |entry| {
             entry.buffer.deinit(self.allocator);

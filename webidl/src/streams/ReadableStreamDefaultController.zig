@@ -16,6 +16,7 @@ const Value = @import("queue_with_sizes").Value;
 const common = @import("common");
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const AbortController = @import("dom").AbortController;
 
 // Import ReadableStream (will be defined elsewhere to avoid circular dependency)
 // We use *anyopaque for the stream reference and cast when needed
@@ -37,6 +38,10 @@ const ReadableStreamDefaultReader = @import("readable_stream_default_reader").Re
 /// ```
 pub const ReadableStreamDefaultController = webidl.interface(struct {
     allocator: std.mem.Allocator,
+
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablestreamdefaultcontroller-abortcontroller
+    abortController: AbortController,
 
     /// [[cancelAlgorithm]]: Promise-returning algorithm for cancelation
     ///
@@ -102,9 +107,10 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         strategyHwm: f64,
         strategySizeAlgorithm: common.SizeAlgorithm,
         loop: eventLoop.EventLoop,
-    ) ReadableStreamDefaultController {
+    ) !ReadableStreamDefaultController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .cancelAlgorithm = cancelAlgorithm,
             .closeRequested = false,
             .pullAgain = false,
@@ -123,6 +129,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
     ///
     /// Spec: Cleanup internal queue
     pub fn deinit(self: *ReadableStreamDefaultController) void {
+        self.abortController.deinit();
         self.queue.deinit();
     }
 
