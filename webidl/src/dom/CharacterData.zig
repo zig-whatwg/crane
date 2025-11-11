@@ -9,22 +9,27 @@ const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocu
 
 const Allocator = std.mem.Allocator;
 
+/// DOM Spec: interface CharacterData : Node
 pub const CharacterData = webidl.interface(struct {
+    pub const extends = Node;
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode };
+
     allocator: Allocator,
-    node: Node,
     data: []const u8,
 
     pub fn init(allocator: Allocator) !CharacterData {
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .node = try Node.init(allocator, Node.TEXT_NODE, "#text"),
             .data = "",
+            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *CharacterData) void {
-        self.node.deinit();
+        _ = self;
+        // NOTE: Parent Node cleanup will be handled by codegen
+        // TODO: Call parent Node deinit (will be added by codegen)
     }
 
     pub fn get_data(self: *const CharacterData) []const u8 {

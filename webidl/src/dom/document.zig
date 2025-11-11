@@ -9,20 +9,25 @@ const ParentNode = @import("ParentNode.zig").ParentNode;
 
 const Allocator = std.mem.Allocator;
 
+/// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
+    pub const extends = Node;
     pub const includes = .{ParentNode};
+
     allocator: Allocator,
-    node: Node,
 
     pub fn init(allocator: Allocator) !Document {
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .node = try Node.init(allocator, Node.DOCUMENT_NODE, "#document"),
+            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *Document) void {
-        self.node.deinit();
+        _ = self;
+        // NOTE: Parent Node cleanup will be handled by codegen
+        // TODO: Call parent Node deinit (will be added by codegen)
     }
 
     /// createElement(localName)

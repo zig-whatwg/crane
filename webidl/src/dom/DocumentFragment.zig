@@ -5,20 +5,25 @@ const webidl = @import("webidl");
 const Node = @import("node").Node;
 const ParentNode = @import("ParentNode.zig").ParentNode;
 
+/// DOM Spec: interface DocumentFragment : Node
 pub const DocumentFragment = webidl.interface(struct {
+    pub const extends = Node;
     pub const includes = .{ParentNode};
+
     allocator: std.mem.Allocator,
-    node: Node,
 
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .node = try Node.init(allocator, Node.DOCUMENT_FRAGMENT_NODE, "#document-fragment"),
+            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *DocumentFragment) void {
-        self.node.deinit();
+        _ = self;
+        // NOTE: Parent Node cleanup will be handled by codegen
+        // TODO: Call parent Node deinit (will be added by codegen)
     }
 }, .{
     .exposed = &.{.Window},

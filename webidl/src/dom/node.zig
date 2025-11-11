@@ -9,9 +9,11 @@ const Allocator = std.mem.Allocator;
 const EventTarget = @import("event_target").EventTarget;
 
 /// Node WebIDL interface
+/// DOM Spec: interface Node : EventTarget
 pub const Node = webidl.interface(struct {
+    pub const extends = EventTarget;
+
     allocator: Allocator,
-    event_target: EventTarget,
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
@@ -41,20 +43,23 @@ pub const Node = webidl.interface(struct {
     pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
 
     pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
+        // NOTE: Parent EventTarget fields will be flattened by codegen
+        // Don't manually initialize parent fields here
         return .{
             .allocator = allocator,
-            .event_target = try EventTarget.init(allocator),
             .node_type = node_type,
             .node_name = node_name,
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
+            // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *Node) void {
-        self.event_target.deinit();
+        // NOTE: EventTarget parent cleanup will be handled by codegen
         self.child_nodes.deinit();
+        // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
     /// insertBefore(node, child)

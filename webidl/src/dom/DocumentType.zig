@@ -5,22 +5,27 @@ const webidl = @import("webidl");
 const Node = @import("node").Node;
 const ChildNode = @import("ChildNode.zig").ChildNode;
 
+/// DOM Spec: interface DocumentType : Node
 pub const DocumentType = webidl.interface(struct {
+    pub const extends = Node;
     pub const includes = .{ChildNode};
+
     allocator: std.mem.Allocator,
-    node: Node,
     name: []const u8,
 
     pub fn init(allocator: std.mem.Allocator, name: []const u8) !DocumentType {
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .node = try Node.init(allocator, Node.DOCUMENT_TYPE_NODE, name),
             .name = name,
+            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *DocumentType) void {
-        self.node.deinit();
+        _ = self;
+        // NOTE: Parent Node cleanup will be handled by codegen
+        // TODO: Call parent Node deinit (will be added by codegen)
     }
 
     pub fn get_name(self: *const DocumentType) []const u8 {

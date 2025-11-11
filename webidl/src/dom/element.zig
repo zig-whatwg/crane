@@ -12,10 +12,12 @@ const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocu
 const ParentNode = @import("ParentNode.zig").ParentNode;
 
 /// Element WebIDL interface
+/// DOM Spec: interface Element : Node
 pub const Element = webidl.interface(struct {
+    pub const extends = Node;
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode };
+
     allocator: Allocator,
-    node: Node,
     tag_name: []const u8,
     namespace_uri: ?[]const u8,
     attributes: infra.List(Attr),
@@ -23,18 +25,20 @@ pub const Element = webidl.interface(struct {
     const Attr = @import("attr").Attr;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .node = try Node.init(allocator, Node.ELEMENT_NODE, tag_name),
             .tag_name = tag_name,
             .namespace_uri = null,
             .attributes = infra.List(Attr).init(allocator),
+            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *Element) void {
-        self.node.deinit();
+        // NOTE: Parent Node cleanup will be handled by codegen
         self.attributes.deinit();
+        // TODO: Call parent Node deinit (will be added by codegen)
     }
 
     /// getAttribute(qualifiedName)
