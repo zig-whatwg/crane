@@ -553,7 +553,7 @@ pub const WritableStream = struct {
         // Spec step 11: If wasAlreadyErroring is true
         if (abort_request.wasAlreadyErroring) {
             // Spec step 11.1: Reject abortRequest's promise
-            abort_request.promise.reject(stored_error);
+            abort_request.promise.reject(stored_exception);
             // Spec step 11.2: Reject close and return
             self.rejectCloseAndClosedPromiseIfNeeded();
             return;

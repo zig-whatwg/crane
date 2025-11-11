@@ -601,7 +601,8 @@ pub const WritableStream = webidl.interface(struct {
         } else if (abort_result.isRejected()) {
             // Spec step 14: Upon rejection with reason
             // Spec step 14.1: Reject abortRequest's promise with reason
-            abort_request.promise.reject(abort_result.error_value orelse common.JSValue.undefined_value());
+            const err_exception = abort_result.error_value orelse webidl.Exception{ .simple = .{ .type = .TypeError, .message = "Abort failed" } };
+            abort_request.promise.reject(err_exception);
             // Spec step 14.2: Reject close
             self.rejectCloseAndClosedPromiseIfNeeded();
         }
