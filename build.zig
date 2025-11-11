@@ -713,6 +713,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const streams_structured_clone_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/structured_clone.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
     // Main streams module
     const streams_mod = b.addModule("streams", .{
         .root_source_file = b.path("src/streams/root.zig"),
@@ -728,6 +737,8 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("read_into_request", streams_read_into_request_mod);
     streams_mod.addImport("pull_into_descriptor", streams_pull_into_descriptor_mod);
     streams_mod.addImport("write_request", streams_write_request_mod);
+    streams_mod.addImport("structured_clone", streams_structured_clone_mod);
+    streams_mod.addImport("view_construction", streams_view_construction_mod);
 
     // Create interface modules that reference the main streams module for internals
     // This avoids the module collision by sharing the same internal file instances
@@ -745,6 +756,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "async_promise", .module = streams_async_promise_mod },
         .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },
         .{ .name = "view_construction", .module = streams_view_construction_mod },
+        .{ .name = "structured_clone", .module = streams_structured_clone_mod },
     };
 
     const byte_length_queuing_strategy_mod = b.createModule(.{

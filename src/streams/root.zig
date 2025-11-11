@@ -70,6 +70,9 @@ pub const internal = struct {
     pub const AbortSignal = @import("internal/abort_signal.zig").AbortSignal;
     pub const AbortController = @import("internal/abort_signal.zig").AbortController;
 
+    pub const structured_clone = @import("structured_clone");
+    pub const view_construction = @import("view_construction");
+
     pub const algorithms = struct {
         pub const queuing = @import("internal/algorithms/queuing_ops.zig");
     };
@@ -113,6 +116,8 @@ test {
     std.testing.refAllDecls(internal.PullIntoDescriptor);
     std.testing.refAllDecls(internal.WriteRequest);
     std.testing.refAllDecls(internal.algorithms.queuing);
+    std.testing.refAllDecls(internal.structured_clone);
+    std.testing.refAllDecls(internal.view_construction);
     std.testing.refAllDecls(ByteLengthQueuingStrategy);
     std.testing.refAllDecls(CountQueuingStrategy);
     std.testing.refAllDecls(ReadableStreamDefaultController);
