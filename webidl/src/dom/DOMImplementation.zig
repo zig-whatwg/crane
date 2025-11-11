@@ -1,0 +1,261 @@
+//! DOMImplementation interface per WHATWG DOM Standard
+//! Spec: https://dom.spec.whatwg.org/#interface-domimplementation
+
+const std = @import("std");
+const webidl = @import("webidl");
+const dom = @import("dom");
+const Document = @import("document").Document;
+const DocumentType = @import("document_type").DocumentType;
+const Element = @import("element").Element;
+const Text = @import("text").Text;
+
+const Allocator = std.mem.Allocator;
+
+/// DOM Spec: interface DOMImplementation
+///
+/// Factory interface for creating documents and document types.
+/// Accessed via document.implementation getter.
+pub const DOMImplementation = webidl.interface(struct {
+    allocator: Allocator,
+    /// Associated document (the document that owns this implementation object)
+    document: *Document,
+
+    /// Initialize a DOMImplementation for the given document
+    pub fn init(allocator: Allocator, document: *Document) !DOMImplementation {
+        return .{
+            .allocator = allocator,
+            .document = document,
+        };
+    }
+
+    pub fn deinit(self: *DOMImplementation) void {
+        _ = self;
+        // No cleanup needed - document owns this
+    }
+
+    /// createDocumentType(name, publicId, systemId)
+    /// DOM §4.5 - Creates a DocumentType node
+    ///
+    /// Spec algorithm:
+    /// 1. If name is not a valid doctype name, then throw an "InvalidCharacterError" DOMException.
+    /// 2. Return a new doctype, with name as its name, publicId as its public ID, and systemId
+    ///    as its system ID, and with its node document set to the associated document of this.
+    pub fn call_createDocumentType(
+        self: *DOMImplementation,
+        name: []const u8,
+        public_id: []const u8,
+        system_id: []const u8,
+    ) !*DocumentType {
+        // Step 1: Validate doctype name
+        // A string is a valid doctype name if it does not contain:
+        // - ASCII whitespace (U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, U+0020 SPACE)
+        // - U+0000 NULL
+        // - U+003E (>)
+        // The empty string is valid.
+        if (!isValidDoctypeName(name)) {
+            return error.InvalidCharacterError;
+        }
+
+        // Step 2: Create and return new doctype
+        const doctype = try self.allocator.create(DocumentType);
+        doctype.* = try DocumentType.init(self.allocator, name, public_id, system_id);
+        // TODO: Set node document to self.document when Node has ownerDocument
+        return doctype;
+    }
+
+    /// createDocument(namespace, qualifiedName, doctype)
+    /// DOM §4.5 - Creates an XMLDocument
+    ///
+    /// Spec algorithm:
+    /// 1. Let document be a new XMLDocument.
+    /// 2. Let element be null.
+    /// 3. If qualifiedName is not the empty string, then set element to the result of running
+    ///    the internal createElementNS steps, given document, namespace, qualifiedName, and an
+    ///    empty dictionary.
+    /// 4. If doctype is non-null, append doctype to document.
+    /// 5. If element is non-null, append element to document.
+    /// 6. document's origin is this's associated document's origin.
+    /// 7. document's content type is determined by namespace:
+    ///    - HTML namespace: "application/xhtml+xml"
+    ///    - SVG namespace: "image/svg+xml"
+    ///    - Any other namespace: "application/xml"
+    /// 8. Return document.
+    pub fn call_createDocument(
+        self: *DOMImplementation,
+        namespace: ?[]const u8,
+        qualified_name: []const u8,
+        doctype: ?*DocumentType,
+    ) !*Document {
+        // Step 1: Create new XMLDocument
+        const document = try self.allocator.create(Document);
+        document.* = try Document.init(self.allocator);
+        // TODO: Mark as XMLDocument when we have document type distinction
+
+        // Step 2: element = null (handled by step 3 condition)
+
+        // Step 3: If qualifiedName is not empty, create element
+        // This throws the same exceptions as createElementNS()
+        if (qualified_name.len > 0) {
+            const element = try document.call_createElementNS(namespace, qualified_name);
+            // TODO: Append element to document when tree operations are available
+            _ = element;
+        }
+
+        // Step 4: If doctype is non-null, append to document
+        if (doctype) |dt| {
+            // TODO: Append doctype to document when tree operations are available
+            _ = dt;
+        }
+
+        // Step 5: Already handled in step 3
+
+        // Step 6: Set document's origin
+        // TODO: Set origin from self.document.origin when origin tracking is implemented
+
+        // Step 7: Set content type based on namespace
+        // TODO: Set contentType when Document has contentType field
+        // HTML namespace: "application/xhtml+xml"
+        // SVG namespace: "image/svg+xml"
+        // Other: "application/xml"
+        // Note: namespace is used in step 3, so no need to discard
+
+        // Step 8: Return document
+        return document;
+    }
+
+    /// createHTMLDocument(title)
+    /// DOM §4.5 - Creates an HTML document
+    ///
+    /// Spec algorithm:
+    /// 1. Let doc be a new document that is an HTML document.
+    /// 2. Set doc's content type to "text/html".
+    /// 3. Append a new doctype, with "html" as its name and with its node document set to doc, to doc.
+    /// 4. Append the result of creating an element given doc, "html", and the HTML namespace, to doc.
+    /// 5. Append the result of creating an element given doc, "head", and the HTML namespace, to the html element created earlier.
+    /// 6. If title is given:
+    ///    1. Append the result of creating an element given doc, "title", and the HTML namespace, to the head element created earlier.
+    ///    2. Append a new Text node, with its data set to title (which could be the empty string) and its node document set to doc, to the title element created earlier.
+    /// 7. Append the result of creating an element given doc, "body", and the HTML namespace, to the html element created earlier.
+    /// 8. doc's origin is this's associated document's origin.
+    /// 9. Return doc.
+    pub fn call_createHTMLDocument(
+        self: *DOMImplementation,
+        title: ?[]const u8,
+    ) !*Document {
+        // Step 1: Create new HTML document
+        const doc = try self.allocator.create(Document);
+        doc.* = try Document.init(self.allocator);
+        // TODO: Mark as HTML document when we have document type distinction
+
+        // Step 2: Set content type to "text/html"
+        // TODO: Set contentType when Document has contentType field
+
+        // Step 3: Create and append doctype
+        const doctype = try doc.call_createDocumentType("html", "", "");
+        // TODO: Append doctype to doc when tree operations are available
+        _ = doctype;
+
+        // Step 4: Create and append html element
+        const html_namespace = "http://www.w3.org/1999/xhtml";
+        const html = try doc.call_createElementNS(html_namespace, "html");
+        // TODO: Append html to doc when tree operations are available
+
+        // Step 5: Create and append head element
+        const head = try doc.call_createElementNS(html_namespace, "head");
+        // TODO: Append head to html when tree operations are available
+        _ = head;
+
+        // Step 6: If title is given, create title element with text
+        if (title) |title_text| {
+            const title_elem = try doc.call_createElementNS(html_namespace, "title");
+            // TODO: Append title_elem to head when tree operations are available
+
+            const text_node = try doc.call_createTextNode(title_text);
+            // TODO: Append text_node to title_elem when tree operations are available
+            _ = title_elem;
+            _ = text_node;
+        }
+
+        // Step 7: Create and append body element
+        const body = try doc.call_createElementNS(html_namespace, "body");
+        // TODO: Append body to html when tree operations are available
+        _ = body;
+        _ = html;
+
+        // Step 8: Set doc's origin
+        // TODO: Set origin from self.document.origin when origin tracking is implemented
+
+        // Step 9: Return doc
+        return doc;
+    }
+
+    /// hasFeature()
+    /// DOM §4.5 - Legacy method that always returns true
+    ///
+    /// Spec: hasFeature() originally would report whether the user agent claimed to support
+    /// a given DOM feature, but experience proved it was not nearly as reliable or granular
+    /// as simply checking whether the desired objects, attributes, or methods existed.
+    /// As such, it is no longer to be used, but continues to exist (and simply returns true)
+    /// so that old pages don't stop working.
+    pub fn call_hasFeature() bool {
+        return true;
+    }
+}, .{
+    .exposed = &.{.Window},
+});
+
+/// Validates a doctype name per DOM spec
+///
+/// A string is a valid doctype name if it does not contain:
+/// - ASCII whitespace (U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, U+0020 SPACE)
+/// - U+0000 NULL
+/// - U+003E (>)
+///
+/// The empty string is a valid doctype name.
+fn isValidDoctypeName(name: []const u8) bool {
+    for (name) |c| {
+        // Check for ASCII whitespace
+        if (c == 0x09 or c == 0x0A or c == 0x0C or c == 0x0D or c == 0x20) {
+            return false;
+        }
+        // Check for NULL
+        if (c == 0x00) {
+            return false;
+        }
+        // Check for >
+        if (c == 0x3E) {
+            return false;
+        }
+    }
+    return true;
+}
+
+test "isValidDoctypeName: empty string is valid" {
+    try std.testing.expect(isValidDoctypeName(""));
+}
+
+test "isValidDoctypeName: normal name is valid" {
+    try std.testing.expect(isValidDoctypeName("html"));
+    try std.testing.expect(isValidDoctypeName("HTML"));
+    try std.testing.expect(isValidDoctypeName("my-doctype"));
+}
+
+test "isValidDoctypeName: space is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html test"));
+}
+
+test "isValidDoctypeName: tab is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\ttest"));
+}
+
+test "isValidDoctypeName: newline is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\ntest"));
+}
+
+test "isValidDoctypeName: null is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\x00test"));
+}
+
+test "isValidDoctypeName: > is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html>test"));
+}

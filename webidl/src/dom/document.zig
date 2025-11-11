@@ -14,6 +14,7 @@ const dom_types = @import("dom_types");
 const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 const CDATASection = @import("cdata_section").CDATASection;
 const DocumentType = @import("document_type").DocumentType;
+const DOMImplementation = @import("dom_implementation").DOMImplementation;
 
 const Allocator = std.mem.Allocator;
 
@@ -23,19 +24,38 @@ pub const Document = webidl.interface(struct {
     pub const includes = .{ ParentNode, NonElementParentNode };
 
     allocator: Allocator,
+    /// Cached DOMImplementation instance ([SameObject])
+    _implementation: ?DOMImplementation,
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
+            ._implementation = null,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *Document) void {
-        _ = self;
+        // Clean up cached implementation if it exists
+        if (self._implementation) |*impl| {
+            impl.deinit();
+        }
         // NOTE: Parent Node cleanup will be handled by codegen
         // TODO: Call parent Node deinit (will be added by codegen)
+    }
+
+    /// implementation getter
+    /// DOM §4.6 - Returns document's DOMImplementation object
+    /// [SameObject] - Always returns the same instance
+    pub fn get_implementation(self: *Document) !DOMImplementation {
+        if (self._implementation) |impl| {
+            return impl;
+        }
+        // Create and cache the implementation
+        const impl = try DOMImplementation.init(self.allocator, self);
+        self._implementation = impl;
+        return impl;
     }
 
     /// createElement(localName)

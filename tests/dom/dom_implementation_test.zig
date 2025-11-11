@@ -1,0 +1,262 @@
+const std = @import("std");
+const testing = std.testing;
+const dom = @import("dom");
+const Document = dom.Document;
+const DOMImplementation = dom.DOMImplementation;
+const DocumentType = dom.DocumentType;
+
+test "DOMImplementation: createDocumentType with valid name" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const doctype = try impl.createDocumentType("html", "", "");
+    defer {
+        doctype.deinit();
+        allocator.destroy(doctype);
+    }
+
+    try testing.expectEqualStrings("html", doctype.name);
+    try testing.expectEqualStrings("", doctype.publicId);
+    try testing.expectEqualStrings("", doctype.systemId);
+}
+
+test "DOMImplementation: createDocumentType with public and system IDs" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const doctype = try impl.createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
+    defer {
+        doctype.deinit();
+        allocator.destroy(doctype);
+    }
+
+    try testing.expectEqualStrings("html", doctype.name);
+    try testing.expectEqualStrings("-//W3C//DTD HTML 4.01//EN", doctype.publicId);
+    try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.systemId);
+}
+
+test "DOMImplementation: createDocumentType with empty name (valid)" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // Empty string is a valid doctype name per spec
+    const doctype = try impl.createDocumentType("", "", "");
+    defer {
+        doctype.deinit();
+        allocator.destroy(doctype);
+    }
+
+    try testing.expectEqualStrings("", doctype.name);
+}
+
+test "DOMImplementation: createDocumentType with space in name (invalid)" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // Space is ASCII whitespace - should throw InvalidCharacterError
+    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html test", "", ""));
+}
+
+test "DOMImplementation: createDocumentType with null character (invalid)" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // U+0000 NULL - should throw InvalidCharacterError
+    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html\x00test", "", ""));
+}
+
+test "DOMImplementation: createDocumentType with > character (invalid)" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // U+003E (>) - should throw InvalidCharacterError
+    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html>test", "", ""));
+}
+
+test "DOMImplementation: createDocumentType with tab character (invalid)" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // Tab is ASCII whitespace - should throw InvalidCharacterError
+    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html\ttest", "", ""));
+}
+
+test "DOMImplementation: createHTMLDocument without title" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const html_doc = try impl.createHTMLDocument(null);
+    defer {
+        html_doc.deinit();
+        allocator.destroy(html_doc);
+    }
+
+    // Document should have html, head, and body elements
+    // TODO: Test document structure when tree methods are available
+}
+
+test "DOMImplementation: createHTMLDocument with title" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const html_doc = try impl.createHTMLDocument("Test Page");
+    defer {
+        html_doc.deinit();
+        allocator.destroy(html_doc);
+    }
+
+    // Document should have html, head (with title), and body elements
+    // TODO: Test document structure and title when tree methods are available
+}
+
+test "DOMImplementation: createHTMLDocument with empty title" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const html_doc = try impl.createHTMLDocument("");
+    defer {
+        html_doc.deinit();
+        allocator.destroy(html_doc);
+    }
+
+    // Empty title is valid - should still have title element
+}
+
+test "DOMImplementation: createDocument without qualified name" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // Empty qualified name - no document element
+    const xml_doc = try impl.createDocument(null, "", null);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    // TODO: Verify no document element when tree methods are available
+}
+
+test "DOMImplementation: createDocument with qualified name and namespace" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const xml_doc = try impl.createDocument("http://www.w3.org/1999/xhtml", "html", null);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    // TODO: Verify document element when tree methods are available
+}
+
+test "DOMImplementation: createDocument with doctype" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const doctype = try impl.createDocumentType("html", "", "");
+
+    const xml_doc = try impl.createDocument(null, "html", doctype);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    // doctype is now owned by xml_doc - will be cleaned up with document
+    // TODO: Verify doctype is in document when tree methods are available
+}
+
+test "DOMImplementation: hasFeature always returns true" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    // hasFeature is legacy and always returns true
+    try testing.expect(impl.hasFeature());
+}
+
+test "DOMImplementation: Document.implementation getter" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Get implementation from document
+    const impl1 = try doc.implementation();
+    defer impl1.deinit();
+
+    // Should be [SameObject] - same instance every time
+    const impl2 = try doc.implementation();
+    defer impl2.deinit();
+
+    // Both should reference the same document
+    // TODO: Test [SameObject] semantics when we have pointer equality
+}
