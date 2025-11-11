@@ -1378,6 +1378,7 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
         if (!should_filter) {
             // Make const @import declarations public so dictionaries/helpers can be re-exported
             // Example: "const TextEncoderEncodeIntoResult = @import(...)" -> "pub const TextEncoderEncodeIntoResult = @import(...)"
+            // BUT: Don't add pub to local const inside functions (indentation > 8 spaces)
             const trimmed_line = std.mem.trim(u8, line, " \t\r");
             if (std.mem.startsWith(u8, trimmed_line, "const ") and
                 !std.mem.startsWith(u8, trimmed_line, "const std") and
@@ -1385,12 +1386,19 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
                 !std.mem.startsWith(u8, trimmed_line, "const infra") and
                 std.mem.indexOf(u8, trimmed_line, "@import") != null)
             {
-                // Emit as pub const
                 const leading_whitespace = line[0..std.mem.indexOf(u8, line, "const").?];
-                try result.appendSlice(allocator, leading_whitespace);
-                try result.appendSlice(allocator, "pub ");
-                try result.appendSlice(allocator, trimmed_line);
-                if (line_end < source.len) try result.append(allocator, '\n');
+                // Only add pub if indentation suggests struct-level (not inside function)
+                // Struct-level consts have 0-4 spaces, function-level have 8+ spaces
+                if (leading_whitespace.len <= 4) {
+                    // Struct-level import - make it public
+                    try result.appendSlice(allocator, leading_whitespace);
+                    try result.appendSlice(allocator, "pub ");
+                    try result.appendSlice(allocator, trimmed_line);
+                    if (line_end < source.len) try result.append(allocator, '\n');
+                } else {
+                    // Function-level import - keep as-is
+                    try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
+                }
             } else {
                 try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
             }

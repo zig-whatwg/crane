@@ -16,6 +16,7 @@ const eventLoop = @import("event_loop");
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const dict_parsing = @import("dict_parsing");
+const structured_clone = @import("structured_clone");
 
 // Import related stream types (will be fully linked after all types are defined)
 // NOTE: These will create circular dependencies that need careful handling
@@ -2132,7 +2133,6 @@ pub const ByteTeeState = struct {
             };
 
             // Create a temporary ArrayBufferView for cloning
-            const structured_clone = @import("../../src/streams/internal/structured_clone.zig");
             const webidl_module = @import("webidl");
 
             // Create ArrayBuffer from bytes
@@ -2346,7 +2346,6 @@ pub const ByteTeeState = struct {
         // Step 5: If other branch not canceled, clone and enqueue
         if (!otherCanceled) {
             // Convert chunk to webidl.ArrayBufferView for cloning
-            const structured_clone = @import("../../src/streams/internal/structured_clone.zig");
             const webidl_module = @import("webidl");
 
             // Create temporary ArrayBuffer from chunk data
