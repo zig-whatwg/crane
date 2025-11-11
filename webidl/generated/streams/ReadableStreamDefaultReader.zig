@@ -186,18 +186,15 @@ pub const ReadableStreamDefaultReader = struct {
     // ReadableStreamDefaultReader methods
     // ========================================================================
 
-    /// read() method (ASYNC VERSION)
-    /// 
+    /// Promise<ReadableStreamReadResult> read()
     /// IDL: Promise<ReadableStreamReadResult> read();
-    /// 
-    /// Spec: § 4.3.3 "The read() method steps are:"
     /// 
     /// Returns an AsyncPromise that will be fulfilled when data arrives
     /// or rejected if the stream errors. The promise is PENDING if no
     /// data is immediately available.
     /// 
     /// **IMPORTANT**: Caller owns the returned promise and must call deinit()
-    pub fn read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
+    pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
         if (self.stream == null) {
             const promise = try AsyncPromise(common.ReadResult).init(
