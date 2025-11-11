@@ -7,189 +7,350 @@
 //   - Property getters and setters
 //   - Optimized field layouts
 
+//! WebIDL URLSearchParams Interface (WebIDL Source)
+//!
+//! WHATWG URL Standard: https://url.spec.whatwg.org/#interface-urlsearchparams
+//! WebIDL: specs/url.idl lines 28-45
+//!
+//! This file will be processed by webidl-codegen to generate src/url_search_params.zig
+
 const std = @import("std");
+
 const webidl = @import("webidl");
+const infra = @import("infra");
 
-// Import internal implementation
-pub const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
+// Internal imports (using named modules)
+const url_search_params_impl = @import("url_search_params_impl");
+const URLSearchParamsImpl = url_search_params_impl.URLSearchParamsImpl;
+const RecordEntry = url_search_params_impl.RecordEntry;
+const form_serializer = @import("form_serializer");
+
+/// Entry for URLSearchParams iterator
+///
+/// **WebIDL Compliance**: Uses webidl.USVString for string fields
+///
+/// IDL: iterable<USVString, USVString>
+pub const URLSearchParamsEntry = struct {
+    name: webidl.USVString, // []const u16 (UTF-16)
+    value: webidl.USVString, // []const u16 (UTF-16)
+};
+
+/// Iterator for URLSearchParams
+pub const URLSearchParamsIterator = struct {
+    params: *const URLSearchParams,
+    index: usize,
+
+    pub fn next(self: *URLSearchParamsIterator) ?URLSearchParamsEntry {
+        if (self.index >= self.params.internal.list.items.len) return null;
+        const tuple = self.params.internal.list.items[self.index];
+        self.index += 1;
+        return URLSearchParamsEntry{ .name = tuple.name, .value = tuple.value };
+    }
+};
+
+/// Union type for URLSearchParams constructor init parameter
+///
+/// **WebIDL Compliance**: Uses webidl.USVString for all string fields
+///
+/// IDL:
+/// ```
+/// constructor(optional (sequence<sequence<USVString>> or
+///                       record<USVString, USVString> or
+///                       USVString) init = "");
+/// ```
+pub const URLSearchParamsInit = union(enum) {
+    /// Empty initialization (default)
+    empty: void,
+    /// String initialization (query string) - USVString
+    string: webidl.USVString, // []const u16 (UTF-16)
+    /// Sequence of [name, value] pairs - sequence<sequence<USVString>>
+    sequence: []const [2]webidl.USVString, // Array of [USVString, USVString]
+    /// Record (dictionary) of name -> value pairs - record<USVString, USVString>
+    record: []const struct {
+        name: webidl.USVString, // []const u16 (UTF-16)
+        value: webidl.USVString, // []const u16 (UTF-16)
+    },
+};
+/// URLSearchParams class per WebIDL spec (specs/url.idl lines 28-45)
+/// 
+/// interface URLSearchParams {
+/// constructor(optional (sequence<sequence<USVString>> or record<USVString, USVString> or USVString) init = "");
+/// readonly attribute unsigned long size;
+/// undefined append(USVString name, USVString value);
+/// undefined delete(USVString name, optional USVString value);
+/// USVString? get(USVString name);
+/// sequence<USVString> getAll(USVString name);
+/// boolean has(USVString name, optional USVString value);
+/// undefined set(USVString name, USVString value);
+/// undefined sort();
+/// iterable<USVString, USVString>;
+/// stringifier;
+/// };
 pub const URLSearchParams = struct {
-    allocator: std.mem.Allocator,
+    internal: URLSearchParamsImpl,
 
-    // ========================================================================
-    // URLSearchParams fields
-    // ========================================================================
-    /// The internal implementation wrapping all the logic
-    impl: URLSearchParamsImpl,
-    name: []const u8,
-    value: []const u8,
-    params: *const URLSearchParams,
-    index: usize,
-    params: *const URLSearchParams,
-    index: usize,
-    params: *const URLSearchParams,
-    index: usize,
+    /// Unified constructor (spec lines 2067-2071)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// constructor(optional (sequence<sequence<USVString>> or
+    /// record<USVString, USVString> or
+    /// USVString) init = "");
+    /// ```
+    pub fn init(allocator: std.mem.Allocator, init_param: URLSearchParamsInit) !URLSearchParams {
+        const internal = switch (init_param) {
+            .empty => URLSearchParamsImpl.init(allocator),
 
-    pub const Entry = struct {
-    pub const EntriesIterator = struct {
-    pub const KeysIterator = struct {
-    pub const ValuesIterator = struct {
-    pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
+            .string => |usv_string| blk: {
+                // Convert UTF-16 → UTF-8 for internal parsing
+                const utf8_string = try infra.string.utf16ToUtf8(allocator, usv_string);
+                defer allocator.free(utf8_string);
+                break :blk try URLSearchParamsImpl.initFromString(allocator, utf8_string);
+            },
 
-    /// Initialize URLSearchParams with empty list
-    pub fn init(allocator: std.mem.Allocator) !URLSearchParams {
-        return .{
-            .impl = URLSearchParamsImpl.init(allocator),
+            .sequence => |usv_seq| blk: {
+                // Convert each [name, value] pair from UTF-16 → UTF-8
+                var utf8_seq = try allocator.alloc([2][]const u8, usv_seq.len);
+                defer {
+                    for (utf8_seq) |pair| {
+                        allocator.free(pair[0]);
+                        allocator.free(pair[1]);
+                    }
+                    allocator.free(utf8_seq);
+                }
+
+                for (usv_seq, 0..) |pair, i| {
+                    utf8_seq[i][0] = try infra.string.utf16ToUtf8(allocator, pair[0]);
+                    utf8_seq[i][1] = try infra.string.utf16ToUtf8(allocator, pair[1]);
+                }
+
+                break :blk try URLSearchParamsImpl.initFromSequence(allocator, utf8_seq);
+            },
+
+            .record => |usv_rec| blk: {
+                // Convert record entries from UTF-16 → UTF-8
+                var utf8_rec = try allocator.alloc(RecordEntry, usv_rec.len);
+                defer {
+                    for (utf8_rec) |entry| {
+                        allocator.free(entry.name);
+                        allocator.free(entry.value);
+                    }
+                    allocator.free(utf8_rec);
+                }
+
+                for (usv_rec, 0..) |entry, i| {
+                    utf8_rec[i].name = try infra.string.utf16ToUtf8(allocator, entry.name);
+                    utf8_rec[i].value = try infra.string.utf16ToUtf8(allocator, entry.value);
+                }
+
+                break :blk try URLSearchParamsImpl.initFromRecord(allocator, utf8_rec);
+            },
         };
+
+        return .{ .internal = internal };
     }
     pub fn deinit(self: *URLSearchParams) void {
-        self.impl.deinit();
+        self.internal.deinit();
     }
-    // ========================================================================
-    // URLSearchParams methods
-    // ========================================================================
+    /// Initialize from string (convenience wrapper for internal use, accepts UTF-8)
+    pub fn initFromString(allocator: std.mem.Allocator, query: []const u8) !URLSearchParams {
+        const query_utf16 = try infra.string.utf8ToUtf16(allocator, query);
+        defer allocator.free(query_utf16);
+        return init(allocator, .{ .string = query_utf16 });
+    }
+    /// Initialize from sequence (convenience wrapper)
+    pub fn initFromSequence(allocator: std.mem.Allocator, seq: []const [2][]const u8) !URLSearchParams {
+        return init(allocator, .{ .sequence = seq });
+    }
+    /// Initialize from record (convenience wrapper)
+    pub fn initFromRecord(allocator: std.mem.Allocator, record: []const RecordEntry) !URLSearchParams {
+        return init(allocator, .{ .record = record });
+    }
+    /// Link this URLSearchParams to a URL object
+    pub fn linkToURL(self: *URLSearchParams, url: anytype) void {
+        self.internal.url_object = @ptrCast(url);
+    }
+    /// Update from a new query string
+    pub fn updateFromString(self: *URLSearchParams, query_str: []const u8) !void {
+        // Clear existing list
+        for (self.internal.list.items) |tuple| {
+            tuple.deinit(self.internal.allocator);
+        }
+        self.internal.list.clearRetainingCapacity();
 
-    /// Initialize URLSearchParams from query string
-    /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new (lines 2041-2056)
-    /// This implements step 3 of the initialize algorithm (init is a string)
-    pub fn initWithString(allocator: std.mem.Allocator, query: []const u8) !URLSearchParams {
-        return .{
-            .impl = try URLSearchParamsImpl.initFromString(allocator, query),
-        };
-    }
-    /// Initialize URLSearchParams from sequence of sequences
-    /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new (lines 2043-2047)
-    /// This implements step 1 of the initialize algorithm (init is a sequence)
-    /// Each inner sequence must have exactly 2 elements (name, value)
-    pub fn initWithSequence(allocator: std.mem.Allocator, sequence: []const [2][]const u8) !URLSearchParams {
-        return .{
-            .impl = try URLSearchParamsImpl.initFromSequence(allocator, sequence),
-        };
-    }
-    /// Initialize URLSearchParams from record (key-value pairs)
-    /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new (lines 2049)
-    /// This implements step 2 of the initialize algorithm (init is a record)
-    pub fn initWithRecord(allocator: std.mem.Allocator, record: []const URLSearchParamsImpl.RecordEntry) !URLSearchParams {
-        return .{
-            .impl = try URLSearchParamsImpl.initFromRecord(allocator, record),
-        };
-    }
-    /// Update a URLSearchParams object
-    /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-update (lines 2057-2065)
-    pub fn updateSteps(self: *URLSearchParams) !void {
-        try self.impl.update();
-    }
-    /// size attribute getter
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-size (line 2062)
-    pub fn size(self: *const URLSearchParams) usize {
-        return self.impl.list.items.len;
-    }
-    /// append(name, value) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-append (lines 2064-2066)
-    /// Appends name-value pair to list, runs update steps
-    pub fn append(self: *URLSearchParams, name: []const u8, value: []const u8) !void {
-        try self.impl.append(name, value);
-    }
-    /// delete(name, value?) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-delete (lines 2068-2073)
-    /// Removes tuples matching name (and optionally value), runs update steps
-    pub fn delete(self: *URLSearchParams, name: []const u8, value: ?[]const u8) !void {
-        try self.impl.delete(name, value);
-    }
-    /// get(name) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-get (lines 2075-2080)
-    /// Returns value of first tuple with given name, or null
-    pub fn get(self: *const URLSearchParams, name: []const u8) ?[]const u8 {
-        return self.impl.get(name);
-    }
-    /// getAll(name) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-getall (lines 2082-2091)
-    /// Returns sequence of all values for tuples with given name
-    pub fn getAll(self: *const URLSearchParams, allocator: std.mem.Allocator, name: []const u8) ![][]const u8 {
-        return self.impl.getAll(allocator, name);
-    }
-    /// has(name, value?) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-has (lines 2093-2098)
-    /// Returns true if list contains tuple matching name (and optionally value)
-    pub fn has(self: *const URLSearchParams, name: []const u8, value: ?[]const u8) bool {
-        return self.impl.has(name, value);
-    }
-    /// set(name, value) method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-set (lines 2100-2109)
-    /// Sets value of first tuple with name, removes others, or appends if not found
-    pub fn set(self: *URLSearchParams, name: []const u8, value: []const u8) !void {
-        try self.impl.set(name, value);
-    }
-    /// sort() method
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-sort (lines 2111-2113)
-    /// Sorts tuples by name (stable sort), runs update steps
-    pub fn sort(self: *URLSearchParams) !void {
-        try self.impl.sort();
-    }
-    /// toString() method (stringifier)
-    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-stringifier (lines 2121-2123)
-    /// Serializes list to application/x-www-form-urlencoded format
-    pub fn toString(self: *const URLSearchParams, allocator: std.mem.Allocator) ![]u8 {
-        return self.impl.toString(allocator);
-    }
-    pub fn next(self: *EntriesIterator) ?Entry {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return Entry{
-                .name = tuple.name,
-                .value = tuple.value,
-            };
-        }
-    pub fn next(self: *KeysIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.name;
-        }
-    pub fn next(self: *ValuesIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.value;
-        }
-    /// Create an entries iterator
-    /// Iterates over [name, value] pairs in the list
-    pub fn entries(self: *const URLSearchParams) EntriesIterator {
-        return .{ .params = self, .index = 0 };
-    }
-    /// Create a keys iterator
-    /// Iterates over names in the list
-    pub fn keys(self: *const URLSearchParams) KeysIterator {
-        return .{ .params = self, .index = 0 };
-    }
-    /// Create a values iterator
-    /// Iterates over values in the list
-    pub fn values(self: *const URLSearchParams) ValuesIterator {
-        return .{ .params = self, .index = 0 };
-    }
-    /// Default iterator (same as entries)
-    /// WebIDL spec: iterable<K, V> provides default iteration over [key, value] pairs
-    pub fn iterator(self: *const URLSearchParams) EntriesIterator {
-        return self.entries();
-    }
-    /// forEach method
-    /// Calls callback for each [name, value] pair in the list
-    /// Note: Parameters are (value, name, this) per WebIDL/JavaScript convention
-    pub fn forEach(self: *const URLSearchParams, callback: ForEachCallback) void {
-        for (self.impl.list.items) |tuple| {
-            callback(tuple.value, tuple.name, self);
-        }
-    }
+        // Parse new query string
+        const tuples = try @import("form_parser").parse(self.internal.allocator, query_str);
+        defer self.internal.allocator.free(tuples);
 
-    // WebIDL extended attributes metadata
-    pub const __webidl__ = .{
-        .name = "URLSearchParams",
-        .kind = .interface,
-        .exposed = &.{.global},
-        .transferable = false,
-        .serializable = false,
-        .secure_context = false,
-        .cross_origin_isolated = false,
-    };
+        for (tuples) |tuple| {
+            try self.internal.list.append(self.internal.allocator, tuple);
+        }
+    }
+    /// readonly attribute unsigned long size
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// readonly attribute unsigned long size;
+    /// ```
+    pub fn get_size(self: *const URLSearchParams) webidl.@"unsigned long" {
+        return @intCast(self.internal.size());
+    }
+    /// undefined append(USVString name, USVString value)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// undefined append(USVString name, USVString value);
+    /// ```
+    pub fn call_append(self: *URLSearchParams, name: webidl.USVString, value: webidl.USVString) !void {
+        // Convert UTF-16 → UTF-8
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        const value_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, value);
+        defer self.internal.allocator.free(value_utf8);
+
+        // Call internal implementation (UTF-8)
+        try self.internal.append(name_utf8, value_utf8);
+    }
+    /// undefined delete(USVString name, optional USVString value)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// undefined delete(USVString name, optional USVString value);
+    /// ```
+    pub fn call_delete(self: *URLSearchParams, name: webidl.USVString, opt_value: ?webidl.USVString) !void {
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        var value_utf8: ?[]const u8 = null;
+        defer if (value_utf8) |v| self.internal.allocator.free(v);
+
+        if (opt_value) |val| {
+            value_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, val);
+        }
+
+        try self.internal.delete(name_utf8, value_utf8);
+    }
+    /// USVString? get(USVString name)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// USVString? get(USVString name);
+    /// ```
+    pub fn call_get(self: *const URLSearchParams, name: webidl.USVString) !?webidl.USVString {
+        // Convert input: UTF-16 → UTF-8
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        // Call internal implementation
+        const result_utf8 = self.internal.get(name_utf8) orelse return null;
+
+        // Convert output: UTF-8 → UTF-16
+        return try infra.string.utf8ToUtf16(self.internal.allocator, result_utf8);
+    }
+    /// sequence<USVString> getAll(USVString name)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// sequence<USVString> getAll(USVString name);
+    /// ```
+    pub fn call_getAll(self: *const URLSearchParams, name: webidl.USVString) !webidl.Sequence(webidl.USVString) {
+        // Convert input: UTF-16 → UTF-8
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        // Call internal implementation
+        const results_utf8 = try self.internal.getAll(name_utf8);
+        defer self.internal.allocator.free(results_utf8);
+
+        // Convert output: Each UTF-8 string → UTF-16
+        var results_utf16 = try self.internal.allocator.alloc(webidl.USVString, results_utf8.len);
+        errdefer self.internal.allocator.free(results_utf16);
+
+        for (results_utf8, 0..) |result_utf8, i| {
+            results_utf16[i] = try infra.string.utf8ToUtf16(self.internal.allocator, result_utf8);
+        }
+
+        return results_utf16;
+    }
+    /// boolean has(USVString name, optional USVString value)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// boolean has(USVString name, optional USVString value);
+    /// ```
+    pub fn call_has(self: *const URLSearchParams, name: webidl.USVString, opt_value: ?webidl.USVString) !webidl.boolean {
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        var value_utf8: ?[]const u8 = null;
+        defer if (value_utf8) |v| self.internal.allocator.free(v);
+
+        if (opt_value) |val| {
+            value_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, val);
+        }
+
+        return self.internal.has(name_utf8, value_utf8);
+    }
+    /// undefined set(USVString name, USVString value)
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// undefined set(USVString name, USVString value);
+    /// ```
+    pub fn call_set(self: *URLSearchParams, name: webidl.USVString, value: webidl.USVString) !void {
+        const name_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, name);
+        defer self.internal.allocator.free(name_utf8);
+
+        const value_utf8 = try infra.string.utf16ToUtf8(self.internal.allocator, value);
+        defer self.internal.allocator.free(value_utf8);
+
+        try self.internal.set(name_utf8, value_utf8);
+    }
+    /// undefined sort()
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// undefined sort();
+    /// ```
+    pub fn call_sort(self: *URLSearchParams) void {
+        self.internal.sort();
+    }
+    /// stringifier
+    /// 
+    /// **WebIDL Compliance**: Public interface matching IDL specification
+    /// 
+    /// IDL:
+    /// ```
+    /// stringifier;
+    /// ```
+    pub fn call_toString(self: *const URLSearchParams) !webidl.USVString {
+        const utf8_result = try form_serializer.serialize(self.internal.allocator, self.internal.list.items);
+        defer self.internal.allocator.free(utf8_result);
+
+        return try infra.string.utf8ToUtf16(self.internal.allocator, utf8_result);
+    }
+    /// Iterator support (for iterable<USVString, USVString>)
+    pub fn call_iterator(self: *const URLSearchParams) URLSearchParamsIterator {
+        return .{ .params = self, .index = 0 };
+    }
 };
 

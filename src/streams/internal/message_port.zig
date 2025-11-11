@@ -92,8 +92,9 @@ pub const MessagePort = struct {
     pub fn deinit(self: *MessagePort) void {
         // Clean up message queue
         for (0..self.message_queue.len) |i| {
-            var msg = self.message_queue.get(i);
-            msg.deinit();
+            if (self.message_queue.get(i)) |msg| {
+                msg.deinit();
+            }
         }
         self.message_queue.deinit();
 

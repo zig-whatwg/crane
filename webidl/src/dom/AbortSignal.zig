@@ -7,13 +7,13 @@ const EventTarget = @import("event_target").EventTarget;
 
 /// Algorithm function type for abort handlers
 /// Takes the abort reason as parameter
-pub const AbortAlgorithm = *const fn (reason: webidl.JSValue) void;
+pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
 
 pub const AbortSignal = webidl.interface(struct {
     allocator: std.mem.Allocator,
     event_target: EventTarget,
     aborted: bool,
-    reason: ?webidl.JSValue,
+    reason: ?webidl.Exception,
     /// [[abortAlgorithms]]: List of algorithms to run when aborted
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-abort-algorithms
     abort_algorithms: infra.List(AbortAlgorithm),
@@ -37,7 +37,7 @@ pub const AbortSignal = webidl.interface(struct {
         return self.aborted;
     }
 
-    pub fn get_reason(self: *const AbortSignal) ?webidl.JSValue {
+    pub fn get_reason(self: *const AbortSignal) ?webidl.Exception {
         return self.reason;
     }
 
@@ -74,12 +74,12 @@ pub const AbortSignal = webidl.interface(struct {
     /// - Dependent signals support
     /// - Event firing with proper event loop integration
     /// - Task queuing for cross-realm scenarios
-    pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.JSValue) void {
+    pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
         // Spec step 1: If signal is aborted, then return
         if (self.aborted) return;
 
         // Spec step 2: Set signal's abort reason
-        self.reason = opt_reason orelse .{ .string = "AbortError" };
+        self.reason = opt_reason orelse webidl.Exception.fromString(self.allocator, "AbortError") catch .{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
 
         // Mark as aborted
         self.aborted = true;
@@ -95,7 +95,7 @@ pub const AbortSignal = webidl.interface(struct {
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm
-        const reason = self.reason orelse .{ .string = "AbortError" };
+        const reason = self.reason orelse webidl.Exception.fromString(self.allocator, "AbortError") catch .{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
         for (0..self.abort_algorithms.len) |i| {
             const algorithm = self.abort_algorithms.get(i);
             algorithm(reason);

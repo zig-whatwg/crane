@@ -76,6 +76,7 @@ pub const legacy_platform_objects = @import("legacy_platform_objects.zig");
 
 // Re-export common types
 pub const DOMException = errors.DOMException;
+pub const Exception = errors.Exception;
 pub const ErrorResult = errors.ErrorResult;
 pub const JSValue = primitives.JSValue;
 pub const JSObject = objects.JSObject;

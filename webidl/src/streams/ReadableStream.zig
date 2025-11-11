@@ -717,11 +717,11 @@ pub const ReadableStream = webidl.interface(struct {
         // Spec step 4: Entangle (already done in createMessagePortPair)
 
         // Spec step 5: Create WritableStream in current realm
-        const writable = try WritableStream.init(self.allocator);
+        var writable = try WritableStream.init(self.allocator);
         errdefer writable.deinit();
 
         // Spec step 6: SetUpCrossRealmTransformWritable(writable, port1)
-        try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, writable, port1);
+        try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, &writable, port1);
 
         // Spec step 7: Let promise = ! ReadableStreamPipeTo(value, writable, false, false, false)
         // Note: We're not awaiting the promise - it runs in the background
