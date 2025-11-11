@@ -201,6 +201,24 @@ pub const Node = webidl.interface(struct {
         return self.parent_node;
     }
 
+    pub fn get_parentElement(self: *const Node) ?*Element {
+        // Returns parent if it's an Element, null otherwise
+        const parent = self.parent_node orelse return null;
+        if (parent.node_type == ELEMENT_NODE) {
+            // TODO: Proper type casting when Element type is integrated
+            return @ptrCast(parent);
+        }
+        return null;
+    }
+
+    const Element = @import("element").Element;
+
+    pub fn get_childNodes(self: *const Node) *const infra.List(*Node) {
+        // Returns a NodeList rooted at this matching only children
+        // TODO: Return actual NodeList interface when implemented
+        return &self.child_nodes;
+    }
+
     pub fn get_firstChild(self: *const Node) ?*Node {
         if (self.child_nodes.len > 0) {
             return self.child_nodes.get(0);
@@ -250,6 +268,50 @@ pub const Node = webidl.interface(struct {
         }
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return current.node_type == DOCUMENT_NODE;
+    }
+
+    pub fn get_baseURI(self: *const Node) []const u8 {
+        // Returns node document's document base URL, serialized
+        // TODO: Implement once Document has base URL support
+        _ = self;
+        return "";
+    }
+
+    pub fn get_nodeValue(self: *const Node) ?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // Returns value for Attr and CharacterData, null otherwise
+        // TODO: Implement for Attr and CharacterData nodes
+        _ = self;
+        return null;
+    }
+
+    pub fn set_nodeValue(self: *Node, value: ?[]const u8) void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // If null, treat as empty string
+        // Set value for Attr, replace data for CharacterData
+        // TODO: Implement for Attr and CharacterData nodes
+        _ = self;
+        _ = value;
+    }
+
+    pub fn get_textContent(self: *const Node) ?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // Returns text content based on node type
+        // TODO: Implement full algorithm:
+        // - DocumentFragment, Element: concatenated text of descendants
+        // - Attr, CharacterData: return their data
+        // - Document, DocumentType: null
+        _ = self;
+        return null;
+    }
+
+    pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // If null, treat as empty string
+        // For DocumentFragment/Element: string replace all
+        // TODO: Implement full algorithm using mutation.replaceAll
+        _ = self;
+        _ = value;
     }
 
     /// lookupPrefix(namespace)
