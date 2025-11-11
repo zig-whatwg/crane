@@ -23,6 +23,11 @@ pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
 pub const Attr = @import("attr").Attr;
 
+// DOM implementation algorithms
+pub const tree = @import("tree.zig");
+pub const mutation = @import("mutation.zig");
+pub const selectors = @import("selectors_mock.zig");
+
 test {
     std.testing.refAllDecls(@This());
 }

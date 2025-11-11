@@ -4,6 +4,7 @@
 const std = @import("std");
 const webidl = @import("../../root.zig");
 const dom_types = @import("dom_types.zig");
+const dom = @import("dom");
 
 // Forward declarations
 const Element = @import("Element.zig").Element;
@@ -169,13 +170,18 @@ pub const ParentNode = webidl.mixin(struct {
     /// running scope-match a selectors string selectors against this, if the result
     /// is not an empty list; otherwise null.
     ///
-    /// NOTE: This will be implemented in the next issue (whatwg-0z4) using the
-    /// Selectors mock. Keeping stub here for completeness.
-    pub fn call_querySelector(self: anytype, selectors: []const u8) !?*Element {
-        _ = self;
-        _ = selectors;
-        // TODO: Implement in whatwg-0z4 using selectors_mock.zig
-        @panic("ParentNode.querySelector() not yet implemented - see whatwg-0z4");
+    /// Uses Selectors mock (basic support only).
+    pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
+        // Run scope-match a selectors string against this
+        const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // Return first result if not empty; otherwise null
+        if (matches.items.len > 0) {
+            return matches.items[0];
+        }
+
+        return null;
     }
 
     /// DOM §4.3.2 - ParentNode.querySelectorAll()
@@ -184,13 +190,18 @@ pub const ParentNode = webidl.mixin(struct {
     /// The querySelectorAll(selectors) method steps are to return the static result
     /// of running scope-match a selectors string selectors against this.
     ///
-    /// NOTE: This will be implemented in the next issue (whatwg-0z4) using the
-    /// Selectors mock. Keeping stub here for completeness.
-    pub fn call_querySelectorAll(self: anytype, selectors: []const u8) !*NodeList {
-        _ = self;
-        _ = selectors;
-        // TODO: Implement in whatwg-0z4 using selectors_mock.zig
-        @panic("ParentNode.querySelectorAll() not yet implemented - see whatwg-0z4");
+    /// Uses Selectors mock (basic support only).
+    pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
+        // Run scope-match a selectors string against this
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // TODO: Convert ArrayList to NodeList (static snapshot)
+        // For now, stub - need to implement NodeList creation from matches
+        if (matches.items.len == 0) {
+            @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
+        }
+        @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
     }
 });
 
