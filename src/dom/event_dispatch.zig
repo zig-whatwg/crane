@@ -18,15 +18,15 @@ pub fn appendToEventPath(
     slot_in_closed_tree: bool,
 ) !void {
     // Step 1: Let invocationTargetInShadowTree be false
-    var invocation_target_in_shadow_tree = false;
-
     // Step 2: If invocationTarget is a node and its root is a shadow root,
     // then set invocationTargetInShadowTree to true
     // TODO: Check if invocationTarget is a node and its root is a shadow root
-    _ = invocation_target;
+    // For now, assume false (no shadow DOM support yet)
+    const invocation_target_in_shadow_tree = false;
 
     // Step 3: Let root-of-closed-tree be false
-    var root_of_closed_tree = false;
+    const root_of_closed_tree = false;
+    // TODO: Check if invocationTarget is a shadow root whose mode is "closed"
 
     // Step 4: If invocationTarget is a shadow root whose mode is "closed",
     // then set root-of-closed-tree to true
@@ -53,9 +53,10 @@ pub fn dispatch(
     event: *Event,
     target: *EventTarget,
     legacy_target_override_flag: bool,
-    legacy_output_did_listeners_throw_flag: ?*bool,
+    legacy_output_did_listeners_throw_flag_param: ?*bool,
 ) !bool {
-    _ = legacy_output_did_listeners_throw_flag;
+    // Pass through to invoke function
+    const legacy_output_did_listeners_throw_flag = legacy_output_did_listeners_throw_flag_param;
 
     // Step 1: Set event's dispatch flag
     event.dispatch_flag = true;
@@ -74,7 +75,7 @@ pub fn dispatch(
     const related_target = retarget(event.related_target, target);
 
     // Step 5: Let clearTargets be false
-    var clear_targets = false;
+    const clear_targets = false;
 
     // Step 6: If target is not relatedTarget or target is event's relatedTarget
     if (target != related_target or target == event.related_target) {
@@ -104,9 +105,9 @@ pub fn dispatch(
         }
 
         // Step 6.6: Let slottable be target, if target is a slottable and is assigned
-        // TODO: Implement slottable check
-        var slottable: ?*EventTarget = null;
-        _ = slottable;
+        // TODO: Shadow DOM - check if target is a slottable and is assigned
+        // For now: No shadow DOM support, so slottable is always null
+        const slottable: ?*EventTarget = null;
 
         // Step 6.7: Let slot-in-closed-tree be false
         var slot_in_closed_tree = false;
@@ -116,16 +117,92 @@ pub fn dispatch(
 
         // Step 6.9: While parent is non-null
         while (parent) |p| {
-            // TODO: Implement full loop per spec (steps 6.9.1 through 6.9.10)
-            // For now, stub
-            _ = p;
-            _ = slot_in_closed_tree;
-            break;
+            // Step 6.9.1-2: Handle slottable
+            if (slottable != null) {
+                // Assert: parent is a slot
+                // Set slottable to null
+                // If parent's root is a shadow root whose mode is "closed", set slot-in-closed-tree to true
+                // (Shadow DOM not implemented yet, so this branch never executes)
+            }
+
+            // Step 6.9.3: If parent is a slottable and is assigned, set slottable to parent
+            // (Shadow DOM not implemented yet)
+
+            // Step 6.9.4: Let relatedTarget be result of retargeting event's relatedTarget against parent
+            const parent_related_target = retarget(event.related_target, p);
+
+            // Step 6.9.5: Let touchTargets be a new list
+            var parent_touch_targets = std.ArrayList(*EventTarget).init(event.allocator);
+            defer parent_touch_targets.deinit();
+
+            // Step 6.9.6: For each touchTarget of event's touch target list,
+            // append the result of retargeting touchTarget against parent to touchTargets
+            for (event.touch_target_list.items) |touch_target| {
+                const retargeted_touch = retarget(touch_target, p);
+                if (retargeted_touch) |t| {
+                    try parent_touch_targets.append(t);
+                }
+            }
+
+            // Step 6.9.7: If parent is a Window object, or parent is a node and target's root
+            // is a shadow-including inclusive ancestor of parent
+            // TODO: Check Window and shadow tree conditions
+            // For now, assume this condition is true (append to path)
+            try appendToEventPath(event, p, null, parent_related_target, parent_touch_targets, slot_in_closed_tree);
+
+            // Step 6.9.8: Otherwise, if parent is relatedTarget, set parent to null
+            // Step 6.9.9: Otherwise, append to event path with different parameters
+            // (Simplified for now - always append in step 6.9.7)
+
+            // Step 6.9.10: If parent is non-null, set parent to result of invoking parent's get the parent
+            parent = getTheParent(p, event);
+
+            // Step 6.9.11: Set slot-in-closed-tree to false
+            slot_in_closed_tree = false;
         }
 
-        // Steps 6.10 through 6.14: TODO - Implement full dispatch algorithm
-        _ = activation_target;
-        _ = clear_targets;
+        // Step 6.10: Let clearTargetsStruct be the last struct in event's path whose shadow-adjusted target is non-null
+        // Step 6.11: Check if clearTargetsStruct contains shadow root nodes, set clearTargets accordingly
+        // (Shadow DOM not implemented, so clearTargets remains false)
+
+        // Step 6.12: If activationTarget is non-null and has legacy-pre-activation behavior, run it
+        // (Legacy activation not implemented yet)
+
+        // Step 6.13: For each struct in event's path, in reverse order (capturing phase)
+        for (event.path.items, 0..) |_, i| {
+            const idx = event.path.items.len - 1 - i;
+            const path_struct = event.path.items[idx];
+
+            // Set event phase
+            if (path_struct.shadow_adjusted_target != null) {
+                event.event_phase = Event.AT_TARGET;
+            } else {
+                event.event_phase = Event.CAPTURING_PHASE;
+            }
+
+            // Invoke listeners in capturing phase
+            try invoke(event, path_struct, "capturing", legacy_output_did_listeners_throw_flag);
+        }
+
+        // Step 6.14: For each struct in event's path (bubbling phase)
+        for (event.path.items) |path_struct| {
+            // Set event phase
+            if (path_struct.shadow_adjusted_target != null) {
+                event.event_phase = Event.AT_TARGET;
+            } else {
+                // If event's bubbles is false, continue
+                if (!event.bubbles) continue;
+                event.event_phase = Event.BUBBLING_PHASE;
+            }
+
+            // Invoke listeners in bubbling phase
+            try invoke(event, path_struct, "bubbling", legacy_output_did_listeners_throw_flag);
+        }
+
+        // Step 6.15: Activation target will be used in step 12 below
+        // (Not fully implemented yet - requires activation behavior support)
+
+        // clearTargets is used in step 11 below
     }
 
     // Step 7: Set event's eventPhase attribute to NONE
@@ -168,9 +245,56 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 /// DOM §2.9 - get the parent
 /// Each EventTarget has an associated get the parent algorithm
 fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
-    // TODO: Implement get the parent algorithm
-    // For now, return null (no parent)
+    // TODO: Implement get the parent algorithm based on target type
+    // - For Node: return node's assigned slot if assigned, otherwise parent
+    // - For ShadowRoot: return null if event's composed flag is unset and shadowRoot
+    //   is the root of event's path's first struct's invocation target, otherwise host
+    // - For Document: return null if event type is "load" or no browsing context, otherwise global
+    // For now, return null (no tree structure implemented yet)
     _ = target;
     _ = event;
     return null;
+}
+
+/// DOM §2.9 - invoke
+/// Invoke event listeners for a given struct in the event path
+fn invoke(
+    event: *Event,
+    path_struct: EventPathItem,
+    phase: []const u8,
+    legacy_output_did_listeners_throw_flag: ?*bool,
+) !void {
+    // Step 1: Set event's target to the shadow-adjusted target of the last struct
+    // in event's path that is either this struct or preceding it, whose shadow-adjusted target is non-null
+    for (event.path.items) |item| {
+        if (item.shadow_adjusted_target) |target| {
+            if (@intFromPtr(&item) <= @intFromPtr(&path_struct)) {
+                event.target = target;
+            }
+        }
+    }
+
+    // Step 2: Set event's relatedTarget to struct's relatedTarget
+    event.related_target = path_struct.related_target;
+
+    // Step 3: Set event's touch target list to struct's touch target list
+    // (Skip for now - touch events not implemented)
+
+    // Step 4: If event's stop propagation flag is set, return
+    if (event.stop_propagation_flag) return;
+
+    // Step 5: Initialize event's currentTarget attribute to struct's invocation target
+    event.current_target = path_struct.invocation_target;
+
+    // Step 6: Let listeners be a clone of event's currentTarget's event listener list
+    // Step 7-14: Inner invoke with listeners
+    // TODO: Implement listener invocation
+    // For now, this is a stub - full implementation requires:
+    // - EventTarget to have a listener list
+    // - Listener matching by type and phase
+    // - Callback invocation with proper this binding
+    // - Exception handling and reporting
+
+    _ = phase;
+    _ = legacy_output_did_listeners_throw_flag;
 }
