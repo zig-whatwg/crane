@@ -8,52 +8,209 @@
 //   - Optimized field layouts
 
 //! DOMTokenList interface per WHATWG DOM Standard
+//! Spec: https://dom.spec.whatwg.org/#interface-domtokenlist
 
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+
+const Allocator = std.mem.Allocator;
+pub const Element = @import("element").Element;
+/// DOMTokenList represents a set of space-separated tokens.
+/// Commonly used for Element.classList.
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface DOMTokenList {
+/// readonly attribute unsigned long length;
+/// getter DOMString? item(unsigned long index);
+/// boolean contains(DOMString token);
+/// [CEReactions] undefined add(DOMString... tokens);
+/// [CEReactions] undefined remove(DOMString... tokens);
+/// [CEReactions] boolean toggle(DOMString token, optional boolean force);
+/// [CEReactions] boolean replace(DOMString token, DOMString newToken);
+/// [CEReactions] stringifier attribute DOMString value;
+/// };
+/// ```
 pub const DOMTokenList = struct {
     // ========================================================================
     // DOMTokenList fields
     // ========================================================================
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
+    /// The token set (ordered set of unique tokens)
     tokens: infra.List([]const u8),
+    /// Associated element (for updating attribute)
+    element: ?*Element,
+    /// Associated attribute's local name (e.g., "class")
+    attribute_name: []const u8,
 
-    pub fn init(allocator: std.mem.Allocator) !DOMTokenList {
+    pub fn init(allocator: Allocator, element: ?*Element, attribute_name: []const u8) !DOMTokenList {
         return .{
             .allocator = allocator,
             .tokens = infra.List([]const u8).init(allocator),
+            .element = element,
+            .attribute_name = attribute_name,
         };
     }
     pub fn deinit(self: *DOMTokenList) void {
+        // Free duplicated token strings
+        for (self.tokens.items) |token| {
+            self.allocator.free(token);
+        }
         self.tokens.deinit();
     }
     // ========================================================================
     // DOMTokenList methods
     // ========================================================================
 
-    pub fn call_add(self: *DOMTokenList, token: []const u8) !void {
-        for (self.tokens.items) |t| {
-            if (std.mem.eql(u8, t, token)) return;
-        }
-        try self.tokens.append(token);
+    /// DOM §4.7 - DOMTokenList.length
+    /// Returns the number of tokens.
+    pub fn get_length(self: *const DOMTokenList) u32 {
+        return @intCast(self.tokens.items.len);
     }
-    pub fn call_remove(self: *DOMTokenList, token: []const u8) void {
-        for (self.tokens.items, 0..) |t, i| {
-            if (std.mem.eql(u8, t, token)) {
-                _ = self.tokens.orderedRemove(i);
-                return;
-            }
+    /// DOM §4.7 - DOMTokenList.item(index)
+    /// Returns the token at the given index, or null if out of bounds.
+    pub fn call_item(self: *const DOMTokenList, index: u32) ?[]const u8 {
+        if (index >= self.tokens.items.len) {
+            return null;
         }
+        return self.tokens.items[index];
     }
+    /// DOM §4.7 - DOMTokenList.contains(token)
+    /// Returns true if token is present; otherwise false.
     pub fn call_contains(self: *const DOMTokenList, token: []const u8) bool {
         for (self.tokens.items) |t| {
-            if (std.mem.eql(u8, t, token)) return true;
+            if (std.mem.eql(u8, t, token)) {
+                return true;
+            }
         }
         return false;
     }
-    pub fn get_length(self: *const DOMTokenList) u32 {
-        return @intCast(self.tokens.len);
+    /// DOM §4.7 - DOMTokenList.add(tokens...)
+    /// Adds all arguments passed, except those already present.
+    /// TODO: Implement full validation and update steps
+    pub fn call_add(self: *DOMTokenList, tokens: []const []const u8) !void {
+        for (tokens) |token| {
+            // Skip if already present
+            if (self.call_contains(token)) {
+                continue;
+            }
+            
+            // Add token (duplicate the string for ownership)
+            const token_copy = try self.allocator.dupe(u8, token);
+            try self.tokens.append(token_copy);
+        }
+        
+        // TODO: Run update steps to sync with element's attribute
+        _ = self.element;
+        _ = self.attribute_name;
+    }
+    /// DOM §4.7 - DOMTokenList.remove(tokens...)
+    /// Removes all arguments passed, if they are present.
+    /// TODO: Implement full validation and update steps
+    pub fn call_remove(self: *DOMTokenList, tokens: []const []const u8) !void {
+        for (tokens) |token| {
+            // Find and remove token
+            for (self.tokens.items, 0..) |t, i| {
+                if (std.mem.eql(u8, t, token)) {
+                    const removed = self.tokens.orderedRemove(i);
+                    self.allocator.free(removed);
+                    break;
+                }
+            }
+        }
+        
+        // TODO: Run update steps to sync with element's attribute
+    }
+    /// DOM §4.7 - DOMTokenList.toggle(token, force)
+    /// If force is not given, toggles token, returning true if token is now present,
+    /// and false otherwise. If force is true, adds token (same as add()). If force
+    /// is false, removes token (same as remove()). Returns true if token is now
+    /// present, and false otherwise.
+    pub fn call_toggle(self: *DOMTokenList, token: []const u8, force: ?bool) !bool {
+        if (force) |f| {
+            if (f) {
+                try self.call_add(&[_][]const u8{token});
+                return true;
+            } else {
+                try self.call_remove(&[_][]const u8{token});
+                return false;
+            }
+        }
+        
+        // No force parameter - toggle based on current state
+        if (self.call_contains(token)) {
+            try self.call_remove(&[_][]const u8{token});
+            return false;
+        } else {
+            try self.call_add(&[_][]const u8{token});
+            return true;
+        }
+    }
+    /// DOM §4.7 - DOMTokenList.replace(token, newToken)
+    /// Replaces token with newToken. Returns true if token was replaced;
+    /// otherwise false.
+    pub fn call_replace(self: *DOMTokenList, token: []const u8, new_token: []const u8) !bool {
+        for (self.tokens.items, 0..) |t, i| {
+            if (std.mem.eql(u8, t, token)) {
+                // Free old token
+                self.allocator.free(t);
+                
+                // Replace with new token
+                const new_copy = try self.allocator.dupe(u8, new_token);
+                self.tokens.items[i] = new_copy;
+                
+                // TODO: Run update steps
+                return true;
+            }
+        }
+        return false;
+    }
+    /// DOM §4.7 - DOMTokenList.value (getter)
+    /// Returns the associated set as string (space-separated tokens).
+    pub fn get_value(self: *const DOMTokenList) ![]const u8 {
+        if (self.tokens.items.len == 0) {
+            return "";
+        }
+        
+        // Calculate total length needed
+        var total_len: usize = 0;
+        for (self.tokens.items) |token| {
+            total_len += token.len;
+        }
+        total_len += self.tokens.items.len - 1; // spaces between tokens
+        
+        // Allocate and build string
+        const result = try self.allocator.alloc(u8, total_len);
+        var pos: usize = 0;
+        for (self.tokens.items, 0..) |token, i| {
+            @memcpy(result[pos..][0..token.len], token);
+            pos += token.len;
+            if (i < self.tokens.items.len - 1) {
+                result[pos] = ' ';
+                pos += 1;
+            }
+        }
+        
+        return result;
+    }
+    /// DOM §4.7 - DOMTokenList.value (setter)
+    /// Sets the associated attribute to the given value.
+    pub fn set_value(self: *DOMTokenList, value: []const u8) !void {
+        // Clear existing tokens
+        for (self.tokens.items) |token| {
+            self.allocator.free(token);
+        }
+        self.tokens.clearRetainingCapacity();
+        
+        // Parse value as space-separated tokens
+        var iter = std.mem.tokenizeScalar(u8, value, ' ');
+        while (iter.next()) |token| {
+            const token_copy = try self.allocator.dupe(u8, token);
+            try self.tokens.append(token_copy);
+        }
+        
+        // TODO: Run update steps to sync with element's attribute
     }
 
     // WebIDL extended attributes metadata
