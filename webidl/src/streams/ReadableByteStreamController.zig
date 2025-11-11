@@ -1248,6 +1248,52 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         // Step 2: Return the request
         return self.byobRequest;
     }
+
+    // ============================================================================
+    // Byte Stream Tee (§ 3.3.9)
+    // ============================================================================
+
+    /// Tee this byte stream into two independent branches
+    ///
+    /// Spec: § 3.3.9 "ReadableByteStreamTee(stream)"
+    ///
+    /// This is a simplified implementation suitable for basic use cases.
+    /// Full spec implementation requires:
+    /// - Dynamic reader switching (default ↔ BYOB)
+    /// - Microtask queueing
+    /// - CloneAsUint8Array for chunks
+    /// - Complex error forwarding
+    ///
+    /// Current implementation creates two independent branches that share
+    /// the underlying byte stream controller.
+    pub fn tee(self: *ReadableByteStreamController) !struct { branch1: *anyopaque, branch2: *anyopaque } {
+        // Get the stream
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Create two new streams that share this controller
+        const branch1 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch1);
+        branch1.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        const branch2 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch2);
+        branch2.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        // Wire both branches to share this controller
+        // Note: Full implementation would create separate controllers
+        // and coordinate reads between them
+        branch1.controller = self;
+        branch2.controller = self;
+        branch1.state = stream.state;
+        branch2.state = stream.state;
+
+        return .{
+            .branch1 = branch1,
+            .branch2 = branch2,
+        };
+    }
 }, .{
     .exposed = &.{.global},
 });
