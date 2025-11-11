@@ -443,7 +443,7 @@ See [LICENSE](LICENSE) for full text.
 
 - **Author**: Brian Cardarella
 - **GitHub**: [@bcardarella](https://github.com/bcardarella)
-- **Project**: [github.com/bcardarella/crane](https://github.com/bcardarella/crane)
+- **Project**: [github.com/zig-whatwg/crane](https://github.com/zig-whatwg/crane)
 
 ---
 
