@@ -1668,3 +1668,199 @@ test "createByteStream - works without start algorithm" {
     try testing.expectEqual(ReadableStream.StreamState.readable, stream.state);
     try testing.expect(stream.controller.byte.started);
 }
+
+// ============================================================================
+// ReadableByteStreamTee Tests
+// ============================================================================
+
+test "ReadableByteStreamTee - routes byte streams correctly" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create a byte stream
+    const stream = try ReadableStream.createByteStream(
+        allocator,
+        null,
+        common.defaultPullAlgorithm(),
+        common.defaultCancelAlgorithm(),
+        loop.eventLoop(),
+    );
+    defer {
+        stream.controller.byte.deinit();
+        allocator.destroy(stream.controller.byte);
+        allocator.destroy(stream);
+    }
+
+    // Verify controller is byte type
+    try testing.expect(stream.controller == .byte);
+
+    // Tee should route to ReadableByteStreamTee
+    const branches = try stream.call_tee();
+    defer {
+        branches.branch1.controller.byte.deinit();
+        allocator.destroy(branches.branch1.controller.byte);
+        allocator.destroy(branches.branch1);
+
+        branches.branch2.controller.byte.deinit();
+        allocator.destroy(branches.branch2.controller.byte);
+        allocator.destroy(branches.branch2);
+    }
+
+    // Both branches should be byte streams
+    try testing.expect(branches.branch1.controller == .byte);
+    try testing.expect(branches.branch2.controller == .byte);
+}
+
+test "ReadableByteStreamTee - creates two independent branches" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create a byte stream
+    const stream = try ReadableStream.createByteStream(
+        allocator,
+        null,
+        common.defaultPullAlgorithm(),
+        common.defaultCancelAlgorithm(),
+        loop.eventLoop(),
+    );
+    defer {
+        stream.controller.byte.deinit();
+        allocator.destroy(stream.controller.byte);
+        allocator.destroy(stream);
+    }
+
+    // Tee the stream
+    const branches = try stream.call_tee();
+    defer {
+        branches.branch1.controller.byte.deinit();
+        allocator.destroy(branches.branch1.controller.byte);
+        allocator.destroy(branches.branch1);
+
+        branches.branch2.controller.byte.deinit();
+        allocator.destroy(branches.branch2.controller.byte);
+        allocator.destroy(branches.branch2);
+    }
+
+    // Verify branches are separate streams
+    try testing.expect(branches.branch1 != branches.branch2);
+
+    // Both should be readable
+    try testing.expectEqual(ReadableStream.StreamState.readable, branches.branch1.state);
+    try testing.expectEqual(ReadableStream.StreamState.readable, branches.branch2.state);
+
+    // Both should have byte controllers
+    try testing.expect(branches.branch1.controller == .byte);
+    try testing.expect(branches.branch2.controller == .byte);
+}
+
+test "ReadableByteStreamTee - locks source stream" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create a byte stream
+    const stream = try ReadableStream.createByteStream(
+        allocator,
+        null,
+        common.defaultPullAlgorithm(),
+        common.defaultCancelAlgorithm(),
+        loop.eventLoop(),
+    );
+    defer {
+        stream.controller.byte.deinit();
+        allocator.destroy(stream.controller.byte);
+        allocator.destroy(stream);
+    }
+
+    // Stream should not be locked initially
+    try testing.expect(!stream.isLocked());
+
+    // Tee the stream
+    const branches = try stream.call_tee();
+    defer {
+        branches.branch1.controller.byte.deinit();
+        allocator.destroy(branches.branch1.controller.byte);
+        allocator.destroy(branches.branch1);
+
+        branches.branch2.controller.byte.deinit();
+        allocator.destroy(branches.branch2.controller.byte);
+        allocator.destroy(branches.branch2);
+    }
+
+    // Source stream should now be locked
+    try testing.expect(stream.isLocked());
+}
+
+test "ByteTeeState - initializes with correct defaults" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create a byte stream and acquire reader
+    const stream = try ReadableStream.createByteStream(
+        allocator,
+        null,
+        common.defaultPullAlgorithm(),
+        common.defaultCancelAlgorithm(),
+        loop.eventLoop(),
+    );
+    defer {
+        stream.controller.byte.deinit();
+        allocator.destroy(stream.controller.byte);
+        allocator.destroy(stream);
+    }
+
+    const reader = try stream.acquireDefaultReader(loop.eventLoop());
+    defer {
+        reader.deinit();
+        allocator.destroy(reader);
+    }
+
+    // Create ByteTeeState
+    const ByteTeeState = ReadableStream.ByteTeeState;
+    const teeState = try ByteTeeState.init(allocator, stream, reader, loop.eventLoop());
+    defer teeState.deinit();
+
+    // Verify initialization
+    try testing.expect(teeState.reader == .default);
+    try testing.expect(!teeState.reading);
+    try testing.expect(!teeState.readAgainForBranch1);
+    try testing.expect(!teeState.readAgainForBranch2);
+    try testing.expect(!teeState.canceled1);
+    try testing.expect(!teeState.canceled2);
+    try testing.expect(teeState.reason1 == null);
+    try testing.expect(teeState.reason2 == null);
+}
+
+test "ByteTeeReaderUnion - can hold default reader" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const stream = try ReadableStream.createByteStream(
+        allocator,
+        null,
+        common.defaultPullAlgorithm(),
+        common.defaultCancelAlgorithm(),
+        loop.eventLoop(),
+    );
+    defer {
+        stream.controller.byte.deinit();
+        allocator.destroy(stream.controller.byte);
+        allocator.destroy(stream);
+    }
+
+    const reader = try stream.acquireDefaultReader(loop.eventLoop());
+    defer {
+        reader.deinit();
+        allocator.destroy(reader);
+    }
+
+    const ByteTeeReaderUnion = ReadableStream.ByteTeeReaderUnion;
+    const union_reader = ByteTeeReaderUnion{ .default = reader };
+
+    try testing.expect(union_reader == .default);
+    try testing.expect(!union_reader.hasPendingRequests());
+}
