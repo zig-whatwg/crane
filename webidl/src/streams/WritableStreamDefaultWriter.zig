@@ -121,6 +121,11 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         self.releaseInternal();
     }
 
+    /// Alias for generated code compatibility
+    pub fn releaseLock(self: *WritableStreamDefaultWriter) void {
+        self.call_releaseLock();
+    }
+
     pub fn write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);

@@ -1034,7 +1034,7 @@ pub const PipeState = struct {
 
             // Write the chunk to the destination
             if (result.value) |chunk| {
-                const writePromise = try self.writer.write(webidl.JSValue.fromCommon(chunk));
+                const writePromise = try self.writer.write(chunk.toWebIDL());
                 self.pendingWrite = writePromise;
 
                 // Wait for write to complete
@@ -1080,7 +1080,7 @@ pub const PipeState = struct {
             if (!self.preventAbort and self.dest.state == .writable) {
                 // Shutdown with action of WritableStreamAbort(dest, source.storedError)
                 const err_value = self.source.storedError orelse common.JSValue{ .string = "Source errored" };
-                const abortPromise = try self.dest.abort(webidl.JSValue.fromCommon(err_value));
+                const abortPromise = try self.dest.abort(err_value.toWebIDL());
                 self.shutdownWithAction(abortPromise, err_value);
             } else {
                 // Shutdown with error but no action
@@ -1095,7 +1095,7 @@ pub const PipeState = struct {
             if (!self.preventCancel and self.source.state == .readable) {
                 // Shutdown with action of ReadableStreamCancel(source, dest.storedError)
                 const err_value = self.dest.storedError orelse common.JSValue{ .string = "Destination errored" };
-                const cancelPromise = try self.source.cancel(webidl.JSValue.fromCommon(err_value));
+                const cancelPromise = try self.source.cancel(err_value.toWebIDL());
                 self.shutdownWithAction(cancelPromise, err_value);
             } else {
                 // Shutdown with error but no action
@@ -1115,7 +1115,7 @@ pub const PipeState = struct {
         if (self.dest.state == .closed) {
             if (!self.preventCancel) {
                 const err_value = common.JSValue{ .string = "Destination closed" };
-                const cancelPromise = try self.source.cancel(webidl.JSValue.fromCommon(err_value));
+                const cancelPromise = try self.source.cancel(err_value.toWebIDL());
                 self.shutdownWithAction(cancelPromise, err_value);
             } else {
                 const err_value = common.JSValue{ .string = "Destination closed" };

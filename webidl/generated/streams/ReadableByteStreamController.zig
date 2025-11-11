@@ -217,7 +217,7 @@ pub const ReadableByteStreamController = struct {
         byteLength: u64,
     ) !void {
         // Step 1: Append a new readable byte stream queue entry
-        try self.byteQueue.append(.{
+        try self.byteQueue.append(self.allocator, .{
             .buffer = buffer,
             .byteOffset = byteOffset,
             .byteLength = byteLength,
@@ -648,7 +648,7 @@ pub const ReadableByteStreamController = struct {
         );
 
         // Step 17: Append descriptor to pending list
-        try self.pendingPullIntos.append(pullIntoDescriptor);
+        try self.pendingPullIntos.append(self.allocator, pullIntoDescriptor);
 
         // Store the readIntoRequest for later fulfillment
         // TODO: Add to stream's readIntoRequests list
