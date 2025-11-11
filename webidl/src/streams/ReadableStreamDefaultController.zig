@@ -129,25 +129,29 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
     // ============================================================================
     // WebIDL Interface Methods
     // ============================================================================
+    // WebIDL Interface: Readonly Attributes
+    // ============================================================================
 
-    /// desiredSize attribute getter
-    ///
+    /// readonly attribute unrestricted double? desiredSize
     /// IDL: readonly attribute unrestricted double? desiredSize;
     ///
     /// Spec: § 4.6.3 "The desiredSize getter steps are:"
     /// Returns the desired size to fill the stream's internal queue.
-    pub fn call_desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+    pub fn get_desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
         // Step 1: Return ! ReadableStreamDefaultControllerGetDesiredSize(this).
         return self.calculateDesiredSize();
     }
 
-    /// close() method
-    ///
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
+
+    /// undefined close()
     /// IDL: undefined close();
     ///
     /// Spec: § 4.6.3 "The close() method steps are:"
     /// Closes the controlled readable stream.
-    pub fn close(self: *ReadableStreamDefaultController) !void {
+    pub fn call_close(self: *ReadableStreamDefaultController) !void {
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false,
         // throw a TypeError exception.
         if (!self.canCloseOrEnqueue()) {
@@ -177,15 +181,12 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         try self.enqueueInternal(chunkValue);
     }
 
-    /// error(e) method (exposed as errorStream to avoid keyword conflict)
-    ///
+    /// undefined error(optional any e)
     /// IDL: undefined error(optional any e);
     ///
     /// Spec: § 4.6.3 "The error(e) method steps are:"
     /// Errors the controlled readable stream.
-    ///
-    /// Note: Named `errorStream` in Zig to avoid conflict with `error` keyword
-    pub fn errorStream(self: *ReadableStreamDefaultController, e: ?webidl.JSValue) void {
+    pub fn call_error(self: *ReadableStreamDefaultController, e: ?webidl.JSValue) void {
         // Step 1: Perform ! ReadableStreamDefaultControllerError(this, e).
         const error_value = if (e) |err| err else webidl.JSValue{ .undefined = {} };
         self.errorInternal(error_value);
