@@ -29,6 +29,10 @@ pub const TransformStreamDefaultController = webidl.interface(struct {
     /// Spec: § 6.2.2 Internal slots
     cancelAlgorithm: common.CancelAlgorithm,
 
+    /// [[finishPromise]]: Promise that resolves on completion of flush or cancel
+    /// Spec: § 6.2.2 Internal slots
+    finishPromise: ?common.Promise(void),
+
     pub fn init(
         allocator: std.mem.Allocator,
         transformAlgorithm: common.TransformAlgorithm,
@@ -41,6 +45,7 @@ pub const TransformStreamDefaultController = webidl.interface(struct {
             .transformAlgorithm = transformAlgorithm,
             .flushAlgorithm = flushAlgorithm,
             .cancelAlgorithm = cancelAlgorithm,
+            .finishPromise = null,
         };
     }
 

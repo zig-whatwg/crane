@@ -20,6 +20,10 @@ pub const TransformStream = webidl.interface(struct {
     /// [[backpressure]]: boolean - whether backpressure signal has been sent
     backpressure: bool,
 
+    /// [[backpressureChangePromise]]: Promise that resolves when backpressure changes
+    /// Spec: § 6.1.2 Internal slots
+    backpressureChangePromise: ?common.Promise(void),
+
     /// [[readable]]: ReadableStream representing the readable side
     readableStream: *ReadableStream,
 
@@ -122,6 +126,7 @@ pub const TransformStream = webidl.interface(struct {
         var stream = TransformStream{
             .allocator = allocator,
             .backpressure = false,
+            .backpressureChangePromise = null,
             .readableStream = readable_stream,
             .writableStream = writable_stream,
             .controller = ctrl,
@@ -200,13 +205,21 @@ pub const TransformStream = webidl.interface(struct {
     /// Spec: § 6.3.1 "Set backpressure signal"
     pub fn setBackpressure(self: *TransformStream, backpressure: bool) void {
         // Spec step 1: Assert: stream.[[backpressure]] is not backpressure
-        // (We allow setting to same value for simplicity)
+        std.debug.assert(self.backpressure != backpressure);
+
+        // Spec step 2: If stream.[[backpressureChangePromise]] is not undefined,
+        //              resolve stream.[[backpressureChangePromise]] with undefined
+        if (self.backpressureChangePromise) |*promise| {
+            if (promise.isPending()) {
+                promise.fulfill({});
+            }
+        }
+
+        // Spec step 3: Set stream.[[backpressureChangePromise]] to a new promise
+        self.backpressureChangePromise = common.Promise(void).pending();
 
         // Spec step 4: Set stream.[[backpressure]] to backpressure
         self.backpressure = backpressure;
-
-        // Note: Full implementation would handle backpressureChangePromise
-        // For now, we just set the flag
     }
 
     /// TransformStreamUnblockWrite(stream)
@@ -235,12 +248,24 @@ pub const TransformStream = webidl.interface(struct {
 
         // Spec step 3: If stream.[[backpressure]] is true
         if (self.backpressure) {
-            // TODO: Spec step 3.1-3.3: Wait for backpressureChangePromise
-            // For now, we proceed directly to transform
-            // Full implementation would:
-            // - Wait for backpressureChangePromise to resolve
-            // - Check writable state after promise resolves
-            // - Then perform transform
+            // Spec step 3.1: Let backpressureChangePromise be stream.[[backpressureChangePromise]]
+            // Spec step 3.2: Assert: backpressureChangePromise is not undefined
+            const backpressure_promise = self.backpressureChangePromise orelse {
+                // Shouldn't happen per spec, but handle gracefully
+                return controller.performTransform(chunk);
+            };
+
+            // Spec step 3.3: Return the result of reacting to backpressureChangePromise with fulfillment steps
+            // Simplified: If promise is already fulfilled, proceed; otherwise return pending
+            if (backpressure_promise.isFulfilled()) {
+                // Spec step 3.3.1-3.3.5: Check state and perform transform
+                // Simplified: directly perform transform
+                return controller.performTransform(chunk);
+            } else {
+                // In full implementation, would chain promises
+                // For now, return pending promise (simplified)
+                return common.Promise(void).pending();
+            }
         }
 
         // Spec step 4: Return ! TransformStreamDefaultControllerPerformTransform(controller, chunk)
@@ -254,9 +279,16 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 1: Let controller be stream.[[controller]]
         const controller = self.controller;
 
-        // Spec step 2-8: Handle finishPromise and cancelAlgorithm
-        // TODO: Full implementation with finishPromise
-        // For now, simplified:
+        // Spec step 2: If controller.[[finishPromise]] is not undefined, return controller.[[finishPromise]]
+        if (controller.finishPromise) |finish_promise| {
+            return finish_promise;
+        }
+
+        // Spec step 3: Let readable be stream.[[readable]]
+        const readable = self.readableStream;
+
+        // Spec step 4: Set controller.[[finishPromise]] to a new promise
+        controller.finishPromise = common.Promise(void).pending();
 
         // Spec step 5: Let cancelPromise be the result of performing controller.[[cancelAlgorithm]], passing reason
         const reason_val = reason orelse common.JSValue.undefined_value();
@@ -265,10 +297,32 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
         controller.clearAlgorithms();
 
-        // Spec step 7: React to cancelPromise (simplified - return directly for now)
-        // Full implementation would handle readable.[[state]] and errors
+        // Spec step 7: React to cancelPromise (simplified)
+        // In full implementation, would chain promises and handle readable state
+        if (cancel_promise.isFulfilled()) {
+            // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
+            if (readable.state == .errored) {
+                if (controller.finishPromise) |*fp| {
+                    fp.reject(common.JSValue{ .string = "Readable errored" });
+                }
+            } else {
+                // Spec step 7.2: Otherwise, error readable and resolve finishPromise
+                readable.controller.errorInternal(reason_val.toWebIDL());
+                if (controller.finishPromise) |*fp| {
+                    fp.fulfill({});
+                }
+            }
+        } else if (cancel_promise.isRejected()) {
+            // Spec step 7.2: Handle rejection
+            const err = cancel_promise.error_value orelse common.JSValue{ .string = "Cancel failed" };
+            readable.controller.errorInternal(err.toWebIDL());
+            if (controller.finishPromise) |*fp| {
+                fp.reject(err);
+            }
+        }
 
-        return cancel_promise;
+        // Spec step 8: Return controller.[[finishPromise]]
+        return controller.finishPromise orelse common.Promise(void).fulfilled({});
     }
 
     /// TransformStreamDefaultSinkCloseAlgorithm(stream)
@@ -278,9 +332,16 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 1: Let controller be stream.[[controller]]
         const controller = self.controller;
 
-        // Spec step 2-8: Handle finishPromise and flushAlgorithm
-        // TODO: Full implementation with finishPromise
-        // For now, simplified:
+        // Spec step 2: If controller.[[finishPromise]] is not undefined, return controller.[[finishPromise]]
+        if (controller.finishPromise) |finish_promise| {
+            return finish_promise;
+        }
+
+        // Spec step 3: Let readable be stream.[[readable]]
+        const readable = self.readableStream;
+
+        // Spec step 4: Set controller.[[finishPromise]] to a new promise
+        controller.finishPromise = common.Promise(void).pending();
 
         // Spec step 5: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
         const flush_promise = controller.flushAlgorithm.call();
@@ -288,13 +349,31 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
         controller.clearAlgorithms();
 
-        // Spec step 7: React to flushPromise (simplified - close readable on success)
-        // Full implementation would check readable state and handle errors
+        // Spec step 7: React to flushPromise
         if (flush_promise.isFulfilled()) {
-            self.readableStream.controller.closeInternal();
+            // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
+            if (readable.state == .errored) {
+                if (controller.finishPromise) |*fp| {
+                    fp.reject(common.JSValue{ .string = "Readable errored" });
+                }
+            } else {
+                // Spec step 7.2: Otherwise, close readable and resolve finishPromise
+                readable.controller.closeInternal();
+                if (controller.finishPromise) |*fp| {
+                    fp.fulfill({});
+                }
+            }
+        } else if (flush_promise.isRejected()) {
+            // Spec step 7.2: Handle rejection
+            const err = flush_promise.error_value orelse common.JSValue{ .string = "Flush failed" };
+            readable.controller.errorInternal(err.toWebIDL());
+            if (controller.finishPromise) |*fp| {
+                fp.reject(err);
+            }
         }
 
-        return flush_promise;
+        // Spec step 8: Return controller.[[finishPromise]]
+        return controller.finishPromise orelse common.Promise(void).fulfilled({});
     }
 
     // ============================================================================
@@ -326,9 +405,16 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 1: Let controller be stream.[[controller]]
         const controller = self.controller;
 
-        // Spec step 2-8: Handle finishPromise and cancelAlgorithm
-        // TODO: Full implementation with finishPromise
-        // For now, simplified:
+        // Spec step 2: If controller.[[finishPromise]] is not undefined, return controller.[[finishPromise]]
+        if (controller.finishPromise) |finish_promise| {
+            return finish_promise;
+        }
+
+        // Spec step 3: Let writable be stream.[[writable]]
+        const writable = self.writableStream;
+
+        // Spec step 4: Set controller.[[finishPromise]] to a new promise
+        controller.finishPromise = common.Promise(void).pending();
 
         // Spec step 5: Let cancelPromise be the result of performing controller.[[cancelAlgorithm]], passing reason
         const reason_val = reason orelse common.JSValue.undefined_value();
@@ -337,13 +423,33 @@ pub const TransformStream = webidl.interface(struct {
         // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
         controller.clearAlgorithms();
 
-        // Spec step 7: React to cancelPromise (simplified)
-        // Full implementation would handle writable state, error propagation, and unblock write
+        // Spec step 7: React to cancelPromise
         if (cancel_promise.isFulfilled()) {
+            // Spec step 7.1: If writable.[[state]] is "errored", reject finishPromise
+            if (writable.state == .errored) {
+                if (controller.finishPromise) |*fp| {
+                    fp.reject(common.JSValue{ .string = "Writable errored" });
+                }
+            } else {
+                // Spec step 7.2: Otherwise, error writable, unblock, and resolve finishPromise
+                writable.controller.errorIfNeeded(reason_val);
+                self.unblockWrite();
+                if (controller.finishPromise) |*fp| {
+                    fp.fulfill({});
+                }
+            }
+        } else if (cancel_promise.isRejected()) {
+            // Spec step 7.2: Handle rejection
+            const err = cancel_promise.error_value orelse common.JSValue{ .string = "Cancel failed" };
+            writable.controller.errorIfNeeded(err);
             self.unblockWrite();
+            if (controller.finishPromise) |*fp| {
+                fp.reject(err);
+            }
         }
 
-        return cancel_promise;
+        // Spec step 8: Return controller.[[finishPromise]]
+        return controller.finishPromise orelse common.Promise(void).fulfilled({});
     }
 }, .{
     .exposed = &.{.global},
