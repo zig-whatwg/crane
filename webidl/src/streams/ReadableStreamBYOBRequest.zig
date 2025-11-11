@@ -13,14 +13,18 @@ pub const ReadableStreamBYOBRequest = webidl.interface(struct {
     /// [[controller]]: The parent controller
     controller: ?*anyopaque,
 
-    /// [[view]]: The view to write into
-    view: ?webidl.JSValue,
+    /// [[view]]: The view to write into (as ArrayBufferView)
+    view: ?webidl.ArrayBufferView,
 
-    pub fn init(allocator: std.mem.Allocator) !ReadableStreamBYOBRequest {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        controller: *anyopaque,
+        view: webidl.ArrayBufferView,
+    ) !ReadableStreamBYOBRequest {
         return .{
             .allocator = allocator,
-            .controller = null,
-            .view = null,
+            .controller = controller,
+            .view = view,
         };
     }
 
@@ -30,7 +34,10 @@ pub const ReadableStreamBYOBRequest = webidl.interface(struct {
     // WebIDL Interface Methods
     // ============================================================================
 
-    pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.JSValue {
+    /// Get the view for writing
+    ///
+    /// Spec: § 4.8.2 "The view getter steps are:"
+    pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.ArrayBufferView {
         return self.view;
     }
 
@@ -56,21 +63,20 @@ pub const ReadableStreamBYOBRequest = webidl.interface(struct {
 
     /// Respond with a new view
     ///
-    /// Spec: § 4.8.3 "The respondWithNewView(view) method steps"
-    pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: ?webidl.JSValue) !void {
+    /// Spec: § 4.8.3 "The respondWithNewView(view) method steps are:"
+    pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: webidl.ArrayBufferView) !void {
         // Spec step 1: If this.[[controller]] is undefined, throw TypeError
         const controller_ptr = self.controller orelse return error.TypeError;
 
-        // Get the view
-        const view_val = view orelse return error.TypeError;
-
-        // Spec step 2: Check buffer not detached (TODO when webidl provides API)
+        // Spec step 2: If ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is true, throw TypeError
+        if (view.isDetached()) {
+            return error.TypeError;
+        }
 
         // Spec step 3: Return ? ReadableByteStreamControllerRespondWithNewView(this.[[controller]], view)
-        // TODO: Implement when controller.respondWithNewView is ready
-        // For now, just mark as responded
-        _ = controller_ptr;
-        _ = view_val;
+        const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+        const ctrl: *ReadableByteStreamController = @ptrCast(@alignCast(controller_ptr));
+        try ctrl.respondWithNewView(view);
 
         // Mark as responded by clearing references
         self.controller = null;

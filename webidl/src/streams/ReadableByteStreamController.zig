@@ -1238,9 +1238,12 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             const byobRequest = try self.allocator.create(ReadableStreamBYOBRequest);
             errdefer self.allocator.destroy(byobRequest);
 
-            // Initialize BYOB request (simplified - full implementation would call init method)
-            _ = view; // TODO: Initialize ReadableStreamBYOBRequest with view
-            byobRequest.* = undefined; // Placeholder
+            // Initialize BYOB request with controller and view
+            byobRequest.* = try ReadableStreamBYOBRequest.init(
+                self.allocator,
+                @ptrCast(self),
+                view,
+            );
 
             self.byobRequest = byobRequest;
         }
