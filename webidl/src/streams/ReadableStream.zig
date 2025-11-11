@@ -2039,6 +2039,265 @@ pub const ByteTeeState = struct {
         }
     }
 
+    /// Pull with BYOB reader
+    ///
+    /// Spec: § 4.10.6 step 16 "pullWithBYOBReader"
+    pub fn pullWithBYOBReader(self: *ByteTeeState, view: webidl.ArrayBufferView, forBranch2: bool) !void {
+        const ReadIntoRequestModule = @import("read_into_request");
+
+        // Step 16.1: If reader implements ReadableStreamDefaultReader
+        if (self.reader == .default) {
+            const defaultReader = self.reader.default;
+
+            // Step 16.1.1: Assert readRequests is empty
+            if (defaultReader.readRequests.items.len > 0) {
+                return error.InvalidState;
+            }
+
+            // Step 16.1.2: Release default reader
+            defaultReader.call_releaseLock();
+            self.allocator.destroy(defaultReader);
+
+            // Step 16.1.3: Acquire BYOB reader
+            const byobReader = try self.source.acquireBYOBReader(self.eventLoop);
+            self.reader = .{ .byob = byobReader };
+
+            // Step 16.1.4: Forward errors
+            self.forwardReaderError(self.reader);
+        }
+
+        // Step 16.2: Determine byobBranch and otherBranch
+        const byobBranch = if (forBranch2) self.branch2 else self.branch1;
+        const otherBranch = if (forBranch2) self.branch1 else self.branch2;
+
+        // Step 16.3-4: Create read-into request with chunk/close/error steps
+        const byobReader = self.reader.byob;
+
+        // We need to create a context for the read-into request callbacks
+        const RequestContext = struct {
+            state: *ByteTeeState,
+            byobBranch: ?*ReadableStream,
+            otherBranch: ?*ReadableStream,
+            forBranch2: bool,
+
+            fn chunkSteps(ctx: ?*anyopaque, chunk: ReadIntoRequestModule.ArrayBufferView) void {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx.?));
+                self_ctx.state.handleBYOBReaderChunk(chunk, self_ctx.byobBranch, self_ctx.otherBranch, self_ctx.forBranch2) catch {};
+            }
+
+            fn closeSteps(ctx: ?*anyopaque, chunk_opt: ?ReadIntoRequestModule.ArrayBufferView) void {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx.?));
+                self_ctx.state.handleBYOBReaderClose(chunk_opt, self_ctx.byobBranch, self_ctx.otherBranch, self_ctx.forBranch2) catch {};
+            }
+
+            fn errorSteps(ctx: ?*anyopaque, _: ReadIntoRequestModule.Value) void {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx.?));
+                self_ctx.state.reading = false;
+            }
+        };
+
+        const request_ctx = try self.allocator.create(RequestContext);
+        request_ctx.* = .{
+            .state = self,
+            .byobBranch = byobBranch,
+            .otherBranch = otherBranch,
+            .forBranch2 = forBranch2,
+        };
+
+        // Create the read-into request
+        const readIntoRequest = ReadIntoRequestModule.ReadIntoRequest.init(
+            self.allocator,
+            RequestContext.chunkSteps,
+            RequestContext.closeSteps,
+            RequestContext.errorSteps,
+            request_ctx,
+        );
+
+        // Step 16.5: Perform ReadableStreamBYOBReaderRead
+        // TODO: Properly add readIntoRequest to byobReader.readIntoRequests
+        // For now, use the public read API as a workaround
+        _ = readIntoRequest; // Will be used when we implement proper internal read
+        _ = try byobReader.call_read(view, null);
+
+        // Process pending operations
+        self.eventLoop.runMicrotasks();
+    }
+
+    /// Handle chunk from BYOB reader
+    ///
+    /// Spec: § 4.10.6 step 16.4 chunk steps
+    fn handleBYOBReaderChunk(
+        self: *ByteTeeState,
+        chunk: @import("read_into_request").ArrayBufferView,
+        byobBranch: ?*ReadableStream,
+        otherBranch: ?*ReadableStream,
+        forBranch2: bool,
+    ) !void {
+        // Microtask: Queue these steps
+        // Step 1-2: Reset readAgain flags
+        self.readAgainForBranch1 = false;
+        self.readAgainForBranch2 = false;
+
+        // Step 3-4: Determine canceled flags
+        const byobCanceled = if (forBranch2) self.canceled2 else self.canceled1;
+        const otherCanceled = if (forBranch2) self.canceled1 else self.canceled2;
+
+        // Step 5: If other branch not canceled, clone and enqueue
+        if (!otherCanceled) {
+            // Convert chunk to webidl.ArrayBufferView for cloning
+            const structured_clone = @import("../../src/streams/internal/structured_clone.zig");
+            const webidl_module = @import("webidl");
+
+            // Create temporary ArrayBuffer from chunk data
+            const chunk_bytes = chunk.data[chunk.offset .. chunk.offset + chunk.length];
+            const buffer_data = try self.allocator.dupe(u8, chunk_bytes);
+            const buffer_ptr = try self.allocator.create(webidl_module.ArrayBuffer);
+            buffer_ptr.* = .{ .data = buffer_data, .detached = false };
+
+            const Uint8ArrayType = webidl_module.TypedArray(u8);
+            const view = try Uint8ArrayType.init(buffer_ptr, 0, chunk_bytes.len);
+            const array_buffer_view = webidl_module.ArrayBufferView{ .uint8_array = view };
+
+            // Clone the view
+            const cloned_view = structured_clone.cloneAsUint8Array(self.allocator, array_buffer_view) catch |err| {
+                // Step 5.2: If cloneResult is abrupt completion
+                const error_value = common.JSValue{ .string = "BYOB clone failed" };
+
+                // Error both branches
+                if (byobBranch) |bb| {
+                    if (bb.controller == .byte) {
+                        bb.controller.byte.errorController(error_value);
+                    }
+                }
+                if (otherBranch) |ob| {
+                    if (ob.controller == .byte) {
+                        ob.controller.byte.errorController(error_value);
+                    }
+                }
+
+                // Cancel source
+                _ = try self.source.cancelInternal(error_value);
+                self.cancelPromise.fulfill({});
+                return err;
+            };
+
+            // Step 5.4: RespondWithNewView for BYOB branch if not canceled
+            if (!byobCanceled and byobBranch != null) {
+                const bb = byobBranch.?;
+                if (bb.controller == .byte) {
+                    // Convert back to view for respondWithNewView
+                    try bb.controller.byte.respondWithNewView(array_buffer_view);
+                }
+            }
+
+            // Step 5.5: Enqueue cloned chunk to other branch
+            if (otherBranch) |ob| {
+                if (ob.controller == .byte) {
+                    const cloned_bytes = cloned_view.uint8_array.getBytes();
+                    try ob.controller.byte.enqueue(common.JSValue{ .bytes = cloned_bytes });
+                }
+            }
+        } else if (!byobCanceled and byobBranch != null) {
+            // Step 6: Otherwise, just respond to BYOB branch
+            const bb = byobBranch.?;
+            if (bb.controller == .byte) {
+                // Convert chunk to view
+                const webidl_module = @import("webidl");
+                const chunk_bytes = chunk.data[chunk.offset .. chunk.offset + chunk.length];
+                const buffer_data = try self.allocator.dupe(u8, chunk_bytes);
+                const buffer_ptr = try self.allocator.create(webidl_module.ArrayBuffer);
+                buffer_ptr.* = .{ .data = buffer_data, .detached = false };
+
+                const Uint8ArrayType = webidl_module.TypedArray(u8);
+                const view = try Uint8ArrayType.init(buffer_ptr, 0, chunk_bytes.len);
+                const array_buffer_view = webidl_module.ArrayBufferView{ .uint8_array = view };
+
+                try bb.controller.byte.respondWithNewView(array_buffer_view);
+            }
+        }
+
+        // Step 7: Set reading to false
+        self.reading = false;
+
+        // Step 8-9: Handle readAgain flags
+        if (self.readAgainForBranch1) {
+            try self.pull1Algorithm();
+        } else if (self.readAgainForBranch2) {
+            try self.pull2Algorithm();
+        }
+    }
+
+    /// Handle close from BYOB reader
+    ///
+    /// Spec: § 4.10.6 step 16.4 close steps
+    fn handleBYOBReaderClose(
+        self: *ByteTeeState,
+        chunk_opt: ?@import("read_into_request").ArrayBufferView,
+        byobBranch: ?*ReadableStream,
+        otherBranch: ?*ReadableStream,
+        forBranch2: bool,
+    ) !void {
+        // Step 1: Set reading to false
+        self.reading = false;
+
+        // Step 2-3: Determine canceled flags
+        const byobCanceled = if (forBranch2) self.canceled2 else self.canceled1;
+        const otherCanceled = if (forBranch2) self.canceled1 else self.canceled2;
+
+        // Step 4-5: Close branches if not canceled
+        if (!byobCanceled and byobBranch != null) {
+            const bb = byobBranch.?;
+            if (bb.controller == .byte) {
+                bb.controller.byte.close();
+            }
+        }
+
+        if (!otherCanceled and otherBranch != null) {
+            const ob = otherBranch.?;
+            if (ob.controller == .byte) {
+                ob.controller.byte.close();
+            }
+        }
+
+        // Step 6: If chunk is not undefined
+        if (chunk_opt) |chunk| {
+            // Step 6.1: Assert chunk byte length is 0
+            if (chunk.length != 0) {
+                return error.InvalidState;
+            }
+
+            // Step 6.2: RespondWithNewView for BYOB branch if not canceled
+            if (!byobCanceled and byobBranch != null) {
+                const bb = byobBranch.?;
+                if (bb.controller == .byte) {
+                    // Convert chunk to view
+                    const webidl_module = @import("webidl");
+                    const buffer_ptr = try self.allocator.create(webidl_module.ArrayBuffer);
+                    buffer_ptr.* = .{ .data = &[_]u8{}, .detached = false };
+
+                    const Uint8ArrayType = webidl_module.TypedArray(u8);
+                    const view = try Uint8ArrayType.init(buffer_ptr, 0, 0);
+                    const array_buffer_view = webidl_module.ArrayBufferView{ .uint8_array = view };
+
+                    try bb.controller.byte.respondWithNewView(array_buffer_view);
+                }
+            }
+
+            // Step 6.3: Handle pendingPullIntos for other branch
+            if (!otherCanceled and otherBranch != null) {
+                const ob = otherBranch.?;
+                if (ob.controller == .byte and ob.controller.byte.pendingPullIntos.items.len > 0) {
+                    try ob.controller.byte.respond(0);
+                }
+            }
+        }
+
+        // Step 7: Resolve cancelPromise
+        if (!byobCanceled or !otherCanceled) {
+            self.cancelPromise.fulfill({});
+        }
+    }
+
     /// Pull algorithm for branch 1
     ///
     /// Spec: § 4.10.6 step 17 "pull1Algorithm"
@@ -2059,11 +2318,11 @@ pub const ByteTeeState = struct {
             null;
 
         // Step 17.4-5: Pull with appropriate reader
-        if (byobRequest == null) {
-            try self.pullWithDefaultReader();
+        if (byobRequest) |request| {
+            const view = request.call_view();
+            try self.pullWithBYOBReader(view, false);
         } else {
-            // TODO: Implement pullWithBYOBReader(byobRequest.view, false)
-            try self.pullWithDefaultReader(); // Fallback for now
+            try self.pullWithDefaultReader();
         }
     }
 
@@ -2087,11 +2346,11 @@ pub const ByteTeeState = struct {
             null;
 
         // Step 18.4-5: Pull with appropriate reader
-        if (byobRequest == null) {
-            try self.pullWithDefaultReader();
+        if (byobRequest) |request| {
+            const view = request.call_view();
+            try self.pullWithBYOBReader(view, true);
         } else {
-            // TODO: Implement pullWithBYOBReader(byobRequest.view, true)
-            try self.pullWithDefaultReader(); // Fallback for now
+            try self.pullWithDefaultReader();
         }
     }
 
