@@ -671,3 +671,307 @@ test "BYOB Controller - respondWithNewView validation" {
     allocator.destroy(descriptor);
     controller.pendingPullIntos.clearRetainingCapacity();
 }
+
+// ============================================================================
+// Stream Integration Tests - End-to-End BYOB Operations
+// ============================================================================
+
+test "BYOB Integration - complete read cycle with pullInto and respond" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+    
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    // Wire controller to stream
+    controller.stream = &stream;
+    stream.controller = &controller;
+    stream.state = .readable;
+    controller.started = true;
+
+    // Create a pending pull-into descriptor (simulating pullInto call)
+    var read_buffer = try allocator.alloc(u8, 100);
+    defer allocator.free(read_buffer);
+    
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = read_buffer,
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,  // buffer_byte_length
+        0,    // byte_offset
+        100,  // byte_length
+        1,    // minimum_fill
+        1,    // element_size
+        .uint8_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Simulate writing 50 bytes to the buffer
+    @memset(read_buffer[0..50], 0xAB);
+    
+    // Respond with 50 bytes written
+    try controller.respond(50);
+    
+    // Verify descriptor was filled
+    try testing.expectEqual(@as(u64, 50), descriptor.bytes_filled);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Integration - queue processing with multiple chunks" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Enqueue multiple chunks to the byte queue
+    const chunk1_buffer = try allocator.create(ArrayBuffer);
+    chunk1_buffer.* = .{
+        .data = try allocator.alloc(u8, 50),
+        .byte_length = 50,
+        .detached = false,
+    };
+    @memset(chunk1_buffer.data, 0x11);
+    try controller.enqueueChunkToQueue(chunk1_buffer, 0, 50);
+
+    const chunk2_buffer = try allocator.create(ArrayBuffer);
+    chunk2_buffer.* = .{
+        .data = try allocator.alloc(u8, 50),
+        .byte_length = 50,
+        .detached = false,
+    };
+    @memset(chunk2_buffer.data, 0x22);
+    try controller.enqueueChunkToQueue(chunk2_buffer, 0, 50);
+
+    // Verify queue state
+    try testing.expectEqual(@as(usize, 2), controller.byteQueue.items.len);
+    try testing.expectEqual(@as(f64, 100.0), controller.queueTotalSize);
+
+    // Create a pull-into descriptor that can hold both chunks
+    const pull_buffer = try allocator.create(ArrayBuffer);
+    pull_buffer.* = .{
+        .data = try allocator.alloc(u8, 150),
+        .byte_length = 150,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        pull_buffer,
+        150,
+        0,
+        150,
+        0,    // minimum_fill (any amount is OK)
+        1,
+        .uint8_array,
+        .byob,
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Fill the descriptor from queue
+    const ready = controller.fillPullIntoDescriptorFromQueue(descriptor);
+    
+    // Should have filled 100 bytes (both chunks)
+    try testing.expectEqual(@as(u64, 100), descriptor.bytes_filled);
+    try testing.expect(ready); // Should be ready (filled >= minimum_fill)
+    try testing.expectEqual(@as(f64, 0.0), controller.queueTotalSize);
+    try testing.expectEqual(@as(usize, 0), controller.byteQueue.items.len);
+
+    // Cleanup
+    pull_buffer.deinit(allocator);
+    allocator.destroy(pull_buffer);
+    allocator.destroy(descriptor);
+}
+
+test "BYOB Integration - error propagation through respond" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Test 1: Respond without pending pull-into should error
+    const result1 = controller.respond(50);
+    try testing.expectError(error.InvalidState, result1);
+
+    // Test 2: Create descriptor and test bounds overflow
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        1,
+        .uint8_array,
+        .byob,
+    );
+    descriptor.bytes_filled = 90; // Already filled 90 bytes
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Try to respond with 20 bytes (would overflow: 90 + 20 > 100)
+    const result2 = controller.respond(20);
+    try testing.expectError(error.RangeError, result2);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+    controller.pendingPullIntos.clearRetainingCapacity();
+}
+
+test "BYOB Integration - state transitions with close" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .readable;
+    controller.started = true;
+
+    // Close the controller
+    controller.close() catch |err| {
+        std.debug.print("Close error: {}\n", .{err});
+    };
+
+    // Verify close requested
+    try testing.expect(controller.closeRequested);
+
+    // Verify can't close again
+    const result = controller.close();
+    try testing.expectError(error.TypeError, result);
+}
+
+test "BYOB Integration - respondInClosedState with reader type none" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+    
+    controller.stream = &stream;
+    stream.state = .closed;
+
+    // Create a descriptor with reader type "none"
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+    
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        1,
+        .uint8_array,
+        .none, // Reader type "none"
+    );
+    
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Call respondInClosedState
+    controller.respondInClosedState(descriptor);
+
+    // Verify descriptor was shifted (removed from pending)
+    try testing.expectEqual(@as(usize, 0), controller.pendingPullIntos.items.len);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+}
