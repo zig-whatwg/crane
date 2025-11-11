@@ -284,6 +284,7 @@ pub const ReadableStreamBYOBReader = struct {
         // Create ReadIntoRequest that will fulfill our promise
         const PromiseContext = struct {
             promisePtr: *AsyncPromise(common.ReadResult),
+            allocator: std.mem.Allocator,
 
             fn chunkSteps(ctx: ?*anyopaque, chunk: ReadIntoRequestModule.ArrayBufferView) void {
                 const context: *@This() = @ptrCast(@alignCast(ctx.?));
@@ -310,14 +311,14 @@ pub const ReadableStreamBYOBReader = struct {
                     .string => |s| common.JSValue{ .string = s },
                     else => common.JSValue{ .string = "Unknown error" },
                 };
-                const exception = err_value.toException(allocator) catch return;
+                const exception = err_value.toException(context.allocator) catch return;
                 context.promisePtr.reject(exception);
             }
         };
 
         // Allocate context for the callback closures
         const ctx = try allocator.create(PromiseContext);
-        ctx.* = .{ .promisePtr = promise };
+        ctx.* = .{ .promisePtr = promise, .allocator = allocator };
 
         const readIntoRequest = ReadIntoRequest.init(
             allocator,

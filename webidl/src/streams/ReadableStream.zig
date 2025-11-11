@@ -1592,7 +1592,9 @@ pub const PipeState = struct {
             self.promise.fulfill({});
         } else if (readPromise.isRejected()) {
             // Read failed - propagate error
-            self.shutdownWithError(readPromise.state.rejected);
+            const err_exception = readPromise.state.rejected;
+            const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
+            self.shutdownWithError(err_jsvalue);
         } else {
             // Read is still pending - in a full async implementation, we'd wait
             // For now, just fulfill
