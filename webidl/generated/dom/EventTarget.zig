@@ -21,12 +21,12 @@ pub const EventTarget = struct {
     // EventTarget fields
     // ========================================================================
     allocator: Allocator,
-    event_listener_list: std.ArrayList(EventListener),
+    event_listener_list: infra.List(EventListener),
 
     pub fn init(allocator: Allocator) !EventTarget {
         return .{
             .allocator = allocator,
-            .event_listener_list = std.ArrayList(EventListener).init(allocator),
+            .event_listener_list = infra.List(EventListener).init(allocator),
         };
     }
     pub fn deinit(self: *EventTarget) void {

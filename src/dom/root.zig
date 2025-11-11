@@ -10,6 +10,7 @@ pub const webidl = @import("webidl");
 
 // WebIDL generated interfaces
 pub const AbortSignal = @import("abort_signal").AbortSignal;
+pub const AbortController = @import("abort_controller").AbortController;
 pub const EventTarget = @import("event_target").EventTarget;
 pub const Event = @import("event").Event;
 pub const Node = @import("node").Node;

@@ -50,8 +50,11 @@ pub const ReadableStreamGenericReader = webidl.mixin(struct {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
         } else if (self.closedPromise.isRejected()) {
-            const err_msg = self.closedPromise.state.rejected.toString();
-            return webidl.Promise(void).rejected(err_msg);
+            const err_str = switch (self.closedPromise.state.rejected) {
+                .string => |s| s,
+                else => "Unknown error",
+            };
+            return webidl.Promise(void).rejected(err_str);
         } else {
             return webidl.Promise(void).pending();
         }

@@ -236,6 +236,7 @@ pub fn build(b: *std.Build) void {
     const event_target_mod = getWebIDLModule(webidl_modules, "dom_event_target");
     const event_mod = getWebIDLModule(webidl_modules, "dom_event");
     const abort_signal_mod = getWebIDLModule(webidl_modules, "dom_abort_signal");
+    const abort_controller_mod = getWebIDLModule(webidl_modules, "dom_abort_controller");
     const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
     const node_mod = getWebIDLModule(webidl_modules, "dom_node");
     const element_mod = getWebIDLModule(webidl_modules, "dom_element");
@@ -250,6 +251,7 @@ pub fn build(b: *std.Build) void {
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     abort_signal_mod.addImport("event_target", event_target_mod);
+    abort_controller_mod.addImport("abort_signal", abort_signal_mod);
     node_mod.addImport("event_target", event_target_mod);
     node_mod.addImport("node_list", node_list_mod);
     node_list_mod.addImport("node", node_mod); // Circular dependency
@@ -275,6 +277,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("infra", infra_mod);
     dom_mod.addImport("webidl", webidl_mod);
     dom_mod.addImport("abort_signal", abort_signal_mod);
+    dom_mod.addImport("abort_controller", abort_controller_mod);
     dom_mod.addImport("event_target", event_target_mod);
     dom_mod.addImport("event", event_mod);
     dom_mod.addImport("node", node_mod);
@@ -694,6 +697,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/message_port.zig"),
         .target = target,
         .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
             .{ .name = "common", .module = streams_common_mod },
         },
     });
@@ -745,6 +749,8 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
+            .{ .name = "message_port", .module = streams_message_port_mod },
         },
     });
 
@@ -913,6 +919,7 @@ pub fn build(b: *std.Build) void {
     readable_stream_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
 
     // writable_stream needs its controller and writer
+    writable_stream_mod.addImport("readable_stream", readable_stream_mod);
     writable_stream_mod.addImport("writable_stream_default_controller", writable_stream_default_controller_mod);
     writable_stream_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
 

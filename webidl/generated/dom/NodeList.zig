@@ -10,6 +10,7 @@
 //! NodeList interface per WHATWG DOM Standard
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 pub const Node = @import("node").Node;
 pub const NodeList = struct {
@@ -17,12 +18,12 @@ pub const NodeList = struct {
     // NodeList fields
     // ========================================================================
     allocator: std.mem.Allocator,
-    nodes: std.ArrayList(*Node),
+    nodes: infra.List(*Node),
 
     pub fn init(allocator: std.mem.Allocator) !NodeList {
         return .{
             .allocator = allocator,
-            .nodes = std.ArrayList(*Node).init(allocator),
+            .nodes = infra.List(*Node).init(allocator),
         };
     }
     pub fn deinit(self: *NodeList) void {
@@ -33,13 +34,13 @@ pub const NodeList = struct {
     // ========================================================================
 
     pub fn call_item(self: *const NodeList, index: u32) ?*Node {
-        if (index < self.nodes.items.len) {
-            return self.nodes.items[index];
+        if (index < self.nodes.len) {
+            return self.nodes.get(index);
         }
         return null;
     }
     pub fn get_length(self: *const NodeList) u32 {
-        return @intCast(self.nodes.items.len);
+        return @intCast(self.nodes.len);
     }
 
     // WebIDL extended attributes metadata

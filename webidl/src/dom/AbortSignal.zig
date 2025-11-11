@@ -1,6 +1,7 @@
 //! AbortSignal interface per WHATWG DOM Standard
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 const EventTarget = @import("event_target").EventTarget;
 
@@ -15,7 +16,7 @@ pub const AbortSignal = webidl.interface(struct {
     reason: ?webidl.JSValue,
     /// [[abortAlgorithms]]: List of algorithms to run when aborted
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-abort-algorithms
-    abort_algorithms: std.ArrayList(AbortAlgorithm),
+    abort_algorithms: infra.List(AbortAlgorithm),
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -23,7 +24,7 @@ pub const AbortSignal = webidl.interface(struct {
             .event_target = try EventTarget.init(allocator),
             .aborted = false,
             .reason = null,
-            .abort_algorithms = std.ArrayList(AbortAlgorithm).init(allocator),
+            .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
         };
     }
 
@@ -56,9 +57,9 @@ pub const AbortSignal = webidl.interface(struct {
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-remove
     pub fn removeAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) void {
         var i: usize = 0;
-        while (i < self.abort_algorithms.items.len) {
-            if (self.abort_algorithms.items[i] == algorithm) {
-                _ = self.abort_algorithms.orderedRemove(i);
+        while (i < self.abort_algorithms.len) {
+            if (self.abort_algorithms.get(i) == algorithm) {
+                self.abort_algorithms.remove(i) catch return;
                 return;
             }
             i += 1;
@@ -78,7 +79,7 @@ pub const AbortSignal = webidl.interface(struct {
         if (self.aborted) return;
 
         // Spec step 2: Set signal's abort reason
-        self.reason = opt_reason orelse webidl.JSValue.fromString("AbortError");
+        self.reason = opt_reason orelse .{ .string = "AbortError" };
 
         // Mark as aborted
         self.aborted = true;
@@ -94,13 +95,14 @@ pub const AbortSignal = webidl.interface(struct {
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm
-        const reason = self.reason orelse webidl.JSValue.fromString("AbortError");
-        for (self.abort_algorithms.items) |algorithm| {
+        const reason = self.reason orelse .{ .string = "AbortError" };
+        for (0..self.abort_algorithms.len) |i| {
+            const algorithm = self.abort_algorithms.get(i);
             algorithm(reason);
         }
 
         // Spec step 2: Empty signal's abort algorithms
-        self.abort_algorithms.clearRetainingCapacity();
+        self.abort_algorithms.clear();
 
         // Spec step 3: Fire an event named 'abort' at signal
         // TODO: Implement when event firing infrastructure is available

@@ -26,7 +26,7 @@ pub const Node = struct {
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
-    child_nodes: std.ArrayList(*Node),
+    child_nodes: infra.List(*Node),
     owner_document: ?*Document,
 
     pub const Document = @import("document").Document;
@@ -56,7 +56,7 @@ pub const Node = struct {
             .node_type = node_type,
             .node_name = node_name,
             .parent_node = null,
-            .child_nodes = std.ArrayList(*Node).init(allocator),
+            .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
         };
     }
@@ -90,7 +90,7 @@ pub const Node = struct {
     /// hasChildNodes()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Node) bool {
-        return self.child_nodes.items.len > 0;
+        return self.child_nodes.len > 0;
     }
     /// cloneNode(deep)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
@@ -116,14 +116,14 @@ pub const Node = struct {
         return self.parent_node;
     }
     pub fn get_firstChild(self: *const Node) ?*Node {
-        if (self.child_nodes.items.len > 0) {
-            return self.child_nodes.items[0];
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(0);
         }
         return null;
     }
     pub fn get_lastChild(self: *const Node) ?*Node {
-        if (self.child_nodes.items.len > 0) {
-            return self.child_nodes.items[self.child_nodes.items.len - 1];
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(self.child_nodes.len - 1);
         }
         return null;
     }

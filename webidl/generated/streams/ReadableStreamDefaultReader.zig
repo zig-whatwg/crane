@@ -108,11 +108,8 @@ pub const ReadableStreamDefaultReader = struct {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
         } else if (self.closedPromise.isRejected()) {
-            const err_str = switch (self.closedPromise.state.rejected) {
-                .string => |s| s,
-                else => "Unknown error",
-            };
-            return webidl.Promise(void).rejected(err_str);
+            const err_msg = self.closedPromise.state.rejected.toString();
+            return webidl.Promise(void).rejected(err_msg);
         } else {
             return webidl.Promise(void).pending();
         }

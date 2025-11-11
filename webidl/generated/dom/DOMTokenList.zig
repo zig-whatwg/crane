@@ -17,12 +17,12 @@ pub const DOMTokenList = struct {
     // DOMTokenList fields
     // ========================================================================
     allocator: std.mem.Allocator,
-    tokens: std.ArrayList([]const u8),
+    tokens: infra.List([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) !DOMTokenList {
         return .{
             .allocator = allocator,
-            .tokens = std.ArrayList([]const u8).init(allocator),
+            .tokens = infra.List([]const u8).init(allocator),
         };
     }
     pub fn deinit(self: *DOMTokenList) void {
@@ -53,7 +53,7 @@ pub const DOMTokenList = struct {
         return false;
     }
     pub fn get_length(self: *const DOMTokenList) u32 {
-        return @intCast(self.tokens.items.len);
+        return @intCast(self.tokens.len);
     }
 
     // WebIDL extended attributes metadata

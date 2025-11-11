@@ -22,7 +22,7 @@ pub const NodeList = webidl.interface(struct {
 
     pub fn call_item(self: *const NodeList, index: u32) ?*Node {
         if (index < self.nodes.len) {
-            return self.nodes.get(index);
+            return self.nodes.get(index];
         }
         return null;
     }

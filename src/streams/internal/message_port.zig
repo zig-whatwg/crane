@@ -15,6 +15,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const common = @import("common");
 const JSValue = common.JSValue;
 
@@ -58,7 +59,7 @@ pub const MessagePort = struct {
     entangled_port: ?*MessagePort,
 
     /// Message queue
-    message_queue: std.ArrayList(*Message),
+    message_queue: infra.List(*Message),
 
     /// Message handler (invoked when message received)
     onmessage: ?*const fn (*MessagePort, *Message) void,
@@ -79,7 +80,7 @@ pub const MessagePort = struct {
             .allocator = allocator,
             .id = generatePortId(),
             .entangled_port = null,
-            .message_queue = std.ArrayList(*Message).init(allocator),
+            .message_queue = infra.List(*Message).init(allocator),
             .onmessage = null,
             .onmessageerror = null,
             .closed = false,
@@ -90,7 +91,8 @@ pub const MessagePort = struct {
 
     pub fn deinit(self: *MessagePort) void {
         // Clean up message queue
-        for (self.message_queue.items) |msg| {
+        for (0..self.message_queue.len) |i| {
+            var msg = self.message_queue.get(i);
             msg.deinit();
         }
         self.message_queue.deinit();
@@ -150,8 +152,9 @@ pub const MessagePort = struct {
 
     /// Dispatch all queued messages
     fn dispatchQueuedMessages(self: *MessagePort) !void {
-        while (self.message_queue.items.len > 0) {
-            const msg = self.message_queue.orderedRemove(0);
+        while (self.message_queue.len > 0) {
+            const msg = self.message_queue.get(0);
+            try self.message_queue.remove(0);
             defer msg.deinit();
 
             if (self.onmessage) |handler| {
@@ -287,7 +290,7 @@ test "MessagePort - message queuing when disabled" {
     try ports[0].postMessage("chunk", JSValue{ .number = 2 });
 
     // Messages should be queued
-    try std.testing.expectEqual(@as(usize, 2), ports[1].message_queue.items.len);
+    try std.testing.expectEqual(@as(usize, 2), ports[1].message_queue.len);
 
     // Enable queue and set handler
     const State = struct {
@@ -307,7 +310,7 @@ test "MessagePort - message queuing when disabled" {
 
     // Both messages should have been dispatched
     try std.testing.expectEqual(@as(usize, 2), State.count);
-    try std.testing.expectEqual(@as(usize, 0), ports[1].message_queue.items.len);
+    try std.testing.expectEqual(@as(usize, 0), ports[1].message_queue.len);
 }
 
 test "MessagePort - disentangle" {

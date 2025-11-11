@@ -290,6 +290,30 @@ pub const Exception = union(enum) {
     /// A DOMException with name, message, and legacy code
     dom: DOMException,
 
+    /// Create a TypeError exception from a string message
+    pub fn typeError(allocator: Allocator, message: []const u8) !Exception {
+        const msg_copy = try allocator.dupe(u8, message);
+        return .{
+            .simple = .{
+                .type = .TypeError,
+                .message = msg_copy,
+            },
+        };
+    }
+
+    /// Create a simple exception from a string message (defaults to TypeError)
+    pub fn fromString(allocator: Allocator, message: []const u8) !Exception {
+        return typeError(allocator, message);
+    }
+
+    /// Convert exception to a string message for display
+    pub fn toString(self: Exception) []const u8 {
+        return switch (self) {
+            .simple => |s| s.message,
+            .dom => |d| d.message,
+        };
+    }
+
     /// Frees any allocated memory in the exception.
     pub fn deinit(self: *Exception, allocator: Allocator) void {
         switch (self.*) {

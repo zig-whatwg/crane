@@ -535,8 +535,7 @@ pub fn AsyncPromise(comptime T: type) type {
                         if (reaction.target_promise) |target| {
                             // Chained promise - capture result and forward it
                             const result = handler(value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
+                                target.reject(.{ .string = @errorName(err) });
                                 return;
                             };
                             target.fulfill(result);
@@ -557,8 +556,7 @@ pub fn AsyncPromise(comptime T: type) type {
                         if (reaction.target_promise) |target| {
                             // Chained promise - capture result and forward it
                             const result = handler(reaction.context.?, error_value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
+                                target.reject(.{ .string = @errorName(err) });
                                 return;
                             };
                             target.fulfill(result);
@@ -570,8 +568,7 @@ pub fn AsyncPromise(comptime T: type) type {
                         if (reaction.target_promise) |target| {
                             // Chained promise - capture result and forward it
                             const result = handler(error_value) catch |err| {
-                                const exception = webidl.errors.Exception.typeError(target.allocator, @errorName(err)) catch return;
-                                target.reject(exception);
+                                target.reject(.{ .string = @errorName(err) });
                                 return;
                             };
                             target.fulfill(result);

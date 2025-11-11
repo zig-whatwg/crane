@@ -114,14 +114,14 @@ pub const Node = webidl.interface(struct {
 
     pub fn get_firstChild(self: *const Node) ?*Node {
         if (self.child_nodes.len > 0) {
-            return self.child_nodes.get(0);
+            return self.child_nodes.get(0];
         }
         return null;
     }
 
     pub fn get_lastChild(self: *const Node) ?*Node {
         if (self.child_nodes.len > 0) {
-            return self.child_nodes.get(self.child_nodes.len - 1);
+            return self.child_nodes.get(self.child_nodes.len - 1];
         }
         return null;
     }

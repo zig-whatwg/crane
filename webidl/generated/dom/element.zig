@@ -25,7 +25,7 @@ pub const Element = struct {
     node: Node,
     tag_name: []const u8,
     namespace_uri: ?[]const u8,
-    attributes: std.ArrayList(Attr),
+    attributes: infra.List(Attr),
 
     pub const Attr = @import("attr").Attr;
 
@@ -35,7 +35,7 @@ pub const Element = struct {
             .node = try Node.init(allocator, Node.ELEMENT_NODE, tag_name),
             .tag_name = tag_name,
             .namespace_uri = null,
-            .attributes = std.ArrayList(Attr).init(allocator),
+            .attributes = infra.List(Attr).init(allocator),
         };
     }
     pub fn deinit(self: *Element) void {

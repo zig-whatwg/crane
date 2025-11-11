@@ -63,6 +63,15 @@ pub const JSValue = union(enum) {
             .close_sentinel => .{ .undefined = {} }, // Close sentinel never exposed to web
         };
     }
+
+    /// Convert JSValue to webidl.errors.Exception
+    /// Used when rejecting promises - converts error values to proper exceptions
+    pub fn toException(self: JSValue, allocator: std.mem.Allocator) !webidl.errors.Exception {
+        return switch (self) {
+            .string => |s| try webidl.errors.Exception.fromString(allocator, s),
+            else => try webidl.errors.Exception.typeError(allocator, "Unknown error"),
+        };
+    }
 };
 
 /// Placeholder for Promise type
