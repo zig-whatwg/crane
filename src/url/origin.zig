@@ -60,12 +60,38 @@ pub const Origin = union(enum) {
 pub fn getOrigin(allocator: std.mem.Allocator, url: *const URLRecord) !Origin {
     const scheme = url.scheme();
 
-    // Special handling for blob URLs (spec line 1602)
-    // If blob URL entry is non-null, return its environment's origin
+    // Special handling for blob URLs (spec lines 1601-1611)
     if (std.mem.eql(u8, scheme, "blob")) {
+        // Step 1: If blob URL entry is non-null, return its environment's origin
         if (url.blob_url_entry) |entry| {
             return try entry.getOrigin(allocator);
         }
+
+        // Step 2: Parse the path part of the blob URL
+        // Get path serialization
+        const path_serializer = @import("path_serializer");
+        const path_str = try path_serializer.serializePath(allocator, url.path, url.scheme());
+        defer allocator.free(path_str);
+
+        // Step 2: Parse pathURL
+        const api_parser = @import("api_url_parser");
+        const path_url = api_parser.parseURL(allocator, path_str, null) catch {
+            // Step 3: If pathURL is failure, return opaque origin
+            return Origin{ .opaque_origin = {} };
+        };
+        defer path_url.deinit();
+
+        const path_scheme = path_url.scheme();
+
+        // Step 4: If pathURL's scheme is http, https, or file, return pathURL's origin
+        if (std.mem.eql(u8, path_scheme, "http") or
+            std.mem.eql(u8, path_scheme, "https") or
+            std.mem.eql(u8, path_scheme, "file"))
+        {
+            return try getOrigin(allocator, &path_url);
+        }
+
+        // Step 5: Return opaque origin
         return Origin{ .opaque_origin = {} };
     }
 
@@ -209,4 +235,80 @@ test "origin - file returns opaque" {
     defer origin.deinit(allocator);
 
     try std.testing.expect(origin == .opaque_origin);
+}
+
+test "origin - blob URL without entry returns opaque" {
+    const allocator = std.testing.allocator;
+
+    // Create a blob URL: blob:invalid-path
+    const buffer = try allocator.dupe(u8, "blob");
+    var segments = infra.List([]const u8).init(allocator);
+    defer segments.deinit();
+    try segments.append(try allocator.dupe(u8, "invalid-path"));
+
+    var url = URLRecord{
+        .buffer = buffer,
+        .scheme_start = 0,
+        .scheme_len = 4,
+        .username_start = 0,
+        .username_len = 0,
+        .password_start = 0,
+        .password_len = 0,
+        .host = null,
+        .port = null,
+        .path = @import("path").Path{ .segments = segments },
+        .query_start = 0,
+        .query_len = 0,
+        .fragment_start = 0,
+        .fragment_len = 0,
+        .blob_url_entry = null,
+        .allocator = allocator,
+    };
+    defer url.deinit();
+
+    // Should return opaque origin (path parse fails)
+    const origin = try getOrigin(allocator, &url);
+    defer origin.deinit(allocator);
+
+    try std.testing.expect(origin == .opaque_origin);
+}
+
+test "origin - blob URL with http path extracts origin" {
+    const allocator = std.testing.allocator;
+
+    // Create a blob URL: blob:https://example.com/uuid
+    const buffer = try allocator.dupe(u8, "blob");
+    var segments = infra.List([]const u8).init(allocator);
+    defer segments.deinit();
+    try segments.append(try allocator.dupe(u8, "https:"));
+    try segments.append(try allocator.dupe(u8, ""));
+    try segments.append(try allocator.dupe(u8, "example.com"));
+    try segments.append(try allocator.dupe(u8, "550e8400"));
+
+    var url = URLRecord{
+        .buffer = buffer,
+        .scheme_start = 0,
+        .scheme_len = 4,
+        .username_start = 0,
+        .username_len = 0,
+        .password_start = 0,
+        .password_len = 0,
+        .host = null,
+        .port = null,
+        .path = @import("path").Path{ .segments = segments },
+        .query_start = 0,
+        .query_len = 0,
+        .fragment_start = 0,
+        .fragment_len = 0,
+        .blob_url_entry = null,
+        .allocator = allocator,
+    };
+    defer url.deinit();
+
+    // Should extract origin from the https:// part
+    const origin = try getOrigin(allocator, &url);
+    defer origin.deinit(allocator);
+
+    try std.testing.expect(origin == .tuple);
+    try std.testing.expectEqualStrings("https", origin.tuple.scheme);
 }
