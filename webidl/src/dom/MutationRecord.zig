@@ -1,0 +1,151 @@
+//! MutationRecord interface per WHATWG DOM Standard
+//! Spec: https://dom.spec.whatwg.org/#interface-mutationrecord
+
+const std = @import("std");
+const webidl = @import("webidl");
+const infra = @import("infra");
+const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
+const NodeList = @import("node_list").NodeList;
+
+/// DOM §7.2 - MutationRecord interface
+///
+/// MutationRecord objects represent individual DOM mutations.
+/// They are created by the MutationObserver API and contain information
+/// about what changed in the tree.
+pub const MutationRecord = webidl.interface(struct {
+    allocator: Allocator,
+
+    /// Type of mutation: "attributes", "characterData", or "childList"
+    mutation_type: []const u8,
+
+    /// The node that was mutated
+    target: *Node,
+
+    /// Nodes added (for childList mutations)
+    added_nodes: *NodeList,
+
+    /// Nodes removed (for childList mutations)
+    removed_nodes: *NodeList,
+
+    /// Previous sibling of added/removed nodes
+    previous_sibling: ?*Node,
+
+    /// Next sibling of added/removed nodes
+    next_sibling: ?*Node,
+
+    /// Name of changed attribute (for attribute mutations)
+    attribute_name: ?[]const u8,
+
+    /// Namespace of changed attribute (for attribute mutations)
+    attribute_namespace: ?[]const u8,
+
+    /// Old value (for attribute or characterData mutations, if requested)
+    old_value: ?[]const u8,
+
+    /// DOM §7.2 - MutationRecord constructor (internal)
+    /// Created by mutation observation algorithms
+    pub fn init(
+        allocator: Allocator,
+        mutation_type: []const u8,
+        target: *Node,
+        added_nodes: *NodeList,
+        removed_nodes: *NodeList,
+        previous_sibling: ?*Node,
+        next_sibling: ?*Node,
+        attribute_name: ?[]const u8,
+        attribute_namespace: ?[]const u8,
+        old_value: ?[]const u8,
+    ) !MutationRecord {
+        return .{
+            .allocator = allocator,
+            .mutation_type = mutation_type,
+            .target = target,
+            .added_nodes = added_nodes,
+            .removed_nodes = removed_nodes,
+            .previous_sibling = previous_sibling,
+            .next_sibling = next_sibling,
+            .attribute_name = attribute_name,
+            .attribute_namespace = attribute_namespace,
+            .old_value = old_value,
+        };
+    }
+
+    pub fn deinit(self: *MutationRecord) void {
+        _ = self;
+        // NodeLists and Nodes are owned elsewhere, we don't free them
+        // Strings (mutation_type, attribute_name, etc.) may need freeing
+        // depending on how they're allocated - TBD based on usage patterns
+    }
+
+    // ========================================================================
+    // Attributes
+    // ========================================================================
+
+    /// DOM §7.2 - MutationRecord.type
+    /// Returns "attributes", "characterData", or "childList"
+    pub fn get_type(self: *const MutationRecord) []const u8 {
+        return self.mutation_type;
+    }
+
+    /// DOM §7.2 - MutationRecord.target
+    /// Returns the node that was mutated
+    pub fn get_target(self: *const MutationRecord) *Node {
+        return self.target;
+    }
+
+    /// DOM §7.2 - MutationRecord.addedNodes
+    /// Returns the list of added nodes
+    pub fn get_addedNodes(self: *const MutationRecord) *NodeList {
+        return self.added_nodes;
+    }
+
+    /// DOM §7.2 - MutationRecord.removedNodes
+    /// Returns the list of removed nodes
+    pub fn get_removedNodes(self: *const MutationRecord) *NodeList {
+        return self.removed_nodes;
+    }
+
+    /// DOM §7.2 - MutationRecord.previousSibling
+    /// Returns the previous sibling of added/removed nodes
+    pub fn get_previousSibling(self: *const MutationRecord) ?*Node {
+        return self.previous_sibling;
+    }
+
+    /// DOM §7.2 - MutationRecord.nextSibling
+    /// Returns the next sibling of added/removed nodes
+    pub fn get_nextSibling(self: *const MutationRecord) ?*Node {
+        return self.next_sibling;
+    }
+
+    /// DOM §7.2 - MutationRecord.attributeName
+    /// Returns the name of the changed attribute (null if not attribute mutation)
+    pub fn get_attributeName(self: *const MutationRecord) ?[]const u8 {
+        return self.attribute_name;
+    }
+
+    /// DOM §7.2 - MutationRecord.attributeNamespace
+    /// Returns the namespace of the changed attribute (null if not attribute mutation)
+    pub fn get_attributeNamespace(self: *const MutationRecord) ?[]const u8 {
+        return self.attribute_namespace;
+    }
+
+    /// DOM §7.2 - MutationRecord.oldValue
+    /// Returns the old value (for attributes/characterData, null otherwise)
+    pub fn get_oldValue(self: *const MutationRecord) ?[]const u8 {
+        return self.old_value;
+    }
+
+    // ========================================================================
+    // Mutation type constants
+    // ========================================================================
+
+    /// Mutation type: attribute changed
+    pub const TYPE_ATTRIBUTES: []const u8 = "attributes";
+
+    /// Mutation type: character data changed
+    pub const TYPE_CHARACTER_DATA: []const u8 = "characterData";
+
+    /// Mutation type: children added/removed
+    pub const TYPE_CHILD_LIST: []const u8 = "childList";
+});
