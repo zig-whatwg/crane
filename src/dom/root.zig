@@ -22,6 +22,7 @@ pub const Text = @import("text").Text;
 pub const Comment = @import("comment").Comment;
 pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 pub const CDATASection = @import("cdata_section").CDATASection;
+pub const DocumentType = @import("document_type").DocumentType;
 pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
 pub const Attr = @import("attr").Attr;

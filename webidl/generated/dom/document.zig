@@ -20,6 +20,7 @@ pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
 pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 pub const CDATASection = @import("cdata_section").CDATASection;
+pub const DocumentType = @import("document_type").DocumentType;
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
@@ -295,6 +296,20 @@ pub const Document = struct {
         const cdata = try self.allocator.create(CDATASection);
         cdata.* = try CDATASection.init(self.allocator, data);
         return cdata;
+    }
+    /// createDocumentType(qualifiedName, publicId, systemId)
+    /// DOM §4.6.1 - Creates a DocumentType node
+    /// Returns a new DocumentType node whose name is qualifiedName, public ID is publicId,
+    /// system ID is systemId, and node document is this.
+    pub fn call_createDocumentType(
+        self: *Document,
+        qualified_name: []const u8,
+        public_id: []const u8,
+        system_id: []const u8,
+    ) !*DocumentType {
+        const doctype = try self.allocator.create(DocumentType);
+        doctype.* = try DocumentType.init(self.allocator, qualified_name, public_id, system_id);
+        return doctype;
     }
     /// createDocumentFragment()
     /// DOM §4.6.1 - The createDocumentFragment() method steps are to return

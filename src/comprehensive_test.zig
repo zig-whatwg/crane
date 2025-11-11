@@ -100,6 +100,7 @@ comptime {
     _ = dom.Comment;
     _ = dom.ProcessingInstruction;
     _ = dom.CDATASection;
+    _ = dom.DocumentType;
     _ = dom.DocumentFragment;
     _ = dom.NodeList;
     _ = dom.NamedNodeMap;
