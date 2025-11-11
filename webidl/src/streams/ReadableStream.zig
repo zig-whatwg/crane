@@ -1579,7 +1579,9 @@ pub const PipeState = struct {
                     return try self.shuttleLoop();
                 } else if (writePromise.isRejected()) {
                     // Write failed - propagate error
-                    self.shutdownWithError(writePromise.state.rejected);
+                    const err_exception = writePromise.state.rejected;
+                    const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
+                    self.shutdownWithError(err_jsvalue);
                     return;
                 }
             }

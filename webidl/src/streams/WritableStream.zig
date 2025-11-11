@@ -561,11 +561,12 @@ pub const WritableStream = webidl.interface(struct {
         self.controller.errorSteps();
 
         const stored_error = self.storedError orelse common.JSValue.undefined_value();
+        const stored_exception = stored_error.toException(self.allocator) catch return;
 
         // Spec step 6-7: Reject all pending write requests
         while (self.writeRequests.items.len > 0) {
             const write_request = self.writeRequests.orderedRemove(0);
-            write_request.reject(stored_error);
+            write_request.reject(stored_exception);
         }
 
         // Spec step 8: If pendingAbortRequest is undefined

@@ -97,7 +97,7 @@ pub const AbortSignal = webidl.interface(struct {
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm
         const reason = self.reason orelse webidl.Exception{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
         for (0..self.abort_algorithms.len) |i| {
-            const algorithm = self.abort_algorithms.get(i);
+            const algorithm = self.abort_algorithms.get(i) orelse continue;
             algorithm(reason);
         }
 

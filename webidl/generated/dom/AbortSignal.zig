@@ -87,7 +87,7 @@ pub const AbortSignal = struct {
         if (self.aborted) return;
 
         // Spec step 2: Set signal's abort reason
-        self.reason = opt_reason orelse webidl.Exception.fromString(self.allocator, "AbortError") catch .{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
+        self.reason = opt_reason orelse webidl.Exception{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
 
         // Mark as aborted
         self.aborted = true;
@@ -102,7 +102,7 @@ pub const AbortSignal = struct {
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm
-        const reason = self.reason orelse webidl.Exception.fromString(self.allocator, "AbortError") catch .{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
+        const reason = self.reason orelse webidl.Exception{ .simple = .{ .type = .TypeError, .message = "AbortError" } };
         for (0..self.abort_algorithms.len) |i| {
             const algorithm = self.abort_algorithms.get(i);
             algorithm(reason);
