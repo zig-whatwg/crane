@@ -25,7 +25,8 @@ pub const CharacterData = struct {
     // CharacterData fields
     // ========================================================================
     allocator: Allocator,
-    data: []const u8,
+    /// The mutable string data associated with this node
+    data: []u8,
 
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode };
 
@@ -33,12 +34,12 @@ pub const CharacterData = struct {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .data = "",
+            .data = try allocator.dupe(u8, ""),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *CharacterData) void {
-        _ = self;
+        self.allocator.free(self.data);
         // NOTE: Parent Node cleanup will be handled by codegen
         // TODO: Call parent Node deinit (will be added by codegen)
     }
@@ -175,11 +176,118 @@ pub const CharacterData = struct {
     // CharacterData methods
     // ========================================================================
 
+    /// DOM §4.11 - data getter
+    /// Returns this's data.
     pub fn get_data(self: *const CharacterData) []const u8 {
         return self.data;
     }
-    pub fn get_length(self: *const CharacterData) usize {
-        return self.data.len;
+    /// DOM §4.11 - data setter
+    /// Replace data with node this, offset 0, count this's length, and data new value.
+    pub fn set_data(self: *CharacterData, new_value: []const u8) !void {
+        try self.replaceData(0, @intCast(self.data.len), new_value);
+    }
+    /// DOM §4.11 - length getter
+    /// Returns this's length (number of code units).
+    pub fn get_length(self: *const CharacterData) u32 {
+        return @intCast(self.data.len);
+    }
+    /// DOM §4.11 - substringData(offset, count)
+    /// Returns a substring of this's data.
+    /// 
+    /// Steps:
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, then throw an "IndexSizeError" DOMException.
+    /// 3. If offset plus count is greater than length, return code units from offset to end.
+    /// 4. Return code units from offset to offset+count.
+    pub fn call_substringData(self: *const CharacterData, offset: u32, count: u32) ![]const u8 {
+        const length: u32 = @intCast(self.data.len);
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Handle overflow
+        if (offset + count > length) {
+            return self.data[offset..];
+        }
+
+        // Step 4: Return substring
+        return self.data[offset .. offset + count];
+    }
+    /// DOM §4.11 - appendData(data)
+    /// Appends data to this's data.
+    /// 
+    /// Steps: Replace data with node this, offset this's length, count 0, and data.
+    pub fn call_appendData(self: *CharacterData, data: []const u8) !void {
+        try self.replaceData(@intCast(self.data.len), 0, data);
+    }
+    /// DOM §4.11 - insertData(offset, data)
+    /// Inserts data at the given offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count 0, and data.
+    pub fn call_insertData(self: *CharacterData, offset: u32, data: []const u8) !void {
+        try self.replaceData(offset, 0, data);
+    }
+    /// DOM §4.11 - deleteData(offset, count)
+    /// Deletes count code units starting at offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count, and empty string.
+    pub fn call_deleteData(self: *CharacterData, offset: u32, count: u32) !void {
+        try self.replaceData(offset, count, "");
+    }
+    /// DOM §4.11 - replaceData(offset, count, data)
+    /// Replaces count code units at offset with data.
+    /// 
+    /// Steps (simplified - full spec includes range and mutation handling):
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, throw "IndexSizeError".
+    /// 3. If offset + count > length, set count to length - offset.
+    /// 4-12. [Mutation records, ranges, and parent notification skipped for now]
+    /// 5. Insert data into node's data after offset code units.
+    /// 6-7. Remove count code units starting from offset + data's length.
+    pub fn call_replaceData(self: *CharacterData, offset: u32, count: u32, data: []const u8) !void {
+        try self.replaceData(offset, count, data);
+    }
+    /// Internal replace data implementation
+    fn replaceData(self: *CharacterData, offset: u32, count_param: u32, data: []const u8) !void {
+        const length: u32 = @intCast(self.data.len);
+        var count = count_param;
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Clamp count
+        if (offset + count > length) {
+            count = length - offset;
+        }
+
+        // TODO: Step 4 - Queue mutation record (requires mutation observers)
+
+        // Steps 5-7: Build new data string
+        const new_len = length - count + @as(u32, @intCast(data.len));
+        const new_data = try self.allocator.alloc(u8, new_len);
+
+        // Copy before offset
+        @memcpy(new_data[0..offset], self.data[0..offset]);
+
+        // Copy new data
+        @memcpy(new_data[offset .. offset + data.len], data);
+
+        // Copy after deleted region
+        const after_start = offset + count;
+        if (after_start < length) {
+            @memcpy(new_data[offset + data.len ..], self.data[after_start..]);
+        }
+
+        // Replace old data
+        self.allocator.free(self.data);
+        self.data = new_data;
+
+        // TODO: Steps 8-11 - Update ranges (requires Range implementation)
+        // TODO: Step 12 - Run children changed steps for parent
     }
 
     // WebIDL extended attributes metadata
