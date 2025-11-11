@@ -177,13 +177,15 @@ pub const WritableStream = struct {
 
         return stream;
     }
-    /// locked attribute getter
-    pub fn call_locked(self: *const WritableStream) bool {
-        return self.isLocked();
+    /// readonly attribute boolean locked
+    /// Spec: https://streams.spec.whatwg.org/#ws-locked
+    pub fn get_locked(self: *const WritableStream) bool {
+        return self.writer != .none;
     }
-    /// abort(reason) method
-    pub fn abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        if (self.isLocked()) {
+    /// Promise<undefined> abort(optional any reason)
+    /// Spec: https://streams.spec.whatwg.org/#ws-abort
+    pub fn call_abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Stream is locked" });
             return promise;
@@ -192,9 +194,10 @@ pub const WritableStream = struct {
         const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
         return self.abortInternal(reason_value);
     }
-    /// close() method
-    pub fn close(self: *WritableStream) !*AsyncPromise(void) {
-        if (self.isLocked()) {
+    /// Promise<undefined> close()
+    /// Spec: https://streams.spec.whatwg.org/#ws-close
+    pub fn call_close(self: *WritableStream) !*AsyncPromise(void) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Stream is locked" });
             return promise;
@@ -208,12 +211,10 @@ pub const WritableStream = struct {
 
         return self.closeInternal();
     }
-    /// getWriter() method
+    /// WritableStreamDefaultWriter getWriter()
+    /// Spec: https://streams.spec.whatwg.org/#ws-get-writer
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
-    }
-    pub fn isLocked(self: *const WritableStream) bool {
-        return self.writer != .none;
     }
     /// WritableStreamAbort(stream, reason)
     /// 

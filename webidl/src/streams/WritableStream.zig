@@ -183,13 +183,24 @@ pub const WritableStream = webidl.interface(struct {
     // ============================================================================
 
     /// locked attribute getter
-    pub fn call_locked(self: *const WritableStream) bool {
-        return self.isLocked();
+    // ============================================================================
+    // WebIDL Interface: Readonly Attributes
+    // ============================================================================
+
+    /// readonly attribute boolean locked
+    /// Spec: https://streams.spec.whatwg.org/#ws-locked
+    pub fn get_locked(self: *const WritableStream) bool {
+        return self.writer != .none;
     }
 
-    /// abort(reason) method
-    pub fn abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        if (self.isLocked()) {
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
+
+    /// Promise<undefined> abort(optional any reason)
+    /// Spec: https://streams.spec.whatwg.org/#ws-abort
+    pub fn call_abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Stream is locked" });
             return promise;
@@ -199,9 +210,10 @@ pub const WritableStream = webidl.interface(struct {
         return self.abortInternal(reason_value);
     }
 
-    /// close() method
-    pub fn close(self: *WritableStream) !*AsyncPromise(void) {
-        if (self.isLocked()) {
+    /// Promise<undefined> close()
+    /// Spec: https://streams.spec.whatwg.org/#ws-close
+    pub fn call_close(self: *WritableStream) !*AsyncPromise(void) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Stream is locked" });
             return promise;
@@ -216,7 +228,8 @@ pub const WritableStream = webidl.interface(struct {
         return self.closeInternal();
     }
 
-    /// getWriter() method
+    /// WritableStreamDefaultWriter getWriter()
+    /// Spec: https://streams.spec.whatwg.org/#ws-get-writer
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
         return self.acquireDefaultWriter(self.eventLoop);
     }
@@ -224,10 +237,6 @@ pub const WritableStream = webidl.interface(struct {
     // ============================================================================
     // Internal Algorithms
     // ============================================================================
-
-    pub fn isLocked(self: *const WritableStream) bool {
-        return self.writer != .none;
-    }
 
     /// WritableStreamAbort(stream, reason)
     ///
