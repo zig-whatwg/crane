@@ -1848,14 +1848,69 @@ pub const ByteTeeState = struct {
     ///
     /// Spec: § 4.10.6 step 14 "forwardReaderError"
     pub fn forwardReaderError(self: *ByteTeeState, thisReader: ByteTeeReaderUnion) void {
-        // Step 14.1: Upon rejection of thisReader.[[closedPromise]] with reason r,
-        // This would need to be implemented as a promise reaction
-        // For now, we'll handle this inline when errors are detected
+        // Step 14.1: Upon rejection of thisReader.[[closedPromise]] with reason r
+        // Attach rejection handler to reader's closedPromise
 
-        // TODO: Implement proper closedPromise rejection handling
-        // This requires async promise reactions which we'll need to wire up
-        _ = self;
-        _ = thisReader;
+        // Create error handler context
+        const ErrorContext = struct {
+            state: *ByteTeeState,
+            reader: ByteTeeReaderUnion,
+
+            fn onError(ctx: *anyopaque, reason: common.JSValue) void {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                const state = self_ctx.state;
+                const reader = self_ctx.reader;
+
+                // Step 14.1.1: If thisReader is not reader, return
+                const is_same_reader = switch (state.reader) {
+                    .default => |current| switch (reader) {
+                        .default => |r| current == r,
+                        else => false,
+                    },
+                    .byob => |current| switch (reader) {
+                        .byob => |r| current == r,
+                        else => false,
+                    },
+                };
+
+                if (!is_same_reader) return;
+
+                // Step 14.1.2: Error branch1 controller
+                if (state.branch1) |b1| {
+                    if (b1.controller == .byte) {
+                        b1.controller.byte.errorController(reason);
+                    }
+                }
+
+                // Step 14.1.3: Error branch2 controller
+                if (state.branch2) |b2| {
+                    if (b2.controller == .byte) {
+                        b2.controller.byte.errorController(reason);
+                    }
+                }
+
+                // Step 14.1.4: If not both canceled, resolve cancelPromise
+                if (!state.canceled1 or !state.canceled2) {
+                    state.cancelPromise.fulfill({});
+                }
+            }
+        };
+
+        // Allocate context for the error handler
+        const error_ctx = self.allocator.create(ErrorContext) catch return;
+        error_ctx.* = .{
+            .state = self,
+            .reader = thisReader,
+        };
+
+        // Get the closedPromise from the reader
+        const closedPromise = switch (thisReader) {
+            .default => |r| r.closedPromise,
+            .byob => |r| r.closedPromise,
+        };
+
+        // Attach rejection handler using onSettleCtx (no chained promise to manage)
+        closedPromise.onSettleCtx(null, ErrorContext.onError, error_ctx) catch return;
     }
 
     /// Pull with default reader
