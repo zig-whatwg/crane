@@ -97,12 +97,6 @@ pub const TransformStreamDefaultController = webidl.interface(struct {
         try self.terminateInternal();
     }
 
-    // Backwards compatibility
-    pub fn errorStream(self: *TransformStreamDefaultController, e: ?webidl.JSValue) void {
-        const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
-        self.errorInternal(error_value);
-    }
-
     // ============================================================================
     // Internal Algorithms
     // ============================================================================

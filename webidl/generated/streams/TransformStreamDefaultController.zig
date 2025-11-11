@@ -97,10 +97,6 @@ pub const TransformStreamDefaultController = struct {
         // Spec step 1: Perform ? TransformStreamDefaultControllerTerminate(this)
         try self.terminateInternal();
     }
-    pub fn errorStream(self: *TransformStreamDefaultController, e: ?webidl.JSValue) void {
-        const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
-        self.errorInternal(error_value);
-    }
     /// TransformStreamDefaultControllerEnqueue(controller, chunk)
     /// 
     /// Spec: § 6.3.2 "Enqueue chunk to readable side"
