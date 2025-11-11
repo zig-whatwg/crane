@@ -312,6 +312,7 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("processing_instruction", processing_instruction_mod);
     document_mod.addImport("cdata_section", cdata_section_mod);
     document_mod.addImport("document_type", document_type_mod);
+    document_mod.addImport("dom_implementation", dom_implementation_mod);
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);

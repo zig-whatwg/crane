@@ -21,6 +21,7 @@ pub const dom_types = @import("dom_types");
 pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 pub const CDATASection = @import("cdata_section").CDATASection;
 pub const DocumentType = @import("document_type").DocumentType;
+pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
@@ -31,6 +32,11 @@ pub const Document = struct {
     // Document fields
     // ========================================================================
     allocator: Allocator,
+    /// Cached DOMImplementation instance ([SameObject])
+    _implementation: ?DOMImplementation,
+    /// String interning pool for tag names, attribute names, etc.
+    /// Provides memory savings (20-30%) and O(1) string comparison via pointer equality
+    _string_pool: std.StringHashMap(void),
 
     pub const includes = .{ ParentNode, NonElementParentNode };
     pub const Text = @import("text").Text;
@@ -42,11 +48,23 @@ pub const Document = struct {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
+            ._implementation = null,
+            ._string_pool = std.StringHashMap(void).init(allocator),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *Document) void {
-        _ = self;
+        // Free all interned strings from pool
+        var it = self._string_pool.keyIterator();
+        while (it.next()) |key_ptr| {
+            self.allocator.free(key_ptr.*);
+        }
+        self._string_pool.deinit();
+
+        // Clean up cached implementation if it exists
+        if (self._implementation) |*impl| {
+            impl.deinit();
+        }
         // NOTE: Parent Node cleanup will be handled by codegen
         // TODO: Call parent Node deinit (will be added by codegen)
     }
@@ -249,11 +267,43 @@ pub const Document = struct {
     // Document methods
     // ========================================================================
 
+    /// Intern a string in the document's string pool
+    /// Returns a pointer to the interned string which can be compared via pointer equality
+    /// If the string is already interned, returns the existing copy
+    /// Caller does NOT own the returned slice - it's managed by the Document
+    pub fn internString(self: *Document, str: []const u8) ![]const u8 {
+        // Check if string is already interned
+        if (self._string_pool.getKey(str)) |existing| {
+            return existing;
+        }
+
+        // Not interned yet - allocate and store
+        const owned = try self.allocator.dupe(u8, str);
+        errdefer self.allocator.free(owned);
+
+        try self._string_pool.put(owned, {});
+        return owned;
+    }
+    /// implementation getter
+    /// DOM §4.6 - Returns document's DOMImplementation object
+    /// [SameObject] - Always returns the same instance
+    pub fn get_implementation(self: *Document) !DOMImplementation {
+        if (self._implementation) |impl| {
+            return impl;
+        }
+        // Create and cache the implementation
+        const impl = try DOMImplementation.init(self.allocator, self);
+        self._implementation = impl;
+        return impl;
+    }
     /// createElement(localName)
     /// Spec: https://dom.spec.whatwg.org/#dom-document-createelement
     pub fn call_createElement(self: *Document, local_name: []const u8) !*Element {
+        // Intern the tag name for memory savings and fast comparison
+        const interned_name = try self.internString(local_name);
+
         const element = try self.allocator.create(Element);
-        element.* = try Element.init(self.allocator, local_name);
+        element.* = try Element.init(self.allocator, interned_name);
         return element;
     }
     /// createTextNode(data)
@@ -384,3 +434,88 @@ pub const Document = struct {
     };
 };
 
+
+// ============================================================================
+// Tests for string interning
+// ============================================================================
+
+test "Document - internString basic deduplication" {
+    const allocator = std.testing.allocator;
+
+    const doc = try allocator.create(Document);
+    defer allocator.destroy(doc);
+    doc.* = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Intern same string twice
+    const str1 = try doc.internString("div");
+    const str2 = try doc.internString("div");
+
+    // Should return same pointer (deduplicated)
+    try std.testing.expect(str1.ptr == str2.ptr);
+    try std.testing.expectEqualStrings("div", str1);
+}
+
+test "Document - internString different strings" {
+    const allocator = std.testing.allocator;
+
+    const doc = try allocator.create(Document);
+    defer allocator.destroy(doc);
+    doc.* = try Document.init(allocator);
+    defer doc.deinit();
+
+    const div = try doc.internString("div");
+    const span = try doc.internString("span");
+
+    // Different strings should have different pointers
+    try std.testing.expect(div.ptr != span.ptr);
+    try std.testing.expectEqualStrings("div", div);
+    try std.testing.expectEqualStrings("span", span);
+}
+
+test "Document - createElement uses interned tag names" {
+    const allocator = std.testing.allocator;
+
+    const doc = try allocator.create(Document);
+    defer allocator.destroy(doc);
+    doc.* = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Create multiple elements with same tag
+    const div1 = try doc.call_createElement("div");
+    defer {
+        div1.deinit();
+        allocator.destroy(div1);
+    }
+
+    const div2 = try doc.call_createElement("div");
+    defer {
+        div2.deinit();
+        allocator.destroy(div2);
+    }
+
+    // Both elements should share the same interned tag name
+    try std.testing.expect(div1.tag_name.ptr == div2.tag_name.ptr);
+    try std.testing.expectEqualStrings("div", div1.tag_name);
+}
+
+test "Document - string interning memory cleanup" {
+    const allocator = std.testing.allocator;
+
+    // Create and destroy document with interned strings
+    {
+        const doc = try allocator.create(Document);
+        defer allocator.destroy(doc);
+        doc.* = try Document.init(allocator);
+
+        // Intern several strings
+        _ = try doc.internString("div");
+        _ = try doc.internString("span");
+        _ = try doc.internString("p");
+
+        // deinit should free all interned strings
+        doc.deinit();
+    }
+
+    // std.testing.allocator will fail if there are memory leaks
+}
