@@ -697,6 +697,15 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const streams_cross_realm_transform_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/cross_realm_transform.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "common", .module = streams_common_mod },
+            .{ .name = "message_port", .module = streams_message_port_mod },
+        },
+    });
+
     const streams_dict_types_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/dictionary_types.zig"),
         .target = target,
@@ -757,6 +766,7 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("view_construction", streams_view_construction_mod);
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
+    streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
 
     // Create interface modules that reference the main streams module for internals
     // This avoids the module collision by sharing the same internal file instances
@@ -774,6 +784,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "async_promise", .module = streams_async_promise_mod },
         .{ .name = "async_iterator", .module = streams_async_iterator_mod },
         .{ .name = "message_port", .module = streams_message_port_mod },
+        .{ .name = "cross_realm_transform", .module = streams_cross_realm_transform_mod },
         .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },
         .{ .name = "view_construction", .module = streams_view_construction_mod },
         .{ .name = "structured_clone", .module = streams_structured_clone_mod },
@@ -885,6 +896,12 @@ pub fn build(b: *std.Build) void {
     // dict_parsing needs the stream types
     streams_dict_parsing_mod.addImport("readable_stream", readable_stream_mod);
     streams_dict_parsing_mod.addImport("writable_stream", writable_stream_mod);
+
+    // cross_realm_transform needs stream types and controllers
+    streams_cross_realm_transform_mod.addImport("readable_stream", readable_stream_mod);
+    streams_cross_realm_transform_mod.addImport("writable_stream", writable_stream_mod);
+    streams_cross_realm_transform_mod.addImport("readable_stream_default_controller", readable_stream_default_controller_mod);
+    streams_cross_realm_transform_mod.addImport("writable_stream_default_controller", writable_stream_default_controller_mod);
 
     // readable_stream needs its controllers and readers, plus writable components for pipeTo
     readable_stream_mod.addImport("readable_stream_default_controller", readable_stream_default_controller_mod);
