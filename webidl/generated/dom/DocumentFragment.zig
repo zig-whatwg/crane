@@ -14,13 +14,14 @@ const webidl = @import("webidl");
 pub const Node = @import("node").Node;
 /// DOM Spec: interface DocumentFragment : Node
 const ParentNode = @import("parent_node").ParentNode;
+const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 pub const DocumentFragment = struct {
     // ========================================================================
     // DocumentFragment fields
     // ========================================================================
     allocator: std.mem.Allocator,
 
-    pub const includes = .{ParentNode};
+    pub const includes = .{ ParentNode, NonElementParentNode };
 
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -208,6 +209,26 @@ pub const DocumentFragment = struct {
             @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
         }
         @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
+    }
+    // ========================================================================
+    // Methods from NonElementParentNode mixin
+    // ========================================================================
+
+    /// DOM §4.3.1 - NonElementParentNode.getElementById()
+    /// Returns the first element within this node's descendants whose ID is elementId.
+    /// 
+    /// The getElementById(elementId) method steps are:
+    /// 1. If this is not a Document or DocumentFragment, return null
+    /// 2. Return the first element, in tree order, within this's descendants,
+    /// that has an ID equal to elementId; otherwise null
+    /// 
+    /// TODO: Implement tree traversal and ID matching
+    /// (Included from NonElementParentNode mixin)
+    pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
+        _ = self;
+        _ = allocator;
+        _ = element_id;
+        return error.NotImplemented;
     }
 
     // WebIDL extended attributes metadata

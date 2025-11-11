@@ -18,13 +18,14 @@ pub const Element = @import("element").Element;
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 const ParentNode = @import("parent_node").ParentNode;
+const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 pub const Document = struct {
     // ========================================================================
     // Document fields
     // ========================================================================
     allocator: Allocator,
 
-    pub const includes = .{ParentNode};
+    pub const includes = .{ ParentNode, NonElementParentNode };
     pub const Text = @import("text").Text;
     pub const Comment = @import("comment").Comment;
     pub const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
@@ -216,6 +217,26 @@ pub const Document = struct {
             @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
         }
         @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
+    }
+    // ========================================================================
+    // Methods from NonElementParentNode mixin
+    // ========================================================================
+
+    /// DOM §4.3.1 - NonElementParentNode.getElementById()
+    /// Returns the first element within this node's descendants whose ID is elementId.
+    /// 
+    /// The getElementById(elementId) method steps are:
+    /// 1. If this is not a Document or DocumentFragment, return null
+    /// 2. Return the first element, in tree order, within this's descendants,
+    /// that has an ID equal to elementId; otherwise null
+    /// 
+    /// TODO: Implement tree traversal and ID matching
+    /// (Included from NonElementParentNode mixin)
+    pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
+        _ = self;
+        _ = allocator;
+        _ = element_id;
+        return error.NotImplemented;
     }
     // ========================================================================
     // Document methods

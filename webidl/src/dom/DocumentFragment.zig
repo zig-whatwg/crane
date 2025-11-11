@@ -4,11 +4,12 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 const ParentNode = @import("ParentNode.zig").ParentNode;
+const NonElementParentNode = @import("NonElementParentNode.zig").NonElementParentNode;
 
 /// DOM Spec: interface DocumentFragment : Node
 pub const DocumentFragment = webidl.interface(struct {
     pub const extends = Node;
-    pub const includes = .{ParentNode};
+    pub const includes = .{ ParentNode, NonElementParentNode };
 
     allocator: std.mem.Allocator,
 
