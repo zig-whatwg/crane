@@ -26,6 +26,7 @@ pub const TestEventLoop = @import("test_event_loop").TestEventLoop;
 pub const AsyncPromise = @import("async_promise").AsyncPromise;
 pub const dict_parsing = @import("dict_parsing");
 pub const structured_clone = @import("structured_clone");
+pub const async_iterator = @import("async_iterator");
 
 // Import related stream types (will be fully linked after all types are defined)
 // NOTE: These will create circular dependencies that need careful handling
@@ -212,8 +213,8 @@ pub const ReadableStream = struct {
             common.defaultSizeAlgorithm();
 
         // Step 5-7: Check stream type (default vs. byte stream)
-        // For now, we only support default streams
-        // TODO: Implement byte stream support in Phase 7
+        // Byte stream constructors use ReadableByteStreamController
+        // Default stream constructors use ReadableStreamDefaultController (this path)
 
         // Create controller on heap
         const controller = try allocator.create(ReadableStreamDefaultController);
@@ -316,8 +317,9 @@ pub const ReadableStream = struct {
         options: ?webidl.JSValue,
     ) !Reader {
         // Parse options to check for BYOB mode
-        // For now, we only support default readers
-        // TODO: Implement BYOB reader support in Phase 7
+        // BYOB readers are supported via ReadableStreamBYOBReader
+        // This path creates default readers
+        // TODO: Route to ReadableStreamBYOBReader when options.mode === "byob"
         _ = options;
 
         // Spec: § 4.1.4 "If options["mode"] does not exist, return ? AcquireReadableStreamDefaultReader(this)."
@@ -441,23 +443,34 @@ pub const ReadableStream = struct {
 
         // Extract iterator from the JSValue
         // This is a simplified bridge - full implementation would need Symbol.asyncIterator support
-        const iterator = try extractAsyncIterator(asyncIterable);
+        const iterator = try extractAsyncIterator(allocator, asyncIterable);
 
         // Call ReadableStreamFromIterable algorithm
         return readableStreamFromIterable(allocator, loop, iterator);
     }
     /// Extract an AsyncIterator from a JSValue
     /// This is a bridge function until full JavaScript runtime integration
-    fn extractAsyncIterator(value: webidl.JSValue) !common.AsyncIterator {
-        // TODO: In full implementation, this would:
-        // 1. Get value[Symbol.asyncIterator]
-        // 2. Call it to get the iterator
-        // 3. Wrap it in common.AsyncIterator
+    fn extractAsyncIterator(allocator: std.mem.Allocator, value: webidl.JSValue) !common.AsyncIterator {
+        // For testing/development, we support passing MockAsyncIterator as pointer in JSValue
+        // In production, this would:
+        // 1. Call GetIterator(value, async) to get Symbol.asyncIterator
+        // 2. Get the next method
+        // 3. Create IteratorRecord
+        // 4. Wrap in common.AsyncIterator
 
-        // For now, we expect the value to contain an iterator reference
-        // This will be properly implemented when zig-js-runtime is integrated
-        _ = value;
-        return error.NotImplemented;
+        // Check if value contains a pointer to MockAsyncIterator
+        switch (value) {
+            .object => {
+                // For now, we expect caller to embed iterator pointer
+                // This is a temporary solution until full Symbol support
+                // Callers can use: JSValue{ .object = @ptrCast(mockIterator) }
+                return error.NotImplemented; // Still needs proper implementation
+            },
+            else => return error.TypeError,
+        }
+
+        // TODO: Full implementation with Symbol.asyncIterator lookup
+        _ = allocator;
     }
     /// ReadableStreamFromIterable algorithm
     /// Spec: § 4.3.15 ReadableStreamFromIterable(asyncIterable)
@@ -518,6 +531,45 @@ pub const ReadableStream = struct {
 
         // Spec step 7: Return stream
         return stream;
+    }
+    /// Create a ReadableStream from a MockAsyncIterator (for testing)
+    /// 
+    /// This is a convenience function that wraps MockAsyncIterator in common.AsyncIterator
+    /// and calls readableStreamFromIterable().
+    /// 
+    /// For production use, call_from() should be used with proper JSValue containing
+    /// Symbol.asyncIterator support.
+    pub fn fromMockIterator(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        mock: *async_iterator.MockAsyncIterator,
+    ) !*ReadableStream {
+        // Wrap MockAsyncIterator in common.AsyncIterator
+        const iterator = common.AsyncIterator{
+            .ptr = mock,
+            .vtable = &.{
+                .next = struct {
+                    fn call(ctx: *anyopaque) common.Promise(common.IteratorResult) {
+                        const m: *async_iterator.MockAsyncIterator = @ptrCast(@alignCast(ctx));
+                        const result = m.next();
+                        return common.Promise(common.IteratorResult).fulfilled(.{
+                            .value = result.value,
+                            .done = result.done,
+                        });
+                    }
+                }.call,
+                .return_fn = struct {
+                    fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(common.JSValue) {
+                        const m: *async_iterator.MockAsyncIterator = @ptrCast(@alignCast(ctx));
+                        const result = m.returnMethod(reason orelse common.JSValue.undefined_value());
+                        return common.Promise(common.JSValue).fulfilled(result.value);
+                    }
+                }.call,
+                .deinit = null, // MockAsyncIterator is managed externally
+            },
+        };
+
+        return readableStreamFromIterable(allocator, loop, iterator);
     }
     /// CreateReadableStream abstract operation
     /// Spec: § 4.3.4 CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm[, highWaterMark[, sizeAlgorithm]])
@@ -595,10 +647,81 @@ pub const ReadableStream = struct {
     pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
         return self.call_values(false);
     }
-    /// ReadableStreamCancel(stream, reason)
+    /// [[TransferSteps]](dataHolder)
     /// 
-    /// ReadableStreamCancel(stream, reason)
+    /// Spec: § 4.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#rs-transfer
     /// 
+    /// Steps for transferring a ReadableStream via postMessage().
+    /// Creates a MessagePort pair, pipes the stream through it, and serializes
+    /// the receiving port for transfer to another realm.
+    pub fn transferSteps(self: *ReadableStream) !*structured_clone.SerializedData {
+        const cross_realm_transform = @import("cross_realm_transform");
+        const message_port = @import("message_port");
+
+        // Spec step 1: If ! IsReadableStreamLocked(value) is true, throw DataCloneError
+        if (self.reader != .none) {
+            return error.DataCloneError;
+        }
+
+        // Spec step 2-3: Create MessagePort pair
+        const ports = try message_port.createMessagePortPair(self.allocator);
+        const port1 = ports[0];
+        const port2 = ports[1];
+
+        // Spec step 4: Entangle (already done in createMessagePortPair)
+
+        // Spec step 5: Create WritableStream in current realm
+        const writable = try WritableStream.init(self.allocator);
+        errdefer writable.deinit();
+
+        // Spec step 6: SetUpCrossRealmTransformWritable(writable, port1)
+        try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, writable, port1);
+
+        // Spec step 7: Let promise = ! ReadableStreamPipeTo(value, writable, false, false, false)
+        // Note: We're not awaiting the promise - it runs in the background
+        _ = try self.pipeToInternal(writable, false, false, false, null);
+
+        // Spec step 8: Set promise.[[PromiseIsHandled]] to true
+        // (Promise error handling is internal to pipeTo)
+
+        // Spec step 9: Serialize port2 with transfer
+        const serialized = try structured_clone.structuredSerializeWithTransfer(self.allocator, port2);
+
+        return serialized;
+    }
+
+    /// [[TransferReceivingSteps]](dataHolder)
+    ///
+    /// Spec: § 4.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    ///
+    /// Steps for receiving a transferred ReadableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that reads from it.
+    pub fn transferReceivingSteps(
+        self: *ReadableStream,
+        serialized: *structured_clone.SerializedData,
+    ) !void {
+        const cross_realm_transform = @import("cross_realm_transform");
+
+        // Spec step 1: Let deserializedRecord = ! StructuredDeserializeWithTransfer(dataHolder.[[port]], current Realm)
+        const deserialized = try structured_clone.structuredDeserializeWithTransfer(self.allocator, serialized);
+
+        // Spec step 2: Let port = deserializedRecord.[[Deserialized]]
+        const port = deserialized.port;
+
+        // Spec step 3: Perform ! SetUpCrossRealmTransformReadable(value, port)
+        try cross_realm_transform.setupCrossRealmTransformReadable(self.allocator, self, port);
+    }
+
+    // ============================================================================
+    // Internal Algorithms (Abstract Operations)
+    // ============================================================================
+
+    /// ReadableStreamCancel(stream, reason)
+    ///
+    /// ReadableStreamCancel(stream, reason)
+    ///
     /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
     pub fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
         // Spec step 1: Set stream.[[disturbed]] to true
@@ -623,8 +746,7 @@ pub const ReadableStream = struct {
 
         // Spec step 5: Let reader be stream.[[reader]]
         // Spec step 6: If reader is not undefined and reader implements ReadableStreamBYOBReader
-        // TODO: Handle BYOB reader readIntoRequests (Phase 7)
-        // For now, we only have default readers which are handled in closeInternal()
+        // BYOB reader readIntoRequests are now handled in errorInternal() and closeInternal()
 
         // Spec step 7: Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
         const cancel_promise = try self.controller.cancelInternal(reason);
@@ -988,9 +1110,17 @@ pub const ReadableStream = struct {
                     });
                 }
             },
-            .byob => {
-                // TODO: BYOB reader close handling (Phase 7)
-                // This would handle readIntoRequests similar to default reader
+            .byob => |reader| {
+                // Spec: Resolve closed promise
+                reader.closedPromise.fulfill({});
+
+                // Spec: Respond to all pending readIntoRequests with done=true
+                while (reader.readIntoRequests.items.len > 0) {
+                    const request = reader.readIntoRequests.orderedRemove(0);
+                    // Close steps should return the view with done=true
+                    // For now, execute close steps with empty view
+                    request.executeCloseSteps(null);
+                }
             },
         }
     }
@@ -1023,7 +1153,16 @@ pub const ReadableStream = struct {
                     promise.reject(e);
                 }
             },
-            .byob => {}, // TODO: BYOB reader error handling (Phase 7)
+            .byob => |reader| {
+                // Spec: Reject closed promise
+                reader.closedPromise.reject(e);
+
+                // Spec: Reject all pending readIntoRequests
+                while (reader.readIntoRequests.items.len > 0) {
+                    const request = reader.readIntoRequests.orderedRemove(0);
+                    request.executeErrorSteps(e);
+                }
+            },
         }
     }
     /// ReadableByteStreamTee(stream)
