@@ -98,6 +98,7 @@ comptime {
     _ = dom.CharacterData;
     _ = dom.Text;
     _ = dom.Comment;
+    _ = dom.ProcessingInstruction;
     _ = dom.DocumentFragment;
     _ = dom.NodeList;
     _ = dom.NamedNodeMap;

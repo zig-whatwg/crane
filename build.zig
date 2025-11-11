@@ -245,6 +245,7 @@ pub fn build(b: *std.Build) void {
     const character_data_mod = getWebIDLModule(webidl_modules, "dom_character_data");
     const text_mod = getWebIDLModule(webidl_modules, "dom_text");
     const comment_mod = getWebIDLModule(webidl_modules, "dom_comment");
+    const processing_instruction_mod = getWebIDLModule(webidl_modules, "dom_processing_instruction");
     const document_fragment_mod = getWebIDLModule(webidl_modules, "dom_document_fragment");
     const document_mod = getWebIDLModule(webidl_modules, "dom_document");
     const dom_token_list_mod = getWebIDLModule(webidl_modules, "dom_domtoken_list");
@@ -282,6 +283,9 @@ pub fn build(b: *std.Build) void {
     comment_mod.addImport("character_data", character_data_mod);
     comment_mod.addImport("dom_types", dom_types_mod);
     comment_mod.addImport("element", element_mod);
+    processing_instruction_mod.addImport("character_data", character_data_mod);
+    processing_instruction_mod.addImport("dom_types", dom_types_mod);
+    processing_instruction_mod.addImport("element", element_mod);
     document_fragment_mod.addImport("node", node_mod);
     document_fragment_mod.addImport("element", element_mod);
     document_fragment_mod.addImport("node_list", node_list_mod);
@@ -292,6 +296,7 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("node_list", node_list_mod);
     document_mod.addImport("html_collection", html_collection_mod);
     document_mod.addImport("dom_types", dom_types_mod);
+    document_mod.addImport("processing_instruction", processing_instruction_mod);
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
@@ -316,6 +321,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("character_data", character_data_mod);
     dom_mod.addImport("text", text_mod);
     dom_mod.addImport("comment", comment_mod);
+    dom_mod.addImport("processing_instruction", processing_instruction_mod);
     dom_mod.addImport("document_fragment", document_fragment_mod);
     dom_mod.addImport("document", document_mod);
     dom_mod.addImport("dom_token_list", dom_token_list_mod);

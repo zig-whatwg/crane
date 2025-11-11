@@ -20,6 +20,7 @@ pub const Element = @import("element").Element;
 pub const CharacterData = @import("character_data").CharacterData;
 pub const Text = @import("text").Text;
 pub const Comment = @import("comment").Comment;
+pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
 pub const Attr = @import("attr").Attr;

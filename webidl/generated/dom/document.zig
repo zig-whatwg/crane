@@ -18,6 +18,7 @@ pub const Element = @import("element").Element;
 pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
+pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
@@ -272,6 +273,20 @@ pub const Document = struct {
         _ = data;
         return comment;
     }
+    /// createProcessingInstruction(target, data)
+    /// DOM §4.6.1 - Creates a ProcessingInstruction node
+    /// Returns a new ProcessingInstruction node whose target is target, data is data,
+    /// and node document is this.
+    pub fn call_createProcessingInstruction(
+        self: *Document,
+        target: []const u8,
+        data: []const u8,
+    ) !*ProcessingInstruction {
+        const pi = try self.allocator.create(ProcessingInstruction);
+        pi.* = try ProcessingInstruction.init(self.allocator, target, data);
+        return pi;
+    }
+
     /// createDocumentFragment()
     /// DOM §4.6.1 - The createDocumentFragment() method steps are to return
     /// a new DocumentFragment node whose node document is this.
