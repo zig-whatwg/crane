@@ -57,17 +57,46 @@ pub const Node = webidl.interface(struct {
         self.child_nodes.deinit();
     }
 
-    /// appendChild(node)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
-    pub fn call_appendChild(self: *Node, node: *Node) !*Node {
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
+    pub fn call_insertBefore(self: *Node, node: *Node, child: ?*Node) !*Node {
+        // TODO: Use mutation.preInsert algorithm from src/dom/mutation.zig
+        // For now, basic implementation
+        _ = child;
         try self.child_nodes.append(node);
         node.parent_node = self;
         return node;
     }
 
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
+    pub fn call_appendChild(self: *Node, node: *Node) !*Node {
+        // TODO: Use mutation.append algorithm from src/dom/mutation.zig
+        try self.child_nodes.append(node);
+        node.parent_node = self;
+        return node;
+    }
+
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
+    pub fn call_replaceChild(self: *Node, node: *Node, child: *Node) !*Node {
+        // TODO: Use mutation.replace algorithm from src/dom/mutation.zig
+        // For now, basic implementation
+        for (self.child_nodes.items, 0..) |existing, i| {
+            if (existing == child) {
+                self.child_nodes.items[i] = node;
+                child.parent_node = null;
+                node.parent_node = self;
+                return child;
+            }
+        }
+        return error.NotFoundError;
+    }
+
     /// removeChild(child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *Node, child: *Node) !*Node {
+        // TODO: Use mutation.preRemove algorithm from src/dom/mutation.zig
         for (self.child_nodes.items, 0..) |node, i| {
             if (node == child) {
                 _ = self.child_nodes.orderedRemove(i);
@@ -76,6 +105,66 @@ pub const Node = webidl.interface(struct {
             }
         }
         return error.NotFoundError;
+    }
+
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    pub fn call_getRootNode(self: *Node, options: ?GetRootNodeOptions) *Node {
+        // TODO: Support shadow-including root when options.composed is true
+        _ = options;
+        // For now, return regular root (from tree.zig)
+        var current = self;
+        while (current.parent_node) |parent| {
+            current = parent;
+        }
+        return current;
+    }
+
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
+    pub fn call_contains(self: *const Node, other: ?*const Node) bool {
+        if (other == null) return false;
+        // Check if other is an inclusive descendant of this
+        // TODO: Use tree.isInclusiveDescendant from src/dom/tree.zig
+        const other_node = other.?;
+        if (self == other_node) return true;
+
+        var current = other_node.parent_node;
+        while (current) |parent| {
+            if (parent == self) return true;
+            current = parent.parent_node;
+        }
+        return false;
+    }
+
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
+    pub fn call_compareDocumentPosition(self: *const Node, other: *const Node) u16 {
+        // TODO: Implement full algorithm from spec
+        // For now, return disconnected
+        _ = self;
+        _ = other;
+        return DOCUMENT_POSITION_DISCONNECTED;
+    }
+
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
+    pub fn call_isEqualNode(self: *const Node, other_node: ?*const Node) bool {
+        if (other_node == null) return false;
+        // TODO: Implement deep equality check per spec
+        const other = other_node.?;
+        if (self.node_type != other.node_type) return false;
+        if (!std.mem.eql(u8, self.node_name, other.node_name)) return false;
+        // TODO: Check children, attributes, etc.
+        return true;
+    }
+
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
+    pub fn call_isSameNode(self: *const Node, other_node: ?*const Node) bool {
+        // Legacy alias of === (pointer equality)
+        if (other_node == null) return false;
+        return self == other_node.?;
     }
 
     /// hasChildNodes()
@@ -129,6 +218,72 @@ pub const Node = webidl.interface(struct {
     pub fn get_ownerDocument(self: *const Node) ?*Document {
         return self.owner_document;
     }
+
+    pub fn get_previousSibling(self: *const Node) ?*Node {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i == 0) return null;
+                return parent.child_nodes.items[i - 1];
+            }
+        }
+        return null;
+    }
+
+    pub fn get_nextSibling(self: *const Node) ?*Node {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i + 1 >= parent.child_nodes.items.len) return null;
+                return parent.child_nodes.items[i + 1];
+            }
+        }
+        return null;
+    }
+
+    pub fn get_isConnected(self: *const Node) bool {
+        // A node is connected if its root is a document
+        // TODO: Use tree.root from src/dom/tree.zig
+        var current = self;
+        while (current.parent_node) |parent| {
+            current = parent;
+        }
+        // Check if root is a document (node_type == DOCUMENT_NODE)
+        return current.node_type == DOCUMENT_NODE;
+    }
+
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
+    pub fn call_lookupPrefix(self: *const Node, namespace_param: ?[]const u8) ?[]const u8 {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = namespace_param;
+        return null;
+    }
+
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
+    pub fn call_lookupNamespaceURI(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = prefix;
+        return null;
+    }
+
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
+    pub fn call_isDefaultNamespace(self: *const Node, namespace_param: ?[]const u8) bool {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = namespace_param;
+        return false;
+    }
 }, .{
     .exposed = &.{.Window},
 });
+
+/// GetRootNodeOptions dictionary
+/// Spec: https://dom.spec.whatwg.org/#dictdef-getrootnodeoptions
+pub const GetRootNodeOptions = struct {
+    composed: bool = false,
+};
