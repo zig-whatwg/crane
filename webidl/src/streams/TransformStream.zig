@@ -212,6 +212,133 @@ pub const TransformStream = webidl.interface(struct {
             self.setBackpressure(false);
         }
     }
+
+    // ============================================================================
+    // Default Sink Algorithms (Writable Side)
+    // ============================================================================
+
+    /// TransformStreamDefaultSinkWriteAlgorithm(stream, chunk)
+    ///
+    /// Spec: § 6.3.4 "Default sink write algorithm"
+    pub fn defaultSinkWriteAlgorithm(self: *TransformStream, chunk: common.JSValue) common.Promise(void) {
+        // Spec step 1: Assert: stream.[[writable]].[[state]] is "writable"
+        // (Assertion - caller ensures this)
+
+        // Spec step 2: Let controller be stream.[[controller]]
+        const controller = self.controller;
+
+        // Spec step 3: If stream.[[backpressure]] is true
+        if (self.backpressure) {
+            // TODO: Spec step 3.1-3.3: Wait for backpressureChangePromise
+            // For now, we proceed directly to transform
+            // Full implementation would:
+            // - Wait for backpressureChangePromise to resolve
+            // - Check writable state after promise resolves
+            // - Then perform transform
+        }
+
+        // Spec step 4: Return ! TransformStreamDefaultControllerPerformTransform(controller, chunk)
+        return controller.performTransform(chunk);
+    }
+
+    /// TransformStreamDefaultSinkAbortAlgorithm(stream, reason)
+    ///
+    /// Spec: § 6.3.4 "Default sink abort algorithm"
+    pub fn defaultSinkAbortAlgorithm(self: *TransformStream, reason: ?common.JSValue) common.Promise(void) {
+        // Spec step 1: Let controller be stream.[[controller]]
+        const controller = self.controller;
+
+        // Spec step 2-8: Handle finishPromise and cancelAlgorithm
+        // TODO: Full implementation with finishPromise
+        // For now, simplified:
+
+        // Spec step 5: Let cancelPromise be the result of performing controller.[[cancelAlgorithm]], passing reason
+        const reason_val = reason orelse common.JSValue.undefined_value();
+        const cancel_promise = controller.cancelAlgorithm.call(reason_val);
+
+        // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
+        controller.clearAlgorithms();
+
+        // Spec step 7: React to cancelPromise (simplified - return directly for now)
+        // Full implementation would handle readable.[[state]] and errors
+
+        return cancel_promise;
+    }
+
+    /// TransformStreamDefaultSinkCloseAlgorithm(stream)
+    ///
+    /// Spec: § 6.3.4 "Default sink close algorithm"
+    pub fn defaultSinkCloseAlgorithm(self: *TransformStream) common.Promise(void) {
+        // Spec step 1: Let controller be stream.[[controller]]
+        const controller = self.controller;
+
+        // Spec step 2-8: Handle finishPromise and flushAlgorithm
+        // TODO: Full implementation with finishPromise
+        // For now, simplified:
+
+        // Spec step 5: Let flushPromise be the result of performing controller.[[flushAlgorithm]]
+        const flush_promise = controller.flushAlgorithm.call();
+
+        // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
+        controller.clearAlgorithms();
+
+        // Spec step 7: React to flushPromise (simplified - close readable on success)
+        // Full implementation would check readable state and handle errors
+        if (flush_promise.isFulfilled()) {
+            self.readableStream.controller.closeInternal();
+        }
+
+        return flush_promise;
+    }
+
+    // ============================================================================
+    // Default Source Algorithms (Readable Side)
+    // ============================================================================
+
+    /// TransformStreamDefaultSourcePullAlgorithm(stream)
+    ///
+    /// Spec: § 6.3.5 "Default source pull algorithm"
+    pub fn defaultSourcePullAlgorithm(self: *TransformStream) common.Promise(void) {
+        // Spec step 1: Assert: stream.[[backpressure]] is true
+        std.debug.assert(self.backpressure);
+
+        // Spec step 2: Assert: stream.[[backpressureChangePromise]] is not undefined
+        // (Simplified - we don't track backpressureChangePromise yet)
+
+        // Spec step 3: Perform ! TransformStreamSetBackpressure(stream, false)
+        self.setBackpressure(false);
+
+        // Spec step 4: Return stream.[[backpressureChangePromise]]
+        // For now, return fulfilled promise (simplified)
+        return common.Promise(void).fulfilled({});
+    }
+
+    /// TransformStreamDefaultSourceCancelAlgorithm(stream, reason)
+    ///
+    /// Spec: § 6.3.5 "Default source cancel algorithm"
+    pub fn defaultSourceCancelAlgorithm(self: *TransformStream, reason: ?common.JSValue) common.Promise(void) {
+        // Spec step 1: Let controller be stream.[[controller]]
+        const controller = self.controller;
+
+        // Spec step 2-8: Handle finishPromise and cancelAlgorithm
+        // TODO: Full implementation with finishPromise
+        // For now, simplified:
+
+        // Spec step 5: Let cancelPromise be the result of performing controller.[[cancelAlgorithm]], passing reason
+        const reason_val = reason orelse common.JSValue.undefined_value();
+        const cancel_promise = controller.cancelAlgorithm.call(reason_val);
+
+        // Spec step 6: Perform ! TransformStreamDefaultControllerClearAlgorithms(controller)
+        controller.clearAlgorithms();
+
+        // Spec step 7: React to cancelPromise (simplified)
+        // Full implementation would handle writable state, error propagation, and unblock write
+        if (cancel_promise.isFulfilled()) {
+            self.unblockWrite();
+        }
+
+        return cancel_promise;
+    }
 }, .{
     .exposed = &.{.global},
     .transferable = true,
