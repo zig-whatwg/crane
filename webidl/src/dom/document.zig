@@ -12,6 +12,7 @@ const NodeList = @import("node_list").NodeList;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const dom_types = @import("dom_types");
 const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
+const CDATASection = @import("cdata_section").CDATASection;
 
 const Allocator = std.mem.Allocator;
 
@@ -77,6 +78,15 @@ pub const Document = webidl.interface(struct {
         const pi = try self.allocator.create(ProcessingInstruction);
         pi.* = try ProcessingInstruction.init(self.allocator, target, data);
         return pi;
+    }
+
+    /// createCDATASection(data)
+    /// DOM §4.6.1 - Creates a CDATASection node
+    /// Returns a new CDATASection node whose data is data and node document is this.
+    pub fn call_createCDATASection(self: *Document, data: []const u8) !*CDATASection {
+        const cdata = try self.allocator.create(CDATASection);
+        cdata.* = try CDATASection.init(self.allocator, data);
+        return cdata;
     }
 
     /// createDocumentFragment()

@@ -19,6 +19,7 @@ pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
 pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
+pub const CDATASection = @import("cdata_section").CDATASection;
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
@@ -287,6 +288,14 @@ pub const Document = struct {
         return pi;
     }
 
+    /// createCDATASection(data)
+    /// DOM §4.6.1 - Creates a CDATASection node
+    /// Returns a new CDATASection node whose data is data and node document is this.
+    pub fn call_createCDATASection(self: *Document, data: []const u8) !*CDATASection {
+        const cdata = try self.allocator.create(CDATASection);
+        cdata.* = try CDATASection.init(self.allocator, data);
+        return cdata;
+    }
     /// createDocumentFragment()
     /// DOM §4.6.1 - The createDocumentFragment() method steps are to return
     /// a new DocumentFragment node whose node document is this.
