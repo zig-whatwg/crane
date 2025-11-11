@@ -681,6 +681,14 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const streams_async_iterator_mod = b.createModule(.{
+        .root_source_file = b.path("src/streams/internal/async_iterator.zig"),
+        .target = target,
+        .imports = &.{
+            .{ .name = "common", .module = streams_common_mod },
+        },
+    });
+
     const streams_dict_types_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/dictionary_types.zig"),
         .target = target,
@@ -739,6 +747,7 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("write_request", streams_write_request_mod);
     streams_mod.addImport("structured_clone", streams_structured_clone_mod);
     streams_mod.addImport("view_construction", streams_view_construction_mod);
+    streams_mod.addImport("async_iterator", streams_async_iterator_mod);
 
     // Create interface modules that reference the main streams module for internals
     // This avoids the module collision by sharing the same internal file instances
@@ -754,6 +763,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "dict_parsing", .module = streams_dict_parsing_mod },
         .{ .name = "event_loop", .module = streams_event_loop_mod },
         .{ .name = "async_promise", .module = streams_async_promise_mod },
+        .{ .name = "async_iterator", .module = streams_async_iterator_mod },
         .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },
         .{ .name = "view_construction", .module = streams_view_construction_mod },
         .{ .name = "structured_clone", .module = streams_structured_clone_mod },
