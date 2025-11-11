@@ -50,12 +50,11 @@ pub const ReadableStreamGenericReader = struct {
     // ReadableStreamGenericReader methods
     // ========================================================================
 
-    /// closed attribute getter
-    /// 
+    /// readonly attribute Promise<undefined> closed
     /// IDL: readonly attribute Promise<undefined> closed;
     /// 
     /// Spec: § 4.2.3 "The closed getter steps are:"
-    pub fn closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
+    pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
         } else if (self.closedPromise.isRejected()) {
@@ -68,10 +67,37 @@ pub const ReadableStreamGenericReader = struct {
             return webidl.Promise(void).pending();
         }
     }
-    /// cancel(reason) method
-    /// 
+    /// Promise<undefined> cancel(optional any reason)
     /// IDL: Promise<undefined> cancel(optional any reason);
     /// 
+    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
+    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
+        if (self.stream == null) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Reader released" });
+            return promise;
+        }
+
+        const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
+
+        // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
+        return self.genericCancel(reason_value);
+    }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ReadableStreamGenericReader",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+    ///
     /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
     pub fn cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
@@ -86,8 +112,13 @@ pub const ReadableStreamGenericReader = struct {
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
         return self.genericCancel(reason_value);
     }
+
+    // ============================================================================
+    // Internal Algorithms (Abstract Operations)
+    // ============================================================================
+
     /// ReadableStreamReaderGenericCancel(reader, reason)
-    /// 
+    ///
     /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
     fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
         // Step 1: Let stream be reader.[[stream]].
@@ -99,8 +130,9 @@ pub const ReadableStreamGenericReader = struct {
         // Step 3: Return ! ReadableStreamCancel(stream, reason).
         return stream.cancelInternal(reason);
     }
+
     /// ReadableStreamReaderGenericRelease(reader)
-    /// 
+    ///
     /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
         // Step 1: Let stream be reader.[[stream]].
@@ -129,16 +161,4 @@ pub const ReadableStreamGenericReader = struct {
         // Step 8: Set reader.[[stream]] to undefined.
         self.stream = null;
     }
-
-    // WebIDL extended attributes metadata
-    pub const __webidl__ = .{
-        .name = "ReadableStreamGenericReader",
-        .kind = .mixin,
-        .exposed = null,
-        .transferable = false,
-        .serializable = false,
-        .secure_context = false,
-        .cross_origin_isolated = false,
-    };
-};
-
+});

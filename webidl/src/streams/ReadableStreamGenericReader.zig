@@ -39,15 +39,14 @@ pub const ReadableStreamGenericReader = webidl.mixin(struct {
     eventLoop: eventLoop.EventLoop,
 
     // ============================================================================
-    // WebIDL Mixin Methods
+    // WebIDL Mixin: Readonly Attributes
     // ============================================================================
 
-    /// closed attribute getter
-    ///
+    /// readonly attribute Promise<undefined> closed
     /// IDL: readonly attribute Promise<undefined> closed;
     ///
     /// Spec: § 4.2.3 "The closed getter steps are:"
-    pub fn closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
+    pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
         } else if (self.closedPromise.isRejected()) {
@@ -59,6 +58,29 @@ pub const ReadableStreamGenericReader = webidl.mixin(struct {
         } else {
             return webidl.Promise(void).pending();
         }
+    }
+
+    // ============================================================================
+    // WebIDL Mixin: Instance Methods
+    // ============================================================================
+
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    ///
+    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
+    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
+        if (self.stream == null) {
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Reader released" });
+            return promise;
+        }
+
+        const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
+
+        // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
+        return self.genericCancel(reason_value);
+    }
     }
 
     /// cancel(reason) method
