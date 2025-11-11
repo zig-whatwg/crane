@@ -146,7 +146,7 @@ pub const WritableStream = webidl.interface(struct {
         const controller = try allocator.create(WritableStreamDefaultController);
         errdefer allocator.destroy(controller);
 
-        controller.* = WritableStreamDefaultController.init(
+        controller.* = try WritableStreamDefaultController.init(
             allocator,
             abortAlgorithm,
             closeAlgorithm,
@@ -323,8 +323,8 @@ pub const WritableStream = webidl.interface(struct {
         }
 
         // Spec step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
-        // TODO: Implement AbortSignal integration when AbortController is available
-        // For now, we skip this step (no user code to run)
+        const reason_webidl = if (reason) |r| r.toWebIDL() else null;
+        self.controller.abortController.call_abort(reason_webidl);
 
         // Spec step 3: Let state be stream.[[state]]
         const state = self.state;

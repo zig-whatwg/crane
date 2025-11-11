@@ -12,9 +12,14 @@ const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const eventLoop = @import("event_loop");
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const WritableStream = @import("writable_stream").WritableStream;
+const AbortController = @import("dom").AbortController;
 
 pub const WritableStreamDefaultController = webidl.interface(struct {
     allocator: std.mem.Allocator,
+
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#writablestreamdefaultcontroller-abortcontroller
+    abortController: AbortController,
 
     /// [[abortAlgorithm]]: Promise-returning algorithm for abort
     abortAlgorithm: common.AbortAlgorithm,
@@ -56,9 +61,10 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
         strategyHwm: f64,
         strategySizeAlgorithm: common.SizeAlgorithm,
         loop: eventLoop.EventLoop,
-    ) WritableStreamDefaultController {
+    ) !WritableStreamDefaultController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .abortAlgorithm = abortAlgorithm,
             .closeAlgorithm = closeAlgorithm,
             .queue = QueueWithSizes.init(allocator),
@@ -73,6 +79,7 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     }
 
     pub fn deinit(self: *WritableStreamDefaultController) void {
+        self.abortController.deinit();
         self.queue.deinit();
     }
 

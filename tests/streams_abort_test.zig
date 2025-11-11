@@ -133,3 +133,98 @@ test "WritableStream.abort() - rejects pending writes" {
     // Clean up
     write_promise.deinit();
 }
+
+test "WritableStream.abort() - signals abort on controller's AbortController" {
+    const allocator = testing.allocator;
+
+    // Create event loop
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create stream
+    var stream = try streams.WritableStream.initWithSink(allocator, loop.eventLoop(), null, null);
+    defer stream.deinit();
+
+    // Verify AbortSignal is not aborted initially
+    try testing.expect(!stream.controller.abortController.signal.aborted);
+
+    // Abort stream with reason
+    const abort_reason = streams.JSValue{ .string = "test abort reason" };
+    const abort_promise = try stream.call_abort(abort_reason);
+    defer abort_promise.deinit();
+
+    // Spec § 5.3.3 step 2: Signal abort should have been called
+    // AbortSignal should now be aborted
+    try testing.expect(stream.controller.abortController.signal.aborted);
+    
+    // Abort reason should be set
+    try testing.expect(stream.controller.abortController.signal.reason != null);
+}
+
+test "WritableStream.abort() - abort algorithms are executed" {
+    const allocator = testing.allocator;
+
+    // Create event loop
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create stream
+    var stream = try streams.WritableStream.initWithSink(allocator, loop.eventLoop(), null, null);
+    defer stream.deinit();
+
+    // Track if abort algorithm was called
+    const AbortCallback = struct {
+        var called: bool = false;
+        fn callback(reason: @import("webidl").JSValue) void {
+            _ = reason;
+            called = true;
+        }
+    };
+    AbortCallback.called = false;
+
+    // Add algorithm to AbortSignal
+    try stream.controller.abortController.signal.addAlgorithm(AbortCallback.callback);
+
+    // Abort stream
+    const abort_promise = try stream.call_abort(null);
+    defer abort_promise.deinit();
+
+    // Verify abort algorithm was called during signal abort
+    try testing.expect(AbortCallback.called);
+}
+
+test "WritableStream.abort() - abort algorithms cleared after abort" {
+    const allocator = testing.allocator;
+
+    // Create event loop
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create stream
+    var stream = try streams.WritableStream.initWithSink(allocator, loop.eventLoop(), null, null);
+    defer stream.deinit();
+
+    // Track calls
+    const AbortCallback = struct {
+        var call_count: usize = 0;
+        fn callback(reason: @import("webidl").JSValue) void {
+            _ = reason;
+            call_count += 1;
+        }
+    };
+    AbortCallback.call_count = 0;
+
+    // Add algorithm
+    try stream.controller.abortController.signal.addAlgorithm(AbortCallback.callback);
+
+    // Abort stream
+    const abort_promise1 = try stream.call_abort(null);
+    defer abort_promise1.deinit();
+
+    // Verify called once
+    try testing.expectEqual(@as(usize, 1), AbortCallback.call_count);
+
+    // Spec § DOM: Abort algorithms should be cleared after running
+    // Verify algorithms list is empty
+    try testing.expectEqual(@as(usize, 0), stream.controller.abortController.signal.abort_algorithms.items.len);
+}
