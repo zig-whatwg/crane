@@ -92,7 +92,7 @@ pub const ReadableStreamGenericReader = webidl.mixin(struct {
         const stream = self.stream.?;
 
         // Step 2: Assert: stream is not undefined.
-        std.debug.assert(stream != null);
+        // (Assertion is implicit - .? will panic if stream is null)
 
         // Step 3: Return ! ReadableStreamCancel(stream, reason).
         return stream.cancelInternal(reason);

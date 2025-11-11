@@ -246,6 +246,22 @@ pub fn AsyncPromise(comptime T: type) type {
             self.reactions.clearRetainingCapacity();
         }
 
+        /// Execute close steps for ReadResult promises
+        ///
+        /// Spec: Used when closing a stream with pending read requests.
+        /// Fulfills the promise with { value: null, done: true }
+        ///
+        /// Only available for AsyncPromise(ReadResult)
+        pub fn executeCloseSteps(self: *Self) void {
+            // This method is only meaningful for ReadResult promises
+            const ReadResult = @import("common").ReadResult;
+            if (T == ReadResult) {
+                self.fulfill(.{ .value = null, .done = true });
+            } else {
+                @compileError("executeCloseSteps is only available for AsyncPromise(ReadResult)");
+            }
+        }
+
         /// Attach fulfillment and rejection handlers
         ///
         /// Returns a new promise that resolves/rejects based on the handler

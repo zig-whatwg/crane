@@ -565,6 +565,10 @@ pub const ReadableStream = struct {
             preventCancel,
         );
     }
+    /// Alias for generated code compatibility
+    pub fn values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
+        return self.call_values(preventCancel);
+    }
     /// Get an async iterator with default options (preventCancel = false)
     /// 
     /// This is the default async iterator used by for-await loops
