@@ -2354,6 +2354,45 @@ pub const ByteTeeState = struct {
         }
     }
 
+    /// Create composite reason from reason1 and reason2
+    ///
+    /// Spec: § 4.10.6 steps 19.3.1 / 20.3.1 "CreateArrayFromList"
+    ///
+    /// Note: We create a string representation since we don't have full JS arrays
+    /// In a full implementation, this would be a proper JavaScript array [reason1, reason2]
+    fn createCompositeReason(self: *ByteTeeState) !?common.JSValue {
+        const reason1_str = if (self.reason1) |r1| switch (r1) {
+            .string => |s| s,
+            .undefined => "undefined",
+            .null => "null",
+            .boolean => |b| if (b) "true" else "false",
+            .number => "number",
+            .bytes => "bytes",
+            .object => "object",
+            .close_sentinel => "close",
+        } else "undefined";
+
+        const reason2_str = if (self.reason2) |r2| switch (r2) {
+            .string => |s| s,
+            .undefined => "undefined",
+            .null => "null",
+            .boolean => |b| if (b) "true" else "false",
+            .number => "number",
+            .bytes => "bytes",
+            .object => "object",
+            .close_sentinel => "close",
+        } else "undefined";
+
+        // Create composite string: "[reason1, reason2]"
+        const composite = try std.fmt.allocPrint(
+            self.allocator,
+            "[{s}, {s}]",
+            .{ reason1_str, reason2_str },
+        );
+
+        return common.JSValue{ .string = composite };
+    }
+
     /// Cancel algorithm for branch 1
     ///
     /// Spec: § 4.10.6 step 19 "cancel1Algorithm"
@@ -2366,9 +2405,13 @@ pub const ByteTeeState = struct {
 
         // Step 19.3: If canceled2 is true, composite cancel
         if (self.canceled2) {
-            // Create composite reason: [reason1, reason2]
-            // For now, just use reason1
-            const cancelResult = try self.source.cancelInternal(reason);
+            // Step 19.3.1: Create composite reason: [reason1, reason2]
+            const compositeReason = try self.createCompositeReason();
+
+            // Step 19.3.2: Cancel stream with composite reason
+            const cancelResult = try self.source.cancelInternal(compositeReason);
+
+            // Step 19.3.3: Resolve cancelPromise
             self.cancelPromise.fulfill({});
             return cancelResult;
         }
@@ -2389,9 +2432,13 @@ pub const ByteTeeState = struct {
 
         // Step 20.3: If canceled1 is true, composite cancel
         if (self.canceled1) {
-            // Create composite reason: [reason1, reason2]
-            // For now, just use reason2
-            const cancelResult = try self.source.cancelInternal(reason);
+            // Step 20.3.1: Create composite reason: [reason1, reason2]
+            const compositeReason = try self.createCompositeReason();
+
+            // Step 20.3.2: Cancel stream with composite reason
+            const cancelResult = try self.source.cancelInternal(compositeReason);
+
+            // Step 20.3.3: Resolve cancelPromise
             self.cancelPromise.fulfill({});
             return cancelResult;
         }
