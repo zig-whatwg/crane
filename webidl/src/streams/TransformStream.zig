@@ -372,10 +372,11 @@ pub const TransformStream = webidl.interface(struct {
             }
         } else if (flush_promise.isRejected()) {
             // Spec step 7.2: Handle rejection
-            const err = flush_promise.error_value orelse common.JSValue{ .string = "Flush failed" };
-            readable.controller.errorInternal(err.toWebIDL());
+            const err_exception = flush_promise.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Flush failed") catch return controller.finishPromise orelse common.Promise(void).fulfilled({});
+            const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
+            readable.controller.errorInternal(err_jsvalue.toWebIDL());
             if (controller.finishPromise) |*fp| {
-                fp.reject(err);
+                fp.reject(err_exception);
             }
         }
 

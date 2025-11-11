@@ -341,8 +341,8 @@ pub const WritableStream = webidl.interface(struct {
         }
 
         // Spec step 2: Signal abort on stream.[[controller]].[[abortController]] with reason
-        const reason_webidl = if (reason) |r| r.toWebIDL() else null;
-        self.controller.abortController.call_abort(reason_webidl);
+        const reason_exception = if (reason) |r| try r.toException(self.allocator) else null;
+        self.controller.abortController.call_abort(reason_exception);
 
         // Spec step 3: Let state be stream.[[state]]
         const state = self.state;
@@ -489,11 +489,12 @@ pub const WritableStream = webidl.interface(struct {
         std.debug.assert(self.state == .errored);
 
         const stored_error = self.storedError orelse common.JSValue.undefined_value();
+        const stored_exception = stored_error.toException(self.allocator) catch return;
 
         // Spec step 2-3: Reject closeRequest if present
         if (self.closeRequest) |close_req| {
             std.debug.assert(self.inFlightCloseRequest == null);
-            close_req.reject(stored_error);
+            close_req.reject(stored_exception);
             self.closeRequest = null;
         }
 
@@ -502,7 +503,7 @@ pub const WritableStream = webidl.interface(struct {
             .none => {},
             .default => |writer| {
                 // Spec step 4.1: Reject writer.[[closedPromise]] with storedError
-                writer.closedPromise.reject(stored_error);
+                writer.closedPromise.reject(stored_exception);
                 // Spec step 4.2: Set writer.[[closedPromise]].[[PromiseIsHandled]] to true
                 // (In production, this prevents unhandled rejection warnings)
             },

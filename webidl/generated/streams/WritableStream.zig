@@ -269,7 +269,7 @@ pub const WritableStream = struct {
 
         // Spec step 7: Let promise = ! ReadableStreamPipeTo(readable, value, false, false, false)
         // Note: We're not awaiting the promise - it runs in the background
-        _ = try readable.pipeToInternal(self, false, false, false, null);
+        _ = try readable.call_pipeTo(self, .{ .preventClose = false, .preventAbort = false, .preventCancel = false, .signal = null });
 
         // Spec step 8: Set promise.[[PromiseIsHandled]] to true
         // (Promise error handling is internal to pipeTo)

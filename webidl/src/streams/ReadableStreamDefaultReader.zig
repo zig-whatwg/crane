@@ -169,8 +169,10 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
 
         // Step 5: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
         if (stream.state == .errored) {
+            const stored_err = stream.storedError orelse common.JSValue.undefined_value();
+            const exception = try stored_err.toException(self.allocator);
             const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-            promise.reject(stream.storedError orelse common.JSValue.undefined_value());
+            promise.reject(exception);
             return promise;
         }
 

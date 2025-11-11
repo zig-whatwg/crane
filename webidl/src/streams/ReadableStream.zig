@@ -725,7 +725,7 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Spec step 7: Let promise = ! ReadableStreamPipeTo(value, writable, false, false, false)
         // Note: We're not awaiting the promise - it runs in the background
-        _ = try self.call_pipeTo(writable, .{ .preventClose = false, .preventAbort = false, .preventCancel = false, .signal = null });
+        _ = try self.call_pipeTo(&writable, .{ .preventClose = false, .preventAbort = false, .preventCancel = false, .signal = null });
 
         // Spec step 8: Set promise.[[PromiseIsHandled]] to true
         // (Promise error handling is internal to pipeTo)
@@ -781,8 +781,10 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Spec step 3: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]]
         if (self.state == .errored) {
-            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(self.storedError orelse common.JSValue.undefined_value());
+            const stored_err = self.storedError orelse common.JSValue.undefined_value();
+            const exception = try stored_err.toException(self.allocator);
+            const promise = AsyncPromise(void).rejected();
+            promise.reject(exception);
             return promise;
         }
 
@@ -1175,7 +1177,7 @@ pub const ReadableStream = webidl.interface(struct {
                     const request = reader.readIntoRequests.orderedRemove(0);
                     // Close steps should return the view with done=true
                     // For now, execute close steps with empty view
-                    request.executeCloseSteps(null);
+                    request.executeCloseSteps();
                 }
             },
         }
@@ -1198,21 +1200,22 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Step 4: Let reader be stream.[[reader]].
         // Step 5-7: Reject reader's closed promise and all pending reads
+        const exception = e.toException(self.allocator) catch return;
         switch (self.reader) {
             .none => {},
             .default => |reader| {
                 // Reject closed promise
-                reader.closedPromise.reject(e);
+                reader.closedPromise.reject(exception);
 
                 // Reject all pending read requests
                 while (reader.readRequests.items.len > 0) {
                     const promise = reader.readRequests.orderedRemove(0);
-                    promise.reject(e);
+                    promise.reject(exception);
                 }
             },
             .byob => |reader| {
                 // Spec: Reject closed promise
-                reader.closedPromise.reject(e);
+                reader.closedPromise.reject(exception);
 
                 // Spec: Reject all pending readIntoRequests
                 while (reader.readIntoRequests.items.len > 0) {

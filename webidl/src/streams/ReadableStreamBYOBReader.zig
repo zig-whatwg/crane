@@ -167,7 +167,8 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         // Step 4: If stream is errored, reject promise
         if (stream.state == .errored) {
             const storedError = stream.storedError orelse common.JSValue{ .string = "Stream errored" };
-            promise.reject(storedError);
+            const exception = try storedError.toException(self.allocator);
+            promise.reject(exception);
             return promise;
         }
 

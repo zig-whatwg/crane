@@ -291,7 +291,10 @@ pub const TransformStream = struct {
             // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
             if (readable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch return);
+                    const err = webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch {
+                        return controller.finishPromise orelse common.Promise(void).fulfilled({});
+                    };
+                    fp.reject(err);
                 }
             } else {
                 // Spec step 7.2: Otherwise, error readable and resolve finishPromise
@@ -342,7 +345,10 @@ pub const TransformStream = struct {
             // Spec step 7.1: If readable.[[state]] is "errored", reject finishPromise
             if (readable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch return);
+                    const err = webidl.errors.Exception.typeError(self.allocator, "Readable errored") catch {
+                        return controller.finishPromise orelse common.Promise(void).fulfilled({});
+                    };
+                    fp.reject(err);
                 }
             } else {
                 // Spec step 7.2: Otherwise, close readable and resolve finishPromise
@@ -410,7 +416,10 @@ pub const TransformStream = struct {
             // Spec step 7.1: If writable.[[state]] is "errored", reject finishPromise
             if (writable.state == .errored) {
                 if (controller.finishPromise) |*fp| {
-                    fp.reject(webidl.errors.Exception.typeError(self.allocator, "Writable errored") catch return);
+                    const err = webidl.errors.Exception.typeError(self.allocator, "Writable errored") catch {
+                        return controller.finishPromise orelse common.Promise(void).fulfilled({});
+                    };
+                    fp.reject(err);
                 }
             } else {
                 // Spec step 7.2: Otherwise, error writable, unblock, and resolve finishPromise
