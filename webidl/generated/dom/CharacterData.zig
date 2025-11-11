@@ -13,6 +13,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const Node = @import("node").Node;
+pub const dom_types = @import("dom_types");
+pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface CharacterData : Node

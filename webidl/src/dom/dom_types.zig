@@ -4,7 +4,7 @@
 const std = @import("std");
 
 // Forward declarations - will be resolved at runtime
-const Node = @import("Node.zig").Node;
+const Node = @import("node").Node;
 
 /// WebIDL Union: (Node or DOMString)
 /// Used by ChildNode and ParentNode mixin methods.

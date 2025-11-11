@@ -12,8 +12,12 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+pub const dom = @import("dom");
 pub const Node = @import("node").Node;
 pub const Element = @import("element").Element;
+pub const NodeList = @import("node_list").NodeList;
+pub const HTMLCollection = @import("html_collection").HTMLCollection;
+pub const dom_types = @import("dom_types");
 
 const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
@@ -28,7 +32,7 @@ pub const Document = struct {
     pub const includes = .{ ParentNode, NonElementParentNode };
     pub const Text = @import("text").Text;
     pub const Comment = @import("comment").Comment;
-    pub const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
+    pub const DocumentFragment = @import("document_fragment").DocumentFragment;
     pub const Attr = @import("attr").Attr;
 
     pub fn init(allocator: Allocator) !Document {

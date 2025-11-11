@@ -4,12 +4,15 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const dom = @import("dom");
 
 const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
-const ChildNode = @import("ChildNode.zig").ChildNode;
-const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocumentTypeChildNode;
-const ParentNode = @import("ParentNode.zig").ParentNode;
+const ChildNode = @import("child_node").ChildNode;
+const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const ParentNode = @import("parent_node").ParentNode;
+const NodeList = @import("node_list").NodeList;
+const dom_types = @import("dom_types");
 
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
@@ -198,8 +201,8 @@ pub const Element = webidl.interface(struct {
     }
 
     // Forward declarations for not-yet-implemented types
-    const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
-    const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+    const DOMTokenList = @import("dom_token_list").DOMTokenList;
+    const HTMLCollection = @import("html_collection").HTMLCollection;
 }, .{
     .exposed = &.{.Window},
 });

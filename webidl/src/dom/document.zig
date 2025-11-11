@@ -3,10 +3,14 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const dom = @import("dom");
 const Node = @import("node").Node;
 const Element = @import("element").Element;
-const ParentNode = @import("ParentNode.zig").ParentNode;
-const NonElementParentNode = @import("NonElementParentNode.zig").NonElementParentNode;
+const ParentNode = @import("parent_node").ParentNode;
+const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
+const NodeList = @import("node_list").NodeList;
+const HTMLCollection = @import("html_collection").HTMLCollection;
+const dom_types = @import("dom_types");
 
 const Allocator = std.mem.Allocator;
 
@@ -129,7 +133,7 @@ pub const Document = webidl.interface(struct {
     // Forward declarations
     const Text = @import("text").Text;
     const Comment = @import("comment").Comment;
-    const DocumentFragment = @import("DocumentFragment.zig").DocumentFragment;
+    const DocumentFragment = @import("document_fragment").DocumentFragment;
     const Attr = @import("attr").Attr;
 }, .{
     .exposed = &.{.Window},

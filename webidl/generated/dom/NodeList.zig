@@ -33,14 +33,29 @@ pub const NodeList = struct {
     // NodeList methods
     // ========================================================================
 
+    /// DOM §4.3.6 - NodeList.item(index)
+    /// Returns the node at the given index, or null if out of bounds.
+    /// The nodes are sorted in tree order.
     pub fn call_item(self: *const NodeList, index: u32) ?*Node {
-        if (index < self.nodes.len) {
-            return self.nodes.get(index);
+        if (index >= self.nodes.items.len) {
+            return null;
         }
-        return null;
+        return self.nodes.items[index];
     }
+    /// DOM §4.3.6 - NodeList.length
+    /// Returns the number of nodes in the collection.
     pub fn get_length(self: *const NodeList) u32 {
-        return @intCast(self.nodes.len);
+        return @intCast(self.nodes.items.len);
+    }
+    /// Helper method to add a node to the list
+    /// NOTE: This is internal API, not part of WebIDL spec
+    pub fn addNode(self: *NodeList, node: *Node) !void {
+        try self.nodes.append(node);
+    }
+    /// Helper method to clear the list
+    /// NOTE: This is internal API, not part of WebIDL spec
+    pub fn clear(self: *NodeList) void {
+        self.nodes.clearRetainingCapacity();
     }
 
     // WebIDL extended attributes metadata

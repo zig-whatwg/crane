@@ -13,9 +13,12 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+pub const dom = @import("dom");
 
 const Allocator = std.mem.Allocator;
 pub const Node = @import("node").Node;
+pub const NodeList = @import("node_list").NodeList;
+pub const dom_types = @import("dom_types");
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
 const ChildNode = @import("child_node").ChildNode;
@@ -32,8 +35,8 @@ pub const Element = struct {
 
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode };
     pub const Attr = @import("attr").Attr;
-    pub const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
-    pub const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+    pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
+    pub const HTMLCollection = @import("html_collection").HTMLCollection;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen

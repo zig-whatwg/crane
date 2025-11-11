@@ -3,8 +3,10 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
-const ChildNode = @import("ChildNode.zig").ChildNode;
-const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocumentTypeChildNode;
+const ChildNode = @import("child_node").ChildNode;
+const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const dom_types = @import("dom_types");
+const Element = @import("element").Element;
 
 /// DOM Spec: interface Comment : CharacterData
 /// Comment extends CharacterData (fields/methods inherited)

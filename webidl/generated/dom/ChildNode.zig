@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("../../root.zig");
-pub const dom_types = @import("dom_types.zig");
+pub const dom_types = @import("dom_types");
 /// ChildNode mixin provides methods for manipulating nodes relative to their siblings.
 /// Included by: DocumentType, Element, CharacterData
 /// 

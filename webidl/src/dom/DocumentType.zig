@@ -3,7 +3,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
-const ChildNode = @import("ChildNode.zig").ChildNode;
+const ChildNode = @import("child_node").ChildNode;
+const dom_types = @import("dom_types");
 
 /// DOM Spec: interface DocumentType : Node
 pub const DocumentType = webidl.interface(struct {

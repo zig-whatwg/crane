@@ -3,13 +3,13 @@
 
 const std = @import("std");
 const webidl = @import("../../root.zig");
-const dom_types = @import("dom_types.zig");
+const dom_types = @import("dom_types");
 const dom = @import("dom");
 
 // Forward declarations
-const Element = @import("Element.zig").Element;
-const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
-const NodeList = @import("NodeList.zig").NodeList;
+const Element = @import("element").Element;
+const HTMLCollection = @import("html_collection").HTMLCollection;
+const NodeList = @import("node_list").NodeList;
 
 /// ParentNode mixin provides methods for manipulating child elements.
 /// Included by: Document, DocumentFragment, Element

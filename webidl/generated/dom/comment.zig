@@ -12,6 +12,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const CharacterData = @import("character_data").CharacterData;
+pub const dom_types = @import("dom_types");
+pub const Element = @import("element").Element;
 /// DOM Spec: interface Comment : CharacterData
 /// Comment extends CharacterData (fields/methods inherited)
 /// Comment must EXPLICITLY include parent mixins (codegen doesn't inherit them)

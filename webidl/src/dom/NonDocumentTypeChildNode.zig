@@ -5,7 +5,7 @@ const std = @import("std");
 const webidl = @import("../../root.zig");
 
 // Forward declaration
-const Element = @import("Element.zig").Element;
+const Element = @import("element").Element;
 
 /// NonDocumentTypeChildNode mixin provides element sibling navigation.
 /// Included by: Element, CharacterData

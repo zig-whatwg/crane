@@ -12,6 +12,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const Node = @import("node").Node;
+pub const dom_types = @import("dom_types");
 /// DOM Spec: interface DocumentType : Node
 const ChildNode = @import("child_node").ChildNode;
 pub const DocumentType = struct {

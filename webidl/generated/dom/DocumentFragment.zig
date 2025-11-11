@@ -11,7 +11,12 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+pub const dom = @import("dom");
 pub const Node = @import("node").Node;
+pub const Element = @import("element").Element;
+pub const NodeList = @import("node_list").NodeList;
+pub const HTMLCollection = @import("html_collection").HTMLCollection;
+pub const dom_types = @import("dom_types");
 /// DOM Spec: interface DocumentFragment : Node
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;

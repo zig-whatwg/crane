@@ -15,7 +15,8 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
-pub const Event = @import("Event.zig").Event;
+pub const Event = @import("event").Event;
+pub const AbortSignal = @import("abort_signal").AbortSignal;
 
 /// DOM §2.7 - Event listener structure
 /// An event listener can be used to observe a specific event and consists of:
@@ -36,7 +37,7 @@ pub const EventListener = struct {
     once: bool = false,
 
     /// signal (null or an AbortSignal object)
-    signal: ?*webidl.types.interfaces.AbortSignal = null,
+    signal: ?*AbortSignal = null,
 
     /// removed (a boolean for bookkeeping purposes, initially false)
     removed: bool = false,
@@ -52,7 +53,7 @@ pub const AddEventListenerOptions = struct {
     capture: bool = false,
     passive: ?bool = null,
     once: bool = false,
-    signal: ?*webidl.types.interfaces.AbortSignal = null,
+    signal: ?*AbortSignal = null,
 };
 /// EventTarget WebIDL interface
 pub const EventTarget = struct {
@@ -89,7 +90,7 @@ pub const EventTarget = struct {
     }
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
-    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*webidl.types.interfaces.AbortSignal } {
+    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
         // TODO: Handle boolean or AddEventListenerOptions dictionary
         // For now, return defaults
         _ = options;

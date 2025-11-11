@@ -2,9 +2,14 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const dom = @import("dom");
 const Node = @import("node").Node;
-const ParentNode = @import("ParentNode.zig").ParentNode;
-const NonElementParentNode = @import("NonElementParentNode.zig").NonElementParentNode;
+const ParentNode = @import("parent_node").ParentNode;
+const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
+const Element = @import("element").Element;
+const NodeList = @import("node_list").NodeList;
+const HTMLCollection = @import("html_collection").HTMLCollection;
+const dom_types = @import("dom_types");
 
 /// DOM Spec: interface DocumentFragment : Node
 pub const DocumentFragment = webidl.interface(struct {

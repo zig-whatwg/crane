@@ -238,6 +238,7 @@ pub fn build(b: *std.Build) void {
     const abort_signal_mod = getWebIDLModule(webidl_modules, "dom_abort_signal");
     const abort_controller_mod = getWebIDLModule(webidl_modules, "dom_abort_controller");
     const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
+    const html_collection_mod = getWebIDLModule(webidl_modules, "dom_htmlcollection");
     const node_mod = getWebIDLModule(webidl_modules, "dom_node");
     const element_mod = getWebIDLModule(webidl_modules, "dom_element");
     const character_data_mod = getWebIDLModule(webidl_modules, "dom_character_data");
@@ -248,8 +249,18 @@ pub fn build(b: *std.Build) void {
     const dom_token_list_mod = getWebIDLModule(webidl_modules, "dom_domtoken_list");
     const attr_mod = getWebIDLModule(webidl_modules, "dom_attr");
 
+    // Create dom_types module (not a WebIDL class, just helper types)
+    const dom_types_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/src/dom/dom_types.zig"),
+        .target = target,
+    });
+    dom_types_mod.addImport("infra", infra_mod);
+    dom_types_mod.addImport("webidl", webidl_mod);
+    dom_types_mod.addImport("node", node_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
+    event_target_mod.addImport("abort_signal", abort_signal_mod);
     abort_signal_mod.addImport("event_target", event_target_mod);
     abort_controller_mod.addImport("abort_signal", abort_signal_mod);
     node_mod.addImport("event_target", event_target_mod);
@@ -257,14 +268,29 @@ pub fn build(b: *std.Build) void {
     node_list_mod.addImport("node", node_mod); // Circular dependency
     element_mod.addImport("node", node_mod);
     element_mod.addImport("event_target", event_target_mod);
+    element_mod.addImport("dom_types", dom_types_mod);
+    element_mod.addImport("node_list", node_list_mod);
+    // Note: dom -> element circular dependency is OK in Zig if handled carefully
     character_data_mod.addImport("node", node_mod);
     character_data_mod.addImport("event_target", event_target_mod);
+    character_data_mod.addImport("dom_types", dom_types_mod);
+    character_data_mod.addImport("element", element_mod);
     text_mod.addImport("character_data", character_data_mod);
+    text_mod.addImport("dom_types", dom_types_mod);
+    text_mod.addImport("element", element_mod);
     comment_mod.addImport("character_data", character_data_mod);
+    comment_mod.addImport("dom_types", dom_types_mod);
+    comment_mod.addImport("element", element_mod);
     document_fragment_mod.addImport("node", node_mod);
     document_fragment_mod.addImport("element", element_mod);
+    document_fragment_mod.addImport("node_list", node_list_mod);
+    document_fragment_mod.addImport("html_collection", html_collection_mod);
+    document_fragment_mod.addImport("dom_types", dom_types_mod);
     document_mod.addImport("node", node_mod);
     document_mod.addImport("element", element_mod);
+    document_mod.addImport("node_list", node_list_mod);
+    document_mod.addImport("html_collection", html_collection_mod);
+    document_mod.addImport("dom_types", dom_types_mod);
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
@@ -293,6 +319,9 @@ pub fn build(b: *std.Build) void {
 
     // Handle circular dependencies by adding imports after all modules are created
     element_mod.addImport("attr", attr_mod);
+    element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
+    document_mod.addImport("dom", dom_mod); // Circular: dom -> document, document -> dom
+    document_fragment_mod.addImport("dom", dom_mod); // Circular: dom -> document_fragment, document_fragment -> dom
     node_mod.addImport("document", document_mod);
 
     const encoding_mod = b.addModule("encoding", .{
