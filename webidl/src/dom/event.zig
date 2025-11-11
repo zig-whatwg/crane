@@ -125,10 +125,144 @@ pub const Event = webidl.interface(struct {
 
     /// composedPath()
     /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
-    pub fn call_composedPath(self: *Event) ![]EventTarget {
-        _ = self;
-        // Return the composed path
-        return &[_]EventTarget{};
+    ///
+    /// Returns the invocation target objects of event's path (objects on which
+    /// listeners will be invoked), except for any nodes in shadow trees of which
+    /// the shadow root's mode is "closed" that are not reachable from event's
+    /// currentTarget.
+    ///
+    /// The composedPath() method steps are (DOM §2.3):
+    pub fn call_composedPath(self: *Event) !std.ArrayList(*EventTarget) {
+        // Step 1: Let composedPath be an empty list
+        var composed_path = std.ArrayList(*EventTarget).init(self.allocator);
+
+        // Step 2: Let path be this's path
+        const path = self.path.items;
+
+        // Step 3: If path is empty, then return composedPath
+        if (path.len == 0) {
+            return composed_path;
+        }
+
+        // Step 4: Let currentTarget be this's currentTarget attribute value
+        const current_target = self.current_target;
+
+        // Step 5: Assert: currentTarget is an EventTarget object
+        if (current_target == null) {
+            // Path is not empty but currentTarget is null - shouldn't happen during dispatch
+            return composed_path;
+        }
+
+        // Step 6: Append currentTarget to composedPath
+        try composed_path.append(current_target.?);
+
+        // Step 7: Let currentTargetIndex be 0
+        var current_target_index: usize = 0;
+
+        // Step 8: Let currentTargetHiddenSubtreeLevel be 0
+        var current_target_hidden_subtree_level: i32 = 0;
+
+        // Step 9: Let index be path's size − 1
+        var index: i32 = @as(i32, @intCast(path.len)) - 1;
+
+        // Step 10: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 10.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentTargetHiddenSubtreeLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_target_hidden_subtree_level += 1;
+            }
+
+            // Step 10.2: If path[index]'s invocation target is currentTarget,
+            // then set currentTargetIndex to index and break
+            if (path_item.invocation_target == current_target.?) {
+                current_target_index = @intCast(index);
+                break;
+            }
+
+            // Step 10.3: If path[index]'s slot-in-closed-tree is true,
+            // then decrease currentTargetHiddenSubtreeLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_target_hidden_subtree_level -= 1;
+            }
+        }
+
+        // Step 11: Let currentHiddenLevel and maxHiddenLevel be currentTargetHiddenSubtreeLevel
+        var current_hidden_level = current_target_hidden_subtree_level;
+        var max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 12: Set index to currentTargetIndex − 1
+        index = @as(i32, @intCast(current_target_index)) - 1;
+
+        // Step 13: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 13.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 13.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then prepend path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.insert(0, path_item.invocation_target);
+            }
+
+            // Step 13.3: If path[index]'s slot-in-closed-tree is true
+            if (path_item.slot_in_closed_tree) {
+                // Step 13.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 13.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 14: Set currentHiddenLevel and maxHiddenLevel to currentTargetHiddenSubtreeLevel
+        current_hidden_level = current_target_hidden_subtree_level;
+        max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 15: Set index to currentTargetIndex + 1
+        index = @as(i32, @intCast(current_target_index)) + 1;
+
+        // Step 16: While index is less than path's size
+        while (index < path.len) : (index += 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 16.1: If path[index]'s slot-in-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 16.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then append path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.append(path_item.invocation_target);
+            }
+
+            // Step 16.3: If path[index]'s root-of-closed-tree is true
+            if (path_item.root_of_closed_tree) {
+                // Step 16.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 16.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 17: Return composedPath
+        return composed_path;
     }
 
     /// DOM §2.3 - initialize an event
