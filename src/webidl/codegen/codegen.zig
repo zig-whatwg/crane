@@ -2414,6 +2414,65 @@ pub fn parseStructBody(
                 !std.mem.startsWith(u8, line, "pub const mixins") and
                 !std.mem.startsWith(u8, line, "pub const properties"))
             {
+                // Check if this is a nested struct type declaration (pub const X = struct {)
+                // Look ahead from current position to see if there's a "struct {" pattern
+                const remaining = body[pos..];
+                const eq_pos = std.mem.indexOf(u8, remaining, "=") orelse {
+                    // No equals sign found, treat as constant
+                    try constants.append(allocator, try allocator.dupe(u8, line));
+                    pos = line_end + 1;
+                    continue;
+                };
+
+                // Look for "struct" after the equals sign
+                const after_eq = remaining[eq_pos + 1 ..];
+                var search_pos: usize = 0;
+
+                // Skip whitespace after equals
+                while (search_pos < after_eq.len and
+                    (after_eq[search_pos] == ' ' or after_eq[search_pos] == '\t' or
+                        after_eq[search_pos] == '\n' or after_eq[search_pos] == '\r'))
+                {
+                    search_pos += 1;
+                }
+
+                // Check if next non-whitespace is "struct"
+                if (search_pos + 6 <= after_eq.len and
+                    std.mem.eql(u8, after_eq[search_pos .. search_pos + 6], "struct"))
+                {
+                    // This is a nested struct declaration - preserve it in output but don't parse its fields
+                    const struct_open_brace = std.mem.indexOfPos(u8, body, pos, "{") orelse {
+                        pos = line_end + 1;
+                        continue;
+                    };
+
+                    // Find the matching closing brace
+                    const struct_close_brace = findMatchingBrace(body, struct_open_brace) orelse {
+                        pos = line_end + 1;
+                        continue;
+                    };
+
+                    // Look for semicolon after the closing brace (struct declarations end with };)
+                    var end_pos = struct_close_brace + 1;
+                    while (end_pos < body.len and (body[end_pos] == ' ' or body[end_pos] == '\t' or
+                        body[end_pos] == '\n' or body[end_pos] == '\r'))
+                    {
+                        end_pos += 1;
+                    }
+                    if (end_pos < body.len and body[end_pos] == ';') {
+                        end_pos += 1; // Include the semicolon
+                    }
+
+                    // Extract the entire struct declaration and add it to constants
+                    // This preserves the nested type in the generated output
+                    const struct_decl = body[pos..end_pos];
+                    try constants.append(allocator, try allocator.dupe(u8, struct_decl));
+
+                    // Skip past this struct
+                    pos = end_pos;
+                    continue;
+                }
+
                 // This is a constant declaration like "pub const NONE: u16 = 0;"
                 try constants.append(allocator, try allocator.dupe(u8, line));
                 pos = line_end + 1;

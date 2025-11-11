@@ -13,26 +13,52 @@ const webidl = @import("webidl");
 // Import internal implementation
 pub const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 pub const URLSearchParams = struct {
-    allocator: std.mem.Allocator,
-
     // ========================================================================
     // URLSearchParams fields
     // ========================================================================
     /// The internal implementation wrapping all the logic
     impl: URLSearchParamsImpl,
-    name: []const u8,
-    value: []const u8,
-    params: *const URLSearchParams,
-    index: usize,
-    params: *const URLSearchParams,
-    index: usize,
-    params: *const URLSearchParams,
-    index: usize,
 
     pub const Entry = struct {
+        name: []const u8,
+        value: []const u8,
+    };
     pub const EntriesIterator = struct {
+        params: *const URLSearchParams,
+        index: usize,
+
+        pub fn next(self: *EntriesIterator) ?Entry {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return Entry{
+                .name = tuple.name,
+                .value = tuple.value,
+            };
+        }
+    };
     pub const KeysIterator = struct {
+        params: *const URLSearchParams,
+        index: usize,
+
+        pub fn next(self: *KeysIterator) ?[]const u8 {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return tuple.name;
+        }
+    };
     pub const ValuesIterator = struct {
+        params: *const URLSearchParams,
+        index: usize,
+
+        pub fn next(self: *ValuesIterator) ?[]const u8 {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return tuple.value;
+        }
+    };
     pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
 
     /// Initialize URLSearchParams with empty list
@@ -131,27 +157,6 @@ pub const URLSearchParams = struct {
     pub fn toString(self: *const URLSearchParams, allocator: std.mem.Allocator) ![]u8 {
         return self.impl.toString(allocator);
     }
-    pub fn next(self: *EntriesIterator) ?Entry {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return Entry{
-                .name = tuple.name,
-                .value = tuple.value,
-            };
-        }
-    pub fn next(self: *KeysIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.name;
-        }
-    pub fn next(self: *ValuesIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.value;
-        }
     /// Create an entries iterator
     /// Iterates over [name, value] pairs in the list
     pub fn entries(self: *const URLSearchParams) EntriesIterator {
