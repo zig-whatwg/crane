@@ -32,6 +32,7 @@ pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
 pub const tree = @import("tree.zig");
 pub const mutation = @import("mutation.zig");
 pub const selectors = @import("selectors_mock.zig");
+pub const fast_path = @import("fast_path.zig");
 
 test {
     std.testing.refAllDecls(@This());
