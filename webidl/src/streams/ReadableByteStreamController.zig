@@ -704,20 +704,46 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     /// Respond with bytes written to BYOB buffer
     ///
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespond"
-    pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
-        // Step 1: Assert we have pending pull-intos
+    pub fn respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
+        // Step 1: Assert controller.[[pendingPullIntos]] is not empty
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;
         }
 
-        // Step 2: Get first descriptor
+        // Step 2: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Step 3: Get stream state
-        const stream = self.stream orelse return error.NoStream;
-        _ = stream; // TODO: Check state when stream integration is ready
+        // Step 3: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
 
-        // Step 6: Transfer descriptor's buffer
+        // Step 4: If state is "closed"
+        if (state == .closed) {
+            // Step 4.1: If bytesWritten is not 0, throw TypeError
+            if (bytesWritten != 0) {
+                return error.TypeError;
+            }
+        } else {
+            // Step 5: Otherwise (state is "readable")
+            // Step 5.1: Assert state is "readable"
+            if (state != .readable) {
+                return error.InvalidState;
+            }
+
+            // Step 5.2: If bytesWritten is 0, throw TypeError
+            if (bytesWritten == 0) {
+                return error.TypeError;
+            }
+
+            // Step 5.3: If firstDescriptor's bytes filled + bytesWritten > firstDescriptor's byte length, throw RangeError
+            if (firstDescriptor.bytes_filled + bytesWritten > firstDescriptor.byte_length) {
+                return error.RangeError;
+            }
+        }
+
+        // Step 6: Set firstDescriptor's buffer to ! TransferArrayBuffer(firstDescriptor's buffer)
         const old_buffer = firstDescriptor.buffer;
         const transferred = try old_buffer.transfer();
         const transferred_ptr = try self.allocator.create(ArrayBuffer);
@@ -725,8 +751,13 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         firstDescriptor.buffer = transferred_ptr;
         self.allocator.destroy(old_buffer);
 
-        // Step 7: Call respondInternal
+        // Step 7: Perform ? ReadableByteStreamControllerRespondInternal(controller, bytesWritten)
         try self.respondInternal(bytesWritten);
+    }
+
+    /// Wrapper for WebIDL call convention
+    pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
+        return self.respond(bytesWritten);
     }
 
     /// Respond with a new view (replacement buffer)
@@ -775,19 +806,79 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     ///
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInternal"
     fn respondInternal(self: *ReadableByteStreamController, bytesWritten: u64) !void {
-        // Step 1: Get first descriptor
+        // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Step 3: Invalidate BYOB request
+        // Step 2: Assert: ! CanTransferArrayBuffer(firstDescriptor's buffer) is true
+        // (Already transferred in respond())
+
+        // Step 3: Perform ! ReadableByteStreamControllerInvalidateBYOBRequest(controller)
         self.invalidateBYOBRequest();
 
-        // Step 4: Get stream state (simplified for now)
-        // TODO: Check actual stream state when integrated
+        // Step 4: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
 
-        // For now, assume readable state and call respondInReadableState
-        try self.respondInReadableState(bytesWritten, firstDescriptor);
+        // Step 5: If state is "closed"
+        if (state == .closed) {
+            // Step 5.1: Assert: bytesWritten is 0
+            // Step 5.2: Perform ! ReadableByteStreamControllerRespondInClosedState(controller, firstDescriptor)
+            self.respondInClosedState(firstDescriptor);
+        } else {
+            // Step 6: Otherwise (state is "readable")
+            // Step 6.1: Assert: state is "readable"
+            // Step 6.2: Assert: bytesWritten > 0
+            // Step 6.3: Perform ? ReadableByteStreamControllerRespondInReadableState(controller, bytesWritten, firstDescriptor)
+            try self.respondInReadableState(bytesWritten, firstDescriptor);
+        }
 
-        // Step 7: Call pull if needed (TODO when stream integration ready)
+        // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
+        self.callPullIfNeeded();
+    }
+
+    /// Respond when stream is in closed state
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInClosedState"
+    fn respondInClosedState(
+        self: *ReadableByteStreamController,
+        firstDescriptor: *PullIntoDescriptor,
+    ) void {
+        // Step 1: Assert: the remainder after dividing firstDescriptor's bytes filled by firstDescriptor's element size is 0
+        // (Assertion - caller ensures this)
+
+        // Step 2: If firstDescriptor's reader type is "none", perform ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+        if (firstDescriptor.reader_type == .none) {
+            _ = self.shiftPendingPullInto();
+        }
+
+        // Step 3: Let stream be controller.[[stream]]
+        const stream_ptr = self.stream orelse return;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
+        if (stream.hasBYOBReader()) {
+            // Step 4.1: Let filledPullIntos be a new empty list
+            var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+            defer filled_pull_intos.deinit(self.allocator);
+
+            // Step 4.2: While filledPullIntos's size < ! ReadableStreamGetNumReadIntoRequests(stream)
+            while (filled_pull_intos.items.len < stream.getNumReadIntoRequests()) {
+                // Step 4.2.1: Let pullIntoDescriptor be ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+                const pull_into_descriptor = self.shiftPendingPullInto();
+
+                // Step 4.2.2: Append pullIntoDescriptor to filledPullIntos
+                filled_pull_intos.append(self.allocator, pull_into_descriptor) catch break;
+            }
+
+            // Step 4.3: For each filledPullInto of filledPullIntos
+            for (filled_pull_intos.items) |filled_pull_into| {
+                // Step 4.3.1: Perform ! ReadableByteStreamControllerCommitPullIntoDescriptor(stream, filledPullInto)
+                self.commitPullIntoDescriptor(filled_pull_into) catch continue;
+            }
+        }
     }
 
     /// Respond when stream is in readable state
