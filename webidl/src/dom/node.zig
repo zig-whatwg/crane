@@ -176,9 +176,29 @@ pub const Node = webidl.interface(struct {
     /// cloneNode(deep)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
-        _ = deep;
-        // Clone the node
-        return try Node.init(self.allocator, self.node_type, self.node_name);
+        // TODO: Implement full clone algorithm from DOM §4.2.4
+        // Steps:
+        // 1. Let document be node's node document
+        // 2. Let copy be result of cloning a single node (node, document, null)
+        // 3. Run cloning steps for node (pass node, copy, deep)
+        // 4. If deep is true, clone all descendants recursively
+        // 5. If node is shadow host and clonable, clone shadow root too
+        // 6. Return copy
+
+        // For now, shallow clone only
+        const copy = try Node.init(self.allocator, self.node_type, self.node_name);
+
+        // If deep, should recursively clone children
+        if (deep) {
+            // TODO: Clone all children recursively
+            // for (self.child_nodes.items) |child| {
+            //     const child_copy = try child.call_cloneNode(true);
+            //     try copy.child_nodes.append(child_copy);
+            //     child_copy.parent_node = &copy;
+            // }
+        }
+
+        return copy;
     }
 
     /// normalize()
