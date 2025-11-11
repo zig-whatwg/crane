@@ -2440,29 +2440,59 @@ pub fn parseStructBody(
             const signature = std.mem.trim(u8, body[paren_pos .. closing_paren + 1], " \t\r\n");
 
             // Find the opening brace of the method body
-            // Skip over any braces in the return type (e.g., "!struct { fields }" return types)
+            // Skip over any braces in the return type (e.g., "!struct { fields }", "enum { a, b }" return types)
             const open_brace_pos = blk: {
                 var search_pos = closing_paren + 1;
-                var in_struct_type = false;
+                var in_braced_type = false;
                 var brace_depth: i32 = 0;
 
                 while (search_pos < body.len) : (search_pos += 1) {
                     const c = body[search_pos];
 
-                    // Track if we're inside a struct type declaration in the return type
-                    if (!in_struct_type and search_pos + 6 <= body.len and std.mem.eql(u8, body[search_pos .. search_pos + 6], "struct")) {
-                        in_struct_type = true;
-                        search_pos += 5; // Skip "struct" keyword
-                        continue;
+                    // Track if we're inside any braced type declaration in the return type
+                    // Check for: struct, enum, union, error, opaque
+                    if (!in_braced_type) {
+                        const remaining = body[search_pos..];
+
+                        // Check for "struct" (6 chars)
+                        if (remaining.len >= 6 and std.mem.eql(u8, remaining[0..6], "struct")) {
+                            in_braced_type = true;
+                            search_pos += 5; // Will be incremented by loop
+                            continue;
+                        }
+                        // Check for "enum" (4 chars)
+                        else if (remaining.len >= 4 and std.mem.eql(u8, remaining[0..4], "enum")) {
+                            in_braced_type = true;
+                            search_pos += 3; // Will be incremented by loop
+                            continue;
+                        }
+                        // Check for "union" (5 chars)
+                        else if (remaining.len >= 5 and std.mem.eql(u8, remaining[0..5], "union")) {
+                            in_braced_type = true;
+                            search_pos += 4; // Will be incremented by loop
+                            continue;
+                        }
+                        // Check for "error" (5 chars)
+                        else if (remaining.len >= 5 and std.mem.eql(u8, remaining[0..5], "error")) {
+                            in_braced_type = true;
+                            search_pos += 4; // Will be incremented by loop
+                            continue;
+                        }
+                        // Check for "opaque" (6 chars)
+                        else if (remaining.len >= 6 and std.mem.eql(u8, remaining[0..6], "opaque")) {
+                            in_braced_type = true;
+                            search_pos += 5; // Will be incremented by loop
+                            continue;
+                        }
                     }
 
-                    if (in_struct_type) {
+                    if (in_braced_type) {
                         if (c == '{') {
                             brace_depth += 1;
                         } else if (c == '}') {
                             brace_depth -= 1;
                             if (brace_depth == 0) {
-                                in_struct_type = false;
+                                in_braced_type = false;
                             }
                         }
                     } else if (c == '{') {
