@@ -126,6 +126,11 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
         self.genericRelease();
     }
 
+    /// Alias for generated code compatibility
+    pub fn releaseLock(self: *ReadableStreamDefaultReader) void {
+        self.call_releaseLock();
+    }
+
     // ============================================================================
     // Internal Algorithms (Abstract Operations)
     // ============================================================================

@@ -280,6 +280,11 @@ pub const ReadableStream = webidl.interface(struct {
         return self.cancelInternal(if (reason) |r| common.JSValue.fromWebIDL(r) else null);
     }
 
+    /// Alias for generated code compatibility
+    pub fn cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        return self.call_cancel(reason);
+    }
+
     /// getReader(options) method
     ///
     /// IDL: ReadableStreamReader getReader(optional ReadableStreamGetReaderOptions options = {});

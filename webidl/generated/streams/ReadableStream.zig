@@ -277,6 +277,10 @@ pub const ReadableStream = struct {
         // Spec: § 4.1.3 step 2: "Return ! ReadableStreamCancel(this, reason)."
         return self.cancelInternal(if (reason) |r| common.JSValue.fromWebIDL(r) else null);
     }
+    /// Alias for generated code compatibility
+    pub fn cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        return self.call_cancel(reason);
+    }
     /// getReader(options) method
     /// 
     /// IDL: ReadableStreamReader getReader(optional ReadableStreamGetReaderOptions options = {});
