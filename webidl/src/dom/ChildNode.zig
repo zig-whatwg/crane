@@ -1,0 +1,133 @@
+// DOM Standard: Interface Mixin ChildNode (§4.3.4)
+// https://dom.spec.whatwg.org/#interface-childnode
+
+const std = @import("std");
+const webidl = @import("../../root.zig");
+const dom_types = @import("dom_types.zig");
+
+/// ChildNode mixin provides methods for manipulating nodes relative to their siblings.
+/// Included by: DocumentType, Element, CharacterData
+///
+/// WebIDL Definition:
+/// ```
+/// interface mixin ChildNode {
+///   [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined remove();
+/// };
+/// ```
+pub const ChildNode = webidl.mixin(struct {
+    // NOTE: This is a mixin - no fields, only methods to be included in other interfaces
+
+    /// DOM §4.3.4 - ChildNode.before()
+    /// Inserts nodes just before this node, while replacing strings with Text nodes.
+    ///
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
+    /// 6. Pre-insert node into parent before viablePreviousSibling.
+    ///
+    /// Throws HierarchyRequestError if constraints violated.
+    pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 before() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first preceding sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: Determine insertion point
+        // Step 6: Call pre-insert (from mutation.zig)
+        @panic("ChildNode.before() not yet implemented");
+    }
+
+    /// DOM §4.3.4 - ChildNode.after()
+    /// Inserts nodes just after this node, while replacing strings with Text nodes.
+    ///
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. Pre-insert node into parent before viableNextSibling.
+    ///
+    /// Throws HierarchyRequestError if constraints violated.
+    pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 after() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first following sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: Call pre-insert (from mutation.zig)
+        @panic("ChildNode.after() not yet implemented");
+    }
+
+    /// DOM §4.3.4 - ChildNode.replaceWith()
+    /// Replaces this node with nodes, while replacing strings with Text nodes.
+    ///
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If this's parent is parent, replace this with node within parent.
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
+    ///
+    /// Throws HierarchyRequestError if constraints violated.
+    pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 replaceWith() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first following sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: If this's parent is still parent, call replace (from mutation.zig)
+        // Step 6: Otherwise call pre-insert (from mutation.zig)
+        @panic("ChildNode.replaceWith() not yet implemented");
+    }
+
+    /// DOM §4.3.4 - ChildNode.remove()
+    /// Removes this node from its parent.
+    ///
+    /// Steps:
+    /// 1. If this's parent is null, then return.
+    /// 2. Remove this.
+    pub fn remove(self: anytype) !void {
+        _ = self;
+        // TODO: Implement DOM §4.3.4 remove() algorithm
+        // Step 1: If parent is null, return
+        // Step 2: Call remove (from mutation.zig)
+        @panic("ChildNode.remove() not yet implemented");
+    }
+});
+
+// Helper function referenced by ChildNode methods (defined in ParentNode §4.3.3)
+// TODO: Move this to a shared location or import from ParentNode
+//
+// DOM §4.3.3 - convert nodes into a node
+// Given nodes and document, run these steps:
+// 1. Let node be null.
+// 2. Replace each string in nodes with a new Text node whose data is the string and node document is document.
+// 3. If nodes contains one node, then set node to nodes[0].
+// 4. Otherwise, set node to a new DocumentFragment node whose node document is document, and then append each node in nodes, if any, to it.
+// 5. Return node.
+fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_types.NodeOrDOMString, document: anytype) !*anyopaque {
+    _ = allocator;
+    _ = nodes;
+    _ = document;
+    // TODO: Implement "convert nodes into a node" algorithm (DOM §4.3.3)
+    @panic("convertNodesIntoNode helper not yet implemented");
+}
+
+test "ChildNode mixin compiles" {
+    // Just verify the mixin structure compiles
+    const T = @TypeOf(ChildNode);
+    try std.testing.expect(T != void);
+}
