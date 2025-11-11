@@ -27,6 +27,8 @@ pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
 pub const Attr = @import("attr").Attr;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
+pub const Document = @import("document").Document;
+pub const Range = @import("range").Range;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");
