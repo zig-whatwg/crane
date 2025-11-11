@@ -783,6 +783,9 @@ pub const ReadableStream = webidl.interface(struct {
         loop: eventLoop.EventLoop,
         asyncIterable: common.JSValue,
     ) !*ReadableStream {
+        // Mark as unused until full implementation
+        _ = asyncIterable;
+
         // Spec step 1: Let stream be undefined (will be set in step 6)
 
         // Spec step 2: Let iteratorRecord be ? GetIterator(asyncIterable, async)
