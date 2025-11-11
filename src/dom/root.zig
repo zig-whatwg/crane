@@ -31,6 +31,7 @@ pub const Document = @import("document").Document;
 pub const Range = @import("range").Range;
 pub const NodeFilter = @import("node_filter").NodeFilter;
 pub const NodeIterator = @import("node_iterator").NodeIterator;
+pub const TreeWalker = @import("tree_walker").TreeWalker;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");

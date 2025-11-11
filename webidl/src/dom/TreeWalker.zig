@@ -1,0 +1,455 @@
+//! TreeWalker interface per WHATWG DOM Standard
+//! Spec: https://dom.spec.whatwg.org/#interface-treewalker
+
+const std = @import("std");
+const webidl = @import("webidl");
+const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
+const NodeFilter = @import("node_filter").NodeFilter;
+
+/// DOM §6.3 - TreeWalker interface
+///
+/// TreeWalker objects can be used to filter and traverse node trees.
+/// Unlike NodeIterator, TreeWalker provides rich navigation methods
+/// (parentNode, firstChild, lastChild, previousSibling, nextSibling)
+/// and maintains a mutable currentNode pointer.
+pub const TreeWalker = webidl.interface(struct {
+    allocator: Allocator,
+
+    /// The root node of the walker (never changes)
+    root: *Node,
+
+    /// The current node (mutable, can be changed by navigation or setter)
+    current: *Node,
+
+    /// Bitmask indicating which node types to show
+    what_to_show: u32,
+
+    /// Optional filter callback
+    filter: NodeFilter.OptionalAcceptNodeFn,
+
+    /// Active flag to prevent recursive invocations
+    active_flag: bool,
+
+    /// DOM §6.3 - TreeWalker constructor (internal)
+    /// Use Document.createTreeWalker() to create instances
+    pub fn init(
+        allocator: Allocator,
+        root: *Node,
+        what_to_show: u32,
+        filter: NodeFilter.OptionalAcceptNodeFn,
+    ) !TreeWalker {
+        return .{
+            .allocator = allocator,
+            .root = root,
+            .current = root, // Start at root
+            .what_to_show = what_to_show,
+            .filter = filter,
+            .active_flag = false,
+        };
+    }
+
+    pub fn deinit(self: *TreeWalker) void {
+        _ = self;
+        // No cleanup needed - we don't own the nodes
+    }
+
+    // ========================================================================
+    // Attributes
+    // ========================================================================
+
+    /// DOM §6.3 - TreeWalker.root
+    /// Returns the root node
+    pub fn get_root(self: *const TreeWalker) *Node {
+        return self.root;
+    }
+
+    /// DOM §6.3 - TreeWalker.whatToShow
+    /// Returns the whatToShow bitmask
+    pub fn get_whatToShow(self: *const TreeWalker) u32 {
+        return self.what_to_show;
+    }
+
+    /// DOM §6.3 - TreeWalker.filter
+    /// Returns the filter callback (may be null)
+    pub fn get_filter(self: *const TreeWalker) NodeFilter.OptionalAcceptNodeFn {
+        return self.filter;
+    }
+
+    /// DOM §6.3 - TreeWalker.currentNode getter
+    /// Returns the current node
+    pub fn get_currentNode(self: *const TreeWalker) *Node {
+        return self.current;
+    }
+
+    /// DOM §6.3 - TreeWalker.currentNode setter
+    /// Sets the current node to the given value
+    pub fn set_currentNode(self: *TreeWalker, node: *Node) void {
+        self.current = node;
+    }
+
+    // ========================================================================
+    // Navigation methods
+    // ========================================================================
+
+    /// DOM §6.3 - TreeWalker.parentNode()
+    /// Move to parent node if it passes filter, return null otherwise
+    pub fn parentNode(self: *TreeWalker) !?*Node {
+        const dom = @import("dom");
+
+        // Step 1: Let node be this's current
+        var node = self.current;
+
+        // Step 2: While node is non-null and is not this's root
+        while (node != self.root) {
+            // Step 2.1: Set node to node's parent
+            const parent = dom.tree_helpers.getParentNode(node) orelse break;
+            node = parent;
+
+            // Step 2.2: If node is non-null and filtering node returns FILTER_ACCEPT
+            const result = try self.filterNode(node);
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                self.current = node;
+                return node;
+            }
+        }
+
+        // Step 3: Return null
+        return null;
+    }
+
+    /// DOM §6.3 - TreeWalker.firstChild()
+    /// Move to first child that passes filter
+    pub fn firstChild(self: *TreeWalker) !?*Node {
+        return try self.traverseChildren(.first);
+    }
+
+    /// DOM §6.3 - TreeWalker.lastChild()
+    /// Move to last child that passes filter
+    pub fn lastChild(self: *TreeWalker) !?*Node {
+        return try self.traverseChildren(.last);
+    }
+
+    /// DOM §6.3 - TreeWalker.previousSibling()
+    /// Move to previous sibling that passes filter
+    pub fn previousSibling(self: *TreeWalker) !?*Node {
+        return try self.traverseSiblings(.previous);
+    }
+
+    /// DOM §6.3 - TreeWalker.nextSibling()
+    /// Move to next sibling that passes filter
+    pub fn nextSibling(self: *TreeWalker) !?*Node {
+        return try self.traverseSiblings(.next);
+    }
+
+    /// DOM §6.3 - TreeWalker.previousNode()
+    /// Move to previous node in tree order that passes filter
+    pub fn previousNode(self: *TreeWalker) !?*Node {
+        const dom = @import("dom");
+
+        // Step 1: Let node be this's current
+        var node = self.current;
+
+        // Step 2: While node is not this's root
+        while (node != self.root) {
+            // Step 2.1: Let sibling be node's previous sibling
+            var sibling = dom.tree_helpers.getPreviousSibling(node);
+
+            // Step 2.2: While sibling is non-null
+            while (sibling) |sib| {
+                // Step 2.2.1: Set node to sibling
+                node = sib;
+
+                // Step 2.2.2: Let result be the result of filtering node
+                var result = try self.filterNode(node);
+
+                // Step 2.2.3: While result is not FILTER_REJECT and node has a child
+                while (result != NodeFilter.FILTER_REJECT and dom.tree_helpers.hasChildren(node)) {
+                    // Step 2.2.3.1: Set node to node's last child
+                    node = dom.tree_helpers.getLastChild(node).?;
+
+                    // Step 2.2.3.2: Set result to the result of filtering node
+                    result = try self.filterNode(node);
+                }
+
+                // Step 2.2.4: If result is FILTER_ACCEPT, set current and return
+                if (result == NodeFilter.FILTER_ACCEPT) {
+                    self.current = node;
+                    return node;
+                }
+
+                // Step 2.2.5: Set sibling to node's previous sibling
+                sibling = dom.tree_helpers.getPreviousSibling(node);
+            }
+
+            // Step 2.3: If node is root or node's parent is null, return null
+            if (node == self.root or dom.tree_helpers.getParentNode(node) == null) {
+                return null;
+            }
+
+            // Step 2.4: Set node to node's parent
+            node = dom.tree_helpers.getParentNode(node).?;
+
+            // Step 2.5: If filtering node returns FILTER_ACCEPT, set current and return
+            const result = try self.filterNode(node);
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                self.current = node;
+                return node;
+            }
+        }
+
+        // Step 3: Return null
+        return null;
+    }
+
+    /// DOM §6.3 - TreeWalker.nextNode()
+    /// Move to next node in tree order that passes filter
+    pub fn nextNode(self: *TreeWalker) !?*Node {
+        const dom = @import("dom");
+
+        // Step 1: Let node be this's current
+        var node = self.current;
+
+        // Step 2: Let result be FILTER_ACCEPT
+        var result: u16 = NodeFilter.FILTER_ACCEPT;
+
+        // Step 3: While true
+        while (true) {
+            // Step 3.1: While result is not FILTER_REJECT and node has a child
+            while (result != NodeFilter.FILTER_REJECT and dom.tree_helpers.hasChildren(node)) {
+                // Step 3.1.1: Set node to its first child
+                node = dom.tree_helpers.getFirstChild(node).?;
+
+                // Step 3.1.2: Set result to the result of filtering node
+                result = try self.filterNode(node);
+
+                // Step 3.1.3: If result is FILTER_ACCEPT, set current and return
+                if (result == NodeFilter.FILTER_ACCEPT) {
+                    self.current = node;
+                    return node;
+                }
+            }
+
+            // Step 3.2: Let sibling be null
+            var sibling: ?*Node = null;
+
+            // Step 3.3: Let temporary be node
+            var temporary: ?*Node = node;
+
+            // Step 3.4: While temporary is non-null
+            while (temporary) |temp| {
+                // Step 3.4.1: If temporary is root, return null
+                if (temp == self.root) {
+                    return null;
+                }
+
+                // Step 3.4.2: Set sibling to temporary's next sibling
+                sibling = dom.tree_helpers.getNextSibling(temp);
+
+                // Step 3.4.3: If sibling is non-null, set node and break
+                if (sibling) |sib| {
+                    node = sib;
+                    break;
+                }
+
+                // Step 3.4.4: Set temporary to temporary's parent
+                temporary = dom.tree_helpers.getParentNode(temp);
+            }
+
+            // If we didn't find a sibling, return null
+            if (sibling == null) {
+                return null;
+            }
+
+            // Step 3.5: Set result to the result of filtering node
+            result = try self.filterNode(node);
+
+            // Step 3.6: If result is FILTER_ACCEPT, set current and return
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                self.current = node;
+                return node;
+            }
+        }
+    }
+
+    // ========================================================================
+    // Internal algorithms
+    // ========================================================================
+
+    /// Child traversal type
+    pub const ChildType = enum { first, last };
+
+    /// Sibling traversal type
+    pub const SiblingType = enum { next, previous };
+
+    /// DOM §6.3 - traverse children algorithm
+    fn traverseChildren(self: *TreeWalker, child_type: ChildType) !?*Node {
+        const dom = @import("dom");
+
+        // Step 1: Let node be walker's current
+        var node = self.current;
+
+        // Step 2: Set node to node's first/last child
+        node = switch (child_type) {
+            .first => dom.tree_helpers.getFirstChild(node) orelse return null,
+            .last => dom.tree_helpers.getLastChild(node) orelse return null,
+        };
+
+        // Step 3: While node is non-null
+        while (true) {
+            // Step 3.1: Let result be the result of filtering node
+            const result = try self.filterNode(node);
+
+            // Step 3.2: If result is FILTER_ACCEPT, set current and return
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                self.current = node;
+                return node;
+            }
+
+            // Step 3.3: If result is FILTER_SKIP
+            if (result == NodeFilter.FILTER_SKIP) {
+                // Step 3.3.1: Let child be node's first/last child
+                const child = switch (child_type) {
+                    .first => dom.tree_helpers.getFirstChild(node),
+                    .last => dom.tree_helpers.getLastChild(node),
+                };
+
+                // Step 3.3.2: If child is non-null, set node and continue
+                if (child) |c| {
+                    node = c;
+                    continue;
+                }
+            }
+
+            // Step 3.4: While node is non-null
+            while (true) {
+                // Step 3.4.1: Let sibling be node's next/previous sibling
+                const sibling = switch (child_type) {
+                    .first => dom.tree_helpers.getNextSibling(node),
+                    .last => dom.tree_helpers.getPreviousSibling(node),
+                };
+
+                // Step 3.4.2: If sibling is non-null, set node and break
+                if (sibling) |sib| {
+                    node = sib;
+                    break;
+                }
+
+                // Step 3.4.3: Let parent be node's parent
+                const parent = dom.tree_helpers.getParentNode(node) orelse return null;
+
+                // Step 3.4.4: If parent is null, root, or current, return null
+                if (parent == self.root or parent == self.current) {
+                    return null;
+                }
+
+                // Step 3.4.5: Set node to parent
+                node = parent;
+            }
+        }
+
+        // Step 4: Return null (unreachable but spec has it)
+        return null;
+    }
+
+    /// DOM §6.3 - traverse siblings algorithm
+    fn traverseSiblings(self: *TreeWalker, sibling_type: SiblingType) !?*Node {
+        const dom = @import("dom");
+
+        // Step 1: Let node be walker's current
+        var node = self.current;
+
+        // Step 2: If node is root, return null
+        if (node == self.root) {
+            return null;
+        }
+
+        // Step 3: While true
+        while (true) {
+            // Step 3.1: Let sibling be node's next/previous sibling
+            var sibling = switch (sibling_type) {
+                .next => dom.tree_helpers.getNextSibling(node),
+                .previous => dom.tree_helpers.getPreviousSibling(node),
+            };
+
+            // Step 3.2: While sibling is non-null
+            while (sibling) |sib| {
+                // Step 3.2.1: Set node to sibling
+                node = sib;
+
+                // Step 3.2.2: Let result be the result of filtering node
+                const result = try self.filterNode(node);
+
+                // Step 3.2.3: If result is FILTER_ACCEPT, set current and return
+                if (result == NodeFilter.FILTER_ACCEPT) {
+                    self.current = node;
+                    return node;
+                }
+
+                // Step 3.2.4: Set sibling to node's first/last child
+                sibling = switch (sibling_type) {
+                    .next => dom.tree_helpers.getFirstChild(node),
+                    .previous => dom.tree_helpers.getLastChild(node),
+                };
+
+                // Step 3.2.5: If result is FILTER_REJECT or sibling is null
+                if (result == NodeFilter.FILTER_REJECT or sibling == null) {
+                    // Set sibling to node's next/previous sibling
+                    sibling = switch (sibling_type) {
+                        .next => dom.tree_helpers.getNextSibling(node),
+                        .previous => dom.tree_helpers.getPreviousSibling(node),
+                    };
+                }
+            }
+
+            // Step 3.3: Set node to node's parent
+            const parent = dom.tree_helpers.getParentNode(node);
+            node = parent orelse return null;
+
+            // Step 3.4: If node is null or root, return null
+            if (node == self.root) {
+                return null;
+            }
+
+            // Step 3.5: If filtering node returns FILTER_ACCEPT, return null
+            const result = try self.filterNode(node);
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                return null;
+            }
+        }
+    }
+
+    /// DOM §6 - filter algorithm
+    /// Filter a node within this walker
+    fn filterNode(self: *TreeWalker, node: *Node) !u16 {
+        // Step 1: If traverser's active flag is set, throw InvalidStateError
+        if (self.active_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Let n be node's nodeType attribute value − 1
+        const n = node.node_type - 1;
+
+        // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
+        if (!NodeFilter.isNodeTypeShown(self.what_to_show, n)) {
+            return NodeFilter.FILTER_SKIP;
+        }
+
+        // Step 4: If filter is null, return FILTER_ACCEPT
+        if (self.filter == null) {
+            return NodeFilter.FILTER_ACCEPT;
+        }
+
+        // Step 5: Set traverser's active flag
+        self.active_flag = true;
+
+        // Step 6: Call filter callback
+        const result = self.filter.?(node);
+
+        // Step 7: Unset traverser's active flag
+        self.active_flag = false;
+
+        // Step 8: Return result
+        return result;
+    }
+});
