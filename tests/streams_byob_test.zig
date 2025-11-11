@@ -474,3 +474,200 @@ test "BYOB Integration - summary of implementations" {
 
     try testing.expect(true); // Pass - documentation only
 }
+
+// ============================================================================
+// ReadableByteStreamController Respond Operations Tests
+// ============================================================================
+
+test "BYOB Controller - respond validation (readable state)" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    // Create controller
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    // Create a stream and attach it (simplified - in real use, stream creates controller)
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create a pending pull-into descriptor
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        1,
+        .uint8_array,
+        .byob,
+    );
+
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Test: bytesWritten = 0 should throw TypeError in readable state
+    const result1 = controller.respond(0);
+    try testing.expectError(error.TypeError, result1);
+
+    // Test: bytesWritten > byte_length should throw RangeError
+    const result2 = controller.respond(101);
+    try testing.expectError(error.RangeError, result2);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+    controller.pendingPullIntos.clearRetainingCapacity();
+}
+
+test "BYOB Controller - respond validation (closed state)" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    // Create a closed stream
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+
+    controller.stream = &stream;
+    stream.state = .closed;
+
+    // Create a pending pull-into descriptor
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0,
+        100,
+        0,
+        1,
+        .uint8_array,
+        .none,
+    );
+
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Test: bytesWritten != 0 should throw TypeError in closed state
+    const result = controller.respond(50);
+    try testing.expectError(error.TypeError, result);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+    controller.pendingPullIntos.clearRetainingCapacity();
+}
+
+test "BYOB Controller - respondWithNewView validation" {
+    const allocator = testing.allocator;
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    var controller = ReadableByteStreamController.init(
+        allocator,
+        common.defaultCancelAlgorithm(),
+        common.defaultPullAlgorithm(),
+        1024.0,
+        null,
+        loop.eventLoop(),
+    );
+    defer controller.deinit();
+
+    // Create a readable stream
+    const ReadableStream = @import("../webidl/src/streams/ReadableStream.zig").ReadableStream;
+    var stream = try ReadableStream.init(allocator);
+    defer stream.deinit();
+
+    controller.stream = &stream;
+    stream.state = .readable;
+
+    // Create a pending pull-into descriptor
+    const buffer = try allocator.create(ArrayBuffer);
+    buffer.* = .{
+        .data = try allocator.alloc(u8, 100),
+        .byte_length = 100,
+        .detached = false,
+    };
+
+    const descriptor = try allocator.create(PullIntoDescriptor);
+    descriptor.* = PullIntoDescriptor.init(
+        buffer,
+        100,
+        0, // byte_offset
+        100, // byte_length
+        0, // minimum_fill
+        1, // element_size
+        .uint8_array,
+        .byob,
+    );
+    descriptor.bytes_filled = 50; // Already filled 50 bytes
+
+    try controller.pendingPullIntos.append(allocator, descriptor);
+
+    // Create a view with wrong byte offset (should be 50, not 0)
+    const webidl = @import("../src/webidl/root.zig");
+    var view_buffer = webidl.ArrayBuffer{
+        .data = buffer.data,
+        .detached = false,
+    };
+
+    const Uint8ArrayType = webidl.TypedArray(u8);
+    const uint8_view_wrong = try Uint8ArrayType.init(&view_buffer, 0, 50); // Wrong offset
+    const view_wrong = webidl.ArrayBufferView{ .uint8_array = uint8_view_wrong };
+
+    // Test: Wrong byte offset should throw RangeError
+    const result1 = controller.respondWithNewView(view_wrong);
+    try testing.expectError(error.RangeError, result1);
+
+    // Create a view with correct byte offset but zero length in readable state
+    const uint8_view_zero = try Uint8ArrayType.init(&view_buffer, 50, 0);
+    const view_zero = webidl.ArrayBufferView{ .uint8_array = uint8_view_zero };
+
+    // Test: Zero byte length in readable state should throw TypeError
+    const result2 = controller.respondWithNewView(view_zero);
+    try testing.expectError(error.TypeError, result2);
+
+    // Cleanup
+    buffer.deinit(allocator);
+    allocator.destroy(buffer);
+    allocator.destroy(descriptor);
+    controller.pendingPullIntos.clearRetainingCapacity();
+}
