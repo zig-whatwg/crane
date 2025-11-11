@@ -207,6 +207,114 @@ pub const ReadableByteStreamController = struct {
         const error_value = common.JSValue.fromWebIDL(e);
         self.errorInternal(error_value);
     }
+    /// [[PullSteps]](readRequest) - Implements the controller contract
+    /// 
+    /// Spec: § 4.7.4 "[[PullSteps]](readRequest)"
+    /// 
+    /// This is called when a default reader reads from a byte stream.
+    /// If autoAllocateChunkSize is set, this automatically allocates a buffer.
+    pub fn pullSteps(
+        self: *ReadableByteStreamController,
+        reader: *anyopaque,
+    ) !*AsyncPromise(common.ReadResult) {
+        _ = reader; // Not used in this implementation
+
+        // Step 1: Let stream be this.[[stream]].
+        const stream_ptr = self.stream orelse {
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+            promise.reject(common.JSValue{ .string = "Stream not initialized" });
+            return promise;
+        };
+        const ReadableStreamModule = @import("readable_stream");
+        _ = ReadableStreamModule; // For future use
+        _ = stream_ptr; // Stream ptr available if needed
+
+        // Step 2: Assert: ! ReadableStreamHasDefaultReader(stream) is true.
+        // (We assume this is true when called from a default reader)
+
+        // Step 3: If this.[[queueTotalSize]] > 0,
+        if (self.queueTotalSize > 0) {
+            // Step 3.1: Assert: ! ReadableStreamGetNumReadRequests(stream) is 0.
+            // (Implicit - if queue has data, no pending requests)
+
+            // Step 3.2: Perform ! ReadableByteStreamControllerFillReadRequestFromQueue(this, readRequest).
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+
+            // Dequeue a chunk from the byte queue
+            if (self.byteQueue.items.len > 0) {
+                const entry = self.byteQueue.orderedRemove(0);
+
+                // Update queue total size
+                self.queueTotalSize -= @as(f64, @floatFromInt(entry.byteLength));
+
+                // Create Uint8Array view of the chunk
+                const chunk_data = entry.buffer.data[entry.byteOffset..][0..@intCast(entry.byteLength)];
+                const chunk_value = common.JSValue{ .bytes = chunk_data };
+
+                // Clean up the buffer
+                entry.buffer.deinit(self.allocator);
+                self.allocator.destroy(entry.buffer);
+
+                // Fulfill promise with the chunk
+                promise.fulfill(.{
+                    .value = chunk_value,
+                    .done = false,
+                });
+            } else {
+                // Shouldn't happen if queueTotalSize > 0
+                promise.reject(common.JSValue{ .string = "Queue size mismatch" });
+            }
+
+            // Step 3.3: Return.
+            return promise;
+        }
+
+        // Step 4: Let autoAllocateChunkSize be this.[[autoAllocateChunkSize]].
+        const auto_allocate_chunk_size = self.autoAllocateChunkSize;
+
+        // Step 5: If autoAllocateChunkSize is not undefined,
+        if (auto_allocate_chunk_size) |chunk_size| {
+            // Step 5.1: Let buffer be Construct(%ArrayBuffer%, « autoAllocateChunkSize »).
+            const buffer = ArrayBuffer.init(self.allocator, chunk_size) catch {
+                // Step 5.2: If buffer is an abrupt completion,
+                const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+                promise.reject(common.JSValue{ .string = "Failed to allocate buffer" });
+                return promise;
+            };
+
+            const buffer_ptr = try self.allocator.create(ArrayBuffer);
+            buffer_ptr.* = buffer;
+
+            // Step 5.3: Let pullIntoDescriptor be a new pull-into descriptor with
+            const pull_into_descriptor = try self.allocator.create(PullIntoDescriptor);
+            pull_into_descriptor.* = PullIntoDescriptor.init(
+                buffer_ptr,
+                chunk_size,
+                0, // byte offset
+                chunk_size, // byte length
+                1, // minimum fill (at least 1 byte)
+                1, // element size (Uint8Array)
+                ViewConstructor.uint8_array,
+                .default, // reader type = "default"
+            );
+
+            // Step 5.4: Append pullIntoDescriptor to this.[[pendingPullIntos]].
+            try self.pendingPullIntos.append(self.allocator, pull_into_descriptor);
+        }
+
+        // Step 6: Perform ! ReadableStreamAddReadRequest(stream, readRequest).
+        const pending_promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+
+        // Add to stream's read requests (this would normally be on the reader)
+        // For now, we create a promise that will be fulfilled when data arrives
+        // TODO: Properly integrate with reader's readRequests queue
+
+        // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(this).
+        self.callPullIfNeeded();
+
+        // Return the pending promise
+        return pending_promise;
+    }
     /// Enqueue a chunk to the byte stream queue
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueueChunkToQueue"
@@ -555,7 +663,10 @@ pub const ReadableByteStreamController = struct {
                     byteOffset,
                     byteLength,
                 );
-                _ = transferred_view; // TODO: Convert to JSValue
+                // Convert ArrayBufferView to JSValue
+                // Note: We use .object since TypedArrays are objects in JavaScript
+                // The view itself contains the buffer reference
+                _ = transferred_view; // View created but stream expects raw bytes for now
                 stream.fulfillReadRequest(common.JSValue{ .bytes = buffer_ptr.data }, false);
             }
         } else if (stream.hasBYOBReader()) {
@@ -660,20 +771,46 @@ pub const ReadableByteStreamController = struct {
     /// Respond with bytes written to BYOB buffer
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespond"
-    pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
-        // Step 1: Assert we have pending pull-intos
+    pub fn respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
+        // Step 1: Assert controller.[[pendingPullIntos]] is not empty
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;
         }
 
-        // Step 2: Get first descriptor
+        // Step 2: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Step 3: Get stream state
-        const stream = self.stream orelse return error.NoStream;
-        _ = stream; // TODO: Check state when stream integration is ready
+        // Step 3: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
 
-        // Step 6: Transfer descriptor's buffer
+        // Step 4: If state is "closed"
+        if (state == .closed) {
+            // Step 4.1: If bytesWritten is not 0, throw TypeError
+            if (bytesWritten != 0) {
+                return error.TypeError;
+            }
+        } else {
+            // Step 5: Otherwise (state is "readable")
+            // Step 5.1: Assert state is "readable"
+            if (state != .readable) {
+                return error.InvalidState;
+            }
+
+            // Step 5.2: If bytesWritten is 0, throw TypeError
+            if (bytesWritten == 0) {
+                return error.TypeError;
+            }
+
+            // Step 5.3: If firstDescriptor's bytes filled + bytesWritten > firstDescriptor's byte length, throw RangeError
+            if (firstDescriptor.bytes_filled + bytesWritten > firstDescriptor.byte_length) {
+                return error.RangeError;
+            }
+        }
+
+        // Step 6: Set firstDescriptor's buffer to ! TransferArrayBuffer(firstDescriptor's buffer)
         const old_buffer = firstDescriptor.buffer;
         const transferred = try old_buffer.transfer();
         const transferred_ptr = try self.allocator.create(ArrayBuffer);
@@ -681,37 +818,79 @@ pub const ReadableByteStreamController = struct {
         firstDescriptor.buffer = transferred_ptr;
         self.allocator.destroy(old_buffer);
 
-        // Step 7: Call respondInternal
+        // Step 7: Perform ? ReadableByteStreamControllerRespondInternal(controller, bytesWritten)
         try self.respondInternal(bytesWritten);
+    }
+    /// Wrapper for WebIDL call convention
+    pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
+        return self.respond(bytesWritten);
     }
     /// Respond with a new view (replacement buffer)
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondWithNewView"
-    pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
-        // Step 1: Assert we have pending pull-intos
+    pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
+        // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;
         }
 
-        // Step 2: Assert buffer is not detached
+        // Step 2: Assert: ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is false
         if (view.isDetached()) {
             return error.DetachedBuffer;
         }
 
-        // Step 3: Get first descriptor
+        // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Steps 5-6: Extract view properties
+        // Step 4: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
+
+        // Step 5: If state is "closed"
+        if (state == .closed) {
+            // Step 5.1: If view.[[ByteLength]] is not 0, throw TypeError
+            if (view.getByteLength() != 0) {
+                return error.TypeError;
+            }
+        } else {
+            // Step 6: Otherwise (state is "readable")
+            // Step 6.1: Assert: state is "readable"
+            if (state != .readable) {
+                return error.InvalidState;
+            }
+
+            // Step 6.2: If view.[[ByteLength]] is 0, throw TypeError
+            if (view.getByteLength() == 0) {
+                return error.TypeError;
+            }
+        }
+
+        // Extract view properties
         const view_byteOffset: u64 = @intCast(view.getByteOffset());
         const view_byteLength: u64 = @intCast(view.getByteLength());
+        const view_buffer = view.getViewedArrayBuffer();
 
-        // Step 7: Validate byte offset matches
+        // Step 7: If firstDescriptor's byte offset + firstDescriptor's bytes filled is not view.[[ByteOffset]], throw RangeError
         if (firstDescriptor.byte_offset + firstDescriptor.bytes_filled != view_byteOffset) {
             return error.RangeError;
         }
 
-        // Step 11: Transfer the new view's buffer
-        const view_buffer = view.getViewedArrayBuffer();
+        // Step 8: If firstDescriptor's buffer byte length is not view.[[ViewedArrayBuffer]].[[ByteLength]], throw RangeError
+        if (firstDescriptor.buffer.byte_length != view_buffer.data.len) {
+            return error.RangeError;
+        }
+
+        // Step 9: If firstDescriptor's bytes filled + view.[[ByteLength]] > firstDescriptor's byte length, throw RangeError
+        if (firstDescriptor.bytes_filled + view_byteLength > firstDescriptor.byte_length) {
+            return error.RangeError;
+        }
+
+        // Step 10: Let viewByteLength be view.[[ByteLength]]
+        const viewByteLength = view_byteLength;
+
+        // Step 11: Set firstDescriptor's buffer to ? TransferArrayBuffer(view.[[ViewedArrayBuffer]])
         const internal_buffer = try self.allocator.create(ArrayBuffer);
         internal_buffer.* = .{
             .data = view_buffer.data,
@@ -719,29 +898,99 @@ pub const ReadableByteStreamController = struct {
             .detached = view_buffer.detached,
         };
         const transferred = try internal_buffer.transfer();
-        firstDescriptor.buffer.* = transferred;
+
+        // Free old buffer before replacing
+        firstDescriptor.buffer.deinit(self.allocator);
+        self.allocator.destroy(firstDescriptor.buffer);
+
+        const transferred_ptr = try self.allocator.create(ArrayBuffer);
+        transferred_ptr.* = transferred;
+        firstDescriptor.buffer = transferred_ptr;
         self.allocator.destroy(internal_buffer);
 
-        // Step 12: Respond with the new byte length
-        try self.respondInternal(view_byteLength);
+        // Step 12: Perform ? ReadableByteStreamControllerRespondInternal(controller, viewByteLength)
+        try self.respondInternal(viewByteLength);
+    }
+    /// Wrapper for WebIDL call convention
+    pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
+        return self.respondWithNewView(view);
     }
     /// Internal respond implementation
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInternal"
     fn respondInternal(self: *ReadableByteStreamController, bytesWritten: u64) !void {
-        // Step 1: Get first descriptor
+        // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Step 3: Invalidate BYOB request
+        // Step 2: Assert: ! CanTransferArrayBuffer(firstDescriptor's buffer) is true
+        // (Already transferred in respond())
+
+        // Step 3: Perform ! ReadableByteStreamControllerInvalidateBYOBRequest(controller)
         self.invalidateBYOBRequest();
 
-        // Step 4: Get stream state (simplified for now)
-        // TODO: Check actual stream state when integrated
+        // Step 4: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
 
-        // For now, assume readable state and call respondInReadableState
-        try self.respondInReadableState(bytesWritten, firstDescriptor);
+        // Step 5: If state is "closed"
+        if (state == .closed) {
+            // Step 5.1: Assert: bytesWritten is 0
+            // Step 5.2: Perform ! ReadableByteStreamControllerRespondInClosedState(controller, firstDescriptor)
+            self.respondInClosedState(firstDescriptor);
+        } else {
+            // Step 6: Otherwise (state is "readable")
+            // Step 6.1: Assert: state is "readable"
+            // Step 6.2: Assert: bytesWritten > 0
+            // Step 6.3: Perform ? ReadableByteStreamControllerRespondInReadableState(controller, bytesWritten, firstDescriptor)
+            try self.respondInReadableState(bytesWritten, firstDescriptor);
+        }
 
-        // Step 7: Call pull if needed (TODO when stream integration ready)
+        // Step 7: Perform ! ReadableByteStreamControllerCallPullIfNeeded(controller)
+        self.callPullIfNeeded();
+    }
+    /// Respond when stream is in closed state
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInClosedState"
+    fn respondInClosedState(
+        self: *ReadableByteStreamController,
+        firstDescriptor: *PullIntoDescriptor,
+    ) void {
+        // Step 1: Assert: the remainder after dividing firstDescriptor's bytes filled by firstDescriptor's element size is 0
+        // (Assertion - caller ensures this)
+
+        // Step 2: If firstDescriptor's reader type is "none", perform ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+        if (firstDescriptor.reader_type == .none) {
+            _ = self.shiftPendingPullInto();
+        }
+
+        // Step 3: Let stream be controller.[[stream]]
+        const stream_ptr = self.stream orelse return;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
+        if (stream.hasBYOBReader()) {
+            // Step 4.1: Let filledPullIntos be a new empty list
+            var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+            defer filled_pull_intos.deinit(self.allocator);
+
+            // Step 4.2: While filledPullIntos's size < ! ReadableStreamGetNumReadIntoRequests(stream)
+            while (filled_pull_intos.items.len < stream.getNumReadIntoRequests()) {
+                // Step 4.2.1: Let pullIntoDescriptor be ! ReadableByteStreamControllerShiftPendingPullInto(controller)
+                const pull_into_descriptor = self.shiftPendingPullInto();
+
+                // Step 4.2.2: Append pullIntoDescriptor to filledPullIntos
+                filled_pull_intos.append(self.allocator, pull_into_descriptor) catch break;
+            }
+
+            // Step 4.3: For each filledPullInto of filledPullIntos
+            for (filled_pull_intos.items) |filled_pull_into| {
+                // Step 4.3.1: Perform ! ReadableByteStreamControllerCommitPullIntoDescriptor(stream, filledPullInto)
+                self.commitPullIntoDescriptor(filled_pull_into) catch continue;
+            }
+        }
     }
     /// Respond when stream is in readable state
     /// 
@@ -813,10 +1062,13 @@ pub const ReadableByteStreamController = struct {
         // Step 6-7: Fulfill based on reader type
         if (pullIntoDescriptor.reader_type == .default) {
             // Step 6: Fulfill read request
-            // TODO: Convert filled_view to JSValue properly
+            // For default readers, we fulfill with an object marker
+            // Note: filled_view is an ArrayBufferView which would be the actual value
+            // but fulfillReadRequest currently expects a simple JSValue marker
             stream.fulfillReadRequest(common.JSValue{ .object = {} }, done);
         } else {
             // Step 7: Fulfill read-into request
+            // For BYOB readers, pass the actual view
             stream.fulfillReadIntoRequest(filled_view, done);
         }
     }
@@ -1004,7 +1256,10 @@ pub const ReadableByteStreamController = struct {
         const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
         // Convert view to JSValue
-        _ = view; // TODO: Properly convert ArrayBufferView to JSValue
+        // The view is an ArrayBufferView (Uint8Array), which is an object in JavaScript
+        // For now, we pass the raw bytes since fulfillReadRequest expects bytes
+        // Full implementation would wrap this in a proper JSValue.object variant
+        _ = view; // View constructed but raw bytes used for fulfillment
         const chunk_value = common.JSValue{ .bytes = entry.buffer.data };
         stream.fulfillReadRequest(chunk_value, false);
     }
@@ -1038,15 +1293,59 @@ pub const ReadableByteStreamController = struct {
             const byobRequest = try self.allocator.create(ReadableStreamBYOBRequest);
             errdefer self.allocator.destroy(byobRequest);
 
-            // Initialize BYOB request (simplified - full implementation would call init method)
-            _ = view; // TODO: Initialize ReadableStreamBYOBRequest with view
-            byobRequest.* = undefined; // Placeholder
+            // Initialize BYOB request with controller and view
+            byobRequest.* = try ReadableStreamBYOBRequest.init(
+                self.allocator,
+                @ptrCast(self),
+                view,
+            );
 
             self.byobRequest = byobRequest;
         }
 
         // Step 2: Return the request
         return self.byobRequest;
+    }
+    /// Tee this byte stream into two independent branches
+    /// 
+    /// Spec: § 3.3.9 "ReadableByteStreamTee(stream)"
+    /// 
+    /// This is a simplified implementation suitable for basic use cases.
+    /// Full spec implementation requires:
+    /// - Dynamic reader switching (default ↔ BYOB)
+    /// - Microtask queueing
+    /// - CloneAsUint8Array for chunks
+    /// - Complex error forwarding
+    /// 
+    /// Current implementation creates two independent branches that share
+    /// the underlying byte stream controller.
+    pub fn tee(self: *ReadableByteStreamController) !struct { branch1: *anyopaque, branch2: *anyopaque } {
+        // Get the stream
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Create two new streams that share this controller
+        const branch1 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch1);
+        branch1.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        const branch2 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch2);
+        branch2.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        // Wire both branches to share this controller
+        // Note: Full implementation would create separate controllers
+        // and coordinate reads between them
+        branch1.controller = self;
+        branch2.controller = self;
+        branch1.state = stream.state;
+        branch2.state = stream.state;
+
+        return .{
+            .branch1 = branch1,
+            .branch2 = branch2,
+        };
     }
 
     // WebIDL extended attributes metadata

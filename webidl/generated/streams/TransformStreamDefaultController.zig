@@ -35,6 +35,9 @@ pub const TransformStreamDefaultController = struct {
     /// [[cancelAlgorithm]]: Algorithm to handle cancellation
     /// Spec: § 6.2.2 Internal slots
     cancelAlgorithm: common.CancelAlgorithm,
+    /// [[finishPromise]]: Promise that resolves on completion of flush or cancel
+    /// Spec: § 6.2.2 Internal slots
+    finishPromise: ?common.Promise(void),
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -48,6 +51,7 @@ pub const TransformStreamDefaultController = struct {
             .transformAlgorithm = transformAlgorithm,
             .flushAlgorithm = flushAlgorithm,
             .cancelAlgorithm = cancelAlgorithm,
+            .finishPromise = null,
         };
     }
     pub fn deinit(self: *TransformStreamDefaultController) void {
@@ -171,6 +175,26 @@ pub const TransformStreamDefaultController = struct {
         self.transformAlgorithm = common.defaultTransformAlgorithm();
         self.flushAlgorithm = common.defaultFlushAlgorithm();
         self.cancelAlgorithm = common.defaultCancelAlgorithm();
+    }
+    /// TransformStreamDefaultControllerPerformTransform(controller, chunk)
+    /// 
+    /// Spec: § 6.3.2 "Perform transform with error handling"
+    pub fn performTransform(self: *TransformStreamDefaultController, chunk: common.JSValue) common.Promise(void) {
+        // Spec step 1: Let transformPromise be the result of performing controller.[[transformAlgorithm]], passing chunk
+        const transform_promise = self.transformAlgorithm.call(chunk);
+
+        // Spec step 2: Return the result of reacting to transformPromise with rejection steps
+        // For now, we return the promise directly (simplified)
+        // Full implementation would add rejection handler that calls TransformStreamError
+
+        // If the transform promise is rejected, error the stream
+        if (transform_promise.isRejected()) {
+            const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+            const error_value = transform_promise.error_value orelse common.JSValue{ .string = "Transform failed" };
+            stream.errorStream(error_value);
+        }
+
+        return transform_promise;
     }
 
     // WebIDL extended attributes metadata
