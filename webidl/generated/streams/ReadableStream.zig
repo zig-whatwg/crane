@@ -280,25 +280,23 @@ pub const ReadableStream = struct {
         // Spec: § 4.2.4 "Return ? ReadableStreamFromIterable(asyncIterable)"
         return try ReadableStreamFromIterable(allocator, loop, asyncIterable);
     }
-    /// locked attribute getter
-    /// 
+    /// readonly attribute boolean locked
     /// IDL: readonly attribute boolean locked;
     /// 
     /// Spec: § 4.1.2 "The locked getter steps are:"
     /// Returns true if the stream is locked to a reader.
-    pub fn call_locked(self: *const ReadableStream) bool {
+    pub fn get_locked(self: *const ReadableStream) bool {
         // Spec: § 4.1.2 "Return ! IsReadableStreamLocked(this)."
-        return self.isLocked();
+        return self.reader != .none;
     }
-    /// cancel(reason) method
-    /// 
+    /// Promise<undefined> cancel(optional any reason)
     /// IDL: Promise<undefined> cancel(optional any reason);
     /// 
     /// Spec: § 4.1.3 "The cancel(reason) method steps are:"
     /// Cancels the stream, signaling a loss of interest in the stream by a consumer.
     pub fn call_cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
-        if (self.isLocked()) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Cannot cancel a locked stream" });
             return promise;
@@ -596,12 +594,6 @@ pub const ReadableStream = struct {
     /// This is the default async iterator used by for-await loops
     pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
         return self.call_values(false);
-    }
-    /// IsReadableStreamLocked(stream)
-    /// 
-    /// Spec: § 4.2.1 "Returns true if stream has a reader."
-    pub fn isLocked(self: *const ReadableStream) bool {
-        return self.reader != .none;
     }
     /// ReadableStreamCancel(stream, reason)
     /// 
