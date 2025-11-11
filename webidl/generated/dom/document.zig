@@ -288,6 +288,25 @@ pub const Document = struct {
         _ = qualified_name;
         return error.NotImplemented;
     }
+    /// importNode(node, deep)
+    /// DOM §4.6.1 - Returns a copy of node imported into this document.
+    /// If deep is true, the copy also includes the node's descendants.
+    /// TODO: Implement full node cloning algorithm
+    pub fn call_importNode(self: *Document, node: *Node, deep: bool) !*Node {
+        _ = self;
+        _ = node;
+        _ = deep;
+        return error.NotImplemented;
+    }
+    /// adoptNode(node)
+    /// DOM §4.6.1 - Moves node from another document to this document.
+    /// Removes node from its current document and changes its owner document to this.
+    /// TODO: Implement full adoption algorithm with parent removal
+    pub fn call_adoptNode(self: *Document, node: *Node) !*Node {
+        _ = self;
+        _ = node;
+        return error.NotImplemented;
+    }
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{
