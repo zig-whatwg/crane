@@ -4,19 +4,25 @@ const std = @import("std");
 const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
 
+/// DOM Spec: interface Comment : CharacterData
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode (inherited automatically)
 pub const Comment = webidl.interface(struct {
+    pub const extends = CharacterData;
+    // NOTE: Codegen will inherit ChildNode and NonDocumentTypeChildNode from CharacterData
+
     allocator: std.mem.Allocator,
-    character_data: CharacterData,
 
     pub fn init(allocator: std.mem.Allocator) !Comment {
         return .{
             .allocator = allocator,
-            .character_data = try CharacterData.init(allocator),
+            // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *Comment) void {
-        self.character_data.deinit();
+        _ = self;
+        // NOTE: Parent CharacterData cleanup will be handled by codegen
+        // TODO: Call parent CharacterData deinit (will be added by codegen)
     }
 }, .{
     .exposed = &.{.Window},

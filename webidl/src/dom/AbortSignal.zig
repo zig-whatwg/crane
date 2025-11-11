@@ -9,9 +9,11 @@ const EventTarget = @import("event_target").EventTarget;
 /// Takes the abort reason as parameter
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
 
+/// DOM Spec: interface AbortSignal : EventTarget
 pub const AbortSignal = webidl.interface(struct {
+    pub const extends = EventTarget;
+
     allocator: std.mem.Allocator,
-    event_target: EventTarget,
     aborted: bool,
     reason: ?webidl.Exception,
     /// [[abortAlgorithms]]: List of algorithms to run when aborted
@@ -21,16 +23,17 @@ pub const AbortSignal = webidl.interface(struct {
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
             .allocator = allocator,
-            .event_target = try EventTarget.init(allocator),
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
+            // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
 
     pub fn deinit(self: *AbortSignal) void {
-        self.event_target.deinit();
         self.abort_algorithms.deinit();
+        // NOTE: Parent EventTarget cleanup will be handled by codegen
+        // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
     pub fn get_aborted(self: *const AbortSignal) bool {
