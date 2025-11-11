@@ -271,6 +271,13 @@ pub fn build(b: *std.Build) void {
     dom_types_mod.addImport("webidl", webidl_mod);
     dom_types_mod.addImport("node", node_mod);
 
+    // Create NodeFilter module (callback interface with constants)
+    const node_filter_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/src/dom/NodeFilter.zig"),
+        .target = target,
+    });
+    node_filter_mod.addImport("node", node_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     event_target_mod.addImport("abort_signal", abort_signal_mod);
@@ -351,6 +358,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("attr", attr_mod);
     dom_mod.addImport("dom_implementation", dom_implementation_mod);
     dom_mod.addImport("range", range_mod);
+    dom_mod.addImport("node_filter", node_filter_mod);
 
     // Handle circular dependencies by adding imports after all modules are created
     element_mod.addImport("attr", attr_mod);
