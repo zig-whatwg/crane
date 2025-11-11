@@ -13,6 +13,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const common = @import("common");
 const message_port = @import("message_port");
+const webidl = @import("webidl");
 const JSValue = common.JSValue;
 const MessagePort = message_port.MessagePort;
 
@@ -142,8 +143,15 @@ const CrossRealmReadableState = struct {
 
         // Send "pull" message to signal backpressure
         message_port.packAndPostMessage(self.port, "pull", JSValue.undefined_value()) catch {
-            // If posting fails, return rejected promise
-            return common.Promise(void).rejected(JSValue{ .string = "Failed to send pull message" });
+            // If posting fails, return rejected promise with proper exception
+            // Note: Using a simple TypeError here since message posting is an operation error
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = "Failed to send pull message",
+                },
+            };
+            return common.Promise(void).rejected(exception);
         };
 
         return common.Promise(void).fulfilled({});
@@ -209,7 +217,13 @@ const CrossRealmWritableState = struct {
 
         // Send "chunk" message
         message_port.packAndPostMessage(self.port, "chunk", chunk) catch {
-            return common.Promise(void).rejected(JSValue{ .string = "Failed to send chunk" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = "Failed to send chunk",
+                },
+            };
+            return common.Promise(void).rejected(exception);
         };
 
         // TODO: Create and return backpressure promise
@@ -224,7 +238,13 @@ const CrossRealmWritableState = struct {
 
         // Send "close" message
         message_port.packAndPostMessage(self.port, "close", JSValue.undefined_value()) catch {
-            return common.Promise(void).rejected(JSValue{ .string = "Failed to send close" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = "Failed to send close",
+                },
+            };
+            return common.Promise(void).rejected(exception);
         };
 
         return common.Promise(void).fulfilled({});

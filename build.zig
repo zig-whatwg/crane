@@ -675,6 +675,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/async_promise.zig"),
         .target = target,
         .imports = &.{
+            .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "common", .module = streams_common_mod },
             .{ .name = "event_loop", .module = streams_event_loop_mod },
             .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },

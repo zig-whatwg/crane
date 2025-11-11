@@ -107,7 +107,13 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
                 self.allocator,
                 self.eventLoop,
             );
-            promise.reject(common.JSValue{ .string = "Reader released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Reader released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 

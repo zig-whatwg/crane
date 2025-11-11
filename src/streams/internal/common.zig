@@ -67,11 +67,16 @@ pub const JSValue = union(enum) {
 
 /// Placeholder for Promise type
 /// In production, this will be webidl.Promise(T)
+///
+/// Error Handling:
+/// - Promises can be rejected with proper WebIDL exceptions (TypeError, RangeError, DOMException)
+/// - This enables correct error propagation to JavaScript runtimes
+/// - For user-provided rejection reasons (e.g., cancel reasons), those remain as JSValue
 pub fn Promise(comptime T: type) type {
     return struct {
         state: State = .pending,
         value: ?T = null,
-        error_value: ?JSValue = null,
+        error_value: ?webidl.errors.Exception = null,
 
         const Self = @This();
 
@@ -92,7 +97,7 @@ pub fn Promise(comptime T: type) type {
             };
         }
 
-        pub fn rejected(err: JSValue) Self {
+        pub fn rejected(err: webidl.errors.Exception) Self {
             return .{
                 .state = .rejected,
                 .error_value = err,
@@ -104,7 +109,7 @@ pub fn Promise(comptime T: type) type {
             self.value = value;
         }
 
-        pub fn reject(self: *Self, err: JSValue) void {
+        pub fn reject(self: *Self, err: webidl.errors.Exception) void {
             self.state = .rejected;
             self.error_value = err;
         }
@@ -743,14 +748,24 @@ test "Promise - lifecycle" {
 }
 
 test "Promise - rejection" {
+    const allocator = std.testing.allocator;
+
     var promise = Promise(void).pending();
     try std.testing.expect(promise.isPending());
 
-    promise.reject(.{ .string = "error" });
+    var exception = webidl.errors.Exception{
+        .simple = .{
+            .type = .TypeError,
+            .message = try allocator.dupe(u8, "test error"),
+        },
+    };
+    defer exception.deinit(allocator);
+
+    promise.reject(exception);
     try std.testing.expect(!promise.isPending());
     try std.testing.expect(!promise.isFulfilled());
     try std.testing.expect(promise.isRejected());
-    try std.testing.expectEqualStrings("error", promise.error_value.?.string);
+    try std.testing.expectEqual(webidl.errors.SimpleException.TypeError, promise.error_value.?.simple.type);
 }
 
 test "Promise - with value type" {

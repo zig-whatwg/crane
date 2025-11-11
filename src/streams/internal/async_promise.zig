@@ -89,6 +89,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const event_loop = @import("event_loop");
 const common = @import("common");
+const webidl = @import("webidl");
 const JSValue = common.JSValue;
 
 /// Async Promise type
@@ -110,6 +111,10 @@ pub fn AsyncPromise(comptime T: type) type {
         ///
         /// Promises start as pending and transition to fulfilled or rejected.
         /// State transitions are one-way and permanent.
+        ///
+        /// Error Handling:
+        /// - Rejected state now uses proper WebIDL exceptions instead of JSValue
+        /// - This enables correct error propagation to JavaScript runtimes
         pub const State = union(enum) {
             /// Pending - not yet settled
             pending: void,
@@ -117,8 +122,8 @@ pub fn AsyncPromise(comptime T: type) type {
             /// Fulfilled - resolved with a value
             fulfilled: T,
 
-            /// Rejected - rejected with an error
-            rejected: JSValue,
+            /// Rejected - rejected with a proper exception
+            rejected: webidl.errors.Exception,
         };
 
         /// Reaction - A then/catch/finally handler
@@ -126,22 +131,25 @@ pub fn AsyncPromise(comptime T: type) type {
         /// When a promise settles, all pending reactions are queued as microtasks.
         ///
         /// Supports both context-aware and context-free handlers for flexibility.
+        ///
+        /// Error Handling:
+        /// - Rejection handlers now receive proper WebIDL exceptions
         pub const Reaction = struct {
             /// Called when promise fulfills (may be null)
             /// Legacy signature: fn(T) anyerror!T
             on_fulfilled: ?*const fn (T) anyerror!T,
 
             /// Called when promise rejects (may be null)
-            /// Legacy signature: fn(JSValue) anyerror!T
-            on_rejected: ?*const fn (JSValue) anyerror!T,
+            /// Now receives proper Exception instead of JSValue
+            on_rejected: ?*const fn (webidl.errors.Exception) anyerror!T,
 
             /// Context-aware fulfillment handler (may be null)
             /// New signature: fn(*anyopaque, T) anyerror!T
             on_fulfilled_ctx: ?*const fn (*anyopaque, T) anyerror!T,
 
             /// Context-aware rejection handler (may be null)
-            /// New signature: fn(*anyopaque, JSValue) anyerror!T
-            on_rejected_ctx: ?*const fn (*anyopaque, JSValue) anyerror!T,
+            /// Now receives proper Exception instead of JSValue
+            on_rejected_ctx: ?*const fn (*anyopaque, webidl.errors.Exception) anyerror!T,
 
             /// Context pointer for context-aware handlers
             context: ?*anyopaque,
@@ -230,10 +238,13 @@ pub fn AsyncPromise(comptime T: type) type {
         ///
         /// Example:
         /// ```zig
-        /// promise.reject(.{ .string = "Something went wrong" });
+        /// const exception = webidl.errors.Exception{
+        ///     .simple = .{ .type = .TypeError, .message = "Something went wrong" }
+        /// };
+        /// promise.reject(exception);
         /// loop.runMicrotasks(); // Execute reactions
         /// ```
-        pub fn reject(self: *Self, error_value: JSValue) void {
+        pub fn reject(self: *Self, error_value: webidl.errors.Exception) void {
             if (self.state != .pending) return; // Already settled
 
             self.state = .{ .rejected = error_value };
@@ -305,7 +316,7 @@ pub fn AsyncPromise(comptime T: type) type {
         pub fn then(
             self: *Self,
             on_fulfilled: ?*const fn (T) anyerror!T,
-            on_rejected: ?*const fn (JSValue) anyerror!T,
+            on_rejected: ?*const fn (webidl.errors.Exception) anyerror!T,
         ) !*Self {
             const new_promise = try Self.init(self.allocator, self.event_loop);
 
@@ -365,7 +376,7 @@ pub fn AsyncPromise(comptime T: type) type {
         pub fn thenCtx(
             self: *Self,
             on_fulfilled: ?*const fn (*anyopaque, T) anyerror!T,
-            on_rejected: ?*const fn (*anyopaque, JSValue) anyerror!T,
+            on_rejected: ?*const fn (*anyopaque, webidl.errors.Exception) anyerror!T,
             context: *anyopaque,
         ) !*Self {
             const new_promise = try Self.init(self.allocator, self.event_loop);
@@ -406,7 +417,7 @@ pub fn AsyncPromise(comptime T: type) type {
         pub fn onSettleCtx(
             self: *Self,
             on_fulfilled: ?*const fn (*anyopaque, T) anyerror!void,
-            on_rejected: ?*const fn (*anyopaque, JSValue) anyerror!void,
+            on_rejected: ?*const fn (*anyopaque, webidl.errors.Exception) anyerror!void,
             context: *anyopaque,
         ) !void {
             const reaction = Reaction{
@@ -437,14 +448,14 @@ pub fn AsyncPromise(comptime T: type) type {
         /// Example:
         /// ```zig
         /// _ = try promise.catch(struct {
-        ///     fn onRejected(error_value: JSValue) !u32 {
+        ///     fn onRejected(error_value: webidl.errors.Exception) !u32 {
         ///         return 0; // Default value on error
         ///     }
         /// }.onRejected);
         /// ```
         pub fn catch_(
             self: *Self,
-            on_rejected: *const fn (JSValue) anyerror!T,
+            on_rejected: *const fn (webidl.errors.Exception) anyerror!T,
         ) !*Self {
             return self.then(null, on_rejected);
         }
@@ -878,7 +889,7 @@ test "AsyncPromise - thenCtx with rejection handler" {
     const chained = try promise.thenCtx(
         null,
         struct {
-            fn onRejected(c: *anyopaque, error_value: JSValue) !u32 {
+            fn onRejected(c: *anyopaque, error_value: webidl.errors.Exception) !u32 {
                 const context: *Context = @ptrCast(@alignCast(c));
                 context.error_count += 1;
                 _ = error_value; // Ignore error details
@@ -889,7 +900,13 @@ test "AsyncPromise - thenCtx with rejection handler" {
     );
     defer chained.deinit();
 
-    promise.reject(.{ .string = "TestError" });
+    const exception = webidl.errors.Exception{
+        .simple = .{
+            .type = .TypeError,
+            .message = try allocator.dupe(u8, "TestError"),
+        },
+    };
+    promise.reject(exception);
     loop.eventLoop().runMicrotasks();
 
     // Rejection handler had access to context
