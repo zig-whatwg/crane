@@ -79,6 +79,10 @@ pub const WritableStreamDefaultWriter = struct {
         }
         return self.getDesiredSizeInternal();
     }
+    /// Alias for generated code compatibility
+    pub fn desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
+        return self.call_desiredSize();
+    }
     pub fn ready(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
         if (self.readyPromise) |promise| {
             if (promise.isFulfilled()) {
