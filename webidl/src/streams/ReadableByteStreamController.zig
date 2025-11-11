@@ -763,31 +763,69 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     /// Respond with a new view (replacement buffer)
     ///
     /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondWithNewView"
-    pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
-        // Step 1: Assert we have pending pull-intos
+    pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
+        // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
         if (self.pendingPullIntos.items.len == 0) {
             return error.InvalidState;
         }
 
-        // Step 2: Assert buffer is not detached
+        // Step 2: Assert: ! IsDetachedBuffer(view.[[ViewedArrayBuffer]]) is false
         if (view.isDetached()) {
             return error.DetachedBuffer;
         }
 
-        // Step 3: Get first descriptor
+        // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
         const firstDescriptor = self.pendingPullIntos.items[0];
 
-        // Steps 5-6: Extract view properties
+        // Step 4: Let state be controller.[[stream]].[[state]]
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+        const state = stream.state;
+
+        // Step 5: If state is "closed"
+        if (state == .closed) {
+            // Step 5.1: If view.[[ByteLength]] is not 0, throw TypeError
+            if (view.getByteLength() != 0) {
+                return error.TypeError;
+            }
+        } else {
+            // Step 6: Otherwise (state is "readable")
+            // Step 6.1: Assert: state is "readable"
+            if (state != .readable) {
+                return error.InvalidState;
+            }
+
+            // Step 6.2: If view.[[ByteLength]] is 0, throw TypeError
+            if (view.getByteLength() == 0) {
+                return error.TypeError;
+            }
+        }
+
+        // Extract view properties
         const view_byteOffset: u64 = @intCast(view.getByteOffset());
         const view_byteLength: u64 = @intCast(view.getByteLength());
+        const view_buffer = view.getViewedArrayBuffer();
 
-        // Step 7: Validate byte offset matches
+        // Step 7: If firstDescriptor's byte offset + firstDescriptor's bytes filled is not view.[[ByteOffset]], throw RangeError
         if (firstDescriptor.byte_offset + firstDescriptor.bytes_filled != view_byteOffset) {
             return error.RangeError;
         }
 
-        // Step 11: Transfer the new view's buffer
-        const view_buffer = view.getViewedArrayBuffer();
+        // Step 8: If firstDescriptor's buffer byte length is not view.[[ViewedArrayBuffer]].[[ByteLength]], throw RangeError
+        if (firstDescriptor.buffer.byte_length != view_buffer.data.len) {
+            return error.RangeError;
+        }
+
+        // Step 9: If firstDescriptor's bytes filled + view.[[ByteLength]] > firstDescriptor's byte length, throw RangeError
+        if (firstDescriptor.bytes_filled + view_byteLength > firstDescriptor.byte_length) {
+            return error.RangeError;
+        }
+
+        // Step 10: Let viewByteLength be view.[[ByteLength]]
+        const viewByteLength = view_byteLength;
+
+        // Step 11: Set firstDescriptor's buffer to ? TransferArrayBuffer(view.[[ViewedArrayBuffer]])
         const internal_buffer = try self.allocator.create(ArrayBuffer);
         internal_buffer.* = .{
             .data = view_buffer.data,
@@ -795,11 +833,23 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             .detached = view_buffer.detached,
         };
         const transferred = try internal_buffer.transfer();
-        firstDescriptor.buffer.* = transferred;
+
+        // Free old buffer before replacing
+        firstDescriptor.buffer.deinit(self.allocator);
+        self.allocator.destroy(firstDescriptor.buffer);
+
+        const transferred_ptr = try self.allocator.create(ArrayBuffer);
+        transferred_ptr.* = transferred;
+        firstDescriptor.buffer = transferred_ptr;
         self.allocator.destroy(internal_buffer);
 
-        // Step 12: Respond with the new byte length
-        try self.respondInternal(view_byteLength);
+        // Step 12: Perform ? ReadableByteStreamControllerRespondInternal(controller, viewByteLength)
+        try self.respondInternal(viewByteLength);
+    }
+
+    /// Wrapper for WebIDL call convention
+    pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
+        return self.respondWithNewView(view);
     }
 
     /// Internal respond implementation
