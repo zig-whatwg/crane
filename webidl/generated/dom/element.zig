@@ -477,6 +477,23 @@ pub const Element = struct {
         _ = class_names;
         return error.NotImplemented;
     }
+    /// DOM §4.10.4 - Element.matches(selectors)
+    /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
+    /// TODO: Implement using Selectors API (requires CSS selector parser)
+    pub fn call_matches(self: *const Element, selectors: []const u8) !bool {
+        _ = self;
+        _ = selectors;
+        return error.NotImplemented;
+    }
+    /// DOM §4.10.4 - Element.closest(selectors)
+    /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
+    /// Returns null if no such element exists.
+    /// TODO: Implement using Selectors API (requires CSS selector parser)
+    pub fn call_closest(self: *const Element, selectors: []const u8) !?*Element {
+        _ = self;
+        _ = selectors;
+        return error.NotImplemented;
+    }
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{

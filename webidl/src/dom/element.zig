@@ -178,6 +178,25 @@ pub const Element = webidl.interface(struct {
         return error.NotImplemented;
     }
 
+    /// DOM §4.10.4 - Element.matches(selectors)
+    /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
+    /// TODO: Implement using Selectors API (requires CSS selector parser)
+    pub fn call_matches(self: *const Element, selectors: []const u8) !bool {
+        _ = self;
+        _ = selectors;
+        return error.NotImplemented;
+    }
+
+    /// DOM §4.10.4 - Element.closest(selectors)
+    /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
+    /// Returns null if no such element exists.
+    /// TODO: Implement using Selectors API (requires CSS selector parser)
+    pub fn call_closest(self: *const Element, selectors: []const u8) !?*Element {
+        _ = self;
+        _ = selectors;
+        return error.NotImplemented;
+    }
+
     // Forward declarations for not-yet-implemented types
     const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
     const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
