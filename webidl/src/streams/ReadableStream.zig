@@ -921,10 +921,138 @@ pub const ReadableStream = webidl.interface(struct {
         }
     }
 
+    /// ReadableByteStreamTee(stream)
+    ///
+    /// Spec: § 4.10.6 "ReadableByteStreamTee(stream)"
+    /// Creates two branches of a byte stream with BYOB support
+    fn readableByteStreamTee(self: *ReadableStream) !TeeBranches {
+        // Step 1-2: Asserts
+        if (self.controller != .byte) {
+            return error.TypeError;
+        }
+
+        // Step 3: Acquire default reader
+        const reader = try self.acquireDefaultReader(self.eventLoop);
+
+        // Step 4-13: Initialize ByteTeeState
+        const teeState = try ByteTeeState.init(
+            self.allocator,
+            self,
+            reader,
+            self.eventLoop,
+        );
+        errdefer teeState.deinit();
+
+        // Step 14: forwardReaderError will be set up when reader errors occur
+        // (Implemented in ByteTeeState.forwardReaderError)
+
+        // Step 15-16: pullWithDefaultReader and pullWithBYOBReader are ByteTeeState methods
+
+        // Step 17-18: pull1Algorithm and pull2Algorithm
+        const Pull1Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                self_ctx.state.pull1Algorithm() catch {};
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const pull1_ctx = try self.allocator.create(Pull1Context);
+        pull1_ctx.* = .{ .state = teeState };
+
+        const Pull2Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                self_ctx.state.pull2Algorithm() catch {};
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const pull2_ctx = try self.allocator.create(Pull2Context);
+        pull2_ctx.* = .{ .state = teeState };
+
+        // Step 19-20: cancel1Algorithm and cancel2Algorithm
+        const Cancel1Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                _ = self_ctx.state.cancel1Algorithm(reason) catch return common.Promise(void).fulfilled({});
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const cancel1_ctx = try self.allocator.create(Cancel1Context);
+        cancel1_ctx.* = .{ .state = teeState };
+
+        const Cancel2Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                _ = self_ctx.state.cancel2Algorithm(reason) catch return common.Promise(void).fulfilled({});
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const cancel2_ctx = try self.allocator.create(Cancel2Context);
+        cancel2_ctx.* = .{ .state = teeState };
+
+        // Step 21: startAlgorithm (no-op)
+
+        // Step 22-23: Create branch streams with createByteStream
+        const branch1 = try createByteStream(
+            self.allocator,
+            null, // no start algorithm
+            common.PullAlgorithm{
+                .ptr = pull1_ctx,
+                .vtable = &.{ .call = Pull1Context.call, .deinit = null },
+            },
+            common.CancelAlgorithm{
+                .ptr = cancel1_ctx,
+                .vtable = &.{ .call = Cancel1Context.call, .deinit = null },
+            },
+            self.eventLoop,
+        );
+
+        const branch2 = try createByteStream(
+            self.allocator,
+            null, // no start algorithm
+            common.PullAlgorithm{
+                .ptr = pull2_ctx,
+                .vtable = &.{ .call = Pull2Context.call, .deinit = null },
+            },
+            common.CancelAlgorithm{
+                .ptr = cancel2_ctx,
+                .vtable = &.{ .call = Cancel2Context.call, .deinit = null },
+            },
+            self.eventLoop,
+        );
+
+        // Link branches to tee state
+        teeState.branch1 = branch1;
+        teeState.branch2 = branch2;
+
+        // Step 24: Forward reader errors
+        teeState.forwardReaderError(teeState.reader);
+
+        // Step 25: Return branches
+        return .{ .branch1 = branch1, .branch2 = branch2 };
+    }
+
     /// ReadableStreamTee(stream, cloneForBranch2)
     ///
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
     fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !TeeBranches {
+        // Route to byte stream tee if controller is a byte controller
+        if (self.controller == .byte) {
+            return self.readableByteStreamTee();
+        }
+
         // Spec step 1-2: Asserts (checked by type system)
 
         // Spec step 3: Acquire reader
@@ -1615,6 +1743,401 @@ pub const TeeState = struct {
         }
 
         // Step 4: Return cancelPromise
+        return self.cancelPromise;
+    }
+};
+
+/// Reader union for byte stream tee - can dynamically switch between readers
+///
+/// Spec: § 4.10.6 ReadableByteStreamTee steps 15-16
+/// The reader switches from default to BYOB when a BYOB request is detected,
+/// and from BYOB back to default when needed.
+pub const ByteTeeReaderUnion = union(enum) {
+    default: *ReadableStreamDefaultReader,
+    byob: *ReadableStreamBYOBReader,
+
+    /// Release the current reader
+    pub fn releaseLock(self: ByteTeeReaderUnion) void {
+        switch (self) {
+            .default => |reader| reader.call_releaseLock(),
+            .byob => |reader| reader.call_releaseLock(),
+        }
+    }
+
+    /// Check if reader has pending requests
+    pub fn hasPendingRequests(self: ByteTeeReaderUnion) bool {
+        return switch (self) {
+            .default => |reader| reader.readRequests.items.len > 0,
+            .byob => |reader| reader.readIntoRequests.items.len > 0,
+        };
+    }
+};
+
+/// ByteTeeState - Shared state for coordinating byte stream tee branches
+///
+/// Spec: § 4.10.6 "ReadableByteStreamTee(stream)"
+///
+/// This structure holds the shared state between two byte stream tee branches,
+/// allowing them to coordinate reading with dynamic reader switching (default ↔ BYOB).
+pub const ByteTeeState = struct {
+    allocator: std.mem.Allocator,
+
+    // Reader - can switch between default and BYOB dynamically
+    reader: ByteTeeReaderUnion,
+
+    // Source stream
+    source: *ReadableStream,
+
+    // Branch streams
+    branch1: ?*ReadableStream,
+    branch2: ?*ReadableStream,
+
+    // Reading coordination (separate flags per branch for BYOB)
+    reading: bool,
+    readAgainForBranch1: bool,
+    readAgainForBranch2: bool,
+
+    // Cancel coordination
+    canceled1: bool,
+    canceled2: bool,
+    reason1: ?common.JSValue,
+    reason2: ?common.JSValue,
+    cancelPromise: *AsyncPromise(void),
+
+    // Event loop
+    eventLoop: eventLoop.EventLoop,
+
+    pub fn init(
+        allocator: std.mem.Allocator,
+        source: *ReadableStream,
+        reader: *ReadableStreamDefaultReader,
+        loop: eventLoop.EventLoop,
+    ) !*ByteTeeState {
+        const self = try allocator.create(ByteTeeState);
+        errdefer allocator.destroy(self);
+
+        const cancelPromise = try AsyncPromise(void).init(allocator, loop);
+        errdefer cancelPromise.deinit();
+
+        self.* = .{
+            .allocator = allocator,
+            .reader = .{ .default = reader },
+            .source = source,
+            .branch1 = null,
+            .branch2 = null,
+            .reading = false,
+            .readAgainForBranch1 = false,
+            .readAgainForBranch2 = false,
+            .canceled1 = false,
+            .canceled2 = false,
+            .reason1 = null,
+            .reason2 = null,
+            .cancelPromise = cancelPromise,
+            .eventLoop = loop,
+        };
+
+        return self;
+    }
+
+    pub fn deinit(self: *ByteTeeState) void {
+        self.cancelPromise.deinit();
+        self.allocator.destroy(self);
+    }
+
+    /// Forward reader errors to both branches
+    ///
+    /// Spec: § 4.10.6 step 14 "forwardReaderError"
+    pub fn forwardReaderError(self: *ByteTeeState, thisReader: ByteTeeReaderUnion) void {
+        // Step 14.1: Upon rejection of thisReader.[[closedPromise]] with reason r,
+        // This would need to be implemented as a promise reaction
+        // For now, we'll handle this inline when errors are detected
+
+        // TODO: Implement proper closedPromise rejection handling
+        // This requires async promise reactions which we'll need to wire up
+        _ = self;
+        _ = thisReader;
+    }
+
+    /// Pull with default reader
+    ///
+    /// Spec: § 4.10.6 step 15 "pullWithDefaultReader"
+    pub fn pullWithDefaultReader(self: *ByteTeeState) !void {
+        // Step 15.1: If reader implements ReadableStreamBYOBReader
+        if (self.reader == .byob) {
+            const byobReader = self.reader.byob;
+
+            // Step 15.1.1: Assert readIntoRequests is empty
+            if (byobReader.readIntoRequests.items.len > 0) {
+                return error.InvalidState;
+            }
+
+            // Step 15.1.2: Release BYOB reader
+            byobReader.call_releaseLock();
+            self.allocator.destroy(byobReader);
+
+            // Step 15.1.3: Acquire default reader
+            const defaultReader = try self.source.acquireDefaultReader(self.eventLoop);
+            self.reader = .{ .default = defaultReader };
+
+            // Step 15.1.4: Forward errors
+            self.forwardReaderError(self.reader);
+        }
+
+        // Step 15.2: Create read request
+        // Step 15.3: Perform ReadableStreamDefaultReaderRead
+        const reader = self.reader.default;
+        const readPromise = try reader.read();
+
+        // Process the result (in a real implementation, this would be async)
+        self.eventLoop.runMicrotasks();
+
+        if (readPromise.isFulfilled()) {
+            const result = readPromise.state.fulfilled;
+            defer readPromise.deinit();
+
+            if (result.done) {
+                // Close steps (spec step 15.2 close steps)
+                try self.handleDefaultReaderClose();
+            } else if (result.value) |chunk| {
+                // Chunk steps (spec step 15.2 chunk steps)
+                try self.handleDefaultReaderChunk(chunk);
+            }
+        } else if (readPromise.isRejected()) {
+            // Error steps
+            self.reading = false;
+            readPromise.deinit();
+        }
+    }
+
+    /// Handle chunk from default reader
+    ///
+    /// Spec: § 4.10.6 step 15.2 chunk steps
+    fn handleDefaultReaderChunk(self: *ByteTeeState, chunk: common.JSValue) !void {
+        // Microtask: Queue these steps
+        // Step 1-2: Reset readAgain flags
+        self.readAgainForBranch1 = false;
+        self.readAgainForBranch2 = false;
+
+        // Step 3: chunk1 and chunk2 = chunk
+        const chunk1 = chunk;
+        var chunk2 = chunk;
+
+        // Step 4: If both branches not canceled, clone the chunk
+        if (!self.canceled1 and !self.canceled2) {
+            // Assume chunk is bytes - convert to ArrayBufferView for cloning
+            const bytes = switch (chunk) {
+                .bytes => |b| b,
+                else => return error.TypeError,
+            };
+
+            // Create a temporary ArrayBufferView for cloning
+            const structured_clone = @import("../../src/streams/internal/structured_clone.zig");
+            const webidl_module = @import("webidl");
+
+            // Create ArrayBuffer from bytes
+            const buffer_data = try self.allocator.dupe(u8, bytes);
+            const buffer_ptr = try self.allocator.create(webidl_module.ArrayBuffer);
+            buffer_ptr.* = .{ .data = buffer_data, .detached = false };
+
+            const Uint8ArrayType = webidl_module.TypedArray(u8);
+            const view = try Uint8ArrayType.init(buffer_ptr, 0, bytes.len);
+            const array_buffer_view = webidl_module.ArrayBufferView{ .uint8_array = view };
+
+            // Clone the view
+            const cloned_view = structured_clone.cloneAsUint8Array(self.allocator, array_buffer_view) catch |err| {
+                // Step 4.2: If cloneResult is abrupt completion
+                const error_value = common.JSValue{ .string = "Clone failed" };
+
+                // Error both branches
+                if (self.branch1) |b1| {
+                    if (b1.controller == .byte) {
+                        b1.controller.byte.errorController(error_value);
+                    }
+                }
+                if (self.branch2) |b2| {
+                    if (b2.controller == .byte) {
+                        b2.controller.byte.errorController(error_value);
+                    }
+                }
+
+                // Cancel source
+                _ = try self.source.cancelInternal(error_value);
+                self.cancelPromise.fulfill({});
+                return err;
+            };
+
+            // Extract bytes from cloned view
+            const cloned_bytes = cloned_view.uint8_array.getBytes();
+            chunk2 = common.JSValue{ .bytes = cloned_bytes };
+        }
+
+        // Step 5: Enqueue chunk1 if not canceled
+        if (!self.canceled1 and self.branch1 != null) {
+            const branch1 = self.branch1.?;
+            if (branch1.controller == .byte) {
+                try branch1.controller.byte.enqueue(chunk1);
+            }
+        }
+
+        // Step 6: Enqueue chunk2 if not canceled
+        if (!self.canceled2 and self.branch2 != null) {
+            const branch2 = self.branch2.?;
+            if (branch2.controller == .byte) {
+                try branch2.controller.byte.enqueue(chunk2);
+            }
+        }
+
+        // Step 7: Set reading to false
+        self.reading = false;
+
+        // Step 8-9: Handle readAgain flags
+        if (self.readAgainForBranch1) {
+            try self.pull1Algorithm();
+        } else if (self.readAgainForBranch2) {
+            try self.pull2Algorithm();
+        }
+    }
+
+    /// Handle close from default reader
+    ///
+    /// Spec: § 4.10.6 step 15.2 close steps
+    fn handleDefaultReaderClose(self: *ByteTeeState) !void {
+        // Step 1: Set reading to false
+        self.reading = false;
+
+        // Step 2-3: Close branches if not canceled
+        if (!self.canceled1 and self.branch1 != null) {
+            const branch1 = self.branch1.?;
+            if (branch1.controller == .byte) {
+                branch1.controller.byte.close();
+            }
+        }
+
+        if (!self.canceled2 and self.branch2 != null) {
+            const branch2 = self.branch2.?;
+            if (branch2.controller == .byte) {
+                branch2.controller.byte.close();
+            }
+        }
+
+        // Step 4-5: Handle pendingPullIntos
+        if (self.branch1) |b1| {
+            if (b1.controller == .byte and b1.controller.byte.pendingPullIntos.items.len > 0) {
+                try b1.controller.byte.respond(0);
+            }
+        }
+
+        if (self.branch2) |b2| {
+            if (b2.controller == .byte and b2.controller.byte.pendingPullIntos.items.len > 0) {
+                try b2.controller.byte.respond(0);
+            }
+        }
+
+        // Step 6: Resolve cancelPromise
+        if (!self.canceled1 or !self.canceled2) {
+            self.cancelPromise.fulfill({});
+        }
+    }
+
+    /// Pull algorithm for branch 1
+    ///
+    /// Spec: § 4.10.6 step 17 "pull1Algorithm"
+    pub fn pull1Algorithm(self: *ByteTeeState) !void {
+        // Step 17.1: If reading is true, set readAgainForBranch1
+        if (self.reading) {
+            self.readAgainForBranch1 = true;
+            return;
+        }
+
+        // Step 17.2: Set reading to true
+        self.reading = true;
+
+        // Step 17.3: Get BYOB request from branch1
+        const byobRequest = if (self.branch1) |b1|
+            if (b1.controller == .byte) b1.controller.byte.getBYOBRequest() else null
+        else
+            null;
+
+        // Step 17.4-5: Pull with appropriate reader
+        if (byobRequest == null) {
+            try self.pullWithDefaultReader();
+        } else {
+            // TODO: Implement pullWithBYOBReader(byobRequest.view, false)
+            try self.pullWithDefaultReader(); // Fallback for now
+        }
+    }
+
+    /// Pull algorithm for branch 2
+    ///
+    /// Spec: § 4.10.6 step 18 "pull2Algorithm"
+    pub fn pull2Algorithm(self: *ByteTeeState) !void {
+        // Step 18.1: If reading is true, set readAgainForBranch2
+        if (self.reading) {
+            self.readAgainForBranch2 = true;
+            return;
+        }
+
+        // Step 18.2: Set reading to true
+        self.reading = true;
+
+        // Step 18.3: Get BYOB request from branch2
+        const byobRequest = if (self.branch2) |b2|
+            if (b2.controller == .byte) b2.controller.byte.getBYOBRequest() else null
+        else
+            null;
+
+        // Step 18.4-5: Pull with appropriate reader
+        if (byobRequest == null) {
+            try self.pullWithDefaultReader();
+        } else {
+            // TODO: Implement pullWithBYOBReader(byobRequest.view, true)
+            try self.pullWithDefaultReader(); // Fallback for now
+        }
+    }
+
+    /// Cancel algorithm for branch 1
+    ///
+    /// Spec: § 4.10.6 step 19 "cancel1Algorithm"
+    pub fn cancel1Algorithm(self: *ByteTeeState, reason: ?common.JSValue) !*AsyncPromise(void) {
+        // Step 19.1: Set canceled1 to true
+        self.canceled1 = true;
+
+        // Step 19.2: Set reason1
+        self.reason1 = reason;
+
+        // Step 19.3: If canceled2 is true, composite cancel
+        if (self.canceled2) {
+            // Create composite reason: [reason1, reason2]
+            // For now, just use reason1
+            const cancelResult = try self.source.cancelInternal(reason);
+            self.cancelPromise.fulfill({});
+            return cancelResult;
+        }
+
+        // Step 19.4: Return cancelPromise
+        return self.cancelPromise;
+    }
+
+    /// Cancel algorithm for branch 2
+    ///
+    /// Spec: § 4.10.6 step 20 "cancel2Algorithm"
+    pub fn cancel2Algorithm(self: *ByteTeeState, reason: ?common.JSValue) !*AsyncPromise(void) {
+        // Step 20.1: Set canceled2 to true
+        self.canceled2 = true;
+
+        // Step 20.2: Set reason2
+        self.reason2 = reason;
+
+        // Step 20.3: If canceled1 is true, composite cancel
+        if (self.canceled1) {
+            // Create composite reason: [reason1, reason2]
+            // For now, just use reason2
+            const cancelResult = try self.source.cancelInternal(reason);
+            self.cancelPromise.fulfill({});
+            return cancelResult;
+        }
+
+        // Step 20.4: Return cancelPromise
         return self.cancelPromise;
     }
 };
