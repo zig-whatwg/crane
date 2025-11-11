@@ -17,6 +17,7 @@ const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const dict_parsing = @import("dict_parsing");
 const structured_clone = @import("structured_clone");
+const async_iterator = @import("async_iterator");
 
 // Import related stream types (will be fully linked after all types are defined)
 // NOTE: These will create circular dependencies that need careful handling
@@ -457,7 +458,7 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Extract iterator from the JSValue
         // This is a simplified bridge - full implementation would need Symbol.asyncIterator support
-        const iterator = try extractAsyncIterator(asyncIterable);
+        const iterator = try extractAsyncIterator(allocator, asyncIterable);
 
         // Call ReadableStreamFromIterable algorithm
         return readableStreamFromIterable(allocator, loop, iterator);
@@ -465,16 +466,27 @@ pub const ReadableStream = webidl.interface(struct {
 
     /// Extract an AsyncIterator from a JSValue
     /// This is a bridge function until full JavaScript runtime integration
-    fn extractAsyncIterator(value: webidl.JSValue) !common.AsyncIterator {
-        // TODO: In full implementation, this would:
-        // 1. Get value[Symbol.asyncIterator]
-        // 2. Call it to get the iterator
-        // 3. Wrap it in common.AsyncIterator
+    fn extractAsyncIterator(allocator: std.mem.Allocator, value: webidl.JSValue) !common.AsyncIterator {
+        // For testing/development, we support passing MockAsyncIterator as pointer in JSValue
+        // In production, this would:
+        // 1. Call GetIterator(value, async) to get Symbol.asyncIterator
+        // 2. Get the next method
+        // 3. Create IteratorRecord
+        // 4. Wrap in common.AsyncIterator
 
-        // For now, we expect the value to contain an iterator reference
-        // This will be properly implemented when zig-js-runtime is integrated
-        _ = value;
-        return error.NotImplemented;
+        // Check if value contains a pointer to MockAsyncIterator
+        switch (value) {
+            .object => {
+                // For now, we expect caller to embed iterator pointer
+                // This is a temporary solution until full Symbol support
+                // Callers can use: JSValue{ .object = @ptrCast(mockIterator) }
+                return error.NotImplemented; // Still needs proper implementation
+            },
+            else => return error.TypeError,
+        }
+
+        // TODO: Full implementation with Symbol.asyncIterator lookup
+        _ = allocator;
     }
 
     /// ReadableStreamFromIterable algorithm
@@ -536,6 +548,46 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Spec step 7: Return stream
         return stream;
+    }
+
+    /// Create a ReadableStream from a MockAsyncIterator (for testing)
+    ///
+    /// This is a convenience function that wraps MockAsyncIterator in common.AsyncIterator
+    /// and calls readableStreamFromIterable().
+    ///
+    /// For production use, call_from() should be used with proper JSValue containing
+    /// Symbol.asyncIterator support.
+    pub fn fromMockIterator(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        mock: *async_iterator.MockAsyncIterator,
+    ) !*ReadableStream {
+        // Wrap MockAsyncIterator in common.AsyncIterator
+        const iterator = common.AsyncIterator{
+            .ptr = mock,
+            .vtable = &.{
+                .next = struct {
+                    fn call(ctx: *anyopaque) common.Promise(common.IteratorResult) {
+                        const m: *async_iterator.MockAsyncIterator = @ptrCast(@alignCast(ctx));
+                        const result = m.next();
+                        return common.Promise(common.IteratorResult).fulfilled(.{
+                            .value = result.value,
+                            .done = result.done,
+                        });
+                    }
+                }.call,
+                .return_fn = struct {
+                    fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(common.JSValue) {
+                        const m: *async_iterator.MockAsyncIterator = @ptrCast(@alignCast(ctx));
+                        const result = m.returnMethod(reason orelse common.JSValue.undefined_value());
+                        return common.Promise(common.JSValue).fulfilled(result.value);
+                    }
+                }.call,
+                .deinit = null, // MockAsyncIterator is managed externally
+            },
+        };
+
+        return readableStreamFromIterable(allocator, loop, iterator);
     }
 
     /// CreateReadableStream abstract operation
