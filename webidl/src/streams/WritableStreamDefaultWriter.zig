@@ -52,10 +52,12 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
     pub fn deinit(_: *WritableStreamDefaultWriter) void {}
 
     // ============================================================================
-    // WebIDL Interface Methods
+    // WebIDL Interface: Readonly Attributes
     // ============================================================================
 
-    pub fn closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
+    /// readonly attribute Promise<undefined> closed
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-closed
+    pub fn get_closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
         } else if (self.closedPromise.isRejected()) {
@@ -69,14 +71,18 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         }
     }
 
-    pub fn call_desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
+    /// readonly attribute unrestricted double? desiredSize
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-desired-size
+    pub fn get_desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
         if (self.stream == null) {
             return null;
         }
         return self.getDesiredSizeInternal();
     }
 
-    pub fn ready(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
+    /// readonly attribute Promise<undefined> ready
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-ready
+    pub fn get_ready(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
         if (self.readyPromise) |promise| {
             if (promise.isFulfilled()) {
                 return webidl.Promise(void).fulfilled({});
@@ -93,7 +99,13 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         return webidl.Promise(void).fulfilled({});
     }
 
-    pub fn abort(self: *WritableStreamDefaultWriter, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
+
+    /// Promise<undefined> abort(optional any reason)
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-abort
+    pub fn call_abort(self: *WritableStreamDefaultWriter, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Writer released" });
@@ -104,7 +116,9 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         return self.abortInternal(reason_value);
     }
 
-    pub fn close(self: *WritableStreamDefaultWriter) !*AsyncPromise(void) {
+    /// Promise<undefined> close()
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-close
+    pub fn call_close(self: *WritableStreamDefaultWriter) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Writer released" });
@@ -114,6 +128,8 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         return self.closeInternal();
     }
 
+    /// undefined releaseLock()
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-release-lock
     pub fn call_releaseLock(self: *WritableStreamDefaultWriter) void {
         if (self.stream == null) {
             return;
@@ -121,7 +137,9 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
         self.releaseInternal();
     }
 
-    pub fn write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void) {
+    /// Promise<undefined> write(optional any chunk)
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-write
+    pub fn call_write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Writer released" });
