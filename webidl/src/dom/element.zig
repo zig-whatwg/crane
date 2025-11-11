@@ -141,8 +141,46 @@ pub const Element = webidl.interface(struct {
         return self.namespace_uri;
     }
 
-    // Forward declaration for DOMTokenList (not yet implemented)
+    /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
+    /// Returns an HTMLCollection of all descendant elements whose qualified name is qualifiedName.
+    /// If qualifiedName is "*", returns all descendant elements.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByTagName(self: *const Element, qualified_name: []const u8) !*HTMLCollection {
+        _ = self;
+        _ = qualified_name;
+        return error.NotImplemented;
+    }
+
+    /// DOM §4.10.5 - Element.getElementsByTagNameNS(namespace, localName)
+    /// Returns an HTMLCollection of all descendant elements matching the namespace and local name.
+    /// If namespace is "*", matches any namespace.
+    /// If localName is "*", matches any local name.
+    /// If both are "*", returns all descendant elements.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByTagNameNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !*HTMLCollection {
+        _ = self;
+        _ = namespace;
+        _ = local_name;
+        return error.NotImplemented;
+    }
+
+    /// DOM §4.10.5 - Element.getElementsByClassName(classNames)
+    /// Returns an HTMLCollection of all descendant elements that have all the given class names.
+    /// classNames is a space-separated list of class names.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByClassName(self: *const Element, class_names: []const u8) !*HTMLCollection {
+        _ = self;
+        _ = class_names;
+        return error.NotImplemented;
+    }
+
+    // Forward declarations for not-yet-implemented types
     const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
+    const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 }, .{
     .exposed = &.{.Window},
 });

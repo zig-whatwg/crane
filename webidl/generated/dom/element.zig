@@ -33,6 +33,7 @@ pub const Element = struct {
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode };
     pub const Attr = @import("attr").Attr;
     pub const DOMTokenList = @import("DOMTokenList.zig").DOMTokenList;
+    pub const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -441,6 +442,40 @@ pub const Element = struct {
     }
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
         return self.namespace_uri;
+    }
+    /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
+    /// Returns an HTMLCollection of all descendant elements whose qualified name is qualifiedName.
+    /// If qualifiedName is "*", returns all descendant elements.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByTagName(self: *const Element, qualified_name: []const u8) !*HTMLCollection {
+        _ = self;
+        _ = qualified_name;
+        return error.NotImplemented;
+    }
+    /// DOM §4.10.5 - Element.getElementsByTagNameNS(namespace, localName)
+    /// Returns an HTMLCollection of all descendant elements matching the namespace and local name.
+    /// If namespace is "*", matches any namespace.
+    /// If localName is "*", matches any local name.
+    /// If both are "*", returns all descendant elements.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByTagNameNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !*HTMLCollection {
+        _ = self;
+        _ = namespace;
+        _ = local_name;
+        return error.NotImplemented;
+    }
+    /// DOM §4.10.5 - Element.getElementsByClassName(classNames)
+    /// Returns an HTMLCollection of all descendant elements that have all the given class names.
+    /// classNames is a space-separated list of class names.
+    /// TODO: Implement when HTMLCollection is available
+    pub fn call_getElementsByClassName(self: *const Element, class_names: []const u8) !*HTMLCollection {
+        _ = self;
+        _ = class_names;
+        return error.NotImplemented;
     }
 
     // WebIDL extended attributes metadata
