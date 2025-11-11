@@ -606,7 +606,7 @@ pub const ReadableStream = webidl.interface(struct {
     /// ReadableStreamCancel(stream, reason)
     ///
     /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
-    fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
+    pub fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
         // Spec step 1: Set stream.[[disturbed]] to true
         self.disturbed = true;
 

@@ -262,6 +262,26 @@ pub fn AsyncPromise(comptime T: type) type {
             }
         }
 
+        /// Execute chunk steps for ReadResult promises
+        ///
+        /// Spec: Used when fulfilling a read request with a chunk.
+        /// Fulfills the promise with { value: chunk, done: false }
+        ///
+        /// Only available for AsyncPromise(ReadResult)
+        pub fn executeChunkSteps(self: *Self, chunk: anytype) void {
+            // This method is only meaningful for ReadResult promises
+            const ReadResult = @import("common").ReadResult;
+            if (T == ReadResult) {
+                // Convert ArrayBufferView chunk to JSValue bytes
+                // chunk has: data ([]u8), offset (usize), length (usize)
+                const bytes_slice = chunk.data[chunk.offset..][0..chunk.length];
+                const value = JSValue{ .bytes = bytes_slice };
+                self.fulfill(.{ .value = value, .done = false });
+            } else {
+                @compileError("executeChunkSteps is only available for AsyncPromise(ReadResult)");
+            }
+        }
+
         /// Attach fulfillment and rejection handlers
         ///
         /// Returns a new promise that resolves/rejects based on the handler
