@@ -446,3 +446,103 @@ pub fn findCommonAncestor(a: *const Node, b: *const Node) ?*Node {
 // Spec references:
 // - Tree: https://dom.spec.whatwg.org/#trees
 // - Inclusive ancestor/descendant: https://dom.spec.whatwg.org/#concept-tree-inclusive-ancestor
+
+// ============================================================================
+// NodeIterator/TreeWalker Helper Functions
+// ============================================================================
+
+/// Get the next node in tree order, constrained within a root
+/// Returns null if no next node exists within root
+/// Used by NodeIterator for forward traversal
+pub fn getNextNodeInTree(node: *const Node, root: *const Node) ?*Node {
+    // If node has children, return first child
+    if (getFirstChild(node)) |child| {
+        return child;
+    }
+
+    // Otherwise, find next sibling (or ancestor's next sibling)
+    var current = node;
+    while (true) {
+        // Don't go past root
+        if (current == root) return null;
+
+        // Try next sibling
+        if (getNextSibling(current)) |sibling| {
+            return sibling;
+        }
+
+        // Move up to parent
+        const parent = getParentNode(current) orelse return null;
+        if (parent == root) return null; // Don't go past root
+        current = parent;
+    }
+}
+
+/// Get the previous node in tree order, constrained within a root
+/// Returns null if no previous node exists within root
+/// Used by NodeIterator for backward traversal
+pub fn getPreviousNodeInTree(node: *const Node, root: *const Node) ?*Node {
+    // Don't go before root
+    if (node == root) return null;
+
+    // If node has previous sibling, return its last descendant
+    if (getPreviousSibling(node)) |sibling| {
+        return getLastInclusiveDescendant(sibling);
+    }
+
+    // Otherwise return parent (if not root)
+    const parent = getParentNode(node) orelse return null;
+    if (parent == root) return null;
+    return parent;
+}
+
+/// Get the last inclusive descendant of a node (the node that appears last in tree order)
+/// This is the node itself if it has no children, otherwise the last descendant of its last child
+pub fn getLastInclusiveDescendant(node: *const Node) *Node {
+    var current = node;
+    while (getLastChild(current)) |last_child| {
+        current = last_child;
+    }
+    return current;
+}
+
+/// Get the next node after to_be_removed that is an inclusive descendant of root
+/// but NOT an inclusive descendant of to_be_removed
+/// Used by NodeIterator.preRemoveSteps
+pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*Node {
+    // Start from the node after to_be_removed in tree order
+    var current: ?*const Node = to_be_removed;
+
+    while (current) |node| {
+        // Try to find next in tree order, but skip to_be_removed's subtree
+
+        // If this node is to_be_removed, skip its entire subtree
+        if (node == to_be_removed) {
+            // Skip to next sibling or ancestor's next sibling
+            var skip = node;
+            while (true) {
+                if (skip == root) return null;
+
+                if (getNextSibling(skip)) |sibling| {
+                    current = sibling;
+                    break;
+                }
+
+                const parent = getParentNode(skip) orelse return null;
+                if (parent == root) return null;
+                skip = parent;
+            }
+            continue;
+        }
+
+        // Check if this node is in root's subtree but not in to_be_removed's subtree
+        if (isInclusiveDescendant(node, root) and !isInclusiveDescendant(node, to_be_removed)) {
+            return @constCast(node);
+        }
+
+        // Move to next node in tree
+        current = getNextNodeInTree(node, root);
+    }
+
+    return null;
+}

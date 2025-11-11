@@ -30,6 +30,7 @@ pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
 pub const Document = @import("document").Document;
 pub const Range = @import("range").Range;
 pub const NodeFilter = @import("node_filter").NodeFilter;
+pub const NodeIterator = @import("node_iterator").NodeIterator;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");
