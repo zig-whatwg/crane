@@ -37,6 +37,7 @@ pub const Element = struct {
     pub const Attr = @import("attr").Attr;
     pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
     pub const HTMLCollection = @import("html_collection").HTMLCollection;
+    pub const Text = @import("text").Text;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -496,6 +497,66 @@ pub const Element = struct {
         _ = self;
         _ = selectors;
         return error.NotImplemented;
+    }
+    /// DOM §4.10.7 - insert adjacent algorithm
+    /// To insert adjacent, given an element element, string where, and a node node, run the steps
+    /// associated with the first ASCII case-insensitive match for where
+    fn insertAdjacent(element: *Element, where: []const u8, node: *Node) !?*Node {
+        const mutation = dom.mutation;
+
+        // ASCII case-insensitive comparison helper
+        const eqlIgnoreCase = std.ascii.eqlIgnoreCase;
+
+        if (eqlIgnoreCase(where, "beforebegin")) {
+            // If element's parent is null, return null
+            const parent = element.parent_node orelse return null;
+
+            // Return the result of pre-inserting node into element's parent before element
+            return try mutation.preInsert(node, parent, element);
+        } else if (eqlIgnoreCase(where, "afterbegin")) {
+            // Return the result of pre-inserting node into element before element's first child
+            const first_child = if (element.child_nodes.items.len > 0)
+                element.child_nodes.items[0]
+            else
+                null;
+            return try mutation.preInsert(node, @ptrCast(element), first_child);
+        } else if (eqlIgnoreCase(where, "beforeend")) {
+            // Return the result of pre-inserting node into element before null
+            return try mutation.preInsert(node, @ptrCast(element), null);
+        } else if (eqlIgnoreCase(where, "afterend")) {
+            // If element's parent is null, return null
+            const parent = element.parent_node orelse return null;
+
+            // Return the result of pre-inserting node into element's parent before element's next sibling
+            const next_sibling = dom.tree_helpers.getNextSibling(element);
+            return try mutation.preInsert(node, parent, next_sibling);
+        } else {
+            // Otherwise: Throw a "SyntaxError" DOMException
+            return error.SyntaxError;
+        }
+    }
+    /// DOM §4.10.7 - Element.insertAdjacentElement(where, element)
+    /// The insertAdjacentElement(where, element) method steps are to return the result of
+    /// running insert adjacent, given this, where, and element.
+    pub fn call_insertAdjacentElement(self: *Element, where: []const u8, element: *Element) !?*Element {
+        const result = try insertAdjacent(self, where, @ptrCast(element));
+        return if (result) |node| @ptrCast(@alignCast(node)) else null;
+    }
+    /// DOM §4.10.7 - Element.insertAdjacentText(where, data)
+    /// The insertAdjacentText(where, data) method steps are:
+    /// 1. Let text be a new Text node whose data is data and node document is this's node document.
+    /// 2. Run insert adjacent, given this, where, and text.
+    /// This method returns nothing because it existed before we had a chance to design it.
+    pub fn call_insertAdjacentText(self: *Element, where: []const u8, data: []const u8) !void {
+        // Step 1: Let text be a new Text node whose data is data and node document is this's node document
+        const text = try self.allocator.create(Text);
+        errdefer self.allocator.destroy(text);
+        text.* = try Text.init(self.allocator);
+        // TODO: Set text.data = data when CharacterData has data field accessible
+        _ = data;
+
+        // Step 2: Run insert adjacent, given this, where, and text
+        _ = try insertAdjacent(self, where, @ptrCast(text));
     }
 
     // WebIDL extended attributes metadata
