@@ -5,6 +5,9 @@ const testing = std.testing;
 const streams = @import("streams");
 const common = @import("common");
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
+const async_iterator = @import("async_iterator");
+const JSValue = common.JSValue;
+const ReadableStream = streams.ReadableStream;
 
 /// Mock async iterator that yields a fixed set of values
 const MockAsyncIterator = struct {
@@ -128,3 +131,179 @@ test "ReadableStream.from() - iterator return() is called" {
 // 1. JSValue wrapper for AsyncIterator
 // 2. Full JavaScript runtime integration
 // These tests verify the underlying iterator protocol works correctly.
+
+// ============================================================================
+// Comprehensive tests using ReadableStream.fromMockIterator()
+// ============================================================================
+
+test "ReadableStream.fromMockIterator() - basic iteration with 3 values" {
+    const allocator = testing.allocator;
+
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const values = [_]JSValue{
+        JSValue{ .number = 1 },
+        JSValue{ .number = 2 },
+        JSValue{ .number = 3 },
+    };
+
+    var mock = try async_iterator.MockAsyncIterator.init(allocator, &values);
+    defer mock.deinit();
+
+    var stream = try ReadableStream.fromMockIterator(allocator, loop.eventLoop(), mock);
+    defer stream.deinit();
+
+    var reader = try stream.call_getReader(null);
+    defer reader.deinit();
+
+    // Read first value
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(false, result.done);
+        try testing.expectEqual(JSValue{ .number = 1 }, result.value);
+    }
+
+    // Read second value
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(false, result.done);
+        try testing.expectEqual(JSValue{ .number = 2 }, result.value);
+    }
+
+    // Read third value
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(false, result.done);
+        try testing.expectEqual(JSValue{ .number = 3 }, result.value);
+    }
+
+    // Stream should be closed
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(true, result.done);
+    }
+}
+
+test "ReadableStream.fromMockIterator() - empty iterator" {
+    const allocator = testing.allocator;
+
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const values = [_]JSValue{};
+
+    var mock = try async_iterator.MockAsyncIterator.init(allocator, &values);
+    defer mock.deinit();
+
+    var stream = try ReadableStream.fromMockIterator(allocator, loop.eventLoop(), mock);
+    defer stream.deinit();
+
+    var reader = try stream.call_getReader(null);
+    defer reader.deinit();
+
+    // Stream should be immediately closed
+    const result = try reader.call_read();
+    try testing.expectEqual(true, result.done);
+}
+
+test "ReadableStream.fromMockIterator() - single value" {
+    const allocator = testing.allocator;
+
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const values = [_]JSValue{
+        JSValue{ .string = "hello" },
+    };
+
+    var mock = try async_iterator.MockAsyncIterator.init(allocator, &values);
+    defer mock.deinit();
+
+    var stream = try ReadableStream.fromMockIterator(allocator, loop.eventLoop(), mock);
+    defer stream.deinit();
+
+    var reader = try stream.call_getReader(null);
+    defer reader.deinit();
+
+    // Read the single value
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(false, result.done);
+        try testing.expectEqualStrings("hello", result.value.string);
+    }
+
+    // Stream should be closed
+    {
+        const result = try reader.call_read();
+        try testing.expectEqual(true, result.done);
+    }
+}
+
+test "ReadableStream.fromMockIterator() - cancel calls iterator.return()" {
+    const allocator = testing.allocator;
+
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const values = [_]JSValue{
+        JSValue{ .number = 1 },
+        JSValue{ .number = 2 },
+        JSValue{ .number = 3 },
+    };
+
+    var mock = try async_iterator.MockAsyncIterator.init(allocator, &values);
+    defer mock.deinit();
+
+    var stream = try ReadableStream.fromMockIterator(allocator, loop.eventLoop(), mock);
+    defer stream.deinit();
+
+    var reader = try stream.call_getReader(null);
+    defer reader.deinit();
+
+    // Read first value
+    _ = try reader.call_read();
+
+    // Cancel the stream
+    const cancelPromise = try stream.cancelInternal(null);
+    try testing.expectEqual(.fulfilled, cancelPromise.state);
+
+    // Iterator should be marked as done
+    try testing.expectEqual(values.len, mock.index);
+}
+
+test "ReadableStream.fromMockIterator() - stream state lifecycle" {
+    const allocator = testing.allocator;
+
+    var loop = TestEventLoop.init(allocator);
+    defer loop.deinit();
+
+    const values = [_]JSValue{
+        JSValue{ .number = 1 },
+    };
+
+    var mock = try async_iterator.MockAsyncIterator.init(allocator, &values);
+    defer mock.deinit();
+
+    var stream = try ReadableStream.fromMockIterator(allocator, loop.eventLoop(), mock);
+    defer stream.deinit();
+
+    // Initially readable
+    try testing.expectEqual(.readable, stream.state);
+    try testing.expectEqual(false, stream.disturbed);
+
+    var reader = try stream.call_getReader(null);
+    defer reader.deinit();
+
+    // Disturbed after getting reader
+    try testing.expectEqual(true, stream.disturbed);
+
+    // Read value
+    _ = try reader.call_read();
+
+    // Read done
+    _ = try reader.call_read();
+
+    // Stream is closed
+    try testing.expectEqual(.closed, stream.state);
+}
