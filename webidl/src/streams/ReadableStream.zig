@@ -1148,9 +1148,17 @@ pub const ReadableStream = webidl.interface(struct {
                     });
                 }
             },
-            .byob => {
-                // TODO: BYOB reader close handling (Phase 7)
-                // This would handle readIntoRequests similar to default reader
+            .byob => |reader| {
+                // Spec: Resolve closed promise
+                reader.closedPromise.fulfill({});
+
+                // Spec: Respond to all pending readIntoRequests with done=true
+                while (reader.readIntoRequests.items.len > 0) {
+                    const request = reader.readIntoRequests.orderedRemove(0);
+                    // Close steps should return the view with done=true
+                    // For now, execute close steps with empty view
+                    request.executeCloseSteps(null);
+                }
             },
         }
     }
@@ -1184,7 +1192,16 @@ pub const ReadableStream = webidl.interface(struct {
                     promise.reject(e);
                 }
             },
-            .byob => {}, // TODO: BYOB reader error handling (Phase 7)
+            .byob => |reader| {
+                // Spec: Reject closed promise
+                reader.closedPromise.reject(e);
+
+                // Spec: Reject all pending readIntoRequests
+                while (reader.readIntoRequests.items.len > 0) {
+                    const request = reader.readIntoRequests.orderedRemove(0);
+                    request.executeErrorSteps(e);
+                }
+            },
         }
     }
 
