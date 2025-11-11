@@ -7,26 +7,44 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
+// Import QueuingStrategyInit from ByteLengthQueuingStrategy
+const ByteLengthQueuingStrategy = @import("byte_length_queuing_strategy");
+pub const QueuingStrategyInit = ByteLengthQueuingStrategy.QueuingStrategyInit;
+
 pub const CountQueuingStrategy = webidl.interface(struct {
-    allocator: std.mem.Allocator,
+    /// [[highWaterMark]]: The high water mark (internal slot)
+    _highWaterMark: f64,
 
-    /// [[highWaterMark]]: The high water mark
-    highWaterMark: f64,
-
-    pub fn init(highWaterMark: f64) CountQueuingStrategy {
+    /// Constructor: new CountQueuingStrategy(init)
+    /// Spec: https://streams.spec.whatwg.org/#cqs-constructor
+    pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) CountQueuingStrategy {
+        _ = allocator; // Not needed for this simple structure
         return .{
-            .allocator = undefined,
-            .highWaterMark = highWaterMark,
+            ._highWaterMark = initDict.highWaterMark,
         };
     }
 
     pub fn deinit(_: *CountQueuingStrategy) void {}
 
     // ============================================================================
-    // WebIDL Interface Methods
+    // WebIDL Interface: Readonly Attributes
     // ============================================================================
 
-    pub fn call_size(_: *const CountQueuingStrategy, _: ?webidl.JSValue) f64 {
+    /// readonly attribute unrestricted double highWaterMark
+    /// Getter returns this.[[highWaterMark]]
+    /// Spec: https://streams.spec.whatwg.org/#cqs-high-water-mark
+    pub fn get_highWaterMark(self: *const CountQueuingStrategy) f64 {
+        return self._highWaterMark;
+    }
+
+    // NOTE: The 'size' attribute is similar to ByteLengthQueuingStrategy
+    // but returns a function that always returns 1 (counting chunks, not bytes).
+    //
+    // Spec: https://streams.spec.whatwg.org/#cqs-size
+
+    /// size function: Returns 1 for each chunk (count-based strategy)
+    /// This is called as strategy.size(chunk) in JavaScript
+    pub fn call_size(_: *const CountQueuingStrategy, _: webidl.JSValue) f64 {
         // Always returns 1 for count-based strategy
         return 1.0;
     }
