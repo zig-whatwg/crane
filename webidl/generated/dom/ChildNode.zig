@@ -7,43 +7,27 @@
 //   - Property getters and setters
 //   - Optimized field layouts
 
-//! CharacterData interface per WHATWG DOM Standard
-//! Spec: https://dom.spec.whatwg.org/#interface-characterdata
+// DOM Standard: Interface Mixin ChildNode (§4.3.4)
+// https://dom.spec.whatwg.org/#interface-childnode
 
 const std = @import("std");
-const webidl = @import("webidl");
-pub const Node = @import("node").Node;
-
-const Allocator = std.mem.Allocator;
-/// DOM Spec: interface CharacterData : Node
-const ChildNode = @import("child_node").ChildNode;
-const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
-pub const CharacterData = struct {
+const webidl = @import("../../root.zig");
+pub const dom_types = @import("dom_types.zig");
+/// ChildNode mixin provides methods for manipulating nodes relative to their siblings.
+/// Included by: DocumentType, Element, CharacterData
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin ChildNode {
+/// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined remove();
+/// };
+/// ```
+pub const ChildNode = struct {
     // ========================================================================
-    // CharacterData fields
-    // ========================================================================
-    allocator: Allocator,
-    data: []const u8,
-
-    pub const includes = .{ ChildNode, NonDocumentTypeChildNode };
-
-    pub fn init(allocator: Allocator) !CharacterData {
-        // NOTE: Parent Node fields will be flattened by codegen
-        return .{
-            .allocator = allocator,
-            .data = "",
-            // TODO: Initialize Node parent fields (will be added by codegen)
-        };
-    }
-    pub fn deinit(self: *CharacterData) void {
-        _ = self;
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
-    }
-
-
-    // ========================================================================
-    // Methods from ChildNode mixin
+    // ChildNode methods
     // ========================================================================
 
     /// DOM §4.3.4 - ChildNode.before()
@@ -58,7 +42,6 @@ pub const CharacterData = struct {
     /// 6. Pre-insert node into parent before viablePreviousSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ChildNode mixin)
     pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -82,7 +65,6 @@ pub const CharacterData = struct {
     /// 5. Pre-insert node into parent before viableNextSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ChildNode mixin)
     pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -106,7 +88,6 @@ pub const CharacterData = struct {
     /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ChildNode mixin)
     pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -125,7 +106,6 @@ pub const CharacterData = struct {
     /// Steps:
     /// 1. If this's parent is null, then return.
     /// 2. Remove this.
-    /// (Included from ChildNode mixin)
     pub fn remove(self: anytype) !void {
         _ = self;
         // TODO: Implement DOM §4.3.4 remove() algorithm
@@ -133,58 +113,12 @@ pub const CharacterData = struct {
         // Step 2: Call remove (from mutation.zig)
         @panic("ChildNode.remove() not yet implemented");
     }
-    // ========================================================================
-    // Methods from NonDocumentTypeChildNode mixin
-    // ========================================================================
-
-    /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
-    /// Returns the first preceding sibling that is an element; otherwise null.
-    /// 
-    /// The previousElementSibling getter steps are to return the first preceding
-    /// sibling that is an element; otherwise null.
-    /// (Included from NonDocumentTypeChildNode mixin)
-    pub fn previousElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 previousElementSibling getter
-        // 1. Get this node's previous sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to previous sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.previousElementSibling() not yet implemented");
-    }
-    /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
-    /// Returns the first following sibling that is an element; otherwise null.
-    /// 
-    /// The nextElementSibling getter steps are to return the first following
-    /// sibling that is an element; otherwise null.
-    /// (Included from NonDocumentTypeChildNode mixin)
-    pub fn nextElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 nextElementSibling getter
-        // 1. Get this node's next sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to next sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
-    }
-    // ========================================================================
-    // CharacterData methods
-    // ========================================================================
-
-    pub fn get_data(self: *const CharacterData) []const u8 {
-        return self.data;
-    }
-    pub fn get_length(self: *const CharacterData) usize {
-        return self.data.len;
-    }
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{
-        .name = "CharacterData",
-        .kind = .interface,
-        .exposed = &.{.Window},
+        .name = "ChildNode",
+        .kind = .mixin,
+        .exposed = null,
         .transferable = false,
         .serializable = false,
         .secure_context = false,
@@ -192,3 +126,27 @@ pub const CharacterData = struct {
     };
 };
 
+
+// Helper function referenced by ChildNode methods (defined in ParentNode §4.3.3)
+// TODO: Move this to a shared location or import from ParentNode
+//
+// DOM §4.3.3 - convert nodes into a node
+// Given nodes and document, run these steps:
+// 1. Let node be null.
+// 2. Replace each string in nodes with a new Text node whose data is the string and node document is document.
+// 3. If nodes contains one node, then set node to nodes[0].
+// 4. Otherwise, set node to a new DocumentFragment node whose node document is document, and then append each node in nodes, if any, to it.
+// 5. Return node.
+fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_types.NodeOrDOMString, document: anytype) !*anyopaque {
+    _ = allocator;
+    _ = nodes;
+    _ = document;
+    // TODO: Implement "convert nodes into a node" algorithm (DOM §4.3.3)
+    @panic("convertNodesIntoNode helper not yet implemented");
+}
+
+test "ChildNode mixin compiles" {
+    // Just verify the mixin structure compiles
+    const T = @TypeOf(ChildNode);
+    try std.testing.expect(T != void);
+}

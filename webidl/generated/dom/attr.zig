@@ -11,6 +11,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+pub const Node = @import("node").Node;
+/// DOM Spec: interface Attr : Node
 pub const Attr = struct {
     allocator: std.mem.Allocator,
 

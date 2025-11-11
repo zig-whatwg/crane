@@ -15,21 +15,160 @@ const webidl = @import("webidl");
 pub const CharacterData = @import("character_data").CharacterData;
 
 const Allocator = std.mem.Allocator;
+/// DOM Spec: interface Text : CharacterData
+/// Text extends CharacterData (fields/methods inherited)
+/// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+/// Text also includes: Slottable
+const ChildNode = @import("child_node").ChildNode;
+const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const Text = struct {
     // ========================================================================
     // Text fields
     // ========================================================================
     allocator: Allocator,
-    character_data: CharacterData,
+
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
 
     pub fn init(allocator: Allocator) !Text {
         return .{
             .allocator = allocator,
-            .character_data = try CharacterData.init(allocator),
+            // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *Text) void {
-        self.character_data.deinit();
+        _ = self;
+        // NOTE: Parent CharacterData cleanup will be handled by codegen
+        // TODO: Call parent CharacterData deinit (will be added by codegen)
+    }
+
+
+    // ========================================================================
+    // Methods from ChildNode mixin
+    // ========================================================================
+
+    /// DOM §4.3.4 - ChildNode.before()
+    /// Inserts nodes just before this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
+    /// 6. Pre-insert node into parent before viablePreviousSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
+    /// (Included from ChildNode mixin)
+    pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 before() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first preceding sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: Determine insertion point
+        // Step 6: Call pre-insert (from mutation.zig)
+        @panic("ChildNode.before() not yet implemented");
+    }
+    /// DOM §4.3.4 - ChildNode.after()
+    /// Inserts nodes just after this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. Pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
+    /// (Included from ChildNode mixin)
+    pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 after() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first following sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: Call pre-insert (from mutation.zig)
+        @panic("ChildNode.after() not yet implemented");
+    }
+    /// DOM §4.3.4 - ChildNode.replaceWith()
+    /// Replaces this node with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If this's parent is parent, replace this with node within parent.
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
+    /// (Included from ChildNode mixin)
+    pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+        _ = self;
+        _ = nodes;
+        // TODO: Implement DOM §4.3.4 replaceWith() algorithm
+        // Step 1: Get parent
+        // Step 2: If parent is null, return
+        // Step 3: Find first following sibling not in nodes
+        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
+        // Step 5: If this's parent is still parent, call replace (from mutation.zig)
+        // Step 6: Otherwise call pre-insert (from mutation.zig)
+        @panic("ChildNode.replaceWith() not yet implemented");
+    }
+    /// DOM §4.3.4 - ChildNode.remove()
+    /// Removes this node from its parent.
+    /// 
+    /// Steps:
+    /// 1. If this's parent is null, then return.
+    /// 2. Remove this.
+    /// (Included from ChildNode mixin)
+    pub fn remove(self: anytype) !void {
+        _ = self;
+        // TODO: Implement DOM §4.3.4 remove() algorithm
+        // Step 1: If parent is null, return
+        // Step 2: Call remove (from mutation.zig)
+        @panic("ChildNode.remove() not yet implemented");
+    }
+    // ========================================================================
+    // Methods from NonDocumentTypeChildNode mixin
+    // ========================================================================
+
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
+    /// Returns the first preceding sibling that is an element; otherwise null.
+    /// 
+    /// The previousElementSibling getter steps are to return the first preceding
+    /// sibling that is an element; otherwise null.
+    /// (Included from NonDocumentTypeChildNode mixin)
+    pub fn previousElementSibling(self: anytype) ?*Element {
+        _ = self;
+        // TODO: Implement DOM §4.3.3 previousElementSibling getter
+        // 1. Get this node's previous sibling
+        // 2. While sibling exists:
+        //    - If sibling is an Element, return it
+        //    - Move to previous sibling
+        // 3. Return null if no element sibling found
+        @panic("NonDocumentTypeChildNode.previousElementSibling() not yet implemented");
+    }
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
+    /// Returns the first following sibling that is an element; otherwise null.
+    /// 
+    /// The nextElementSibling getter steps are to return the first following
+    /// sibling that is an element; otherwise null.
+    /// (Included from NonDocumentTypeChildNode mixin)
+    pub fn nextElementSibling(self: anytype) ?*Element {
+        _ = self;
+        // TODO: Implement DOM §4.3.3 nextElementSibling getter
+        // 1. Get this node's next sibling
+        // 2. While sibling exists:
+        //    - If sibling is an Element, return it
+        //    - Move to next sibling
+        // 3. Return null if no element sibling found
+        @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
     }
 
     // WebIDL extended attributes metadata

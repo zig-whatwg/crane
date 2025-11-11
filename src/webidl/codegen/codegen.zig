@@ -275,6 +275,12 @@ pub fn generateAllClasses(
         }
     }
 
+    // PASS 1.5: Flatten mixins into ClassInfo.fields
+    // After all files are parsed, flatten mixin fields directly into each ClassInfo.
+    // This ensures that when children inherit from parents, they automatically get
+    // the parent's mixin fields through normal inheritance collection.
+    try flattenAllMixinsIntoRegistry(&registry);
+
     // Check for circular inheritance across all files
     var global_file_it = registry.files.iterator();
     while (global_file_it.next()) |entry| {
@@ -1034,6 +1040,127 @@ const GlobalRegistry = struct {
         }
     }
 };
+
+/// Flatten all mixin fields into ClassInfo.fields for all classes in the registry.
+///
+/// This function implements PASS 1.5 of the code generation pipeline:
+/// After all files are parsed (PASS 1), this walks through all ClassInfo entries
+/// and flattens mixin fields directly into ClassInfo.fields. This ensures that
+/// when children inherit from parents, they automatically get the parent's mixin
+/// fields through normal inheritance collection.
+///
+/// **Architecture:**
+/// - PASS 1: Parse all files → Store ClassInfo with raw fields + mixin_names
+/// - PASS 1.5: Flatten mixins → ClassInfo.fields = [mixin_fields..., own_fields...]
+/// - PASS 2: Generate code → Child inheritance reads flattened Parent.fields
+///
+/// **Memory Management:**
+/// - Deep copies mixin fields (allocates new FieldDef/PropertyDef)
+/// - Frees old ClassInfo.fields/properties arrays
+/// - Replaces with new flattened arrays
+///
+/// **Error Handling:**
+/// - Missing mixin: Prints warning, continues (graceful degradation)
+/// - No infinite loops (shouldn't happen with mixins, but safe)
+fn flattenAllMixinsIntoRegistry(registry: *GlobalRegistry) !void {
+    // Iterate all classes in registry and flatten their mixins
+    var file_it = registry.files.iterator();
+    while (file_it.next()) |file_entry| {
+        for (file_entry.value_ptr.classes.items) |*class_info| {
+            // Only process classes that have mixins
+            if (class_info.mixin_names.len > 0) {
+                try flattenMixinsForClass(registry, class_info);
+            }
+        }
+    }
+}
+
+/// Flatten mixin fields into a single ClassInfo's fields/properties.
+///
+/// For each mixin referenced in class_info.mixin_names:
+/// 1. Lookup mixin in registry
+/// 2. Deep copy mixin's fields and properties
+/// 3. Prepend to class_info.fields/properties (mixin fields come first)
+/// 4. Replace class_info.fields/properties with flattened version
+///
+/// **Field Ordering:**
+/// Result: [mixin1_fields..., mixin2_fields..., own_fields...]
+///
+/// **Example:**
+/// ```
+/// TestMixin.fields = [mixin_field]
+/// Parent.mixin_names = [TestMixin]
+/// Parent.fields = [parent_field]
+///
+/// After flattening:
+/// Parent.fields = [mixin_field, parent_field]
+/// ```
+fn flattenMixinsForClass(
+    registry: *GlobalRegistry,
+    class_info: *ClassInfo,
+) !void {
+    const allocator = registry.allocator;
+
+    // Build new flattened fields/properties lists
+    var new_fields: std.ArrayList(FieldDef) = .empty;
+    errdefer new_fields.deinit(allocator);
+
+    var new_properties: std.ArrayList(PropertyDef) = .empty;
+    errdefer new_properties.deinit(allocator);
+
+    // Step 1: Collect mixin fields FIRST (so they appear before own fields)
+    for (class_info.mixin_names) |mixin_name| {
+        const mixin_info = registry.getMixin(mixin_name) orelse {
+            std.debug.print("Warning: Mixin {s} not found for {s}\n", .{ mixin_name, class_info.name });
+            continue;
+        };
+
+        // Deep copy mixin fields (duplicate FieldDef structs)
+        for (mixin_info.fields) |field| {
+            try new_fields.append(allocator, FieldDef{
+                .name = field.name,
+                .type_name = field.type_name,
+                .default_value = field.default_value,
+                .estimated_size = field.estimated_size,
+                .doc_comment = if (field.doc_comment) |doc|
+                    try allocator.dupe(u8, doc)
+                else
+                    null,
+            });
+        }
+
+        // Deep copy mixin properties
+        for (mixin_info.properties) |prop| {
+            try new_properties.append(allocator, PropertyDef{
+                .name = prop.name,
+                .type_name = prop.type_name,
+                .access = prop.access,
+                .default_value = prop.default_value,
+                .doc_comment = if (prop.doc_comment) |doc|
+                    try allocator.dupe(u8, doc)
+                else
+                    null,
+            });
+        }
+    }
+
+    // Step 2: Append own fields AFTER mixin fields
+    for (class_info.fields) |field| {
+        try new_fields.append(allocator, field);
+    }
+
+    for (class_info.properties) |prop| {
+        try new_properties.append(allocator, prop);
+    }
+
+    // Step 3: Replace class_info fields with flattened fields
+    // Free old arrays (but not the doc_comments, they're still referenced)
+    allocator.free(class_info.fields);
+    class_info.fields = try new_fields.toOwnedSlice(allocator);
+
+    allocator.free(class_info.properties);
+    class_info.properties = try new_properties.toOwnedSlice(allocator);
+}
 
 /// Convert PascalCase to snake_case for module names
 /// Example: "ReadableStreamGenericReader" -> "readable_stream_generic_reader"

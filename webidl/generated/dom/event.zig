@@ -15,6 +15,19 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
+pub const EventTarget = @import("event_target").EventTarget;
+
+/// EventPath struct - used by event dispatch algorithm
+/// DOM §2.9.1: Each path struct consists of:
+pub const EventPathItem = struct {
+    invocation_target: *EventTarget,
+    invocation_target_in_shadow_tree: bool,
+    shadow_adjusted_target: ?*EventTarget,
+    related_target: ?*EventTarget,
+    touch_target_list: std.ArrayList(*EventTarget),
+    root_of_closed_tree: bool,
+    slot_in_closed_tree: bool,
+};
 /// Event WebIDL interface
 pub const Event = struct {
     // ========================================================================
@@ -31,10 +44,15 @@ pub const Event = struct {
     stop_propagation_flag: bool,
     stop_immediate_propagation_flag: bool,
     canceled_flag: bool,
+    in_passive_listener_flag: bool,
+    initialized_flag: bool,
+    dispatch_flag: bool,
     is_trusted: bool,
     time_stamp: f64,
+    path: std.ArrayList(EventPathItem),
+    related_target: ?*EventTarget,
+    touch_target_list: std.ArrayList(*EventTarget),
 
-    pub const EventTarget = @import("event_target").EventTarget;
     pub const NONE: u16 = 0;
     pub const CAPTURING_PHASE: u16 = 1;
     pub const AT_TARGET: u16 = 2;
@@ -54,15 +72,26 @@ pub const Event = struct {
             .bubbles = event_init.bubbles,
             .cancelable = event_init.cancelable,
             .composed = event_init.composed,
+            // DOM §2.3 - All flags initially unset
             .stop_propagation_flag = false,
             .stop_immediate_propagation_flag = false,
             .canceled_flag = false,
+            .in_passive_listener_flag = false,
+            .initialized_flag = false,
+            .dispatch_flag = false,
             .is_trusted = false,
             .time_stamp = 0,
+            // DOM §2.3 - Path initially empty
+            .path = std.ArrayList(EventPathItem).init(allocator),
+            // DOM §2.3 - Related target initially null
+            .related_target = null,
+            // DOM §2.3 - Touch target list initially empty
+            .touch_target_list = std.ArrayList(*EventTarget).init(allocator),
         };
     }
     pub fn deinit(self: *Event) void {
-        _ = self;
+        self.path.deinit();
+        self.touch_target_list.deinit();
     }
     // ========================================================================
     // Event methods
@@ -79,34 +108,210 @@ pub const Event = struct {
         self.stop_propagation_flag = true;
         self.stop_immediate_propagation_flag = true;
     }
-    /// preventDefault()
-    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
-    pub fn call_preventDefault(self: *Event) void {
-        if (self.cancelable) {
+    /// DOM §2.3 - set the canceled flag
+    /// To set the canceled flag, given an event event, if event's cancelable
+    /// attribute value is true and event's in passive listener flag is unset,
+    /// then set event's canceled flag, and do nothing otherwise.
+    fn setCanceledFlag(self: *Event) void {
+        if (self.cancelable and !self.in_passive_listener_flag) {
             self.canceled_flag = true;
         }
     }
+    /// preventDefault()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
+    /// The preventDefault() method steps are to set the canceled flag with this.
+    pub fn call_preventDefault(self: *Event) void {
+        self.setCanceledFlag();
+    }
     /// composedPath()
     /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
-    pub fn call_composedPath(self: *Event) ![]EventTarget {
-        _ = self;
-        // Return the composed path
-        return &[_]EventTarget{};
+    /// 
+    /// Returns the invocation target objects of event's path (objects on which
+    /// listeners will be invoked), except for any nodes in shadow trees of which
+    /// the shadow root's mode is "closed" that are not reachable from event's
+    /// currentTarget.
+    /// 
+    /// The composedPath() method steps are (DOM §2.3):
+    pub fn call_composedPath(self: *Event) !std.ArrayList(*EventTarget) {
+        // Step 1: Let composedPath be an empty list
+        var composed_path = std.ArrayList(*EventTarget).init(self.allocator);
+
+        // Step 2: Let path be this's path
+        const path = self.path.items;
+
+        // Step 3: If path is empty, then return composedPath
+        if (path.len == 0) {
+            return composed_path;
+        }
+
+        // Step 4: Let currentTarget be this's currentTarget attribute value
+        const current_target = self.current_target;
+
+        // Step 5: Assert: currentTarget is an EventTarget object
+        if (current_target == null) {
+            // Path is not empty but currentTarget is null - shouldn't happen during dispatch
+            return composed_path;
+        }
+
+        // Step 6: Append currentTarget to composedPath
+        try composed_path.append(current_target.?);
+
+        // Step 7: Let currentTargetIndex be 0
+        var current_target_index: usize = 0;
+
+        // Step 8: Let currentTargetHiddenSubtreeLevel be 0
+        var current_target_hidden_subtree_level: i32 = 0;
+
+        // Step 9: Let index be path's size − 1
+        var index: i32 = @as(i32, @intCast(path.len)) - 1;
+
+        // Step 10: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 10.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentTargetHiddenSubtreeLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_target_hidden_subtree_level += 1;
+            }
+
+            // Step 10.2: If path[index]'s invocation target is currentTarget,
+            // then set currentTargetIndex to index and break
+            if (path_item.invocation_target == current_target.?) {
+                current_target_index = @intCast(index);
+                break;
+            }
+
+            // Step 10.3: If path[index]'s slot-in-closed-tree is true,
+            // then decrease currentTargetHiddenSubtreeLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_target_hidden_subtree_level -= 1;
+            }
+        }
+
+        // Step 11: Let currentHiddenLevel and maxHiddenLevel be currentTargetHiddenSubtreeLevel
+        var current_hidden_level = current_target_hidden_subtree_level;
+        var max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 12: Set index to currentTargetIndex − 1
+        index = @as(i32, @intCast(current_target_index)) - 1;
+
+        // Step 13: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 13.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 13.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then prepend path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.insert(0, path_item.invocation_target);
+            }
+
+            // Step 13.3: If path[index]'s slot-in-closed-tree is true
+            if (path_item.slot_in_closed_tree) {
+                // Step 13.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 13.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 14: Set currentHiddenLevel and maxHiddenLevel to currentTargetHiddenSubtreeLevel
+        current_hidden_level = current_target_hidden_subtree_level;
+        max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 15: Set index to currentTargetIndex + 1
+        index = @as(i32, @intCast(current_target_index)) + 1;
+
+        // Step 16: While index is less than path's size
+        while (index < path.len) : (index += 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 16.1: If path[index]'s slot-in-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 16.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then append path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.append(path_item.invocation_target);
+            }
+
+            // Step 16.3: If path[index]'s root-of-closed-tree is true
+            if (path_item.root_of_closed_tree) {
+                // Step 16.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 16.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 17: Return composedPath
+        return composed_path;
+    }
+    /// DOM §2.3 - initialize an event
+    /// To initialize an event, with type, bubbles, and cancelable, run these steps:
+    fn initializeEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        // Step 1: Set event's initialized flag
+        self.initialized_flag = true;
+
+        // Step 2: Unset event's stop propagation flag, stop immediate propagation flag, and canceled flag
+        self.stop_propagation_flag = false;
+        self.stop_immediate_propagation_flag = false;
+        self.canceled_flag = false;
+
+        // Step 3: Set event's isTrusted attribute to false
+        self.is_trusted = false;
+
+        // Step 4: Set event's target to null
+        self.target = null;
+
+        // Step 5: Set event's type attribute to type
+        self.event_type = event_type;
+
+        // Step 6: Set event's bubbles attribute to bubbles
+        self.bubbles = bubbles;
+
+        // Step 7: Set event's cancelable attribute to cancelable
+        self.cancelable = cancelable;
     }
     /// initEvent(type, bubbles, cancelable)
     /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
+    /// The initEvent(type, bubbles, cancelable) method steps are:
+    /// 1. If this's dispatch flag is set, then return.
+    /// 2. Initialize this with type, bubbles, and cancelable.
     pub fn call_initEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
-        if (self.event_phase != NONE) return;
+        // Step 1: If dispatch flag is set, return
+        if (self.dispatch_flag) return;
 
-        self.event_type = event_type;
-        self.bubbles = bubbles;
-        self.cancelable = cancelable;
+        // Step 2: Initialize this
+        self.initializeEvent(event_type, bubbles, cancelable);
     }
     /// Getters
     pub fn get_type(self: *const Event) []const u8 {
         return self.event_type;
     }
     pub fn get_target(self: *const Event) ?*EventTarget {
+        return self.target;
+    }
+    /// DOM §2.3 - srcElement getter (legacy)
+    /// The srcElement getter steps are to return this's target.
+    pub fn get_srcElement(self: *const Event) ?*EventTarget {
         return self.target;
     }
     pub fn get_currentTarget(self: *const Event) ?*EventTarget {
@@ -132,6 +337,34 @@ pub const Event = struct {
     }
     pub fn get_timeStamp(self: *const Event) f64 {
         return self.time_stamp;
+    }
+    /// DOM §2.3 - cancelBubble getter (legacy)
+    /// The cancelBubble getter steps are to return true if this's stop propagation
+    /// flag is set; otherwise false.
+    pub fn get_cancelBubble(self: *const Event) bool {
+        return self.stop_propagation_flag;
+    }
+    /// DOM §2.3 - cancelBubble setter (legacy)
+    /// The cancelBubble setter steps are to set this's stop propagation flag if
+    /// the given value is true; otherwise do nothing.
+    pub fn set_cancelBubble(self: *Event, value: bool) void {
+        if (value) {
+            self.stop_propagation_flag = true;
+        }
+    }
+    /// DOM §2.3 - returnValue getter (legacy)
+    /// The returnValue getter steps are to return false if this's canceled flag
+    /// is set; otherwise true.
+    pub fn get_returnValue(self: *const Event) bool {
+        return !self.canceled_flag;
+    }
+    /// DOM §2.3 - returnValue setter (legacy)
+    /// The returnValue setter steps are to set the canceled flag with this if
+    /// the given value is false; otherwise do nothing.
+    pub fn set_returnValue(self: *Event, value: bool) void {
+        if (!value) {
+            self.setCanceledFlag();
+        }
     }
 
     // WebIDL extended attributes metadata

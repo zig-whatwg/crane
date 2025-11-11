@@ -7,37 +7,42 @@
 //   - Property getters and setters
 //   - Optimized field layouts
 
-//! DocumentFragment interface per WHATWG DOM Standard
+// DOM Standard: Interface Mixin ParentNode (§4.3.2)
+// https://dom.spec.whatwg.org/#interface-parentnode
 
 const std = @import("std");
-const webidl = @import("webidl");
-pub const Node = @import("node").Node;
-/// DOM Spec: interface DocumentFragment : Node
-const ParentNode = @import("parent_node").ParentNode;
-pub const DocumentFragment = struct {
+const webidl = @import("../../root.zig");
+pub const dom_types = @import("dom_types.zig");
+pub const dom = @import("dom");
+
+// Forward declarations
+pub const Element = @import("Element.zig").Element;
+pub const HTMLCollection = @import("HTMLCollection.zig").HTMLCollection;
+pub const NodeList = @import("NodeList.zig").NodeList;
+/// ParentNode mixin provides methods for manipulating child elements.
+/// Included by: Document, DocumentFragment, Element
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin ParentNode {
+/// [SameObject] readonly attribute HTMLCollection children;
+/// readonly attribute Element? firstElementChild;
+/// readonly attribute Element? lastElementChild;
+/// readonly attribute unsigned long childElementCount;
+/// 
+/// [CEReactions, Unscopable] undefined prepend((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined append((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined replaceChildren((Node or DOMString)... nodes);
+/// 
+/// [CEReactions] undefined moveBefore(Node node, Node? child);
+/// 
+/// Element? querySelector(DOMString selectors);
+/// [NewObject] NodeList querySelectorAll(DOMString selectors);
+/// };
+/// ```
+pub const ParentNode = struct {
     // ========================================================================
-    // DocumentFragment fields
-    // ========================================================================
-    allocator: std.mem.Allocator,
-
-    pub const includes = .{ParentNode};
-
-    pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
-        // NOTE: Parent Node fields will be flattened by codegen
-        return .{
-            .allocator = allocator,
-            // TODO: Initialize Node parent fields (will be added by codegen)
-        };
-    }
-    pub fn deinit(self: *DocumentFragment) void {
-        _ = self;
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
-    }
-
-
-    // ========================================================================
-    // Methods from ParentNode mixin
+    // ParentNode methods
     // ========================================================================
 
     /// DOM §4.3.2 - ParentNode.children
@@ -45,7 +50,6 @@ pub const DocumentFragment = struct {
     /// 
     /// The children getter steps are to return an HTMLCollection collection rooted
     /// at this matching only element children.
-    /// (Included from ParentNode mixin)
     pub fn get_children(self: anytype) *HTMLCollection {
         _ = self;
         // TODO: Implement DOM §4.3.2 children getter
@@ -58,7 +62,6 @@ pub const DocumentFragment = struct {
     /// 
     /// The firstElementChild getter steps are to return the first child that is
     /// an element; otherwise null.
-    /// (Included from ParentNode mixin)
     pub fn get_firstElementChild(self: anytype) ?*Element {
         _ = self;
         // TODO: Implement DOM §4.3.2 firstElementChild getter
@@ -72,7 +75,6 @@ pub const DocumentFragment = struct {
     /// 
     /// The lastElementChild getter steps are to return the last child that is
     /// an element; otherwise null.
-    /// (Included from ParentNode mixin)
     pub fn get_lastElementChild(self: anytype) ?*Element {
         _ = self;
         // TODO: Implement DOM §4.3.2 lastElementChild getter
@@ -86,7 +88,6 @@ pub const DocumentFragment = struct {
     /// 
     /// The childElementCount getter steps are to return the number of children
     /// of this that are elements.
-    /// (Included from ParentNode mixin)
     pub fn get_childElementCount(self: anytype) u32 {
         _ = self;
         // TODO: Implement DOM §4.3.2 childElementCount getter
@@ -102,7 +103,6 @@ pub const DocumentFragment = struct {
     /// 2. Pre-insert node into this before this's first child.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ParentNode mixin)
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -119,7 +119,6 @@ pub const DocumentFragment = struct {
     /// 2. Append node to this.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ParentNode mixin)
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -137,7 +136,6 @@ pub const DocumentFragment = struct {
     /// 3. Replace all with node within this.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    /// (Included from ParentNode mixin)
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
@@ -157,7 +155,6 @@ pub const DocumentFragment = struct {
     /// 3. Move node into this before referenceChild.
     /// 
     /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
-    /// (Included from ParentNode mixin)
     pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
         _ = self;
         _ = node;
@@ -176,7 +173,6 @@ pub const DocumentFragment = struct {
     /// is not an empty list; otherwise null.
     /// 
     /// Uses Selectors mock (basic support only).
-    /// (Included from ParentNode mixin)
     pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
         // Run scope-match a selectors string against this
         const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -196,7 +192,6 @@ pub const DocumentFragment = struct {
     /// of running scope-match a selectors string selectors against this.
     /// 
     /// Uses Selectors mock (basic support only).
-    /// (Included from ParentNode mixin)
     pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
         // Run scope-match a selectors string against this
         var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -212,9 +207,9 @@ pub const DocumentFragment = struct {
 
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{
-        .name = "DocumentFragment",
-        .kind = .interface,
-        .exposed = &.{.Window},
+        .name = "ParentNode",
+        .kind = .mixin,
+        .exposed = null,
         .transferable = false,
         .serializable = false,
         .secure_context = false,
@@ -222,3 +217,43 @@ pub const DocumentFragment = struct {
     };
 };
 
+
+// ============================================================================
+// Helper Algorithms (DOM §4.3.2)
+// ============================================================================
+
+/// DOM §4.3.2 - convert nodes into a node
+/// Given nodes and document, run these steps:
+///
+/// 1. Let node be null.
+/// 2. Replace each string in nodes with a new Text node whose data is the string
+///    and node document is document.
+/// 3. If nodes contains one node, then set node to nodes[0].
+/// 4. Otherwise, set node to a new DocumentFragment node whose node document is
+///    document, and then append each node in nodes, if any, to it.
+/// 5. Return node.
+///
+/// This helper is used by ParentNode (prepend, append, replaceChildren) and
+/// ChildNode (before, after, replaceWith) methods.
+pub fn convertNodesIntoNode(
+    allocator: std.mem.Allocator,
+    nodes: []const dom_types.NodeOrDOMString,
+    document: anytype,
+) !*anyopaque {
+    _ = allocator;
+    _ = nodes;
+    _ = document;
+    // TODO: Implement "convert nodes into a node" algorithm (DOM §4.3.2)
+    // Step 1: Let node be null
+    // Step 2: Replace strings with Text nodes
+    // Step 3: If single node, return it
+    // Step 4: If multiple, create DocumentFragment and append all
+    // Step 5: Return node
+    @panic("convertNodesIntoNode helper not yet implemented");
+}
+
+test "ParentNode mixin compiles" {
+    // Just verify the mixin structure compiles
+    const T = @TypeOf(ParentNode);
+    try std.testing.expect(T != void);
+}
