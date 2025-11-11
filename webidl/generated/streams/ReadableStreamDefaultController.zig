@@ -256,7 +256,7 @@ pub const ReadableStreamDefaultController = struct {
             const stream: *ReadableStream = @ptrCast(@alignCast(stream_ptr));
 
             // Check if stream has a reader with pending read requests
-            if (stream.isLocked()) {
+            if (stream.get_locked()) {
                 const num_requests = stream.getNumReadRequests();
                 if (num_requests > 0) {
                     // Fulfill the first pending read request immediately
@@ -380,7 +380,7 @@ pub const ReadableStreamDefaultController = struct {
 
             // Step 4: If ! IsReadableStreamLocked(stream) is true and
             //         ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
-            if (stream.isLocked() and stream.getNumReadRequests() > 0) {
+            if (stream.get_locked() and stream.getNumReadRequests() > 0) {
                 return true;
             }
 

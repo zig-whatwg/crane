@@ -81,26 +81,6 @@ pub const ReadableStreamGenericReader = webidl.mixin(struct {
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
         return self.genericCancel(reason_value);
     }
-    }
-
-    /// cancel(reason) method
-    ///
-    /// IDL: Promise<undefined> cancel(optional any reason);
-    ///
-    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
-    pub fn cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
-        if (self.stream == null) {
-            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Reader released" });
-            return promise;
-        }
-
-        const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
-
-        // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
-        return self.genericCancel(reason_value);
-    }
 
     // ============================================================================
     // Internal Algorithms (Abstract Operations)

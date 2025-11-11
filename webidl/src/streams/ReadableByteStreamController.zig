@@ -1173,7 +1173,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         }
 
         // Step 7-9: Check desired size
-        const desired_size = self.desiredSize();
+        const desired_size = self.get_desiredSize();
         if (desired_size) |size| {
             if (size > 0) {
                 return true;
@@ -1411,17 +1411,16 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         errdefer self.allocator.destroy(branch2);
         branch2.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
 
-        // Wire both branches to share this controller
-        // Note: Full implementation would create separate controllers
-        // and coordinate reads between them
-        branch1.controller = self;
-        branch2.controller = self;
+        // TODO: Wire both branches to share this controller
+        // BLOCKED: ReadableStream.controller is typed as *ReadableStreamDefaultController
+        // but needs to be union to support *ReadableByteStreamController too
+        // For now, just return the branches without proper controller wiring
         branch1.state = stream.state;
         branch2.state = stream.state;
 
         return .{
-            .branch1 = branch1,
-            .branch2 = branch2,
+            .branch1 = @ptrCast(branch1),
+            .branch2 = @ptrCast(branch2),
         };
     }
 }, .{

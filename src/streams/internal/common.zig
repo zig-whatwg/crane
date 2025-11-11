@@ -139,6 +139,28 @@ pub const ReadResult = struct {
 /// while maintaining runtime polymorphism.
 ///
 /// Design: See ALGORITHM_CONTEXT_DESIGN.md
+/// Start algorithm - called once when stream is initialized
+/// Spec: Abstract operation passed to SetUpReadableStreamDefaultController/SetUpReadableByteStreamController
+pub const StartAlgorithm = struct {
+    ptr: *anyopaque,
+    vtable: *const VTable,
+
+    pub const VTable = struct {
+        call: *const fn (ctx: *anyopaque) Promise(void),
+        deinit: ?*const fn (ctx: *anyopaque) void,
+    };
+
+    pub fn call(self: StartAlgorithm) Promise(void) {
+        return self.vtable.call(self.ptr);
+    }
+
+    pub fn deinit(self: StartAlgorithm) void {
+        if (self.vtable.deinit) |deinit_fn| {
+            deinit_fn(self.ptr);
+        }
+    }
+};
+
 /// Pull algorithm - called when controller needs data
 /// Spec: Abstract operation passed to SetUpReadableStreamDefaultController
 pub const PullAlgorithm = struct {

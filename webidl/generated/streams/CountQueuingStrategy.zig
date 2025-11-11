@@ -16,9 +16,11 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-// Import QueuingStrategyInit from ByteLengthQueuingStrategy
-pub const ByteLengthQueuingStrategy = @import("byte_length_queuing_strategy");
-pub const QueuingStrategyInit = ByteLengthQueuingStrategy.QueuingStrategyInit;
+/// QueuingStrategyInit dictionary
+/// Spec: https://streams.spec.whatwg.org/#dictdef-queuingstrategyinit
+pub const QueuingStrategyInit = struct {
+    highWaterMark: f64,
+};
 pub const CountQueuingStrategy = struct {
     // ========================================================================
     // CountQueuingStrategy fields

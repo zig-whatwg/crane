@@ -135,6 +135,51 @@ pub const ReadableStreamDefaultReader = struct {
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
         return self.genericCancel(reason_value);
     }
+    /// ReadableStreamReaderGenericCancel(reader, reason)
+    /// 
+    /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
+    /// (Included from ReadableStreamGenericReader mixin)
+    fn genericCancel(self: *ReadableStreamDefaultReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream is not undefined.
+        // (Assertion is implicit - .? will panic if stream is null)
+
+        // Step 3: Return ! ReadableStreamCancel(stream, reason).
+        return stream.cancelInternal(reason);
+    }
+    /// ReadableStreamReaderGenericRelease(reader)
+    /// 
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
+    /// (Included from ReadableStreamGenericReader mixin)
+    pub fn genericRelease(self: *ReadableStreamDefaultReader) void {
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream.[[reader]] is reader.
+        // (We can't directly assert this due to type differences, but logically true)
+
+        // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with a TypeError exception.
+        if (stream.state == .readable) {
+            self.closedPromise.reject(common.JSValue{ .string = "Reader released before stream closed" });
+        }
+
+        // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with a TypeError exception.
+        // (Already done in step 3 for readable state, and for other states the promise is already settled)
+
+        // Step 5: Set reader.[[closedPromise]].[[PromiseIsHandled]] to true.
+        // (Not applicable in our implementation - we don't track PromiseIsHandled)
+
+        // Step 6: Perform ! stream.[[controller]].[[ReleaseSteps]]().
+        stream.controller.releaseSteps();
+
+        // Step 7: Set stream.[[reader]] to undefined.
+        stream.reader = .none;
+
+        // Step 8: Set reader.[[stream]] to undefined.
+        self.stream = null;
+    }
     // ========================================================================
     // ReadableStreamDefaultReader methods
     // ========================================================================

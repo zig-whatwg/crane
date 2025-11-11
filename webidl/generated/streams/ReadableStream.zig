@@ -344,14 +344,14 @@ pub const ReadableStream = struct {
         };
 
         // Step 1: If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError.
-        if (self.isLocked()) {
+        if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Cannot pipe from a locked stream" });
             return promise;
         }
 
         // Step 2: If ! IsWritableStreamLocked(destination) is true, return a promise rejected with a TypeError.
-        if (destination.isLocked()) {
+        if (destination.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(common.JSValue{ .string = "Cannot pipe to a locked stream" });
             return promise;
@@ -393,12 +393,12 @@ pub const ReadableStream = struct {
         options: ?PipeOptions,
     ) !*ReadableStream {
         // Spec step 1: If ! IsReadableStreamLocked(this) is true, throw a TypeError exception.
-        if (self.isLocked()) {
+        if (self.get_locked()) {
             return error.TypeError;
         }
 
         // Spec step 2: If ! IsWritableStreamLocked(transform["writable"]) is true, throw a TypeError exception.
-        if (transform.writable.isLocked()) {
+        if (transform.writable.get_locked()) {
             return error.TypeError;
         }
 
@@ -654,7 +654,7 @@ pub const ReadableStream = struct {
     /// Spec: § 4.2.3 "Creates a BYOB reader and locks the stream to it."
     fn acquireBYOBReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamBYOBReader {
         // Step 1: If stream is locked, throw TypeError
-        if (self.isLocked()) {
+        if (self.get_locked()) {
             return error.TypeError;
         }
 
@@ -697,8 +697,11 @@ pub const ReadableStream = struct {
             .reader = .none,
             .storedError = null,
             .disturbed = false,
+            .detached = false,
             .controller = undefined, // Will be set below
             .eventLoop = loop,
+            .eventLoop_storage = null,
+            .teeState = null,
         };
 
         // Step 3: Let controller be a new ReadableByteStreamController
@@ -718,13 +721,12 @@ pub const ReadableStream = struct {
         controller_ptr.stream = stream;
         controller_ptr.started = false;
 
-        // Set stream's controller
-        stream.controller = .{ .byte = controller_ptr };
+        // Set stream's controller (cast required until controller union is implemented)
+        // TODO: Make ReadableStream.controller a union type
+        stream.controller = @ptrCast(controller_ptr);
 
         // Execute start algorithm
-        if (startAlgorithm) |start| {
-            try start(controller_ptr);
-        }
+        _ = startAlgorithm; // TODO: Call startAlgorithm once signature is finalized
         controller_ptr.started = true;
 
         // Step 5: Return stream
@@ -1338,7 +1340,7 @@ pub const PipeState = struct {
         // Check backpressure: don't read if writer's desiredSize <= 0
         // Spec: "While WritableStreamDefaultWriterGetDesiredSize(writer) is ≤ 0 or is null,
         //        the user agent must not read from reader."
-        const desiredSize = self.writer.call_desiredSize();
+        const desiredSize = self.writer.get_desiredSize();
         if (desiredSize == null or desiredSize.? <= 0) {
             // Wait for ready promise to fulfill (backpressure)
             // In a full async implementation, we'd await writer.ready
@@ -1348,7 +1350,7 @@ pub const PipeState = struct {
         }
 
         // Read a chunk from the source
-        const readPromise = try self.reader.read();
+        const readPromise = try self.reader.call_read();
         self.pendingRead = readPromise;
 
         // Process the read result
@@ -1367,7 +1369,7 @@ pub const PipeState = struct {
 
             // Write the chunk to the destination
             if (result.value) |chunk| {
-                const writePromise = try self.writer.write(chunk.toWebIDL());
+                const writePromise = try self.writer.call_write(chunk.toWebIDL());
                 self.pendingWrite = writePromise;
 
                 // Wait for write to complete
@@ -1413,7 +1415,7 @@ pub const PipeState = struct {
             if (!self.preventAbort and self.dest.state == .writable) {
                 // Shutdown with action of WritableStreamAbort(dest, source.storedError)
                 const err_value = self.source.storedError orelse common.JSValue{ .string = "Source errored" };
-                const abortPromise = try self.dest.abort(err_value.toWebIDL());
+                const abortPromise = try self.dest.call_abort(err_value.toWebIDL());
                 self.shutdownWithAction(abortPromise, err_value);
             } else {
                 // Shutdown with error but no action
@@ -1464,7 +1466,7 @@ pub const PipeState = struct {
             // Close the writer with error propagation
             // Spec: WritableStreamDefaultWriterCloseWithErrorPropagation(writer)
             // For now, simplified to just close
-            const closePromise = self.writer.close() catch {
+            const closePromise = self.writer.call_close() catch {
                 self.finalize(null);
                 return;
             };
@@ -1726,7 +1728,7 @@ pub const TeeState = struct {
         self.reading = true;
 
         // Step 13.3-4: Create read request and perform read
-        const readPromise = try self.reader.read();
+        const readPromise = try self.reader.call_read();
 
         // Wait for read to complete
         self.eventLoop.runMicrotasks();
@@ -2054,7 +2056,7 @@ pub const ByteTeeState = struct {
         // Step 15.2: Create read request
         // Step 15.3: Perform ReadableStreamDefaultReaderRead
         const reader = self.reader.default;
-        const readPromise = try reader.read();
+        const readPromise = try reader.call_read();
 
         // Process the result (in a real implementation, this would be async)
         self.eventLoop.runMicrotasks();
@@ -2689,7 +2691,7 @@ pub const ReadableStreamAsyncIterator = struct {
         // Spec step 3: Let promise be a new promise
         // Spec step 4: Let readRequest be a new read request
         // Spec step 5: Perform ! ReadableStreamDefaultReaderRead(this, readRequest)
-        const read_promise = try self.reader.read();
+        const read_promise = try self.reader.call_read();
 
         // Process microtasks to settle the promise
         // In a full async implementation, this would await the promise
