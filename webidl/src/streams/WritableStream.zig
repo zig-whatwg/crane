@@ -527,12 +527,13 @@ pub const WritableStream = webidl.interface(struct {
         self.storedError = reason;
 
         // Spec step 7-8: Reject writer's ready promise if writer exists
+        const reason_exception = reason.toException(self.allocator) catch return;
         switch (self.writer) {
             .none => {},
             .default => |writer| {
                 // Spec step 8: Perform ! WritableStreamDefaultWriterEnsureReadyPromiseRejected(writer, reason)
                 if (writer.readyPromise) |ready| {
-                    ready.reject(reason);
+                    ready.reject(reason_exception);
                 }
             },
         }

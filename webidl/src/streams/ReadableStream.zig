@@ -783,7 +783,7 @@ pub const ReadableStream = webidl.interface(struct {
         if (self.state == .errored) {
             const stored_err = self.storedError orelse common.JSValue.undefined_value();
             const exception = try stored_err.toException(self.allocator);
-            const promise = AsyncPromise(void).rejected();
+            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
             promise.reject(exception);
             return promise;
         }
@@ -1220,7 +1220,7 @@ pub const ReadableStream = webidl.interface(struct {
                 // Spec: Reject all pending readIntoRequests
                 while (reader.readIntoRequests.items.len > 0) {
                     const request = reader.readIntoRequests.orderedRemove(0);
-                    request.executeErrorSteps(e);
+                    request.reject(exception);
                 }
             },
         }
@@ -1690,9 +1690,10 @@ pub const PipeState = struct {
             action.deinit();
             self.finalize(originalError);
         } else if (action.isRejected()) {
-            const err_value = action.state.rejected;
+            const err_exception = action.state.rejected;
+            const err_jsvalue = common.JSValue{ .string = err_exception.toString() };
             action.deinit();
-            self.finalize(err_value);
+            self.finalize(err_jsvalue);
         } else {
             // Action still pending - in full async impl, would await
             action.deinit();
@@ -1737,7 +1738,8 @@ pub const PipeState = struct {
 
         // 4. Resolve or reject the promise
         if (err) |e| {
-            self.promise.reject(e);
+            const exception = e.toException(self.allocator) catch return;
+            self.promise.reject(exception);
         } else {
             self.promise.fulfill({});
         }

@@ -202,7 +202,8 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
                     .string => |s| common.JSValue{ .string = s },
                     else => common.JSValue{ .string = "Unknown error" },
                 };
-                context.promisePtr.reject(err_value);
+                const exception = err_value.toException(allocator) catch return;
+                context.promisePtr.reject(exception);
             }
         };
 
