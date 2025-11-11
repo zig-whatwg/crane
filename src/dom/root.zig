@@ -15,6 +15,7 @@ pub const EventTarget = @import("event_target").EventTarget;
 pub const Event = @import("event").Event;
 pub const Node = @import("node").Node;
 pub const NodeList = @import("node_list").NodeList;
+pub const NamedNodeMap = @import("named_node_map").NamedNodeMap;
 pub const Element = @import("element").Element;
 pub const CharacterData = @import("character_data").CharacterData;
 pub const Text = @import("text").Text;

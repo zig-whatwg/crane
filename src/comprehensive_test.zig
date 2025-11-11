@@ -100,6 +100,7 @@ comptime {
     _ = dom.Comment;
     _ = dom.DocumentFragment;
     _ = dom.NodeList;
+    _ = dom.NamedNodeMap;
     _ = dom.DOMTokenList;
     _ = dom.Attr;
 

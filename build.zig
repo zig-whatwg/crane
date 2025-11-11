@@ -238,6 +238,7 @@ pub fn build(b: *std.Build) void {
     const abort_signal_mod = getWebIDLModule(webidl_modules, "dom_abort_signal");
     const abort_controller_mod = getWebIDLModule(webidl_modules, "dom_abort_controller");
     const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
+    const named_node_map_mod = getWebIDLModule(webidl_modules, "dom_named_node_map");
     const html_collection_mod = getWebIDLModule(webidl_modules, "dom_htmlcollection");
     const node_mod = getWebIDLModule(webidl_modules, "dom_node");
     const element_mod = getWebIDLModule(webidl_modules, "dom_element");
@@ -294,8 +295,10 @@ pub fn build(b: *std.Build) void {
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
+    named_node_map_mod.addImport("attr", attr_mod);
+    named_node_map_mod.addImport("element", element_mod);
 
-    // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, etc.)
+    // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, NamedNodeMap, etc.)
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),
         .target = target,
@@ -308,6 +311,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("event", event_mod);
     dom_mod.addImport("node", node_mod);
     dom_mod.addImport("node_list", node_list_mod);
+    dom_mod.addImport("named_node_map", named_node_map_mod);
     dom_mod.addImport("element", element_mod);
     dom_mod.addImport("character_data", character_data_mod);
     dom_mod.addImport("text", text_mod);
