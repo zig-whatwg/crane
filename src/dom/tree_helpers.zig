@@ -172,6 +172,102 @@ pub fn isLeaf(node: *const Node) bool {
     return node.child_nodes.items.len == 0;
 }
 
+/// Check if node A is following node B (comes after B in tree order)
+/// Per WHATWG DOM: An object A is following an object B if A and B are in
+/// the same tree and A comes after B in tree order (preorder depth-first).
+pub fn isFollowing(nodeA: *const Node, nodeB: *const Node) bool {
+    // Use tree order comparison
+    return compareTreeOrder(nodeA, nodeB) == .after;
+}
+
+/// Check if node A is preceding node B (comes before B in tree order)
+/// Per WHATWG DOM: An object A is preceding an object B if A and B are in
+/// the same tree and A comes before B in tree order.
+pub fn isPreceding(nodeA: *const Node, nodeB: *const Node) bool {
+    return compareTreeOrder(nodeA, nodeB) == .before;
+}
+
+/// Compare two nodes in tree order
+/// Returns: .before if nodeA comes before nodeB, .after if nodeA comes after nodeB, .equal if same node
+pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, equal, after } {
+    if (nodeA == nodeB) return .equal;
+
+    // Find common ancestor and determine relative positions
+    // This is essentially a tree traversal comparison
+
+    // First check if one is ancestor of the other
+    if (isAncestor(nodeA, nodeB)) {
+        // A is ancestor of B, so A comes before B in preorder
+        return .before;
+    }
+    if (isAncestor(nodeB, nodeA)) {
+        // B is ancestor of A, so A comes after B in preorder
+        return .after;
+    }
+
+    // Neither is ancestor of the other, find common ancestor
+    // and compare which branch comes first
+    var ancestorsA = std.ArrayList(*const Node).init(std.heap.page_allocator);
+    defer ancestorsA.deinit();
+
+    // Build ancestor chain for A
+    var currentA: ?*const Node = nodeA;
+    while (currentA) |node| {
+        ancestorsA.append(node) catch return .equal; // fallback on error
+        currentA = node.parent_node;
+    }
+
+    // Walk up from B until we find common ancestor
+    var currentB: ?*const Node = nodeB;
+    while (currentB) |nodeB_ancestor| {
+        // Check if this B ancestor is in A's chain
+        for (ancestorsA.items, 0..) |nodeA_ancestor, i| {
+            if (nodeA_ancestor == nodeB_ancestor) {
+                // Found common ancestor
+                // Compare which child branch comes first
+                if (i == 0) {
+                    // nodeA itself is the common ancestor (shouldn't happen, we checked above)
+                    return .before;
+                }
+
+                const childOfCommonA = ancestorsA.items[i - 1];
+
+                // Find B's child of common ancestor
+                var childOfCommonB: *const Node = nodeB;
+                var parentOfB = nodeB.parent_node;
+                while (parentOfB != null and parentOfB != nodeB_ancestor) {
+                    childOfCommonB = parentOfB.?;
+                    parentOfB = childOfCommonB.parent_node;
+                }
+
+                // Compare indices of these children
+                const common = nodeB_ancestor;
+                var indexA: ?usize = null;
+                var indexB: ?usize = null;
+
+                for (common.child_nodes.items, 0..) |child, idx| {
+                    if (child == childOfCommonA) indexA = idx;
+                    if (child == childOfCommonB) indexB = idx;
+                }
+
+                if (indexA != null and indexB != null) {
+                    if (indexA.? < indexB.?) {
+                        return .before;
+                    } else {
+                        return .after;
+                    }
+                }
+
+                return .equal; // fallback
+            }
+        }
+        currentB = nodeB_ancestor.parent_node;
+    }
+
+    // No common ancestor found (different trees) - treat as equal
+    return .equal;
+}
+
 // ============================================================================
 // Tree Traversal
 // ============================================================================

@@ -147,6 +147,10 @@ pub const Range = webidl.interface(struct {
     }
 
     /// Helper: Check if boundary point A is after boundary point B
+    /// Per DOM spec: A boundary point (nodeA, offsetA) is after another
+    /// boundary point (nodeB, offsetB) if:
+    /// - nodeA is after nodeB in tree order, or
+    /// - nodeA is nodeB and offsetA is greater than offsetB
     fn isAfter(self: *const Range, nodeA: *Node, offsetA: u32, nodeB: *Node, offsetB: u32) bool {
         _ = self;
 
@@ -155,9 +159,70 @@ pub const Range = webidl.interface(struct {
             return offsetA > offsetB;
         }
 
-        // TODO: Implement full position comparison per DOM spec
-        // For now, simplified comparison (different nodes - return false)
-        return false;
+        // Different nodes: use tree order
+        const dom = @import("dom");
+        return dom.tree_helpers.isFollowing(nodeA, nodeB);
+    }
+
+    /// Helper: Compare position of boundary point (node, offset) relative to (otherNode, otherOffset)
+    /// Returns: .before, .equal, or .after
+    /// Per DOM §5.5 boundary point position algorithm
+    fn compareBoundaryPointsHelper(
+        node: *Node,
+        offset: u32,
+        otherNode: *Node,
+        otherOffset: u32,
+    ) enum { before, equal, after } {
+        // Step 1: Assert nodes have same root (caller's responsibility)
+
+        // Step 2: If node is otherNode, compare offsets
+        if (node == otherNode) {
+            if (offset == otherOffset) return .equal;
+            if (offset < otherOffset) return .before;
+            return .after;
+        }
+
+        const dom = @import("dom");
+
+        // Step 3: If otherNode is following node
+        if (dom.tree_helpers.isFollowing(otherNode, node)) {
+            // Recursively compare in reverse
+            const reversed = compareBoundaryPointsHelper(otherNode, otherOffset, node, offset);
+            return switch (reversed) {
+                .before => .after,
+                .after => .before,
+                .equal => .equal,
+            };
+        }
+
+        // Step 4 & 5: Determine child of otherNode to compare
+        var child: *Node = undefined;
+        if (dom.tree_helpers.isAncestor(otherNode, node)) {
+            // Step 4: otherNode is ancestor of node
+            child = node;
+        } else {
+            // Step 5: Find ancestor of node whose parent is otherNode
+            var current = node;
+            while (current.parent_node) |parent| {
+                if (parent == otherNode) {
+                    child = current;
+                    break;
+                }
+                current = parent;
+            } else {
+                // This shouldn't happen if nodes have same root
+                return .equal;
+            }
+        }
+
+        // Step 6: Compare child's index with otherOffset
+        const childIndex = dom.tree_helpers.getChildIndex(otherNode, child) orelse return .equal;
+        if (childIndex < otherOffset) {
+            return .after;
+        }
+
+        // Step 7: Return before
+        return .before;
     }
 
     /// DOM §5.3 - Range.setStartBefore(node)
@@ -252,12 +317,59 @@ pub const Range = webidl.interface(struct {
     // ========================================================================
 
     /// DOM §5.5 - Range.compareBoundaryPoints(how, sourceRange)
-    /// TODO: Implement in whatwg-kfy
+    /// Compares boundary points between two ranges
+    /// Returns -1 if this's point is before sourceRange's point, 0 if equal, 1 if after
     pub fn call_compareBoundaryPoints(self: *Range, how: u16, sourceRange: *Range) !i16 {
-        _ = self;
-        _ = how;
-        _ = sourceRange;
-        return error.NotImplemented;
+        // Step 1: Validate 'how' parameter
+        if (how != START_TO_START and how != START_TO_END and how != END_TO_END and how != END_TO_START) {
+            return error.NotSupportedError;
+        }
+
+        // Step 2: Check same root
+        const dom = @import("dom");
+        const thisRoot = dom.tree.getRoot(self.start_container);
+        const sourceRoot = dom.tree.getRoot(sourceRange.start_container);
+        if (thisRoot != sourceRoot) {
+            return error.WrongDocumentError;
+        }
+
+        // Step 3: Determine boundary points based on 'how'
+        var thisPoint: struct { node: *Node, offset: u32 } = undefined;
+        var otherPoint: struct { node: *Node, offset: u32 } = undefined;
+
+        switch (how) {
+            START_TO_START => {
+                thisPoint = .{ .node = self.start_container, .offset = self.start_offset };
+                otherPoint = .{ .node = sourceRange.start_container, .offset = sourceRange.start_offset };
+            },
+            START_TO_END => {
+                thisPoint = .{ .node = self.end_container, .offset = self.end_offset };
+                otherPoint = .{ .node = sourceRange.start_container, .offset = sourceRange.start_offset };
+            },
+            END_TO_END => {
+                thisPoint = .{ .node = self.end_container, .offset = self.end_offset };
+                otherPoint = .{ .node = sourceRange.end_container, .offset = sourceRange.end_offset };
+            },
+            END_TO_START => {
+                thisPoint = .{ .node = self.start_container, .offset = self.start_offset };
+                otherPoint = .{ .node = sourceRange.end_container, .offset = sourceRange.end_offset };
+            },
+            else => return error.NotSupportedError,
+        }
+
+        // Step 4: Compare positions and return result
+        const position = compareBoundaryPointsHelper(
+            thisPoint.node,
+            thisPoint.offset,
+            otherPoint.node,
+            otherPoint.offset,
+        );
+
+        return switch (position) {
+            .before => -1,
+            .equal => 0,
+            .after => 1,
+        };
     }
 
     /// DOM §5.4 - Range.deleteContents()
@@ -318,30 +430,108 @@ pub const Range = webidl.interface(struct {
     /// DOM §5 - Range.isPointInRange(node, offset)
     /// Returns true if the point (node, offset) is within the range
     pub fn call_isPointInRange(self: *Range, node: *Node, offset: u32) !bool {
-        // TODO: Implement full boundary point comparison per spec
-        _ = self;
-        _ = node;
-        _ = offset;
-        return error.NotImplemented;
+        const dom = @import("dom");
+
+        // Step 1: Check if node's root is different from this's root
+        const nodeRoot = dom.tree.getRoot(node);
+        const thisRoot = dom.tree.getRoot(self.start_container);
+        if (nodeRoot != thisRoot) {
+            return false;
+        }
+
+        // Step 2: If node is a doctype, throw error
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 3: If offset is greater than node's length, throw error
+        const nodeLength = node.child_nodes.size();
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 4: Check if (node, offset) is before start or after end
+        const positionVsStart = compareBoundaryPointsHelper(node, offset, self.start_container, self.start_offset);
+        const positionVsEnd = compareBoundaryPointsHelper(node, offset, self.end_container, self.end_offset);
+
+        if (positionVsStart == .before or positionVsEnd == .after) {
+            return false;
+        }
+
+        // Step 5: Return true
+        return true;
     }
 
     /// DOM §5 - Range.comparePoint(node, offset)
     /// Compares the point (node, offset) to the range
     /// Returns -1 if before, 0 if in range, 1 if after
     pub fn call_comparePoint(self: *Range, node: *Node, offset: u32) !i16 {
-        // TODO: Implement full boundary point comparison per spec
-        _ = self;
-        _ = node;
-        _ = offset;
-        return error.NotImplemented;
+        const dom = @import("dom");
+
+        // Step 1: Check if node's root is different from this's root
+        const nodeRoot = dom.tree.getRoot(node);
+        const thisRoot = dom.tree.getRoot(self.start_container);
+        if (nodeRoot != thisRoot) {
+            return error.WrongDocumentError;
+        }
+
+        // Step 2: If node is a doctype, throw error
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 3: If offset is greater than node's length, throw error
+        const nodeLength = node.child_nodes.size();
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 4: If (node, offset) is before start, return -1
+        const positionVsStart = compareBoundaryPointsHelper(node, offset, self.start_container, self.start_offset);
+        if (positionVsStart == .before) {
+            return -1;
+        }
+
+        // Step 5: If (node, offset) is after end, return 1
+        const positionVsEnd = compareBoundaryPointsHelper(node, offset, self.end_container, self.end_offset);
+        if (positionVsEnd == .after) {
+            return 1;
+        }
+
+        // Step 6: Return 0
+        return 0;
     }
 
     /// DOM §5 - Range.intersectsNode(node)
     /// Returns true if the node intersects with the range
     pub fn call_intersectsNode(self: *Range, node: *Node) bool {
-        // TODO: Implement per spec
-        _ = self;
-        _ = node;
+        const dom = @import("dom");
+
+        // Step 1: Check if node's root is different from this's root
+        const nodeRoot = dom.tree.getRoot(node);
+        const thisRoot = dom.tree.getRoot(self.start_container);
+        if (nodeRoot != thisRoot) {
+            return false;
+        }
+
+        // Step 2: Let parent be node's parent
+        const parent = dom.tree_helpers.getParentNode(node) orelse {
+            // Step 3: If parent is null, return true
+            return true;
+        };
+
+        // Step 4: Let offset be node's index
+        const offset = dom.tree_helpers.getChildIndex(parent, node) orelse return false;
+
+        // Step 5: Check if (parent, offset) is before end and (parent, offset+1) is after start
+        const beforeEnd = compareBoundaryPointsHelper(parent, @intCast(offset), self.end_container, self.end_offset);
+        const afterStart = compareBoundaryPointsHelper(parent, @intCast(offset + 1), self.start_container, self.start_offset);
+
+        if (beforeEnd != .after and afterStart != .before) {
+            return true;
+        }
+
+        // Step 6: Return false
         return false;
     }
 

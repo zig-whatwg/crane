@@ -247,3 +247,255 @@ test "Range: commonAncestorContainer finds parent" {
     const common = range.get_commonAncestorContainer();
     try testing.expect(common == &parent.base);
 }
+
+// ============================================================================
+// Range comparison tests (DOM §5.5)
+// ============================================================================
+
+test "Range: compareBoundaryPoints START_TO_START" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range1 = try Range.init(allocator, &doc.base);
+    defer range1.deinit();
+
+    var range2 = try Range.init(allocator, &doc.base);
+    defer range2.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range1.call_setStart(&elem.base, 0);
+    try range1.call_setEnd(&elem.base, 5);
+
+    try range2.call_setStart(&elem.base, 2);
+    try range2.call_setEnd(&elem.base, 7);
+
+    // range1 start (0) < range2 start (2)
+    const result = try range1.call_compareBoundaryPoints(Range.START_TO_START, &range2);
+    try testing.expectEqual(@as(i16, -1), result);
+}
+
+test "Range: compareBoundaryPoints END_TO_END" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range1 = try Range.init(allocator, &doc.base);
+    defer range1.deinit();
+
+    var range2 = try Range.init(allocator, &doc.base);
+    defer range2.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range1.call_setStart(&elem.base, 0);
+    try range1.call_setEnd(&elem.base, 5);
+
+    try range2.call_setStart(&elem.base, 2);
+    try range2.call_setEnd(&elem.base, 7);
+
+    // range1 end (5) < range2 end (7)
+    const result = try range1.call_compareBoundaryPoints(Range.END_TO_END, &range2);
+    try testing.expectEqual(@as(i16, -1), result);
+}
+
+test "Range: compareBoundaryPoints START_TO_END" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range1 = try Range.init(allocator, &doc.base);
+    defer range1.deinit();
+
+    var range2 = try Range.init(allocator, &doc.base);
+    defer range2.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range1.call_setStart(&elem.base, 0);
+    try range1.call_setEnd(&elem.base, 8);
+
+    try range2.call_setStart(&elem.base, 2);
+    try range2.call_setEnd(&elem.base, 7);
+
+    // range1 end (8) > range2 start (2)
+    const result = try range1.call_compareBoundaryPoints(Range.START_TO_END, &range2);
+    try testing.expectEqual(@as(i16, 1), result);
+}
+
+test "Range: compareBoundaryPoints equal points" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range1 = try Range.init(allocator, &doc.base);
+    defer range1.deinit();
+
+    var range2 = try Range.init(allocator, &doc.base);
+    defer range2.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range1.call_setStart(&elem.base, 5);
+    try range2.call_setStart(&elem.base, 5);
+
+    // Both start at same point
+    const result = try range1.call_compareBoundaryPoints(Range.START_TO_START, &range2);
+    try testing.expectEqual(@as(i16, 0), result);
+}
+
+test "Range: isPointInRange returns true for point in range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range.call_setStart(&elem.base, 2);
+    try range.call_setEnd(&elem.base, 8);
+
+    // Point at offset 5 is within range [2, 8]
+    const result = try range.call_isPointInRange(&elem.base, 5);
+    try testing.expect(result);
+}
+
+test "Range: isPointInRange returns false for point outside range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range.call_setStart(&elem.base, 2);
+    try range.call_setEnd(&elem.base, 8);
+
+    // Point at offset 10 is after range [2, 8]
+    const result = try range.call_isPointInRange(&elem.base, 10);
+    try testing.expect(!result);
+}
+
+test "Range: comparePoint returns -1 for point before range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range.call_setStart(&elem.base, 5);
+    try range.call_setEnd(&elem.base, 10);
+
+    // Point at offset 2 is before range [5, 10]
+    const result = try range.call_comparePoint(&elem.base, 2);
+    try testing.expectEqual(@as(i16, -1), result);
+}
+
+test "Range: comparePoint returns 0 for point in range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range.call_setStart(&elem.base, 5);
+    try range.call_setEnd(&elem.base, 10);
+
+    // Point at offset 7 is in range [5, 10]
+    const result = try range.call_comparePoint(&elem.base, 7);
+    try testing.expectEqual(@as(i16, 0), result);
+}
+
+test "Range: comparePoint returns 1 for point after range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+
+    try range.call_setStart(&elem.base, 5);
+    try range.call_setEnd(&elem.base, 10);
+
+    // Point at offset 15 is after range [5, 10]
+    const result = try range.call_comparePoint(&elem.base, 15);
+    try testing.expectEqual(@as(i16, 1), result);
+}
+
+test "Range: intersectsNode returns true for intersecting node" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    // Create: parent > child1, child2, child3
+    var parent = try doc.call_createElement("div");
+    const child1 = try doc.call_createElement("span");
+    const child2 = try doc.call_createElement("p");
+    const child3 = try doc.call_createElement("a");
+
+    try parent.call_appendChild(&child1.base);
+    try parent.call_appendChild(&child2.base);
+    try parent.call_appendChild(&child3.base);
+
+    // Range covers child1 to child2
+    try range.call_setStart(&parent.base, 0);
+    try range.call_setEnd(&parent.base, 2);
+
+    // child2 should intersect (it's at index 1, which is within [0, 2))
+    const result = range.call_intersectsNode(&child2.base);
+    try testing.expect(result);
+}
+
+test "Range: intersectsNode returns false for non-intersecting node" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    // Create: parent > child1, child2, child3
+    var parent = try doc.call_createElement("div");
+    const child1 = try doc.call_createElement("span");
+    const child2 = try doc.call_createElement("p");
+    const child3 = try doc.call_createElement("a");
+
+    try parent.call_appendChild(&child1.base);
+    try parent.call_appendChild(&child2.base);
+    try parent.call_appendChild(&child3.base);
+
+    // Range covers only child1
+    try range.call_setStart(&parent.base, 0);
+    try range.call_setEnd(&parent.base, 1);
+
+    // child3 should not intersect (it's at index 2, which is >= 1)
+    const result = range.call_intersectsNode(&child3.base);
+    try testing.expect(!result);
+}
