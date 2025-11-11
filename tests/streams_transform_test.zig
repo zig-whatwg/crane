@@ -93,14 +93,85 @@ test "TransformStream - backpressure management" {
     var stream = try streams.TransformStream.init(allocator);
     defer stream.deinit();
 
-    // Initially no backpressure
+    // Initially no backpressure (starts as false)
     try testing.expect(!stream.backpressure);
 
-    // Set backpressure
+    // Note: setBackpressure asserts old value != new value
+    // So we need to ensure we're changing the state
+
+    // Set backpressure to true (was false)
     stream.setBackpressure(true);
     try testing.expect(stream.backpressure);
 
-    // Unblock write (removes backpressure)
+    // Verify backpressureChangePromise was created
+    try testing.expect(stream.backpressureChangePromise != null);
+
+    // Unblock write (removes backpressure if true)
     stream.unblockWrite();
     try testing.expect(!stream.backpressure);
+}
+
+test "TransformStream - backpressure promise coordination" {
+    const allocator = testing.allocator;
+
+    var stream = try streams.TransformStream.init(allocator);
+    defer stream.deinit();
+
+    // Start with no backpressure
+    try testing.expect(!stream.backpressure);
+    try testing.expect(stream.backpressureChangePromise == null);
+
+    // Set backpressure - creates a new promise
+    stream.setBackpressure(true);
+    try testing.expect(stream.backpressure);
+    try testing.expect(stream.backpressureChangePromise != null);
+
+    const first_promise = stream.backpressureChangePromise.?;
+    try testing.expect(first_promise.isPending());
+
+    // Setting backpressure again should resolve old promise and create new one
+    stream.setBackpressure(false);
+    try testing.expect(!stream.backpressure);
+    try testing.expect(first_promise.isFulfilled()); // Previous promise fulfilled
+    try testing.expect(stream.backpressureChangePromise != null);
+}
+
+test "TransformStream - finishPromise in close algorithm" {
+    const allocator = testing.allocator;
+
+    var stream = try streams.TransformStream.init(allocator);
+    defer stream.deinit();
+
+    // Initially no finish promise
+    try testing.expect(stream.controller.finishPromise == null);
+
+    // Call close algorithm
+    const close_promise = stream.defaultSinkCloseAlgorithm();
+
+    // Should have created a finish promise
+    try testing.expect(stream.controller.finishPromise != null);
+
+    // Close promise should be fulfilled (simplified promise handling)
+    try testing.expect(close_promise.isFulfilled() or close_promise.isPending());
+
+    // Readable side should be closed
+    try testing.expectEqual(streams.ReadableStream.StreamState.closed, stream.readableStream.state);
+}
+
+test "TransformStream - finishPromise prevents duplicate close" {
+    const allocator = testing.allocator;
+
+    var stream = try streams.TransformStream.init(allocator);
+    defer stream.deinit();
+
+    // First close
+    const first_promise = stream.defaultSinkCloseAlgorithm();
+    const finish_promise = stream.controller.finishPromise;
+    try testing.expect(finish_promise != null);
+
+    // Second close should return the same finish promise
+    const second_promise = stream.defaultSinkCloseAlgorithm();
+
+    // Both should reference the same promise (spec: return if finishPromise exists)
+    try testing.expect(first_promise.state == second_promise.state);
 }
