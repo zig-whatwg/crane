@@ -43,6 +43,11 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
     /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
+    /// Optional transform controller for TransformStream integration
+    /// When set, writes are routed through the transform controller instead of writeAlgorithm
+    /// This enables TransformStream to intercept writes and transform them
+    transformController: ?*anyopaque,
+
     pub fn init(
         allocator: std.mem.Allocator,
         abortAlgorithm: common.AbortAlgorithm,
@@ -63,6 +68,7 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
             .stream = null,
             .writeAlgorithm = writeAlgorithm,
             .eventLoop = loop,
+            .transformController = null,
         };
     }
 
@@ -168,6 +174,26 @@ pub const WritableStreamDefaultController = webidl.interface(struct {
 
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
         return self.strategyHwm - self.queue.queue_total_size;
+    }
+
+    /// Process a write (internal method for queue processing)
+    ///
+    /// This is called by WritableStreamDefaultControllerAdvanceQueueIfNeeded
+    /// to process the next chunk in the queue. If this controller is part of
+    /// a TransformStream, it routes through the transform controller.
+    pub fn processWrite(self: *WritableStreamDefaultController, chunk: common.JSValue) common.Promise(void) {
+        // Check if this is part of a TransformStream
+        // If so, route through the transform controller instead of write algorithm
+        if (self.transformController) |transform_ctrl_ptr| {
+            const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
+            const transform_ctrl: *TransformStreamDefaultController = @ptrCast(@alignCast(transform_ctrl_ptr));
+
+            // Route through transform controller's performTransform
+            return transform_ctrl.performTransform(chunk);
+        }
+
+        // Normal case: use the write algorithm
+        return self.writeAlgorithm.call(chunk);
     }
 }, .{
     .exposed = &.{.global},

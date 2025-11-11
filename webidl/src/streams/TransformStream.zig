@@ -9,6 +9,7 @@ const webidl = @import("webidl");
 
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
+const eventLoop = @import("event_loop");
 const ReadableStream = @import("readable_stream").ReadableStream;
 const WritableStream = @import("writable_stream").WritableStream;
 const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
@@ -129,6 +130,11 @@ pub const TransformStream = webidl.interface(struct {
         ctrl.stream = @ptrCast(&stream);
         readable_stream.controller.stream = @ptrCast(readable_stream);
         writable_stream.controller.stream = @ptrCast(writable_stream);
+
+        // Wire up TransformStream: set transformController on writable controller
+        // This routes writes through the transform controller to the readable side
+        // Spec: § 6.3.4 "TransformStreamDefaultSinkWriteAlgorithm"
+        writable_stream.controller.transformController = ctrl;
 
         // Spec step 12-13: If transformerDict["start"] exists, invoke it with controller
         if (transformer_dict.start) |start_callback| {
