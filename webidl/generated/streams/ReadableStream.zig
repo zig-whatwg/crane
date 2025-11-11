@@ -69,6 +69,14 @@ pub const TransformPair = struct {
     readable: *ReadableStream,
     writable: *WritableStream,
 };
+
+/// Return type for tee() method
+///
+/// Spec: § 4.1.7 tee() returns two branches
+pub const TeeBranches = struct {
+    branch1: *ReadableStream,
+    branch2: *ReadableStream,
+};
 pub const ReadableStream = struct {
     // ========================================================================
     // ReadableStream fields
@@ -277,10 +285,6 @@ pub const ReadableStream = struct {
         // Spec: § 4.1.3 step 2: "Return ! ReadableStreamCancel(this, reason)."
         return self.cancelInternal(if (reason) |r| common.JSValue.fromWebIDL(r) else null);
     }
-    /// Alias for generated code compatibility
-    pub fn cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        return self.call_cancel(reason);
-    }
     /// getReader(options) method
     /// 
     /// IDL: ReadableStreamReader getReader(optional ReadableStreamGetReaderOptions options = {});
@@ -382,7 +386,7 @@ pub const ReadableStream = struct {
         // (Handled by PipeOptions structure)
 
         // Spec step 4: Let promise be ! ReadableStreamPipeTo(this, transform["writable"], ...)
-        _ = try self.pipeTo(transform.writable, options);
+        _ = try self.call_pipeTo(transform.writable, options);
 
         // Spec step 5: Set promise.[[PromiseIsHandled]] to true.
         // (This means we intentionally don't await the promise - it runs in background)
@@ -397,7 +401,7 @@ pub const ReadableStream = struct {
     /// 
     /// Spec: § 4.1.7 "The tee() method steps are:"
     /// Creates two branches that can be consumed independently.
-    pub fn call_tee(self: *ReadableStream) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
+    pub fn call_tee(self: *ReadableStream) !TeeBranches {
         // Step 1: Let branches be ? ReadableStreamTee(this, false).
         return self.teeInternal(false);
     }
@@ -565,15 +569,11 @@ pub const ReadableStream = struct {
             preventCancel,
         );
     }
-    /// Alias for generated code compatibility
-    pub fn values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
-        return self.call_values(preventCancel);
-    }
     /// Get an async iterator with default options (preventCancel = false)
     /// 
     /// This is the default async iterator used by for-await loops
     pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
-        return self.values(false);
+        return self.call_values(false);
     }
     /// IsReadableStreamLocked(stream)
     /// 
@@ -812,7 +812,7 @@ pub const ReadableStream = struct {
     /// ReadableStreamTee(stream, cloneForBranch2)
     /// 
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
-    fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !struct { branch1: *ReadableStream, branch2: *ReadableStream } {
+    fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !TeeBranches {
         // Spec step 1-2: Asserts (checked by type system)
 
         // Spec step 3: Acquire reader
@@ -994,7 +994,7 @@ pub const PipeState = struct {
         // Check backpressure: don't read if writer's desiredSize <= 0
         // Spec: "While WritableStreamDefaultWriterGetDesiredSize(writer) is ≤ 0 or is null,
         //        the user agent must not read from reader."
-        const desiredSize = self.writer.desiredSize();
+        const desiredSize = self.writer.call_desiredSize();
         if (desiredSize == null or desiredSize.? <= 0) {
             // Wait for ready promise to fulfill (backpressure)
             // In a full async implementation, we'd await writer.ready
@@ -1084,7 +1084,7 @@ pub const PipeState = struct {
             if (!self.preventCancel and self.source.state == .readable) {
                 // Shutdown with action of ReadableStreamCancel(source, dest.storedError)
                 const err_value = self.dest.storedError orelse common.JSValue{ .string = "Destination errored" };
-                const cancelPromise = try self.source.cancel(err_value.toWebIDL());
+                const cancelPromise = try self.source.call_cancel(err_value.toWebIDL());
                 self.shutdownWithAction(cancelPromise, err_value);
             } else {
                 // Shutdown with error but no action
@@ -1104,7 +1104,7 @@ pub const PipeState = struct {
         if (self.dest.state == .closed) {
             if (!self.preventCancel) {
                 const err_value = common.JSValue{ .string = "Destination closed" };
-                const cancelPromise = try self.source.cancel(err_value.toWebIDL());
+                const cancelPromise = try self.source.call_cancel(err_value.toWebIDL());
                 self.shutdownWithAction(cancelPromise, err_value);
             } else {
                 const err_value = common.JSValue{ .string = "Destination closed" };
@@ -1189,10 +1189,10 @@ pub const PipeState = struct {
     /// Spec: § 4.7.4 step 15 "Finalize"
     fn finalize(self: *PipeState, err: ?common.JSValue) void {
         // 1. Release writer
-        self.writer.releaseLock();
+        self.writer.call_releaseLock();
 
         // 2. Release reader
-        self.reader.releaseLock();
+        self.reader.call_releaseLock();
 
         // 3. Remove abort algorithm from signal (if signal is not undefined)
         // TODO: Implement AbortSignal support
@@ -1566,7 +1566,7 @@ pub const ReadableStreamAsyncIterator = struct {
     pub fn deinit(self: *ReadableStreamAsyncIterator) void {
         if (!self.done) {
             // Release reader (unlocks the stream)
-            self.reader.releaseLock();
+            self.reader.call_releaseLock();
             self.done = true;
         }
     }
@@ -1604,7 +1604,7 @@ pub const ReadableStreamAsyncIterator = struct {
             if (result.done) {
                 // Spec: close steps
                 // Step 1: Perform ! ReadableStreamDefaultReaderRelease(reader)
-                self.reader.releaseLock();
+                self.reader.call_releaseLock();
                 self.done = true;
 
                 // Step 2: Resolve promise with end of iteration
@@ -1620,7 +1620,7 @@ pub const ReadableStreamAsyncIterator = struct {
             defer read_promise.deinit();
 
             // Step 1: Perform ! ReadableStreamDefaultReaderRelease(reader)
-            self.reader.releaseLock();
+            self.reader.call_releaseLock();
             self.done = true;
 
             // Step 2: Reject promise with e
@@ -1656,7 +1656,7 @@ pub const ReadableStreamAsyncIterator = struct {
             const cancelPromise = try self.reader.cancelInternal(reason);
 
             // Step 4.2: Perform ! ReadableStreamDefaultReaderRelease(reader)
-            self.reader.releaseLock();
+            self.reader.call_releaseLock();
             self.done = true;
 
             // Step 4.3: Return result
@@ -1664,7 +1664,7 @@ pub const ReadableStreamAsyncIterator = struct {
         }
 
         // Spec step 5: Perform ! ReadableStreamDefaultReaderRelease(reader)
-        self.reader.releaseLock();
+        self.reader.call_releaseLock();
         self.done = true;
 
         // Spec step 6: Return a promise resolved with undefined

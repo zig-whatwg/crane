@@ -227,10 +227,6 @@ pub const ReadableStreamDefaultReader = struct {
         // Delegate to mixin's generic release
         self.genericRelease();
     }
-    /// Alias for generated code compatibility
-    pub fn releaseLock(self: *ReadableStreamDefaultReader) void {
-        self.call_releaseLock();
-    }
     /// ReadableStreamDefaultReaderRead(reader) - ASYNC VERSION
     /// 
     /// Spec: § 4.3.4 "ReadableStreamDefaultReaderRead(reader)"
