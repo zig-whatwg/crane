@@ -4,16 +4,21 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
+const ChildNode = @import("ChildNode.zig").ChildNode;
+const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocumentTypeChildNode;
 
 const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface Text : CharacterData
-/// CharacterData includes: ChildNode, NonDocumentTypeChildNode (inherited automatically)
-/// Text includes: Slottable
+/// Text extends CharacterData (fields/methods inherited)
+/// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+/// Text also includes: Slottable
 pub const Text = webidl.interface(struct {
     pub const extends = CharacterData;
-    // NOTE: Codegen will inherit ChildNode and NonDocumentTypeChildNode from CharacterData
-    // pub const includes = .{ Slottable }; // TODO: Uncomment when Slottable mixin is created
+    // CRITICAL: Must explicitly include parent mixins - codegen doesn't inherit them!
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
+    // TODO: Add Slottable when mixin is created
 
     allocator: Allocator,
 

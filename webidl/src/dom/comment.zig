@@ -3,12 +3,17 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
+const ChildNode = @import("ChildNode.zig").ChildNode;
+const NonDocumentTypeChildNode = @import("NonDocumentTypeChildNode.zig").NonDocumentTypeChildNode;
 
 /// DOM Spec: interface Comment : CharacterData
-/// CharacterData includes: ChildNode, NonDocumentTypeChildNode (inherited automatically)
+/// Comment extends CharacterData (fields/methods inherited)
+/// Comment must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
 pub const Comment = webidl.interface(struct {
     pub const extends = CharacterData;
-    // NOTE: Codegen will inherit ChildNode and NonDocumentTypeChildNode from CharacterData
+    // CRITICAL: Must explicitly include parent mixins - codegen doesn't inherit them!
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
 
     allocator: std.mem.Allocator,
 
