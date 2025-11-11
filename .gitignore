@@ -5,6 +5,7 @@ zig-cache/
 
 # Backup files
 *.backup
+*.bak
 .git.backup/
 
 # Test artifacts
