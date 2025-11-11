@@ -3,8 +3,10 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
+const ChildNode = @import("ChildNode.zig").ChildNode;
 
 pub const DocumentType = webidl.interface(struct {
+    pub const includes = .{ChildNode};
     allocator: std.mem.Allocator,
     node: Node,
     name: []const u8,

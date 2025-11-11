@@ -7,9 +7,11 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
+const ChildNode = @import("ChildNode.zig").ChildNode;
 
 /// Element WebIDL interface
 pub const Element = webidl.interface(struct {
+    pub const includes = .{ChildNode};
     allocator: Allocator,
     node: Node,
     tag_name: []const u8,

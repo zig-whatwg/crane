@@ -4,10 +4,12 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
+const ChildNode = @import("ChildNode.zig").ChildNode;
 
 const Allocator = std.mem.Allocator;
 
 pub const CharacterData = webidl.interface(struct {
+    pub const includes = .{ChildNode};
     allocator: Allocator,
     node: Node,
     data: []const u8,
