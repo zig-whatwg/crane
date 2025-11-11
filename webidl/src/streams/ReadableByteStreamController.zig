@@ -133,13 +133,19 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     }
 
     // ============================================================================
-    // WebIDL Interface Methods
+    // WebIDL Interface: Readonly Attributes
     // ============================================================================
 
-    /// Calculate desired size (internal helper)
-    ///
+    /// readonly attribute ReadableStreamBYOBRequest? byobRequest
+    /// Spec: https://streams.spec.whatwg.org/#rbs-controller-byob-request
+    pub fn get_byobRequest(self: *const ReadableByteStreamController) ?*ReadableStreamBYOBRequest {
+        return self.byobRequest;
+    }
+
+    /// readonly attribute unrestricted double? desiredSize
+    /// Calculate desired size
     /// Spec: § 4.10.11 "ReadableByteStreamControllerGetDesiredSize(controller)"
-    pub fn call_desiredSize(self: *const ReadableByteStreamController) ?f64 {
+    pub fn get_desiredSize(self: *const ReadableByteStreamController) ?f64 {
         // If stream is closed, return 0
         if (self.closeRequested and self.byteQueue.items.len == 0) {
             return 0.0;
@@ -149,15 +155,14 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         return self.strategyHwm - self.queueTotalSize;
     }
 
-    /// Internal helper for desiredSize (called from generated code)
-    pub fn desiredSize(self: *const ReadableByteStreamController) ?f64 {
-        return self.call_desiredSize();
-    }
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
 
+    /// undefined close()
     /// Close the controlled readable stream
-    ///
     /// Spec: § 4.7.3 "The close() method steps are:"
-    pub fn close(self: *ReadableByteStreamController) !void {
+    pub fn call_close(self: *ReadableByteStreamController) !void {
         // Step 1: If closeRequested is true, throw TypeError
         if (self.closeRequested) {
             return error.TypeError;
@@ -209,10 +214,10 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         try self.enqueueInternal(chunk);
     }
 
+    /// undefined error(optional any e)
     /// Error the controlled readable stream
-    ///
     /// Spec: § 4.7.3 "The error(e) method steps are:"
-    pub fn errorStream(self: *ReadableByteStreamController, e: webidl.JSValue) void {
+    pub fn call_error(self: *ReadableByteStreamController, e: webidl.JSValue) void {
         const error_value = common.JSValue.fromWebIDL(e);
         self.errorInternal(error_value);
     }
