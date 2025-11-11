@@ -234,7 +234,7 @@ pub const ReadableStream = struct {
         // TODO: Implement start callback invocation when zig-js-runtime is available
         _ = source_dict.start; // Acknowledge but don't use
 
-        controller.* = ReadableStreamDefaultController.init(
+        controller.* = try ReadableStreamDefaultController.init(
             allocator,
             cancelAlgorithm,
             pullAlgorithm,
@@ -299,7 +299,13 @@ pub const ReadableStream = struct {
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot cancel a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot cancel a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -348,14 +354,26 @@ pub const ReadableStream = struct {
         // Step 1: If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError.
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot pipe from a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot pipe from a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
         // Step 2: If ! IsWritableStreamLocked(destination) is true, return a promise rejected with a TypeError.
         if (destination.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot pipe to a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot pipe to a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -599,7 +617,7 @@ pub const ReadableStream = struct {
         errdefer allocator.destroy(controller);
 
         // Spec step 7: Perform ? SetUpReadableStreamDefaultController(...)
-        controller.* = ReadableStreamDefaultController.init(
+        controller.* = try ReadableStreamDefaultController.init(
             allocator,
             cancelAlgorithm,
             pullAlgorithm,
@@ -828,7 +846,7 @@ pub const ReadableStream = struct {
 
         // Step 3: Let controller be a new ReadableByteStreamController
         // Step 4: Perform SetUpReadableByteStreamController with hwm=0, autoAllocate=undefined
-        const controller = ReadableByteStreamController.init(
+        const controller = try ReadableByteStreamController.init(
             allocator,
             cancelAlgorithm,
             pullAlgorithm,
@@ -935,7 +953,7 @@ pub const ReadableStream = struct {
         const controller = try allocator.create(ReadableStreamDefaultController);
         errdefer allocator.destroy(controller);
 
-        controller.* = ReadableStreamDefaultController.init(
+        controller.* = try ReadableStreamDefaultController.init(
             allocator,
             cancelAlgorithm,
             pullAlgorithm,

@@ -19,6 +19,7 @@ const webidl = @import("webidl");
 pub const common = @import("common");
 pub const eventLoop = @import("event_loop");
 pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+pub const AbortController = @import("dom").AbortController;
 
 // BYOB infrastructure imports
 pub const PullIntoDescriptorModule = @import("pull_into_descriptor");
@@ -51,6 +52,9 @@ pub const ReadableByteStreamController = struct {
     // ReadableByteStreamController fields
     // ========================================================================
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablebytestreamcontroller-abortcontroller
+    abortController: AbortController,
     /// [[autoAllocateChunkSize]]: Size for auto-allocated buffers
     autoAllocateChunkSize: ?u64,
     /// [[byobRequest]]: Current BYOB request (or null)
@@ -87,9 +91,10 @@ pub const ReadableByteStreamController = struct {
         strategyHwm: f64,
         autoAllocateChunkSize: ?u64,
         loop: eventLoop.EventLoop,
-    ) ReadableByteStreamController {
+    ) !ReadableByteStreamController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .autoAllocateChunkSize = autoAllocateChunkSize,
             .byobRequest = null,
             .cancelAlgorithm = cancelAlgorithm,
@@ -107,6 +112,8 @@ pub const ReadableByteStreamController = struct {
         };
     }
     pub fn deinit(self: *ReadableByteStreamController) void {
+        self.abortController.deinit();
+
         // Clean up byte queue buffers
         for (self.byteQueue.items) |entry| {
             entry.buffer.deinit(self.allocator);
@@ -223,7 +230,13 @@ pub const ReadableByteStreamController = struct {
         // Step 1: Let stream be this.[[stream]].
         const stream_ptr = self.stream orelse {
             const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Stream not initialized" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Stream not initialized"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         };
         const ReadableStreamModule = @import("readable_stream");
@@ -263,7 +276,13 @@ pub const ReadableByteStreamController = struct {
                 });
             } else {
                 // Shouldn't happen if queueTotalSize > 0
-                promise.reject(common.JSValue{ .string = "Queue size mismatch" });
+                const exception = webidl.errors.Exception{
+                    .simple = .{
+                        .type = .TypeError,
+                        .message = try self.allocator.dupe(u8, "Queue size mismatch"),
+                    },
+                };
+                promise.reject(exception);
             }
 
             // Step 3.3: Return.
@@ -279,7 +298,13 @@ pub const ReadableByteStreamController = struct {
             const buffer = ArrayBuffer.init(self.allocator, chunk_size) catch {
                 // Step 5.2: If buffer is an abrupt completion,
                 const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-                promise.reject(common.JSValue{ .string = "Failed to allocate buffer" });
+                const exception = webidl.errors.Exception{
+                    .simple = .{
+                        .type = .TypeError,
+                        .message = try self.allocator.dupe(u8, "Failed to allocate buffer"),
+                    },
+                };
+                promise.reject(exception);
                 return promise;
             };
 

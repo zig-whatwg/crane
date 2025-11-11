@@ -108,7 +108,13 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
     pub fn call_abort(self: *WritableStreamDefaultWriter, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Writer released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Writer released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -121,7 +127,13 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
     pub fn call_close(self: *WritableStreamDefaultWriter) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Writer released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Writer released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -142,7 +154,13 @@ pub const WritableStreamDefaultWriter = webidl.interface(struct {
     pub fn call_write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Writer released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Writer released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 

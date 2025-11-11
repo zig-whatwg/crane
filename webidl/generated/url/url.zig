@@ -319,27 +319,179 @@ pub const URL = struct {
     /// Spec: https://url.spec.whatwg.org/#dom-url-username (lines 1879-1883)
     /// Check cannotHaveUsernamePasswordPort, call set the username
     pub fn setUsername(self: *URL, value: []const u8) !void {
+        const percent_encoding = @import("percent_encoding");
+        const EncodeSet = @import("encode_sets").EncodeSet;
+        const form_urlencoded = @import("form_urlencoded");
+
         // Step 1: If cannot have username/password/port, return
         if (self.url_record.cannotHaveUsernamePasswordPort()) return;
 
-        // Step 2: Set the username
-        // TODO: Implement full "set the username" algorithm (whatwg-iga)
-        // The algorithm needs to percent-encode value with userinfo encode set
-        // and update the URLRecord's buffer - deferred to separate bead
-        _ = value; // Will be used when algorithm is implemented
+        // Step 2: Set the username (spec line 1534)
+        // "Set the username": set url's username to the result of running
+        // UTF-8 percent-encode on username using the userinfo percent-encode set.
+
+        // Percent-encode the new username
+        const encoded_username = try percent_encoding.utf8PercentEncode(
+            self.allocator,
+            value,
+            EncodeSet.userinfo,
+        );
+        defer self.allocator.free(encoded_username);
+
+        // Rebuild URL with new username using string manipulation
+        // (avoids complex buffer offset recalculation)
+        const old_href = try url_serializer.serialize(self.allocator, &self.url_record, false);
+        defer self.allocator.free(old_href);
+
+        // Parse URL structure: scheme://[username[:password]@]host...
+        const scheme_end = std.mem.indexOf(u8, old_href, "://") orelse return;
+        const after_scheme = scheme_end + 3;
+
+        // Find where authority ends (at /, ?, #, or end)
+        var authority_end = old_href.len;
+        for (old_href[after_scheme..], 0..) |c, i| {
+            if (c == '/' or c == '?' or c == '#') {
+                authority_end = after_scheme + i;
+                break;
+            }
+        }
+
+        // Check if there's an @ (credentials separator)
+        const at_pos = std.mem.indexOf(u8, old_href[after_scheme..authority_end], "@");
+
+        const new_href = if (at_pos) |at_offset| blk: {
+            // Has existing credentials: replace username part
+            const at_abs = after_scheme + at_offset;
+            const colon_in_creds = std.mem.indexOf(u8, old_href[after_scheme..at_abs], ":");
+
+            if (colon_in_creds) |colon_offset| {
+                // Has password: scheme://NEW_USERNAME:password@host...
+                const colon_abs = after_scheme + colon_offset;
+                break :blk try std.fmt.allocPrint(self.allocator, "{s}{s}{s}", .{
+                    old_href[0..after_scheme],
+                    encoded_username,
+                    old_href[colon_abs..],
+                });
+            } else {
+                // No password: scheme://NEW_USERNAME@host...
+                break :blk try std.fmt.allocPrint(self.allocator, "{s}{s}{s}", .{
+                    old_href[0..after_scheme],
+                    encoded_username,
+                    old_href[at_abs..],
+                });
+            }
+        } else blk: {
+            // No existing credentials: insert username@
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}{s}@{s}", .{
+                old_href[0..after_scheme],
+                encoded_username,
+                old_href[after_scheme..],
+            });
+        };
+        defer self.allocator.free(new_href);
+
+        // Re-parse the modified URL
+        const parsed_url = api_parser.parseURL(self.allocator, new_href, null) catch return;
+
+        // Replace internal URLRecord
+        self.url_record.deinit();
+        self.url_record = parsed_url;
+
+        // Update search params (in case query changed, though unlikely here)
+        const query_str = self.url_record.query() orelse "";
+        self.query_impl.list.clearRetainingCapacity();
+        const parsed_list = form_urlencoded.parse(self.allocator, query_str) catch return;
+        defer parsed_list.deinit();
+        for (parsed_list.items) |item| {
+            try self.query_impl.list.append(.{
+                .name = try self.allocator.dupe(u8, item.name),
+                .value = try self.allocator.dupe(u8, item.value),
+            });
+        }
     }
     /// password setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-password (lines 1887-1891)
     /// Check cannotHaveUsernamePasswordPort, call set the password
     pub fn setPassword(self: *URL, value: []const u8) !void {
+        const percent_encoding = @import("percent_encoding");
+        const EncodeSet = @import("encode_sets").EncodeSet;
+        const form_urlencoded = @import("form_urlencoded");
+
         // Step 1: If cannot have username/password/port, return
         if (self.url_record.cannotHaveUsernamePasswordPort()) return;
 
-        // Step 2: Set the password
-        // TODO: Implement full "set the password" algorithm (whatwg-cvk)
-        // The algorithm needs to percent-encode value with userinfo encode set
-        // and update the URLRecord's buffer - deferred to separate bead
-        _ = value; // Will be used when algorithm is implemented
+        // Step 2: Set the password (spec line 1536)
+        // "Set the password": set url's password to the result of running
+        // UTF-8 percent-encode on password using the userinfo percent-encode set.
+
+        // Percent-encode the new password
+        const encoded_password = try percent_encoding.utf8PercentEncode(
+            self.allocator,
+            value,
+            EncodeSet.userinfo,
+        );
+        defer self.allocator.free(encoded_password);
+
+        // Rebuild URL with new password using string manipulation
+        const old_href = try url_serializer.serialize(self.allocator, &self.url_record, false);
+        defer self.allocator.free(old_href);
+
+        // Parse URL structure: scheme://[username[:password]@]host...
+        const scheme_end = std.mem.indexOf(u8, old_href, "://") orelse return;
+        const after_scheme = scheme_end + 3;
+
+        // Find where authority ends (at /, ?, #, or end)
+        var authority_end = old_href.len;
+        for (old_href[after_scheme..], 0..) |c, i| {
+            if (c == '/' or c == '?' or c == '#') {
+                authority_end = after_scheme + i;
+                break;
+            }
+        }
+
+        // Check if there's an @ (credentials separator)
+        const at_pos = std.mem.indexOf(u8, old_href[after_scheme..authority_end], "@");
+
+        const new_href = if (at_pos) |at_offset| blk: {
+            // Has existing credentials
+            const at_abs = after_scheme + at_offset;
+            const username_part = self.url_record.username();
+
+            // scheme://username:NEW_PASSWORD@host...
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}{s}:{s}{s}", .{
+                old_href[0..after_scheme],
+                username_part,
+                encoded_password,
+                old_href[at_abs..],
+            });
+        } else blk: {
+            // No existing credentials: insert :password@ (with empty username)
+            break :blk try std.fmt.allocPrint(self.allocator, "{s}:{s}@{s}", .{
+                old_href[0..after_scheme],
+                encoded_password,
+                old_href[after_scheme..],
+            });
+        };
+        defer self.allocator.free(new_href);
+
+        // Re-parse the modified URL
+        const parsed_url = api_parser.parseURL(self.allocator, new_href, null) catch return;
+
+        // Replace internal URLRecord
+        self.url_record.deinit();
+        self.url_record = parsed_url;
+
+        // Update search params
+        const query_str = self.url_record.query() orelse "";
+        self.query_impl.list.clearRetainingCapacity();
+        const parsed_list = form_urlencoded.parse(self.allocator, query_str) catch return;
+        defer parsed_list.deinit();
+        for (parsed_list.items) |item| {
+            try self.query_impl.list.append(.{
+                .name = try self.allocator.dupe(u8, item.name),
+                .value = try self.allocator.dupe(u8, item.value),
+            });
+        }
     }
     /// host setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1903-1907)

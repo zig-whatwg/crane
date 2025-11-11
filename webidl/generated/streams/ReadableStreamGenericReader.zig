@@ -75,7 +75,13 @@ pub const ReadableStreamGenericReader = struct {
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
         if (self.stream == null) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Reader released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Reader released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 

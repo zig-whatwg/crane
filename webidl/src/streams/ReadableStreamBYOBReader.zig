@@ -64,7 +64,13 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         // Step 1: If view.[[ByteLength]] is 0, reject with TypeError
         if (view.getByteLength() == 0) {
             const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
-            promise.reject(common.JSValue{ .string = "View byte length is 0" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "View byte length is 0"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -72,21 +78,39 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         const buffer = view.getViewedArrayBuffer();
         if (buffer.byteLength() == 0) {
             const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
-            promise.reject(common.JSValue{ .string = "Buffer byte length is 0" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Buffer byte length is 0"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
         // Step 3: If buffer is detached, reject with TypeError
         if (view.isDetached()) {
             const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
-            promise.reject(common.JSValue{ .string = "Buffer is detached" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Buffer is detached"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
         // Step 4: If stream is undefined, reject with TypeError
         if (self.stream == null) {
             const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
-            promise.reject(common.JSValue{ .string = "Reader released" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Reader released"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -94,7 +118,13 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
         const min: u64 = if (options) |opt| blk: {
             const parsed = DictionaryParsing.parseReadableStreamBYOBReaderReadOptions(allocator, opt) catch {
                 const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
-                promise.reject(common.JSValue{ .string = "Failed to parse options" });
+                const exception = webidl.errors.Exception{
+                    .simple = .{
+                        .type = .TypeError,
+                        .message = try allocator.dupe(u8, "Failed to parse options"),
+                    },
+                };
+                promise.reject(exception);
                 return promise;
             };
             break :blk parsed.min;
@@ -118,7 +148,13 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
 
         // Step 1: Let stream be reader.[[stream]]
         const stream_ptr = self.stream orelse {
-            promise.reject(common.JSValue{ .string = "Reader has no stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Reader has no stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         };
 
@@ -187,7 +223,13 @@ pub const ReadableStreamBYOBReader = webidl.interface(struct {
 
         controller.pullInto(view, min, readIntoRequest) catch {
             allocator.destroy(ctx);
-            promise.reject(common.JSValue{ .string = "Pull into failed" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Pull into failed"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         };
 

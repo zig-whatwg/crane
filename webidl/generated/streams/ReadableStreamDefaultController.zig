@@ -25,6 +25,7 @@ pub const Value = @import("queue_with_sizes").Value;
 pub const common = @import("common");
 pub const eventLoop = @import("event_loop");
 pub const AsyncPromise = @import("async_promise").AsyncPromise;
+pub const AbortController = @import("dom").AbortController;
 
 // Import ReadableStream (will be defined elsewhere to avoid circular dependency)
 // We use *anyopaque for the stream reference and cast when needed
@@ -48,6 +49,9 @@ pub const ReadableStreamDefaultController = struct {
     // ReadableStreamDefaultController fields
     // ========================================================================
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablestreamdefaultcontroller-abortcontroller
+    abortController: AbortController,
     /// [[cancelAlgorithm]]: Promise-returning algorithm for cancelation
     /// 
     /// Spec: § 4.6.2 Internal slot [[cancelAlgorithm]]
@@ -102,9 +106,10 @@ pub const ReadableStreamDefaultController = struct {
         strategyHwm: f64,
         strategySizeAlgorithm: common.SizeAlgorithm,
         loop: eventLoop.EventLoop,
-    ) ReadableStreamDefaultController {
+    ) !ReadableStreamDefaultController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .cancelAlgorithm = cancelAlgorithm,
             .closeRequested = false,
             .pullAgain = false,
@@ -122,6 +127,7 @@ pub const ReadableStreamDefaultController = struct {
     /// 
     /// Spec: Cleanup internal queue
     pub fn deinit(self: *ReadableStreamDefaultController) void {
+        self.abortController.deinit();
         self.queue.deinit();
     }
     // ========================================================================
@@ -444,7 +450,13 @@ pub const ReadableStreamDefaultController = struct {
 
         // Shouldn't reach here if stream is set correctly
         const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-        promise.reject(common.JSValue{ .string = "Stream not initialized" });
+        const exception = webidl.errors.Exception{
+            .simple = .{
+                .type = .TypeError,
+                .message = try self.allocator.dupe(u8, "Stream not initialized"),
+            },
+        };
+        promise.reject(exception);
         return promise;
     }
     /// [[CancelSteps]](reason) - Internal operation called by stream.cancel()

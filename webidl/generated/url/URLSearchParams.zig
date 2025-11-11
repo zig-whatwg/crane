@@ -13,11 +13,27 @@ const webidl = @import("webidl");
 // Import internal implementation
 pub const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 pub const URLSearchParams = struct {
+    allocator: std.mem.Allocator,
+
     // ========================================================================
     // URLSearchParams fields
     // ========================================================================
     /// The internal implementation wrapping all the logic
     impl: URLSearchParamsImpl,
+    name: []const u8,
+    value: []const u8,
+    params: *const URLSearchParams,
+    index: usize,
+    params: *const URLSearchParams,
+    index: usize,
+    params: *const URLSearchParams,
+    index: usize,
+
+    pub const Entry = struct {
+    pub const EntriesIterator = struct {
+    pub const KeysIterator = struct {
+    pub const ValuesIterator = struct {
+    pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
 
     /// Initialize URLSearchParams with empty list
     pub fn init(allocator: std.mem.Allocator) !URLSearchParams {
@@ -114,6 +130,55 @@ pub const URLSearchParams = struct {
     /// Serializes list to application/x-www-form-urlencoded format
     pub fn toString(self: *const URLSearchParams, allocator: std.mem.Allocator) ![]u8 {
         return self.impl.toString(allocator);
+    }
+    pub fn next(self: *EntriesIterator) ?Entry {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return Entry{
+                .name = tuple.name,
+                .value = tuple.value,
+            };
+        }
+    pub fn next(self: *KeysIterator) ?[]const u8 {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return tuple.name;
+        }
+    pub fn next(self: *ValuesIterator) ?[]const u8 {
+            if (self.index >= self.params.impl.list.items.len) return null;
+            const tuple = self.params.impl.list.items[self.index];
+            self.index += 1;
+            return tuple.value;
+        }
+    /// Create an entries iterator
+    /// Iterates over [name, value] pairs in the list
+    pub fn entries(self: *const URLSearchParams) EntriesIterator {
+        return .{ .params = self, .index = 0 };
+    }
+    /// Create a keys iterator
+    /// Iterates over names in the list
+    pub fn keys(self: *const URLSearchParams) KeysIterator {
+        return .{ .params = self, .index = 0 };
+    }
+    /// Create a values iterator
+    /// Iterates over values in the list
+    pub fn values(self: *const URLSearchParams) ValuesIterator {
+        return .{ .params = self, .index = 0 };
+    }
+    /// Default iterator (same as entries)
+    /// WebIDL spec: iterable<K, V> provides default iteration over [key, value] pairs
+    pub fn iterator(self: *const URLSearchParams) EntriesIterator {
+        return self.entries();
+    }
+    /// forEach method
+    /// Calls callback for each [name, value] pair in the list
+    /// Note: Parameters are (value, name, this) per WebIDL/JavaScript convention
+    pub fn forEach(self: *const URLSearchParams, callback: ForEachCallback) void {
+        for (self.impl.list.items) |tuple| {
+            callback(tuple.value, tuple.name, self);
+        }
     }
 
     // WebIDL extended attributes metadata

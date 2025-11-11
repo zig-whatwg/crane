@@ -32,9 +32,11 @@ pub const AbortController = struct {
     // AbortController methods
     // ========================================================================
 
+    /// abort(reason) method
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortcontroller-abort
     pub fn call_abort(self: *AbortController, reason: ?webidl.JSValue) void {
-        self.signal.aborted = true;
-        self.signal.reason = reason;
+        // Spec: "signal abort on this with reason if it is given"
+        self.signal.signalAbort(reason);
     }
     pub fn get_signal(self: *const AbortController) *const AbortSignal {
         return &self.signal;

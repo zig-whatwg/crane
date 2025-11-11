@@ -475,7 +475,13 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
 
         // Shouldn't reach here if stream is set correctly
         const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-        promise.reject(common.JSValue{ .string = "Stream not initialized" });
+        const exception = webidl.errors.Exception{
+            .simple = .{
+                .type = .TypeError,
+                .message = try self.allocator.dupe(u8, "Stream not initialized"),
+            },
+        };
+        promise.reject(exception);
         return promise;
     }
 

@@ -21,11 +21,15 @@ pub const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 pub const eventLoop = @import("event_loop");
 pub const AsyncPromise = @import("async_promise").AsyncPromise;
 pub const WritableStream = @import("writable_stream").WritableStream;
+pub const AbortController = @import("dom").AbortController;
 pub const WritableStreamDefaultController = struct {
     // ========================================================================
     // WritableStreamDefaultController fields
     // ========================================================================
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#writablestreamdefaultcontroller-abortcontroller
+    abortController: AbortController,
     /// [[abortAlgorithm]]: Promise-returning algorithm for abort
     abortAlgorithm: common.AbortAlgorithm,
     /// [[closeAlgorithm]]: Promise-returning algorithm for close
@@ -57,9 +61,10 @@ pub const WritableStreamDefaultController = struct {
         strategyHwm: f64,
         strategySizeAlgorithm: common.SizeAlgorithm,
         loop: eventLoop.EventLoop,
-    ) WritableStreamDefaultController {
+    ) !WritableStreamDefaultController {
         return .{
             .allocator = allocator,
+            .abortController = try AbortController.init(allocator),
             .abortAlgorithm = abortAlgorithm,
             .closeAlgorithm = closeAlgorithm,
             .queue = QueueWithSizes.init(allocator),
@@ -73,6 +78,7 @@ pub const WritableStreamDefaultController = struct {
         };
     }
     pub fn deinit(self: *WritableStreamDefaultController) void {
+        self.abortController.deinit();
         self.queue.deinit();
     }
     // ========================================================================

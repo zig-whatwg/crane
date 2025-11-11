@@ -203,7 +203,13 @@ pub const WritableStream = webidl.interface(struct {
     pub fn call_abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Stream is locked" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Stream is locked"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -216,13 +222,25 @@ pub const WritableStream = webidl.interface(struct {
     pub fn call_close(self: *WritableStream) !*AsyncPromise(void) {
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Stream is locked" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Stream is locked"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
         if (self.state == .closed or self.state == .errored) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Stream is already closed or errored" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Stream is already closed or errored"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -386,7 +404,13 @@ pub const WritableStream = webidl.interface(struct {
         // Spec step 2: If state is "closed" or "errored", return rejected promise with TypeError
         if (state == .closed or state == .errored) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot close a closed or errored stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot close a closed or errored stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 

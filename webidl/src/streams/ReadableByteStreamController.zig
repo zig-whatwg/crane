@@ -249,7 +249,13 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         // Step 1: Let stream be this.[[stream]].
         const stream_ptr = self.stream orelse {
             const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Stream not initialized" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Stream not initialized"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         };
         const ReadableStreamModule = @import("readable_stream");
@@ -289,7 +295,13 @@ pub const ReadableByteStreamController = webidl.interface(struct {
                 });
             } else {
                 // Shouldn't happen if queueTotalSize > 0
-                promise.reject(common.JSValue{ .string = "Queue size mismatch" });
+                const exception = webidl.errors.Exception{
+                    .simple = .{
+                        .type = .TypeError,
+                        .message = try self.allocator.dupe(u8, "Queue size mismatch"),
+                    },
+                };
+                promise.reject(exception);
             }
 
             // Step 3.3: Return.
@@ -305,7 +317,13 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             const buffer = ArrayBuffer.init(self.allocator, chunk_size) catch {
                 // Step 5.2: If buffer is an abrupt completion,
                 const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
-                promise.reject(common.JSValue{ .string = "Failed to allocate buffer" });
+                const exception = webidl.errors.Exception{
+                    .simple = .{
+                        .type = .TypeError,
+                        .message = try self.allocator.dupe(u8, "Failed to allocate buffer"),
+                    },
+                };
+                promise.reject(exception);
                 return promise;
             };
 

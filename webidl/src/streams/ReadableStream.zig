@@ -310,7 +310,13 @@ pub const ReadableStream = webidl.interface(struct {
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot cancel a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot cancel a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
@@ -361,14 +367,26 @@ pub const ReadableStream = webidl.interface(struct {
         // Step 1: If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError.
         if (self.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot pipe from a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot pipe from a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
         // Step 2: If ! IsWritableStreamLocked(destination) is true, return a promise rejected with a TypeError.
         if (destination.get_locked()) {
             const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
-            promise.reject(common.JSValue{ .string = "Cannot pipe to a locked stream" });
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try self.allocator.dupe(u8, "Cannot pipe to a locked stream"),
+                },
+            };
+            promise.reject(exception);
             return promise;
         }
 
