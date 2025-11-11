@@ -9,7 +9,7 @@
 
 // Test file to check if child interfaces inherit parent mixins
 
-// Define a mixin with a field
+// Test Case 1: Single mixin with field
 pub const TestMixin = struct {
     // ========================================================================
     // TestMixin fields
@@ -70,7 +70,7 @@ pub const Parent = struct {
 
 
 // Child interface that extends Parent
-// Question: Does Child automatically get mixin_field from Parent's mixin?
+// Expected: Child automatically gets mixin_field from Parent's TestMixin
 pub const Child = struct {
     parent_field: u32 = 100,
     mixin_field: u32 = 42,
@@ -97,6 +97,175 @@ pub const Child = struct {
     // WebIDL extended attributes metadata
     pub const __webidl__ = .{
         .name = "Child",
+        .kind = .interface,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+
+// Test Case 2: Multiple mixins with fields
+pub const MixinA = struct {
+    // ========================================================================
+    // MixinA fields
+    // ========================================================================
+    field_a: u32 = 10,
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "MixinA",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+pub const MixinB = struct {
+    // ========================================================================
+    // MixinB fields
+    // ========================================================================
+    field_b: u32 = 20,
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "MixinB",
+        .kind = .mixin,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+const MixinA = @import("mixin_a").MixinA;
+const MixinB = @import("mixin_b").MixinB;
+pub const ParentMulti = struct {
+    // ========================================================================
+    // Fields from MixinA mixin
+    // ========================================================================
+    field_a: u32 = 10,
+
+    // ========================================================================
+    // Fields from MixinB mixin
+    // ========================================================================
+    field_b: u32 = 20,
+
+    // ========================================================================
+    // ParentMulti fields
+    // ========================================================================
+    parent_multi_field: u32 = 300,
+
+    pub const includes = .{ MixinA, MixinB };
+    pub fn init(allocator: std.mem.Allocator, field_a: u32, field_b: u32, parent_multi_field: u32) !ParentMulti {
+        return try ParentMulti.initFields(allocator, &.{
+            .field_a = field_a,
+            .field_b = field_b,
+            .parent_multi_field = parent_multi_field,
+        });
+    }
+    fn initFields(allocator: std.mem.Allocator, fields: *const struct { field_a: u32, field_b: u32, parent_multi_field: u32, }) !ParentMulti {
+        return .{
+            .field_a = fields.field_a,
+            .field_b = fields.field_b,
+            .parent_multi_field = fields.parent_multi_field,
+        };
+    }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ParentMulti",
+        .kind = .interface,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+
+// Expected: ChildMulti gets field_a, field_b, parent_multi_field
+pub const ChildMulti = struct {
+    parent_multi_field: u32 = 300,
+    field_b: u32 = 20,
+    field_a: u32 = 10,
+
+    // ========================================================================
+    // ChildMulti fields
+    // ========================================================================
+    child_multi_field: u32 = 400,
+    pub fn init(allocator: std.mem.Allocator, parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32) !ChildMulti {
+        return try ChildMulti.initFields(allocator, &.{
+            .parent_multi_field = parent_multi_field,
+            .field_b = field_b,
+            .field_a = field_a,
+            .child_multi_field = child_multi_field,
+        });
+    }
+    fn initFields(allocator: std.mem.Allocator, fields: *const struct { parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, }) !ChildMulti {
+        return .{
+            .parent_multi_field = fields.parent_multi_field,
+            .field_b = fields.field_b,
+            .field_a = fields.field_a,
+            .child_multi_field = fields.child_multi_field,
+        };
+    }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "ChildMulti",
+        .kind = .interface,
+        .exposed = null,
+        .transferable = false,
+        .serializable = false,
+        .secure_context = false,
+        .cross_origin_isolated = false,
+    };
+};
+
+
+// Test Case 3: Grandchild (3-level inheritance)
+// Expected: GrandChild gets field_a, field_b from ParentMulti's mixins,
+//           plus parent_multi_field, child_multi_field
+pub const GrandChild = struct {
+    parent_multi_field: u32 = 300,
+    field_b: u32 = 20,
+    field_a: u32 = 10,
+    child_multi_field: u32 = 400,
+
+    // ========================================================================
+    // GrandChild fields
+    // ========================================================================
+    grandchild_field: u32 = 500,
+    pub fn init(allocator: std.mem.Allocator, parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, grandchild_field: u32) !GrandChild {
+        return try GrandChild.initFields(allocator, &.{
+            .parent_multi_field = parent_multi_field,
+            .field_b = field_b,
+            .field_a = field_a,
+            .child_multi_field = child_multi_field,
+            .grandchild_field = grandchild_field,
+        });
+    }
+    fn initFields(allocator: std.mem.Allocator, fields: *const struct { parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, grandchild_field: u32, }) !GrandChild {
+        return .{
+            .parent_multi_field = fields.parent_multi_field,
+            .field_b = fields.field_b,
+            .field_a = fields.field_a,
+            .child_multi_field = fields.child_multi_field,
+            .grandchild_field = fields.grandchild_field,
+        };
+    }
+
+    // WebIDL extended attributes metadata
+    pub const __webidl__ = .{
+        .name = "GrandChild",
         .kind = .interface,
         .exposed = null,
         .transferable = false,
