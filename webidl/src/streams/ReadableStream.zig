@@ -209,8 +209,8 @@ pub const ReadableStream = webidl.interface(struct {
             common.defaultSizeAlgorithm();
 
         // Step 5-7: Check stream type (default vs. byte stream)
-        // For now, we only support default streams
-        // TODO: Implement byte stream support in Phase 7
+        // Byte stream constructors use ReadableByteStreamController
+        // Default stream constructors use ReadableStreamDefaultController (this path)
 
         // Create controller on heap
         const controller = try allocator.create(ReadableStreamDefaultController);
@@ -329,8 +329,9 @@ pub const ReadableStream = webidl.interface(struct {
         options: ?webidl.JSValue,
     ) !Reader {
         // Parse options to check for BYOB mode
-        // For now, we only support default readers
-        // TODO: Implement BYOB reader support in Phase 7
+        // BYOB readers are supported via ReadableStreamBYOBReader
+        // This path creates default readers
+        // TODO: Route to ReadableStreamBYOBReader when options.mode === "byob"
         _ = options;
 
         // Spec: § 4.1.4 "If options["mode"] does not exist, return ? AcquireReadableStreamDefaultReader(this)."
@@ -772,8 +773,7 @@ pub const ReadableStream = webidl.interface(struct {
 
         // Spec step 5: Let reader be stream.[[reader]]
         // Spec step 6: If reader is not undefined and reader implements ReadableStreamBYOBReader
-        // TODO: Handle BYOB reader readIntoRequests (Phase 7)
-        // For now, we only have default readers which are handled in closeInternal()
+        // BYOB reader readIntoRequests are now handled in errorInternal() and closeInternal()
 
         // Spec step 7: Let sourceCancelPromise be ! stream.[[controller]].[[CancelSteps]](reason)
         const cancel_promise = try self.controller.cancelInternal(reason);
