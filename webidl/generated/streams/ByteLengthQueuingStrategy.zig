@@ -15,18 +15,25 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+
+/// QueuingStrategyInit dictionary
+/// Spec: https://streams.spec.whatwg.org/#dictdef-queuingstrategyinit
+pub const QueuingStrategyInit = struct {
+    highWaterMark: f64,
+};
 pub const ByteLengthQueuingStrategy = struct {
     // ========================================================================
     // ByteLengthQueuingStrategy fields
     // ========================================================================
-    allocator: std.mem.Allocator,
-    /// [[highWaterMark]]: The high water mark
-    highWaterMark: f64,
+    /// [[highWaterMark]]: The high water mark (internal slot)
+    _highWaterMark: f64,
 
-    pub fn init(highWaterMark: f64) ByteLengthQueuingStrategy {
+    /// Constructor: new ByteLengthQueuingStrategy(init)
+    /// Spec: https://streams.spec.whatwg.org/#blqs-constructor
+    pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) ByteLengthQueuingStrategy {
+        _ = allocator; // Not needed for this simple structure
         return .{
-            .allocator = undefined,
-            .highWaterMark = highWaterMark,
+            ._highWaterMark = initDict.highWaterMark,
         };
     }
     pub fn deinit(_: *ByteLengthQueuingStrategy) void {}
@@ -34,9 +41,18 @@ pub const ByteLengthQueuingStrategy = struct {
     // ByteLengthQueuingStrategy methods
     // ========================================================================
 
-    pub fn size(_: *const ByteLengthQueuingStrategy, chunk: ?webidl.JSValue) f64 {
+    /// readonly attribute unrestricted double highWaterMark
+    /// Getter returns this.[[highWaterMark]]
+    /// Spec: https://streams.spec.whatwg.org/#blqs-high-water-mark
+    pub fn get_highWaterMark(self: *const ByteLengthQueuingStrategy) f64 {
+        return self._highWaterMark;
+    }
+    /// size function: Measures the size of chunk by returning chunk.byteLength
+    /// This is called as strategy.size(chunk) in JavaScript
+    pub fn call_size(_: *const ByteLengthQueuingStrategy, chunk: webidl.JSValue) f64 {
+        // TODO: Implement chunk.byteLength extraction from JSValue
+        // For now, return 1.0 as placeholder until JSValue type is fully implemented
         _ = chunk;
-        // Should return chunk.byteLength, but simplified for now
         return 1.0;
     }
 

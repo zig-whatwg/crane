@@ -1158,10 +1158,12 @@ pub const ReadableStream = struct {
     /// 
     /// Spec: § 4.10.5 "Create two branches of a readable stream"
     fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !TeeBranches {
-        // Route to byte stream tee if controller is a byte controller
-        if (self.controller == .byte) {
-            return self.readableByteStreamTee();
-        }
+        // TODO: Route to byte stream tee if controller is a byte controller
+        // Currently controller is typed as *ReadableStreamDefaultController
+        // This needs to be a union type to support both controller types
+        // if (self.controller == .byte) {
+        //     return self.readableByteStreamTee();
+        // }
 
         // Spec step 1-2: Asserts (checked by type system)
 
