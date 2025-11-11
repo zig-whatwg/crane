@@ -670,6 +670,77 @@ pub const ReadableStream = webidl.interface(struct {
     }
 
     // ============================================================================
+    // Transfer/Serialization Support
+    // ============================================================================
+
+    /// [[TransferSteps]](dataHolder)
+    ///
+    /// Spec: § 4.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    ///
+    /// Steps for transferring a ReadableStream via postMessage().
+    /// Creates a MessagePort pair, pipes the stream through it, and serializes
+    /// the receiving port for transfer to another realm.
+    pub fn transferSteps(self: *ReadableStream) !*structured_clone.SerializedData {
+        const cross_realm_transform = @import("cross_realm_transform");
+        const message_port = @import("message_port");
+
+        // Spec step 1: If ! IsReadableStreamLocked(value) is true, throw DataCloneError
+        if (self.reader != .none) {
+            return error.DataCloneError;
+        }
+
+        // Spec step 2-3: Create MessagePort pair
+        const ports = try message_port.createMessagePortPair(self.allocator);
+        const port1 = ports[0];
+        const port2 = ports[1];
+
+        // Spec step 4: Entangle (already done in createMessagePortPair)
+
+        // Spec step 5: Create WritableStream in current realm
+        const writable = try WritableStream.init(self.allocator);
+        errdefer writable.deinit();
+
+        // Spec step 6: SetUpCrossRealmTransformWritable(writable, port1)
+        try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, writable, port1);
+
+        // Spec step 7: Let promise = ! ReadableStreamPipeTo(value, writable, false, false, false)
+        // Note: We're not awaiting the promise - it runs in the background
+        _ = try self.pipeToInternal(writable, false, false, false, null);
+
+        // Spec step 8: Set promise.[[PromiseIsHandled]] to true
+        // (Promise error handling is internal to pipeTo)
+
+        // Spec step 9: Serialize port2 with transfer
+        const serialized = try structured_clone.structuredSerializeWithTransfer(self.allocator, port2);
+
+        return serialized;
+    }
+
+    /// [[TransferReceivingSteps]](dataHolder)
+    ///
+    /// Spec: § 4.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    ///
+    /// Steps for receiving a transferred ReadableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that reads from it.
+    pub fn transferReceivingSteps(
+        self: *ReadableStream,
+        serialized: *structured_clone.SerializedData,
+    ) !void {
+        const cross_realm_transform = @import("cross_realm_transform");
+
+        // Spec step 1: Let deserializedRecord = ! StructuredDeserializeWithTransfer(dataHolder.[[port]], current Realm)
+        const deserialized = try structured_clone.structuredDeserializeWithTransfer(self.allocator, serialized);
+
+        // Spec step 2: Let port = deserializedRecord.[[Deserialized]]
+        const port = deserialized.port;
+
+        // Spec step 3: Perform ! SetUpCrossRealmTransformReadable(value, port)
+        try cross_realm_transform.setupCrossRealmTransformReadable(self.allocator, self, port);
+    }
+
+    // ============================================================================
     // Internal Algorithms (Abstract Operations)
     // ============================================================================
 
