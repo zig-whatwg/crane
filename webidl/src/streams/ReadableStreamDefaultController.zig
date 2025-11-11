@@ -503,7 +503,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
         if (result.isFulfilled()) {
             promise.fulfill({});
         } else if (result.isRejected()) {
-            promise.reject(result.error_value orelse common.JSValue{ .string = "Cancel failed" });
+            promise.reject(result.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Cancel failed") catch return promise);
         }
         return promise;
     }

@@ -165,7 +165,7 @@ pub const ReadableStreamDefaultReader = struct {
 
         // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with a TypeError exception.
         if (stream.state == .readable) {
-            self.closedPromise.reject(common.JSValue{ .string = "Reader released before stream closed" });
+            self.closedPromise.reject(webidl.errors.Exception.typeError(allocator, "Reader released before stream closed") catch return);
         }
 
         // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with a TypeError exception.

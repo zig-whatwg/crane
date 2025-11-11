@@ -249,7 +249,7 @@ pub const WritableStream = struct {
         const ReadableStream = @import("readable_stream").ReadableStream;
 
         // Spec step 1: If ! IsWritableStreamLocked(value) is true, throw DataCloneError
-        if (self.writer != null) {
+        if (self.writer != .none) {
             return error.DataCloneError;
         }
 
