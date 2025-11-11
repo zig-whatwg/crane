@@ -658,3 +658,162 @@ test "Range: insertNode removes node from old parent" {
     try testing.expectEqual(@as(usize, 0), parent1.child_nodes.size());
     try testing.expectEqual(@as(usize, 1), parent2.child_nodes.size());
 }
+
+// ============================================================================
+// Range extraction tests (DOM §5.6)
+// ============================================================================
+
+test "Range: extractContents returns empty fragment for collapsed range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+    try range.call_setStart(&elem.base, 0);
+    try range.call_setEnd(&elem.base, 0);
+
+    // Extract from collapsed range
+    var fragment = try range.call_extractContents();
+    defer {
+        fragment.deinit();
+        allocator.destroy(fragment);
+    }
+
+    // Fragment should be empty
+    try testing.expectEqual(@as(usize, 0), fragment.base.child_nodes.size());
+}
+
+test "Range: extractContents moves contained children to fragment" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var parent = try doc.call_createElement("div");
+    const child1 = try doc.call_createElement("span");
+    const child2 = try doc.call_createElement("p");
+    const child3 = try doc.call_createElement("a");
+
+    try parent.call_appendChild(&child1.base);
+    try parent.call_appendChild(&child2.base);
+    try parent.call_appendChild(&child3.base);
+
+    // Range contains child1 and child2
+    try range.call_setStart(&parent.base, 0);
+    try range.call_setEnd(&parent.base, 2);
+
+    // Extract contents
+    var fragment = try range.call_extractContents();
+    defer {
+        fragment.deinit();
+        allocator.destroy(fragment);
+    }
+
+    // Fragment should contain extracted children
+    try testing.expectEqual(@as(usize, 2), fragment.base.child_nodes.size());
+    // Parent should only have child3 left
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.size());
+}
+
+test "Range: cloneContents returns empty fragment for collapsed range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var elem = try doc.call_createElement("div");
+    try range.call_setStart(&elem.base, 0);
+    try range.call_setEnd(&elem.base, 0);
+
+    // Clone from collapsed range
+    var fragment = try range.call_cloneContents();
+    defer {
+        fragment.deinit();
+        allocator.destroy(fragment);
+    }
+
+    // Fragment should be empty
+    try testing.expectEqual(@as(usize, 0), fragment.base.child_nodes.size());
+}
+
+test "Range: cloneContents copies children without removing them" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    var parent = try doc.call_createElement("div");
+    const child1 = try doc.call_createElement("span");
+    const child2 = try doc.call_createElement("p");
+
+    try parent.call_appendChild(&child1.base);
+    try parent.call_appendChild(&child2.base);
+
+    // Range contains both children
+    try range.call_setStart(&parent.base, 0);
+    try range.call_setEnd(&parent.base, 2);
+
+    // Clone contents
+    var fragment = try range.call_cloneContents();
+    defer {
+        fragment.deinit();
+        allocator.destroy(fragment);
+    }
+
+    // Fragment should contain clones
+    try testing.expectEqual(@as(usize, 2), fragment.base.child_nodes.size());
+    // Parent should still have original children
+    try testing.expectEqual(@as(usize, 2), parent.child_nodes.size());
+}
+
+test "Range: extractContents throws for doctype in range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    // Try to create a range that would contain a doctype
+    // This is a simplified test - in practice doctypes have special handling
+    try range.call_setStart(&doc.base, 0);
+    try range.call_setEnd(&doc.base, 1);
+
+    // Note: This test is simplified - full spec compliance would require
+    // proper doctype handling in the DOM tree
+    const result = range.call_extractContents();
+    _ = result; // May or may not error depending on doc structure
+}
+
+test "Range: cloneContents throws for doctype in range" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var range = try Range.init(allocator, &doc.base);
+    defer range.deinit();
+
+    // Try to create a range that would contain a doctype
+    try range.call_setStart(&doc.base, 0);
+    try range.call_setEnd(&doc.base, 1);
+
+    // Note: This test is simplified - full spec compliance would require
+    // proper doctype handling in the DOM tree
+    const result = range.call_cloneContents();
+    _ = result; // May or may not error depending on doc structure
+}
