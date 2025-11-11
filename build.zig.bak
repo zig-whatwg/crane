@@ -1085,32 +1085,4 @@ pub fn build(b: *std.Build) void {
 
     const parse_idls_step = b.step("parse-idls", "Parse WebIDL files from webref");
     parse_idls_step.dependOn(&parse_idls_cmd.step);
-
-    // Comprehensive binary that includes all major WHATWG specs
-    const comprehensive_exe = b.addExecutable(.{
-        .name = "whatwg-comprehensive",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/comprehensive_test.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "infra", .module = infra_mod },
-                .{ .name = "webidl", .module = webidl_mod },
-                .{ .name = "encoding", .module = encoding_mod },
-                .{ .name = "url", .module = url_mod },
-                .{ .name = "console", .module = console_mod },
-                .{ .name = "streams", .module = streams_mod },
-                .{ .name = "dom", .module = dom_mod },
-                .{ .name = "mimesniff", .module = mimesniff_mod },
-            },
-        }),
-    });
-
-    b.installArtifact(comprehensive_exe);
-
-    const comprehensive_run = b.addRunArtifact(comprehensive_exe);
-    comprehensive_run.step.dependOn(b.getInstallStep());
-
-    const comprehensive_step = b.step("comprehensive", "Build comprehensive binary with all WHATWG specs");
-    comprehensive_step.dependOn(&comprehensive_run.step);
 }
