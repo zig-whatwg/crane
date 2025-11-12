@@ -216,7 +216,6 @@ test "ShadowRoot - creation with basic properties" {
     const allocator = std.testing.allocator;
 
     // Create a mock Element to use as host
-    // TODO: Use real Element when fully integrated
     var mock_element: Element = undefined;
 
     var shadow_root = try ShadowRoot.init(
