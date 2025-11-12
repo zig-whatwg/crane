@@ -589,12 +589,18 @@ pub const Element = struct {
         var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
         defer matches.deinit();
 
-        // TODO: Convert ArrayList to NodeList (static snapshot)
-        // For now, stub - need to implement NodeList creation from matches
-        if (matches.items.len == 0) {
-            @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
+        // Create NodeList and populate with matches (static snapshot)
+        var node_list = try allocator.create(NodeList);
+        node_list.* = try NodeList.init(allocator);
+
+        // Add all matched elements to the NodeList
+        for (matches.items) |element| {
+            // Cast Element to Node
+            const node = @as(*@import("node").Node, @ptrCast(element));
+            try node_list.addNode(node);
         }
-        @panic("ParentNode.querySelectorAll() - NodeList conversion not yet implemented");
+
+        return node_list;
     }
     // ========================================================================
     // Methods from Slottable mixin
