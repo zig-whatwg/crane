@@ -702,19 +702,60 @@ pub const Node = webidl.interface(struct {
 
     pub fn get_nodeValue(self: *const Node) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
-        // Returns value for Attr and CharacterData, null otherwise
-        // TODO: Implement for Attr and CharacterData nodes
-        _ = self;
-        return null;
+        // The nodeValue getter steps are to return the following, switching on the interface:
+        // - Attr: this's value
+        // - CharacterData: this's data
+        // - Otherwise: null
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node
+                const Attr = @import("attr").Attr;
+                const attr: *const Attr = @ptrCast(@alignCast(self));
+                return attr.value;
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes (Text, Comment, ProcessingInstruction, CDATASection)
+                const char_data: *const CharacterData = @ptrCast(@alignCast(self));
+                return char_data.data;
+            },
+            else => {
+                // All other node types return null
+                return null;
+            },
+        }
     }
 
-    pub fn set_nodeValue(self: *Node, value: ?[]const u8) void {
+    pub fn set_nodeValue(self: *Node, value: ?[]const u8) !void {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
-        // If null, treat as empty string
-        // Set value for Attr, replace data for CharacterData
-        // TODO: Implement for Attr and CharacterData nodes
-        _ = self;
-        _ = value;
+        // The nodeValue setter steps are to, if given value is null, act as if it was empty string
+        // Then:
+        // - Attr: Set an existing attribute value with this and the given value
+        // - CharacterData: Replace data with node this, offset 0, count this's length, data given value
+        // - Otherwise: Do nothing
+
+        const str_value = value orelse "";
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node - set an existing attribute value
+                const Attr = @import("attr").Attr;
+                const attr: *Attr = @ptrCast(@alignCast(self));
+                // TODO: Use "set an existing attribute value" algorithm (line 802)
+                // For now, directly update value
+                self.allocator.free(attr.value);
+                attr.value = try self.allocator.dupe(u8, str_value);
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes - replace data
+                const char_data: *CharacterData = @ptrCast(@alignCast(self));
+                // Replace data: offset 0, count = length, data = str_value
+                try char_data.call_replaceData(0, @intCast(char_data.data.len), str_value);
+            },
+            else => {
+                // All other node types do nothing
+            },
+        }
     }
 
     pub fn get_textContent(self: *const Node) !?[]const u8 {
