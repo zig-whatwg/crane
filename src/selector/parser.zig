@@ -115,6 +115,12 @@ pub const PseudoClassSelector = struct {
     }
 };
 
+/// Direction for :dir() pseudo-class
+pub const Direction = enum {
+    ltr,
+    rtl,
+};
+
 /// Pseudo-class types
 pub const PseudoClassKind = union(enum) {
     // Structural pseudo-classes
@@ -152,8 +158,9 @@ pub const PseudoClassKind = union(enum) {
     ReadWrite,
     Checked,
 
-    // Language pseudo-class
+    // Language pseudo-classes
     Lang: []const u8,
+    Dir: Direction,
 
     // Negation and matching
     Not: *SelectorList,
@@ -562,6 +569,9 @@ pub const Parser = struct {
         } else if (std.mem.eql(u8, name, "lang")) {
             const lang_code = try self.parseLanguageCode();
             kind = PseudoClassKind{ .Lang = lang_code };
+        } else if (std.mem.eql(u8, name, "dir")) {
+            const direction = try self.parseDirection();
+            kind = PseudoClassKind{ .Dir = direction };
         } else {
             return error.InvalidSelector;
         }
@@ -652,6 +662,24 @@ pub const Parser = struct {
 
         try self.advance();
         return lang_code;
+    }
+
+    /// Parse direction for :dir() pseudo-class
+    fn parseDirection(self: *Parser) ParserError!Direction {
+        const token = self.current_token orelse return error.UnexpectedEOF;
+
+        // Direction must be either "ltr" or "rtl"
+        if (token.tag != .ident) return error.InvalidSelector;
+
+        const direction = if (std.mem.eql(u8, token.value, "ltr"))
+            Direction.ltr
+        else if (std.mem.eql(u8, token.value, "rtl"))
+            Direction.rtl
+        else
+            return error.InvalidSelector;
+
+        try self.advance();
+        return direction;
     }
 
     /// Parse pseudo-element selector

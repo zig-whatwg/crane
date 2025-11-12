@@ -352,6 +352,7 @@ pub const Matcher = struct {
             .Is, .Where => |selector_list| try self.matches(element, selector_list),
             .Has => |selector_list| try self.matchesHas(element, selector_list),
             .Lang => |lang_code| matchesLang(element, lang_code),
+            .Dir => |direction| matchesDir(element, direction),
             // User action pseudo-classes - not supported in querySelector
             // (these require runtime state tracking)
             .AnyLink, .Link, .Visited, .Hover, .Active, .Focus, .FocusVisible, .FocusWithin => false,
@@ -668,6 +669,40 @@ fn matchesLanguageCode(value: []const u8, code: []const u8) bool {
     return false;
 }
 
+/// Match :dir() pseudo-class
+/// Spec: https://drafts.csswg.org/selectors-4/#dir-pseudo
+fn matchesDir(element: *Element, direction: Direction) bool {
+    // Check for dir attribute on element or ancestors
+    // Per spec: Walk up tree checking dir attributes
+    var current: ?*Element = element;
+    while (current) |elem| {
+        if (elem.getAttribute("dir")) |dir_value| {
+            // Match direction (case-insensitive)
+            const matches = switch (direction) {
+                .ltr => std.ascii.eqlIgnoreCase(dir_value, "ltr"),
+                .rtl => std.ascii.eqlIgnoreCase(dir_value, "rtl"),
+            };
+            if (matches) return true;
+            // If dir="auto", we'd need to compute direction from content
+            // For now, treat as no match
+            if (std.ascii.eqlIgnoreCase(dir_value, "auto")) {
+                // TODO: Implement auto direction computation from content
+                return false;
+            }
+        }
+        // Check parent
+        if (elem.base.parent_node) |parent| {
+            if (parent.node_type == NodeBase.ELEMENT_NODE) {
+                current = @ptrCast(parent);
+                continue;
+            }
+        }
+        break;
+    }
+    // Default directionality is ltr per HTML spec
+    return direction == .ltr;
+}
+
 /// Match :nth-child(an+b)
 fn matchesNthChild(element: *Element, pattern: NthPattern) bool {
     const index = getChildIndex(element) orelse return false;
@@ -783,6 +818,7 @@ const testing = std.testing;
 const infra = @import("infra");
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Parser = @import("parser.zig").Parser;
+const Direction = parser.Direction;
 const AttrWithBase = dom.AttrWithBase;
 
 /// Helper to create element for testing
@@ -1885,3 +1921,64 @@ test "Matcher: nested :not(:is()) combination" {
 //
 //     try testing.expect(result); // en-US should match :lang(en)
 // }
+
+test "Matcher: :dir(ltr) pseudo-class" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "dir", .value = "ltr" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "div:dir(ltr)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
+
+test "Matcher: :dir(rtl) pseudo-class" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "dir", .value = "rtl" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "div:dir(rtl)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
+
+test "Matcher: :dir(ltr) default when no dir attribute" {
+    const allocator = testing.allocator;
+    const elem = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, elem);
+
+    const input = "div:dir(ltr)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result); // Default is ltr
+}
