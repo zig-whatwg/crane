@@ -432,3 +432,36 @@ test "Document: createElementNS namespace memory management" {
     try testing.expect(elem.namespace_uri.?.ptr != svg_ns.ptr);
     try testing.expectEqualStrings(svg_ns, elem.namespace_uri.?);
 }
+
+// ============================================================================
+// Document.baseURI tests
+// ============================================================================
+
+test "Document: baseURI defaults to about:blank" {
+    const allocator = testing.allocator;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    // Default base URI should be about:blank
+    try testing.expectEqualStrings("about:blank", doc.base_uri);
+}
+
+test "Node: baseURI returns document's base_uri" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    const elem = try doc.call_createElement("div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+    
+    const elem_node: *Node = @ptrCast(elem);
+    
+    // Element's baseURI should return document's base_uri
+    try testing.expectEqualStrings("about:blank", elem_node.get_baseURI());
+}

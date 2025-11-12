@@ -28,6 +28,9 @@ pub const Document = webidl.interface(struct {
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings (20-30%) and O(1) string comparison via pointer equality
     _string_pool: std.StringHashMap(void),
+    /// Document base URL (fallback: empty string for about:blank)
+    /// TODO: Implement full URL parsing and document URL when URL spec is integrated
+    base_uri: []const u8,
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -35,6 +38,7 @@ pub const Document = webidl.interface(struct {
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
+            .base_uri = "about:blank",
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }

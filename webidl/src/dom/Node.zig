@@ -584,11 +584,20 @@ pub const Node = webidl.interface(struct {
         return current.node_type == DOCUMENT_NODE;
     }
 
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    ///
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Node) []const u8 {
-        // Returns node document's document base URL, serialized
-        // TODO: Implement once Document has base URL support
-        _ = self;
-        return "";
+        // Get owner document
+        const doc = self.owner_document orelse {
+            // If no owner document, return empty string (should not happen in normal DOM)
+            return "about:blank";
+        };
+
+        // Return document's base URI
+        return doc.base_uri;
     }
 
     pub fn get_nodeValue(self: *const Node) ?[]const u8 {
