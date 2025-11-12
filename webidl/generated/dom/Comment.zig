@@ -76,16 +76,56 @@ pub const Comment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.4 before() algorithm
-        // Step 1: Get parent
-        // Step 2: If parent is null, return
-        // Step 3: Find first preceding sibling not in nodes
-        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
-        // Step 5: Determine insertion point
-        // Step 6: Call pre-insert (from mutation.zig)
-        @panic("ChildNode.before() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let parent be this's parent
+        const parent = this_node.parent_node;
+
+        // Step 2: If parent is null, then return
+        if (parent == null) {
+            return;
+        }
+
+        // Step 3: Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null
+        var viable_previous_sibling: ?*NodeType = null;
+
+        // Walk backwards through siblings to find first one not in nodes
+        var current = this_node.get_previousSibling();
+        while (current) |sibling| {
+            // Check if this sibling is in the nodes array
+            var found_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == sibling) {
+                    found_in_nodes = true;
+                    break;
+                }
+            }
+
+            if (!found_in_nodes) {
+                viable_previous_sibling = sibling;
+                break;
+            }
+
+            current = sibling.get_previousSibling();
+        }
+
+        // Step 4: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try Comment.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 5: If viablePreviousSibling is null, set it to parent's first child;
+        // otherwise to viablePreviousSibling's next sibling
+        const reference_child = if (viable_previous_sibling) |vps|
+            vps.get_nextSibling()
+        else
+            parent.?.get_firstChild();
+
+        // Step 6: Pre-insert node into parent before viablePreviousSibling
+        _ = try mutation.preInsert(node, parent.?, reference_child);
     }
     /// DOM §4.3.4 - ChildNode.after()
     /// Inserts nodes just after this node, while replacing strings with Text nodes.
@@ -100,15 +140,49 @@ pub const Comment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.4 after() algorithm
-        // Step 1: Get parent
-        // Step 2: If parent is null, return
-        // Step 3: Find first following sibling not in nodes
-        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
-        // Step 5: Call pre-insert (from mutation.zig)
-        @panic("ChildNode.after() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let parent be this's parent
+        const parent = this_node.parent_node;
+
+        // Step 2: If parent is null, then return
+        if (parent == null) {
+            return;
+        }
+
+        // Step 3: Let viableNextSibling be this's first following sibling not in nodes; otherwise null
+        var viable_next_sibling: ?*NodeType = null;
+
+        // Walk forward through siblings to find first one not in nodes
+        var current = this_node.get_nextSibling();
+        while (current) |sibling| {
+            // Check if this sibling is in the nodes array
+            var found_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == sibling) {
+                    found_in_nodes = true;
+                    break;
+                }
+            }
+
+            if (!found_in_nodes) {
+                viable_next_sibling = sibling;
+                break;
+            }
+
+            current = sibling.get_nextSibling();
+        }
+
+        // Step 4: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try Comment.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 5: Pre-insert node into parent before viableNextSibling
+        _ = try mutation.preInsert(node, parent.?, viable_next_sibling);
     }
     /// DOM §4.3.4 - ChildNode.replaceWith()
     /// Replaces this node with nodes, while replacing strings with Text nodes.
@@ -124,16 +198,56 @@ pub const Comment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.4 replaceWith() algorithm
-        // Step 1: Get parent
-        // Step 2: If parent is null, return
-        // Step 3: Find first following sibling not in nodes
-        // Step 4: Convert nodes into a node (see ParentNode mixin helper)
-        // Step 5: If this's parent is still parent, call replace (from mutation.zig)
-        // Step 6: Otherwise call pre-insert (from mutation.zig)
-        @panic("ChildNode.replaceWith() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let parent be this's parent
+        const parent = this_node.parent_node;
+
+        // Step 2: If parent is null, then return
+        if (parent == null) {
+            return;
+        }
+
+        // Step 3: Let viableNextSibling be this's first following sibling not in nodes; otherwise null
+        var viable_next_sibling: ?*NodeType = null;
+
+        // Walk forward through siblings to find first one not in nodes
+        var current = this_node.get_nextSibling();
+        while (current) |sibling| {
+            // Check if this sibling is in the nodes array
+            var found_in_nodes = false;
+            for (nodes) |item| {
+                if (item == .node and item.node == sibling) {
+                    found_in_nodes = true;
+                    break;
+                }
+            }
+
+            if (!found_in_nodes) {
+                viable_next_sibling = sibling;
+                break;
+            }
+
+            current = sibling.get_nextSibling();
+        }
+
+        // Step 4: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try Comment.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 5: If this's parent is parent, replace this with node within parent
+        // Note: The parent could have changed during convertNodesIntoNode if one of the nodes
+        // contained 'this' in its subtree
+        if (this_node.parent_node == parent) {
+            try mutation.replace(this_node, node, parent.?);
+        } else {
+            // Step 6: Otherwise, pre-insert node into parent before viableNextSibling
+            _ = try mutation.preInsert(node, parent.?, viable_next_sibling);
+        }
     }
     /// DOM §4.3.4 - ChildNode.remove()
     /// Removes this node from its parent.
@@ -143,11 +257,19 @@ pub const Comment = struct {
     /// 2. Remove this.
     /// (Included from ChildNode mixin)
     pub fn call_remove(self: anytype) !void {
-        _ = self;
-        // TODO: Implement DOM §4.3.4 remove() algorithm
-        // Step 1: If parent is null, return
-        // Step 2: Call remove (from mutation.zig)
-        @panic("ChildNode.remove() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+
+        // Cast self to Node pointer
+        const node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: If this's parent is null, then return
+        if (node.parent_node == null) {
+            return;
+        }
+
+        // Step 2: Remove this
+        try mutation.remove(node, false);
     }
     // ========================================================================
     // Methods from NonDocumentTypeChildNode mixin
