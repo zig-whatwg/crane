@@ -281,6 +281,28 @@ pub fn generateAllClasses(
     // the parent's mixin fields through normal inheritance collection.
     try flattenAllMixinsIntoRegistry(&registry);
 
+    // PASS 1.6: Detect base types for polymorphism support
+    // Find interfaces with no parent but have children (e.g., Node, EventTarget)
+    // These will generate XxxBase structs for safe downcasting
+    var base_types = try detectBaseTypes(&registry);
+    defer {
+        var base_it = base_types.iterator();
+        while (base_it.next()) |entry| {
+            entry.value_ptr.children.deinit(allocator);
+        }
+        base_types.deinit();
+    }
+
+    // Debug: Print detected base types
+    if (base_types.count() > 0) {
+        std.debug.print("\nDetected base types for polymorphism:\n", .{});
+        var base_it = base_types.iterator();
+        while (base_it.next()) |entry| {
+            std.debug.print("  {s} → children: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.children.items });
+        }
+        std.debug.print("\n", .{});
+    }
+
     // Check for circular inheritance across all files
     var global_file_it = registry.files.iterator();
     while (global_file_it.next()) |entry| {
@@ -528,6 +550,19 @@ const ClassKind = enum {
     interface,
     namespace,
     mixin,
+};
+
+/// Information about a base type (interface with no parent but has children)
+/// Used to generate XxxBase structs for polymorphism support
+const BaseTypeInfo = struct {
+    /// Name of the base type (e.g., "Node")
+    name: []const u8,
+    /// List of direct and indirect children (e.g., ["Element", "Text", "Comment"])
+    children: std.ArrayList([]const u8),
+    /// File path where the base type is defined
+    file_path: []const u8,
+    /// Original ClassInfo for the base type
+    class_info: ClassInfo,
 };
 
 const FileInfo = struct {
@@ -1160,6 +1195,122 @@ fn flattenMixinsForClass(
 
     allocator.free(class_info.properties);
     class_info.properties = try new_properties.toOwnedSlice(allocator);
+}
+
+/// Detect base types (interfaces with no parent but have children)
+/// and build a map of base type name -> BaseTypeInfo.
+///
+/// A base type is an interface that:
+/// - Has no parent (`parent_name == null`)
+/// - Has at least one child class that extends it
+/// - Is an interface (not a namespace or mixin)
+///
+/// Example: Node has no parent, but Element/Text/Comment extend it → Node is a base type
+///
+/// This information is used to generate XxxBase structs for polymorphism support.
+fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
+    const allocator = registry.allocator;
+    var base_types = std.StringHashMap(BaseTypeInfo).init(allocator);
+    errdefer {
+        var it = base_types.iterator();
+        while (it.next()) |entry| {
+            entry.value_ptr.children.deinit(allocator);
+        }
+        base_types.deinit();
+    }
+
+    // First pass: Find all interfaces with parent_name == null
+    var potential_bases = std.StringHashMap(struct {
+        file_path: []const u8,
+        class_info: ClassInfo,
+    }).init(allocator);
+    defer potential_bases.deinit();
+
+    var file_it = registry.files.iterator();
+    while (file_it.next()) |file_entry| {
+        const file_path = file_entry.key_ptr.*;
+        for (file_entry.value_ptr.classes.items) |class_info| {
+            // Only consider interfaces (not namespaces or mixins) with no parent
+            if (class_info.parent_name == null and class_info.class_kind == .interface) {
+                try potential_bases.put(class_info.name, .{
+                    .file_path = file_path,
+                    .class_info = class_info,
+                });
+            }
+        }
+    }
+
+    // Second pass: For each potential base, find all children (direct and transitive)
+    var base_it = potential_bases.iterator();
+    while (base_it.next()) |base_entry| {
+        const base_name = base_entry.key_ptr.*;
+        const base_data = base_entry.value_ptr.*;
+
+        var children: std.ArrayList([]const u8) = .empty;
+        errdefer children.deinit(allocator);
+
+        // Find all classes that extend this base (directly or indirectly)
+        var file_it2 = registry.files.iterator();
+        while (file_it2.next()) |file_entry| {
+            for (file_entry.value_ptr.classes.items) |class_info| {
+                if (try extendsBase(allocator, registry, &class_info, base_name, file_entry.key_ptr.*)) {
+                    try children.append(allocator, class_info.name);
+                }
+            }
+        }
+
+        // Only add as base type if it has at least one child
+        if (children.items.len > 0) {
+            try base_types.put(base_name, .{
+                .name = base_name,
+                .children = children,
+                .file_path = base_data.file_path,
+                .class_info = base_data.class_info,
+            });
+        } else {
+            children.deinit(allocator);
+        }
+    }
+
+    return base_types;
+}
+
+/// Check if a class extends a given base type (directly or transitively)
+fn extendsBase(
+    allocator: std.mem.Allocator,
+    registry: *GlobalRegistry,
+    class_info: *const ClassInfo,
+    base_name: []const u8,
+    current_file: []const u8,
+) !bool {
+    var current_parent = class_info.parent_name;
+    var current_file_path = current_file;
+    var visited = std.StringHashMap(void).init(allocator);
+    defer visited.deinit();
+
+    while (current_parent) |parent_ref| {
+        // Avoid infinite loops
+        if (visited.contains(parent_ref)) break;
+        try visited.put(parent_ref, {});
+
+        // Extract just the class name (handle "base.Type" format)
+        const parent_class_name = if (std.mem.indexOfScalar(u8, parent_ref, '.')) |dot_pos|
+            parent_ref[dot_pos + 1 ..]
+        else
+            parent_ref;
+
+        // Check if this parent is our target base
+        if (std.mem.eql(u8, parent_class_name, base_name)) {
+            return true;
+        }
+
+        // Walk up the hierarchy
+        const parent_info = (try registry.resolveParentReference(parent_ref, current_file_path)) orelse break;
+        current_parent = parent_info.parent_name;
+        current_file_path = parent_info.file_path;
+    }
+
+    return false;
 }
 
 /// Convert PascalCase to snake_case for module names
