@@ -209,3 +209,119 @@ test "Element.closest: finds closest match when multiple ancestors match" {
     const result = try span.call_closest(allocator, "div");
     try testing.expectEqual(inner_div, result.?);
 }
+
+// ============================================================================
+// Element.classList tests
+// ============================================================================
+
+test "Element.classList: returns DOMTokenList" {
+    const allocator = testing.allocator;
+    const DOMTokenList = @import("dom_token_list").DOMTokenList;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    const elem = try doc.call_createElement("div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+    
+    // Set class attribute
+    try elem.call_setAttribute("class", "foo bar baz");
+    
+    // Get classList
+    const classList = try elem.get_classList();
+    defer {
+        classList.deinit();
+        allocator.destroy(classList);
+    }
+    
+    // Verify it's a DOMTokenList with correct tokens
+    try testing.expectEqual(@as(u32, 3), classList.get_length());
+    try testing.expect(classList.call_contains("foo"));
+    try testing.expect(classList.call_contains("bar"));
+    try testing.expect(classList.call_contains("baz"));
+}
+
+test "Element.classList: empty when no class attribute" {
+    const allocator = testing.allocator;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    const elem = try doc.call_createElement("div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+    
+    // Get classList without setting class attribute
+    const classList = try elem.get_classList();
+    defer {
+        classList.deinit();
+        allocator.destroy(classList);
+    }
+    
+    // Should be empty
+    try testing.expectEqual(@as(u32, 0), classList.get_length());
+}
+
+test "Element.classList: can add tokens" {
+    const allocator = testing.allocator;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    const elem = try doc.call_createElement("div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+    
+    // Set initial class
+    try elem.call_setAttribute("class", "foo");
+    
+    const classList = try elem.get_classList();
+    defer {
+        classList.deinit();
+        allocator.destroy(classList);
+    }
+    
+    // Add token
+    try classList.call_add(&[_][]const u8{"bar"});
+    
+    // Verify token was added
+    try testing.expectEqual(@as(u32, 2), classList.get_length());
+    try testing.expect(classList.call_contains("foo"));
+    try testing.expect(classList.call_contains("bar"));
+}
+
+test "Element.classList: updates element attribute on modification" {
+    const allocator = testing.allocator;
+    
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+    
+    const elem = try doc.call_createElement("div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+    
+    // Set initial class
+    try elem.call_setAttribute("class", "foo bar");
+    
+    const classList = try elem.get_classList();
+    defer {
+        classList.deinit();
+        allocator.destroy(classList);
+    }
+    
+    // Remove a token
+    try classList.call_remove(&[_][]const u8{"foo"});
+    
+    // Element's class attribute should be updated
+    const class_value = elem.call_getAttribute("class").?;
+    try testing.expectEqualStrings("bar", class_value);
+}

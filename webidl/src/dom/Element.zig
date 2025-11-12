@@ -128,11 +128,31 @@ pub const Element = webidl.interface(struct {
     /// DOM §4.10.1 - Element.classList
     /// The classList getter steps are to return a DOMTokenList object whose associated element
     /// is this and whose associated attribute's local name is class.
-    /// TODO: Implement DOMTokenList
-    /// For now, return error as DOMTokenList is not implemented
+    ///
+    /// Returns a DOMTokenList representing the class attribute.
+    /// The DOMTokenList is [SameObject] - should return same instance on repeated calls.
+    /// TODO: Implement [SameObject] caching
     pub fn get_classList(self: *const Element) !*DOMTokenList {
-        _ = self;
-        return error.NotImplemented;
+        const TokenList = @import("dom_token_list").DOMTokenList;
+
+        // Create DOMTokenList associated with this element's "class" attribute
+        const token_list = try self.allocator.create(TokenList);
+        token_list.* = try TokenList.init(self.allocator, @constCast(self), "class");
+
+        // Parse current class attribute value into tokens
+        const class_value = self.call_getAttribute("class") orelse "";
+        if (class_value.len > 0) {
+            var iter = std.mem.tokenizeScalar(u8, class_value, ' ');
+            while (iter.next()) |token| {
+                // Skip empty tokens
+                if (token.len == 0) continue;
+
+                const token_copy = try self.allocator.dupe(u8, token);
+                try token_list.tokens.append(token_copy);
+            }
+        }
+
+        return token_list;
     }
 
     /// DOM §4.10.1 - Element.slot
