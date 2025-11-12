@@ -53,6 +53,13 @@ pub const selectors = @import("selectors_mock.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 
+// XPath 1.0 implementation
+pub const xpath = struct {
+    pub const tokenizer = @import("xpath/tokenizer.zig");
+    pub const ast = @import("xpath/ast.zig");
+    pub const parser = @import("xpath/parser.zig");
+};
+
 test {
     std.testing.refAllDecls(@This());
 }
