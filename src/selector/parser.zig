@@ -21,6 +21,38 @@ pub const SelectorList = struct {
     }
 };
 
+/// CSS Specificity (a, b, c) tuple per Selectors Level 4
+/// a = ID selectors count
+/// b = class selectors + attribute selectors + pseudo-classes count
+/// c = type selectors + pseudo-elements count
+pub const Specificity = struct {
+    id: u32 = 0, // a
+    class: u32 = 0, // b
+    element: u32 = 0, // c
+
+    /// Compare two specificities
+    /// Returns: .lt (less), .eq (equal), .gt (greater)
+    pub fn compare(self: Specificity, other: Specificity) std.math.Order {
+        if (self.id != other.id) return std.math.order(self.id, other.id);
+        if (self.class != other.class) return std.math.order(self.class, other.class);
+        return std.math.order(self.element, other.element);
+    }
+
+    /// Add two specificities together
+    pub fn add(self: Specificity, other: Specificity) Specificity {
+        return Specificity{
+            .id = self.id + other.id,
+            .class = self.class + other.class,
+            .element = self.element + other.element,
+        };
+    }
+
+    /// Return maximum of two specificities
+    pub fn max(self: Specificity, other: Specificity) Specificity {
+        return if (self.compare(other) == .gt) self else other;
+    }
+};
+
 /// Complex selector (combinator chain)
 pub const ComplexSelector = struct {
     compound: CompoundSelector,
@@ -38,6 +70,18 @@ pub const ComplexSelector = struct {
             pair.compound.deinit();
         }
         self.allocator.free(self.combinators);
+    }
+
+    /// Calculate specificity of this complex selector
+    pub fn calculateSpecificity(self: *const ComplexSelector) Specificity {
+        var spec = self.compound.calculateSpecificity();
+
+        // Add specificity from all combinators
+        for (self.combinators) |*pair| {
+            spec = spec.add(pair.compound.calculateSpecificity());
+        }
+
+        return spec;
     }
 };
 
@@ -66,6 +110,17 @@ pub const CompoundSelector = struct {
         }
         self.allocator.free(self.simple_selectors);
     }
+
+    /// Calculate specificity of this compound selector
+    pub fn calculateSpecificity(self: *const CompoundSelector) Specificity {
+        var spec = Specificity{};
+
+        for (self.simple_selectors) |*selector| {
+            spec = spec.add(selector.calculateSpecificity());
+        }
+
+        return spec;
+    }
 };
 
 /// Simple selector (atomic selector)
@@ -84,6 +139,19 @@ pub const SimpleSelector = union(enum) {
             .PseudoElement => |*pseudo| pseudo.deinit(allocator),
             else => {},
         }
+    }
+
+    /// Calculate specificity contribution of this simple selector
+    pub fn calculateSpecificity(self: *const SimpleSelector) Specificity {
+        return switch (self.*) {
+            .Universal => Specificity{}, // 0,0,0
+            .Type => Specificity{ .element = 1 }, // 0,0,1
+            .Class => Specificity{ .class = 1 }, // 0,1,0
+            .Id => Specificity{ .id = 1 }, // 1,0,0
+            .Attribute => Specificity{ .class = 1 }, // 0,1,0
+            .PseudoClass => |*pseudo| pseudo.calculateSpecificity(), // varies
+            .PseudoElement => Specificity{ .element = 1 }, // 0,0,1
+        };
     }
 };
 
@@ -117,6 +185,27 @@ pub const PseudoClassSelector = struct {
             },
             else => {},
         }
+    }
+
+    /// Calculate specificity contribution of this pseudo-class
+    pub fn calculateSpecificity(self: *const PseudoClassSelector) Specificity {
+        return switch (self.kind) {
+            // :where() always has 0 specificity
+            .Where => Specificity{},
+
+            // :is(), :not(), :has() take the max specificity of their arguments
+            .Is, .Not, .Has => |selector_list_ptr| blk: {
+                var max_spec = Specificity{};
+                for (selector_list_ptr.selectors) |*selector| {
+                    const spec = selector.calculateSpecificity();
+                    max_spec = max_spec.max(spec);
+                }
+                break :blk max_spec;
+            },
+
+            // All other pseudo-classes count as class selectors (0,1,0)
+            else => Specificity{ .class = 1 },
+        };
     }
 };
 
@@ -934,4 +1023,204 @@ test "Parser: :lang(en) pseudo-class" {
     try testing.expect(simple == .PseudoClass);
     try testing.expect(simple.PseudoClass.kind == .Lang);
     try testing.expectEqualStrings("en", simple.PseudoClass.kind.Lang);
+}
+
+// ============================================================================
+// Specificity Tests
+// ============================================================================
+
+test "Specificity: universal selector" {
+    const allocator = testing.allocator;
+    const input = "*";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: type selector" {
+    const allocator = testing.allocator;
+    const input = "div";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 1), spec.element);
+}
+
+test "Specificity: class selector" {
+    const allocator = testing.allocator;
+    const input = ".foo";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: ID selector" {
+    const allocator = testing.allocator;
+    const input = "#bar";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 1), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: attribute selector" {
+    const allocator = testing.allocator;
+    const input = "[href]";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: pseudo-class" {
+    const allocator = testing.allocator;
+    const input = ":hover";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: compound selector" {
+    const allocator = testing.allocator;
+    const input = "div.foo#bar[href]:hover";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    // 1 ID + 3 classes (class, attr, pseudo) + 1 element
+    try testing.expectEqual(@as(u32, 1), spec.id);
+    try testing.expectEqual(@as(u32, 3), spec.class);
+    try testing.expectEqual(@as(u32, 1), spec.element);
+}
+
+test "Specificity: complex selector with descendant combinator" {
+    const allocator = testing.allocator;
+    const input = "div p";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    // 2 elements
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 2), spec.element);
+}
+
+test "Specificity: :where() always has zero specificity" {
+    const allocator = testing.allocator;
+    const input = ":where(#foo, .bar)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    // :where() contributes 0,0,0 regardless of its arguments
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: :is() takes max specificity of arguments" {
+    const allocator = testing.allocator;
+    const input = ":is(#foo, .bar, p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    // :is() takes max: #foo has (1,0,0)
+    try testing.expectEqual(@as(u32, 1), spec.id);
+    try testing.expectEqual(@as(u32, 0), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: :not() takes max specificity of arguments" {
+    const allocator = testing.allocator;
+    const input = ":not(.foo, p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const spec = selector_list.selectors[0].calculateSpecificity();
+    // :not() takes max: .foo has (0,1,0)
+    try testing.expectEqual(@as(u32, 0), spec.id);
+    try testing.expectEqual(@as(u32, 1), spec.class);
+    try testing.expectEqual(@as(u32, 0), spec.element);
+}
+
+test "Specificity: comparison" {
+    const spec1 = Specificity{ .id = 1, .class = 0, .element = 0 };
+    const spec2 = Specificity{ .id = 0, .class = 10, .element = 10 };
+    const spec3 = Specificity{ .id = 1, .class = 5, .element = 3 };
+
+    // ID always wins
+    try testing.expect(spec1.compare(spec2) == .gt);
+
+    // Same ID, compare class
+    try testing.expect(spec3.compare(spec1) == .gt);
+
+    // Equal
+    try testing.expect(spec1.compare(spec1) == .eq);
 }
