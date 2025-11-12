@@ -14,24 +14,10 @@
 
 const std = @import("std");
 
-// TODO: Import actual Node type when available
-pub const Node = struct {
-    parent: ?*Node = null,
-    children: std.ArrayList(*Node),
-    allocator: std.mem.Allocator,
-
-    // Temporary init for placeholder
-    pub fn init(allocator: std.mem.Allocator) Node {
-        return .{
-            .children = std.ArrayList(*Node){},
-            .allocator = allocator,
-        };
-    }
-
-    pub fn deinit(self: *Node) void {
-        self.children.deinit(self.allocator);
-    }
-};
+// Import actual Node type from WebIDL generated code via package
+// Node.zig exports both Node interface and NodeBase struct
+pub const NodeBase = @import("node").NodeBase;
+pub const Node = NodeBase;
 
 /// Get the root of an object
 /// Spec: https://dom.spec.whatwg.org/#concept-tree-root
@@ -39,10 +25,10 @@ pub const Node = struct {
 /// The root of an object is itself, if its parent is null, or else it is
 /// the root of its parent.
 ///
-/// Returns: The root node (a node with parent == null)
+/// Returns: The root node (a node with parent_node == null)
 pub fn root(node: *Node) *Node {
     var current = node;
-    while (current.parent) |parent| {
+    while (current.parent_node) |parent| {
         current = parent;
     }
     return current;
@@ -56,12 +42,12 @@ pub fn root(node: *Node) *Node {
 ///
 /// Returns: true if node is a descendant of ancestor
 pub fn isDescendant(node: *const Node, ancestor: *const Node) bool {
-    var current = node.parent;
+    var current = node.parent_node;
     while (current) |parent| {
         if (parent == ancestor) {
             return true;
         }
-        current = parent.parent;
+        current = parent.parent_node;
     }
     return false;
 }
@@ -111,10 +97,10 @@ pub fn isInclusiveAncestor(node: *const Node, descendant: *const Node) bool {
 ///
 /// Returns: true if both nodes have the same non-null parent
 pub fn isSibling(node_a: *const Node, node_b: *const Node) bool {
-    if (node_a.parent == null) {
+    if (node_a.parent_node == null) {
         return false;
     }
-    return node_a.parent == node_b.parent;
+    return node_a.parent_node == node_b.parent_node;
 }
 
 /// Check if A is an inclusive sibling of B
@@ -137,10 +123,10 @@ pub fn isInclusiveSibling(node_a: *const Node, node_b: *const Node) bool {
 ///
 /// Returns: First child or null
 pub fn firstChild(node: *const Node) ?*Node {
-    if (node.children.items.len == 0) {
+    if (node.child_nodes.len == 0) {
         return null;
     }
-    return node.children.items[0];
+    return node.child_nodes.get(0);
 }
 
 /// Get the last child of a node
@@ -150,10 +136,10 @@ pub fn firstChild(node: *const Node) ?*Node {
 ///
 /// Returns: Last child or null
 pub fn lastChild(node: *const Node) ?*Node {
-    if (node.children.items.len == 0) {
+    if (node.child_nodes.len == 0) {
         return null;
     }
-    return node.children.items[node.children.items.len - 1];
+    return node.child_nodes.get(node.child_nodes.len - 1);
 }
 
 /// Get the previous sibling of a node
@@ -164,15 +150,16 @@ pub fn lastChild(node: *const Node) ?*Node {
 ///
 /// Returns: Previous sibling or null
 pub fn previousSibling(node: *const Node) ?*Node {
-    const parent = node.parent orelse return null;
+    const parent = node.parent_node orelse return null;
 
-    // Find node's index in parent's children
-    for (parent.children.items, 0..) |child, i| {
+    // Find node's index in parent's child_nodes
+    for (0..parent.child_nodes.len) |i| {
+        const child = parent.child_nodes.get(i) orelse continue;
         if (child == node) {
             if (i == 0) {
                 return null; // No previous sibling
             }
-            return parent.children.items[i - 1];
+            return parent.child_nodes.get(i - 1);
         }
     }
 
@@ -187,15 +174,16 @@ pub fn previousSibling(node: *const Node) ?*Node {
 ///
 /// Returns: Next sibling or null
 pub fn nextSibling(node: *const Node) ?*Node {
-    const parent = node.parent orelse return null;
+    const parent = node.parent_node orelse return null;
 
-    // Find node's index in parent's children
-    for (parent.children.items, 0..) |child, i| {
+    // Find node's index in parent's child_nodes
+    for (0..parent.child_nodes.len) |i| {
+        const child = parent.child_nodes.get(i) orelse continue;
         if (child == node) {
-            if (i + 1 >= parent.children.items.len) {
+            if (i + 1 >= parent.child_nodes.len) {
                 return null; // No next sibling
             }
-            return parent.children.items[i + 1];
+            return parent.child_nodes.get(i + 1);
         }
     }
 
@@ -209,10 +197,11 @@ pub fn nextSibling(node: *const Node) ?*Node {
 ///
 /// Returns: Number of preceding siblings
 pub fn index(node: *const Node) usize {
-    const parent = node.parent orelse return 0;
+    const parent = node.parent_node orelse return 0;
 
-    // Find node's index in parent's children
-    for (parent.children.items, 0..) |child, i| {
+    // Find node's index in parent's child_nodes
+    for (0..parent.child_nodes.len) |i| {
+        const child = parent.child_nodes.get(i) orelse continue;
         if (child == node) {
             return i;
         }
@@ -296,7 +285,8 @@ fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equ
                 var index_a: ?usize = null;
                 var index_b: ?usize = null;
 
-                for (common.child_nodes.items, 0..) |child, idx| {
+                for (0..common.child_nodes.len) |idx| {
+                    const child = common.child_nodes.get(idx) orelse continue;
                     if (child == child_of_common_a) index_a = idx;
                     if (child == child_of_common_b) index_b = idx;
                 }
@@ -322,236 +312,4 @@ fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equ
 // ============================================================================
 // Tests
 // ============================================================================
-
-test "tree - root with single node" {
-    const allocator = std.testing.allocator;
-
-    var node = Node.init(allocator);
-    defer node.deinit();
-
-    // A node with no parent is its own root
-    try std.testing.expect(root(&node) == &node);
-}
-
-test "tree - root with parent chain" {
-    const allocator = std.testing.allocator;
-
-    var grandparent = Node.init(allocator);
-    defer grandparent.deinit();
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-    parent.parent = &grandparent;
-
-    var child = Node.init(allocator);
-    defer child.deinit();
-    child.parent = &parent;
-
-    // All nodes should have same root
-    try std.testing.expect(root(&child) == &grandparent);
-    try std.testing.expect(root(&parent) == &grandparent);
-    try std.testing.expect(root(&grandparent) == &grandparent);
-}
-
-test "tree - descendant relationships" {
-    const allocator = std.testing.allocator;
-
-    var grandparent = Node.init(allocator);
-    defer grandparent.deinit();
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-    parent.parent = &grandparent;
-
-    var child = Node.init(allocator);
-    defer child.deinit();
-    child.parent = &parent;
-
-    // Child is descendant of parent and grandparent
-    try std.testing.expect(isDescendant(&child, &parent));
-    try std.testing.expect(isDescendant(&child, &grandparent));
-
-    // Parent is descendant of grandparent
-    try std.testing.expect(isDescendant(&parent, &grandparent));
-
-    // Reverse is not true
-    try std.testing.expect(!isDescendant(&parent, &child));
-    try std.testing.expect(!isDescendant(&grandparent, &child));
-}
-
-test "tree - inclusive descendant" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    var child = Node.init(allocator);
-    defer child.deinit();
-    child.parent = &parent;
-
-    // Node is inclusive descendant of itself
-    try std.testing.expect(isInclusiveDescendant(&child, &child));
-    try std.testing.expect(isInclusiveDescendant(&parent, &parent));
-
-    // Child is inclusive descendant of parent
-    try std.testing.expect(isInclusiveDescendant(&child, &parent));
-}
-
-test "tree - ancestor relationships" {
-    const allocator = std.testing.allocator;
-
-    var grandparent = Node.init(allocator);
-    defer grandparent.deinit();
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-    parent.parent = &grandparent;
-
-    var child = Node.init(allocator);
-    defer child.deinit();
-    child.parent = &parent;
-
-    // Parent and grandparent are ancestors of child
-    try std.testing.expect(isAncestor(&parent, &child));
-    try std.testing.expect(isAncestor(&grandparent, &child));
-
-    // Grandparent is ancestor of parent
-    try std.testing.expect(isAncestor(&grandparent, &parent));
-}
-
-test "tree - inclusive ancestor" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    var child = Node.init(allocator);
-    defer child.deinit();
-    child.parent = &parent;
-
-    // Node is inclusive ancestor of itself
-    try std.testing.expect(isInclusiveAncestor(&child, &child));
-    try std.testing.expect(isInclusiveAncestor(&parent, &parent));
-
-    // Parent is inclusive ancestor of child
-    try std.testing.expect(isInclusiveAncestor(&parent, &child));
-}
-
-test "tree - sibling relationships" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    var child1 = Node.init(allocator);
-    defer child1.deinit();
-    child1.parent = &parent;
-
-    var child2 = Node.init(allocator);
-    defer child2.deinit();
-    child2.parent = &parent;
-
-    var orphan = Node.init(allocator);
-    defer orphan.deinit();
-
-    // Children with same parent are siblings
-    try std.testing.expect(isSibling(&child1, &child2));
-    try std.testing.expect(isSibling(&child2, &child1));
-
-    // Node without parent is not sibling of anything
-    try std.testing.expect(!isSibling(&orphan, &child1));
-    try std.testing.expect(!isSibling(&child1, &orphan));
-}
-
-test "tree - firstChild and lastChild" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    // No children
-    try std.testing.expect(firstChild(&parent) == null);
-    try std.testing.expect(lastChild(&parent) == null);
-
-    var child1 = Node.init(allocator);
-    defer child1.deinit();
-    try parent.children.append(allocator, &child1);
-
-    var child2 = Node.init(allocator);
-    defer child2.deinit();
-    try parent.children.append(allocator, &child2);
-
-    var child3 = Node.init(allocator);
-    defer child3.deinit();
-    try parent.children.append(allocator, &child3);
-
-    // With children
-    try std.testing.expect(firstChild(&parent) == &child1);
-    try std.testing.expect(lastChild(&parent) == &child3);
-}
-
-test "tree - previousSibling and nextSibling" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    var child1 = Node.init(allocator);
-    defer child1.deinit();
-    child1.parent = &parent;
-    try parent.children.append(allocator, &child1);
-
-    var child2 = Node.init(allocator);
-    defer child2.deinit();
-    child2.parent = &parent;
-    try parent.children.append(allocator, &child2);
-
-    var child3 = Node.init(allocator);
-    defer child3.deinit();
-    child3.parent = &parent;
-    try parent.children.append(allocator, &child3);
-
-    // First child has no previous sibling
-    try std.testing.expect(previousSibling(&child1) == null);
-    try std.testing.expect(nextSibling(&child1) == &child2);
-
-    // Middle child has both
-    try std.testing.expect(previousSibling(&child2) == &child1);
-    try std.testing.expect(nextSibling(&child2) == &child3);
-
-    // Last child has no next sibling
-    try std.testing.expect(previousSibling(&child3) == &child2);
-    try std.testing.expect(nextSibling(&child3) == null);
-}
-
-test "tree - index" {
-    const allocator = std.testing.allocator;
-
-    var parent = Node.init(allocator);
-    defer parent.deinit();
-
-    var child1 = Node.init(allocator);
-    defer child1.deinit();
-    child1.parent = &parent;
-    try parent.children.append(allocator, &child1);
-
-    var child2 = Node.init(allocator);
-    defer child2.deinit();
-    child2.parent = &parent;
-    try parent.children.append(allocator, &child2);
-
-    var child3 = Node.init(allocator);
-    defer child3.deinit();
-    child3.parent = &parent;
-    try parent.children.append(allocator, &child3);
-
-    // Indices should match position in children array
-    try std.testing.expectEqual(@as(usize, 0), index(&child1));
-    try std.testing.expectEqual(@as(usize, 1), index(&child2));
-    try std.testing.expectEqual(@as(usize, 2), index(&child3));
-
-    // Node without parent has index 0
-    var orphan = Node.init(allocator);
-    defer orphan.deinit();
-    try std.testing.expectEqual(@as(usize, 0), index(&orphan));
-}
+// Note: Tests moved to tests/dom/tree_test.zig to use actual Node implementation

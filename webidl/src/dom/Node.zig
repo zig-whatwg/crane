@@ -617,10 +617,10 @@ pub const Node = webidl.interface(struct {
         _ = value;
     }
 
-    pub fn get_textContent(self: *const Node) ?[]const u8 {
+    pub fn get_textContent(self: *const Node) !?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
-        return Node.getTextContent(self);
+        return Node.getTextContent(self, self.allocator);
     }
 
     pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
@@ -632,20 +632,22 @@ pub const Node = webidl.interface(struct {
 
     /// Get text content - DOM Spec algorithm
     /// Returns text content based on node type
-    pub fn getTextContent(node: *const Node) ?[]const u8 {
+    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
+    /// For other types, returns a reference to existing data (no allocation)
+    pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
-                // Return descendant text content
-                return Node.getDescendantTextContent(node);
+                // Return descendant text content (allocated)
+                return Node.getDescendantTextContent(node, allocator);
             },
             Node.ATTRIBUTE_NODE => {
-                // Return node's value
+                // Return node's value (no allocation - returns reference)
                 const Attr = @import("attr").Attr;
                 const attr: *const Attr = @ptrCast(@alignCast(node));
                 return attr.value;
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE, Node.PROCESSING_INSTRUCTION_NODE => {
-                // Return node's data
+                // Return node's data (no allocation - returns reference)
                 const CharacterData = @import("character_data").CharacterData;
                 const cd: *const CharacterData = @ptrCast(@alignCast(node));
                 return cd.data;
@@ -658,16 +660,34 @@ pub const Node = webidl.interface(struct {
     }
 
     /// Get descendant text content - concatenate all Text node descendants
-    pub fn getDescendantTextContent(node: *const Node) ?[]const u8 {
-        // TODO: This needs allocation to concatenate strings
-        // For now, return null (incomplete implementation)
-        // A complete implementation would:
-        // 1. Walk all descendants in tree order
-        // 2. Collect data from Text nodes
-        // 3. Concatenate into allocated string
-        // 4. Return the result
-        _ = node;
-        return null;
+    /// Spec: https://dom.spec.whatwg.org/#concept-descendant-text-content
+    /// Returns the concatenation of data from all Text node descendants in tree order.
+    /// Caller owns the returned memory and must free it.
+    pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
+        var result = std.ArrayList(u8).init(allocator);
+        errdefer result.deinit();
+
+        try collectDescendantText(node, &result);
+
+        return result.toOwnedSlice();
+    }
+
+    /// Helper function to recursively collect text from descendants
+    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+        const CharacterData = @import("character_data").CharacterData;
+
+        // If this is a Text node, collect its data
+        if (node.node_type == Node.TEXT_NODE) {
+            const cd: *const CharacterData = @ptrCast(@alignCast(node));
+            try result.appendSlice(cd.data);
+        }
+
+        // Recursively process all children
+        for (0..node.child_nodes.len) |i| {
+            if (node.child_nodes.get(i)) |child| {
+                try collectDescendantText(child, result);
+            }
+        }
     }
 
     /// Set text content - DOM Spec algorithm

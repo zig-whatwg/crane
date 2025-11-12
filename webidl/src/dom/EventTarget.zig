@@ -101,18 +101,48 @@ pub const EventTarget = webidl.interface(struct {
     /// 1. If options is a boolean, then return options.
     /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
-        // TODO: Handle boolean or dictionary
-        // For now, return false
-        _ = options;
+        const OptionsType = @TypeOf(options);
+
+        // Step 1: If options is a boolean, return it
+        if (OptionsType == bool) {
+            return options;
+        }
+
+        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
+        if (@hasField(OptionsType, "capture")) {
+            return options.capture;
+        }
+
+        // Default: return false
         return false;
     }
 
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-        // TODO: Handle boolean or AddEventListenerOptions dictionary
-        // For now, return defaults
-        _ = options;
+        const OptionsType = @TypeOf(options);
+
+        // If options is a boolean, only capture is set to that value
+        if (OptionsType == bool) {
+            return .{
+                .capture = options,
+                .passive = null,
+                .once = false,
+                .signal = null,
+            };
+        }
+
+        // If options is AddEventListenerOptions dictionary, extract all fields
+        if (@hasField(OptionsType, "capture")) {
+            return .{
+                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
+                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
+                .once = if (@hasField(OptionsType, "once")) options.once else false,
+                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
+            };
+        }
+
+        // Default: return all defaults
         return .{
             .capture = false,
             .passive = null,
@@ -148,9 +178,7 @@ pub const EventTarget = webidl.interface(struct {
 
         // Step 2: If listener's signal is not null and is aborted, then return
         if (listener.signal) |signal| {
-            _ = signal;
-            // TODO: Check if signal is aborted
-            // if (signal.aborted) return;
+            if (signal.aborted) return;
         }
 
         // Step 3: If listener's callback is null, then return
@@ -167,10 +195,9 @@ pub const EventTarget = webidl.interface(struct {
 
         const already_exists = for (list.items) |existing| {
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume same callback if type and capture match
                 break true;
             }
         } else false;
@@ -183,6 +210,34 @@ pub const EventTarget = webidl.interface(struct {
         if (listener.signal) |_| {
             // TODO: Add abort steps to signal to remove listener
         }
+    }
+
+    /// Compare two callbacks for equality
+    /// In JavaScript, callbacks are compared by reference.
+    /// For JSValue, we compare the union tags and values.
+    fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+        // If both null, equal
+        if (a == null and b == null) return true;
+        // If only one is null, not equal
+        if (a == null or b == null) return false;
+
+        const a_val = a.?;
+        const b_val = b.?;
+
+        // Must have same tag
+        if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
+            return false;
+        }
+
+        // Compare based on type
+        return switch (a_val) {
+            .undefined, .null => true, // Both same type means equal
+            .boolean => |a_bool| a_bool == b_val.boolean,
+            .number => |a_num| a_num == b_val.number,
+            .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
+            .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
+            else => false, // Unknown types not equal
+        };
     }
 
     /// addEventListener(type, callback, options)
@@ -230,10 +285,9 @@ pub const EventTarget = webidl.interface(struct {
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume match if type and capture match
                 existing.removed = true;
                 _ = list.orderedRemove(i);
                 return;
