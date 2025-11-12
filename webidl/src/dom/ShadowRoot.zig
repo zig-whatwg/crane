@@ -5,6 +5,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
+const Element = @import("element").Element;
+
+const Allocator = std.mem.Allocator;
 
 /// DOM §4.8.1 - ShadowRootMode enum
 ///
@@ -74,6 +77,9 @@ pub const ShadowRoot = webidl.interface(struct {
     /// Keep custom element registry null (for declarative shadow roots)
     /// Note: custom_element_registry comes from DocumentOrShadowRoot mixin
     keep_custom_element_registry_null: bool,
+
+    /// Event handler for slotchange event
+    onslotchange: ?*anyopaque = null,
 
     /// DOM §4.8.1 - ShadowRoot constructor (internal)
     ///
@@ -162,15 +168,11 @@ pub const ShadowRoot = webidl.interface(struct {
     /// Event handler for the slotchange event.
     /// Fired when slot assignments change.
     pub fn get_onslotchange(self: *const ShadowRoot) ?*anyopaque {
-        // TODO: Implement event handler IDL attribute
-        _ = self;
-        return null;
+        return self.onslotchange;
     }
 
     pub fn set_onslotchange(self: *ShadowRoot, handler: ?*anyopaque) void {
-        // TODO: Implement event handler IDL attribute
-        _ = self;
-        _ = handler;
+        self.onslotchange = handler;
     }
 
     // ========================================================================
