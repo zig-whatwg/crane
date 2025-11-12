@@ -355,8 +355,16 @@ pub const Node = webidl.interface(struct {
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
         // Step 1: If this is a shadow root, throw NotSupportedError
         if (self.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-            // TODO: Check if this is specifically a ShadowRoot and throw error
-            // For now, allow cloning of DocumentFragment
+            // Check if this is specifically a ShadowRoot
+            // ShadowRoot inherits from DocumentFragment, so we need to check the type tag
+            const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
+
+            // Try to access as DocumentFragmentBase to check type tag
+            // This is safe because DocumentFragment/ShadowRoot have base as first field
+            const frag_base: *const DocumentFragmentBase = @ptrCast(@alignCast(self));
+            if (frag_base.type_tag == .ShadowRoot) {
+                return error.NotSupportedError;
+            }
         }
 
         // Step 2: Return the result of cloning this node with subtree set to deep
