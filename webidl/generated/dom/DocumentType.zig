@@ -62,7 +62,7 @@ pub const DocumentType = struct {
             .system_id = try allocator.dupe(u8, system_id),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
-        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
+        result.base = std.mem.zeroes(@TypeOf(result.base));
         result.base.type_tag = .DocumentType;
         return result;
     }

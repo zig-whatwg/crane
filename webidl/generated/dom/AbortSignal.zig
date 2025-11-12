@@ -47,7 +47,7 @@ pub const AbortSignal = struct {
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
-        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
+        result.base = std.mem.zeroes(@TypeOf(result.base));
         result.base.type_tag = .AbortSignal;
         return result;
     }

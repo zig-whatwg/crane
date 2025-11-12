@@ -68,7 +68,7 @@ pub const Attr = struct {
             .owner_element = null,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
-        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
+        result.base = std.mem.zeroes(@TypeOf(result.base));
         result.base.type_tag = .Attr;
         return result;
     }

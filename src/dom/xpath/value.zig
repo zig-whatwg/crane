@@ -347,10 +347,10 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
     switch (node.node_type) {
         NodeBase.ELEMENT_NODE, NodeBase.DOCUMENT_NODE, NodeBase.DOCUMENT_FRAGMENT_NODE => {
             // Concatenate all descendant text nodes
-            var result = std.ArrayList(u8).init(allocator);
-            defer result.deinit();
+            var result: std.ArrayList(u8) = .empty;
+            defer result.deinit(allocator);
             try collectTextContent(node, &result);
-            return try result.toOwnedSlice();
+            return try result.toOwnedSlice(allocator);
         },
         NodeBase.TEXT_NODE, NodeBase.CDATA_SECTION_NODE, NodeBase.COMMENT_NODE => {
             // For character data nodes, access the data field using NodeBase.asCharacterData
