@@ -121,15 +121,28 @@ pub const Node = webidl.interface(struct {
 
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    ///
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Node, options: ?GetRootNodeOptions) *Node {
-        // TODO: Support shadow-including root when options.composed is true
-        _ = options;
-        // For now, return regular root (from tree.zig)
-        var current = self;
-        while (current.parent_node) |parent| {
-            current = parent;
+        const tree = @import("dom").tree;
+
+        // Check if we need shadow-including root
+        const composed = if (options) |opts| opts.composed else false;
+
+        if (composed) {
+            // Return shadow-including root
+            // TODO: Implement shadow-including root traversal when Shadow DOM is fully integrated
+            // For now, shadow-including root falls back to regular root
+            // Shadow-including root algorithm:
+            // - Get node's root
+            // - If root is shadow root, recursively get root's host's shadow-including root
+            // - Otherwise return root
+            return tree.root(self);
+        } else {
+            // Return regular root
+            return tree.root(self);
         }
-        return current;
     }
 
     /// contains(other)
