@@ -879,28 +879,146 @@ pub const Node = webidl.interface(struct {
     /// lookupPrefix(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const Node, namespace_param: ?[]const u8) ?[]const u8 {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = namespace_param;
-        return null;
+        // Spec step 1: If namespace is null or empty, return null
+        const namespace = namespace_param orelse return null;
+        if (namespace.len == 0) return null;
+
+        // Spec step 2: Switch on node type
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                // Return result of locating a namespace prefix
+                return self.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_NODE => {
+                // If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+                return doc_elem.base.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            else => {
+                // For other node types, use parent element if exists
+                const parent = self.parent_element orelse return null;
+                return parent.base.locateNamespacePrefix(namespace);
+            },
+        }
     }
 
     /// lookupNamespaceURI(prefix)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
-    pub fn call_lookupNamespaceURI(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = prefix;
-        return null;
+    pub fn call_lookupNamespaceURI(self: *const Node, prefix_param: ?[]const u8) ?[]const u8 {
+        // Spec step 1: If prefix is empty string, set to null
+        const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
+
+        // Spec step 2: Return result of locating a namespace
+        return self.locateNamespace(prefix);
     }
 
     /// isDefaultNamespace(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Node, namespace_param: ?[]const u8) bool {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = namespace_param;
-        return false;
+        // Spec step 1: If namespace is empty string, set to null
+        const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
+
+        // Spec step 2: Let defaultNamespace be result of locating namespace using null prefix
+        const default_namespace = self.locateNamespace(null);
+
+        // Spec step 3: Return true if defaultNamespace equals namespace
+        if (default_namespace == null and namespace == null) return true;
+        if (default_namespace == null or namespace == null) return false;
+        return std.mem.eql(u8, default_namespace.?, namespace.?);
+    }
+
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
+    fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
+        if (self.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        // TODO: Check xmlns attributes when attribute namespace handling is complete
+
+        // Step 3: If parent element exists, recurse
+        if (self.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    }
+
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
+    fn locateNamespace(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // TODO: Full attribute namespace checking when attribute support is complete
+
+                // Step 5: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                // TODO: Get element from Attr when accessible
+
+                // Step 2: Return result of locating namespace on element
+                return null; // Requires Attr.element access
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
     }
 
     // ========================================================================
