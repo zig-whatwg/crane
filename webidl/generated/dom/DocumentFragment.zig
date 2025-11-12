@@ -113,15 +113,11 @@ pub const DocumentFragment = struct {
 
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
         // NOTE: Parent Node fields will be flattened by codegen
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .DocumentFragment;
-        return result;
     }
     pub fn deinit(self: *DocumentFragment) void {
         _ = self;

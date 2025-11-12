@@ -3638,8 +3638,8 @@ fn generateCastingMethods(
 }
 
 /// Inject base field initialization into init() method return statement.
-/// Modifies init() to initialize base with undefined and set type_tag in function body.
-fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, class_name: []const u8) ![]const u8 {
+/// Adds `.base = undefined` to the struct literal.
+fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, _: []const u8) ![]const u8 {
     // Find "return .{" in the method source
     const return_start = std.mem.indexOf(u8, method_source, "return .{") orelse {
         // No return .{ found - return unchanged
@@ -3648,41 +3648,13 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
 
     const after_return_brace = return_start + "return .{".len;
 
-    // Build initialization code
-    const before_return = try std.fmt.allocPrint(allocator, "\n        var result = ", .{});
-    defer allocator.free(before_return);
-
-    const after_init = try std.fmt.allocPrint(allocator, ";\n        result.base = std.mem.zeroes(@TypeOf(result.base));\n        result.base.type_tag = .{s};\n        return result;\n    }}", .{class_name});
-    defer allocator.free(after_init);
-
-    // Find the closing of the return statement (the last } before end of function)
-    const return_end = std.mem.lastIndexOf(u8, method_source, "};") orelse {
-        // Fallback: just add .base = undefined in the struct literal
-        var result: std.ArrayList(u8) = .empty;
-        defer result.deinit(allocator);
-
-        try result.appendSlice(allocator, method_source[0..after_return_brace]);
-        try result.appendSlice(allocator, "\n            .base = undefined,");
-        try result.appendSlice(allocator, method_source[after_return_brace..]);
-
-        return result.toOwnedSlice(allocator);
-    };
-
-    // Build modified source: before return + "var result = .{" + fields + "};" + set type_tag + return result
+    // Just add .base = undefined in the struct literal
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
-    // Keep everything before "return"
-    try result.appendSlice(allocator, method_source[0..return_start]);
-    // Add "var result = .{"
-    try result.appendSlice(allocator, before_return);
-    try result.appendSlice(allocator, ".{");
+    try result.appendSlice(allocator, method_source[0..after_return_brace]);
     try result.appendSlice(allocator, "\n            .base = undefined,");
-    // Add the original struct fields (everything between "return .{" and "};"
-    try result.appendSlice(allocator, method_source[after_return_brace..return_end]);
-    // Close struct literal and set type tag
-    try result.appendSlice(allocator, "}");
-    try result.appendSlice(allocator, after_init);
+    try result.appendSlice(allocator, method_source[after_return_brace..]);
 
     return result.toOwnedSlice(allocator);
 }

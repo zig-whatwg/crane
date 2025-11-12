@@ -131,15 +131,11 @@ pub const Text = struct {
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, Slottable }; // From parent CharacterData + Slottable
 
     pub fn init(allocator: Allocator) !Text {
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .Text;
-        return result;
     }
     pub fn deinit(self: *Text) void {
         _ = self;

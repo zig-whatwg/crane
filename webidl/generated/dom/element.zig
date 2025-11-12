@@ -73,8 +73,7 @@ pub const Element = struct {
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             .tag_name = tag_name,
@@ -83,9 +82,6 @@ pub const Element = struct {
             .shadow_root = null,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .Element;
-        return result;
     }
     pub fn deinit(self: *Element) void {
         // NOTE: Parent Node cleanup will be handled by codegen

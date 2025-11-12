@@ -27,16 +27,12 @@ pub const CustomEvent = struct {
         _ = event_type;
         const custom_init = event_init orelse CustomEventInit{};
 
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             .detail = custom_init.detail,
             // TODO: Initialize Event parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .CustomEvent;
-        return result;
     }
     pub fn deinit(self: *CustomEvent) void {
         _ = self;

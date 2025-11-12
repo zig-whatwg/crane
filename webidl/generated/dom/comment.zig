@@ -40,15 +40,11 @@ pub const Comment = struct {
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
 
     pub fn init(allocator: std.mem.Allocator) !Comment {
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .Comment;
-        return result;
     }
     pub fn deinit(self: *Comment) void {
         _ = self;

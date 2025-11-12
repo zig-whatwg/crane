@@ -53,8 +53,7 @@ pub const DocumentType = struct {
         system_id: []const u8,
     ) !DocumentType {
         // NOTE: Parent Node fields will be flattened by codegen
-        
-        var result = .{
+        return .{
             .base = undefined,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
@@ -62,9 +61,6 @@ pub const DocumentType = struct {
             .system_id = try allocator.dupe(u8, system_id),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
-        result.base = std.mem.zeroes(@TypeOf(result.base));
-        result.base.type_tag = .DocumentType;
-        return result;
     }
     pub fn deinit(self: *DocumentType) void {
         self.allocator.free(self.name);
