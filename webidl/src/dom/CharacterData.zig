@@ -7,6 +7,9 @@ const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const dom_types = @import("dom_types");
 
+const Allocator = std.mem.Allocator;
+const Node = dom_types.Node;
+
 /// DOM Spec: interface CharacterData : Node
 pub const CharacterData = webidl.interface(struct {
     pub const extends = Node;
@@ -149,7 +152,16 @@ pub const CharacterData = webidl.interface(struct {
         self.data = new_data;
 
         // TODO: Steps 8-11 - Update ranges (requires Range implementation)
-        // TODO: Step 12 - Run children changed steps for parent
+
+        // Step 12 - Run children changed steps for parent
+        // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
+        // Note: Children changed steps are defined by specifications (e.g., HTML) as extension points
+        // This is where those hooks would be called (e.g., slot assignment, form-associated elements)
+        // For now, this is a no-op as we don't have HTML-specific hooks yet
+        if (self.base.parent_node) |_| {
+            // Extension point for specifications to define children changed behavior
+            // Example: HTML's slot assignment algorithm would run here
+        }
     }
 }, .{
     .exposed = &.{.Window},
