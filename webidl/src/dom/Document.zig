@@ -100,8 +100,11 @@ pub const Document = webidl.interface(struct {
     pub fn call_createTextNode(self: *Document, data: []const u8) !*Text {
         const text = try self.allocator.create(Text);
         text.* = try Text.init(self.allocator);
-        // TODO: Set text.data = data when CharacterData has data field accessible
-        _ = data;
+
+        // Set data field (Text extends CharacterData which has data field)
+        const cd: *@import("character_data").CharacterData = @ptrCast(text);
+        cd.data = try self.allocator.dupe(u8, data);
+
         return text;
     }
 
@@ -111,8 +114,11 @@ pub const Document = webidl.interface(struct {
     pub fn call_createComment(self: *Document, data: []const u8) !*Comment {
         const comment = try self.allocator.create(Comment);
         comment.* = try Comment.init(self.allocator);
-        // TODO: Set comment.data = data when CharacterData has data field accessible
-        _ = data;
+
+        // Set data field (Comment extends CharacterData which has data field)
+        const cd: *@import("character_data").CharacterData = @ptrCast(comment);
+        cd.data = try self.allocator.dupe(u8, data);
+
         return comment;
     }
 
