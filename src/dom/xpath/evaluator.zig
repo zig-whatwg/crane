@@ -8,6 +8,7 @@ const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
 const Node = @import("node").Node;
+const NodeBase = @import("../node_base.zig").NodeBase;
 const Expr = ast.Expr;
 const PrimaryExpr = ast.PrimaryExpr;
 const LocationPath = ast.LocationPath;
@@ -370,15 +371,17 @@ fn evalStep(allocator: std.mem.Allocator, step: *const Step, input: NodeSet, ctx
     return result;
 }
 
-fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
+fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet {
     var result = NodeSet.init(allocator);
 
     switch (axis) {
         // Forward axes
         .child => {
             // Direct children
-            for (node.child_nodes.items) |child| {
-                try result.add(child);
+            for (0..node.child_nodes.size()) |i| {
+                if (node.child_nodes.get(i)) |child| {
+                    try result.add(child);
+                }
             }
         },
         .descendant => {
@@ -394,11 +397,13 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
             // All siblings after this node
             if (node.parent_node) |parent| {
                 var found_self = false;
-                for (parent.child_nodes.items) |sibling| {
-                    if (found_self) {
-                        try result.add(sibling);
-                    } else if (sibling == node) {
-                        found_self = true;
+                for (0..parent.child_nodes.size()) |i| {
+                    if (parent.child_nodes.get(i)) |sibling| {
+                        if (found_self) {
+                            try result.add(sibling);
+                        } else if (sibling == node) {
+                            found_self = true;
+                        }
                     }
                 }
             }
@@ -408,24 +413,28 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
             // This is complex - for now, simplified implementation
             if (node.parent_node) |parent| {
                 var found_self = false;
-                for (parent.child_nodes.items) |sibling| {
-                    if (found_self) {
-                        try result.add(sibling);
-                        try addDescendants(allocator, sibling, &result);
-                    } else if (sibling == node) {
-                        found_self = true;
+                for (0..parent.child_nodes.size()) |i| {
+                    if (parent.child_nodes.get(i)) |sibling| {
+                        if (found_self) {
+                            try result.add(sibling);
+                            try addDescendants(allocator, sibling, &result);
+                        } else if (sibling == node) {
+                            found_self = true;
+                        }
                     }
                 }
                 // Recursively apply to ancestors
                 var current = parent;
                 while (current.parent_node) |ancestor| {
                     var found_current = false;
-                    for (ancestor.child_nodes.items) |uncle| {
-                        if (found_current) {
-                            try result.add(uncle);
-                            try addDescendants(allocator, uncle, &result);
-                        } else if (uncle == current) {
-                            found_current = true;
+                    for (0..ancestor.child_nodes.size()) |j| {
+                        if (ancestor.child_nodes.get(j)) |uncle| {
+                            if (found_current) {
+                                try result.add(uncle);
+                                try addDescendants(allocator, uncle, &result);
+                            } else if (uncle == current) {
+                                found_current = true;
+                            }
                         }
                     }
                     current = ancestor;
@@ -434,17 +443,18 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
         },
         .attribute => {
             // Attributes of the node
-            // Only element nodes have attributes
-            if (node.node_type == Node.ELEMENT_NODE) {
-                // Access attributes from Element
-                // Note: We need to access the attributes list which is in Element interface
-                // For now, we'll check if child_nodes is actually an Element with attributes
-                // This is a simplification - proper implementation would use WebIDL codegen
-                // to access flattened Element fields
-
-                // TODO: Once WebIDL codegen is complete, we can properly access Element.attributes
-                // For now, attributes are not accessible from the Node pointer alone
-                // We would need: const elem = @fieldParentPtr(Element, "node", node);
+            // Only element nodes have attributes (XPath 1.0 §2.3)
+            if (NodeBase.asElement(node)) |element| {
+                // Access attributes from Element using NodeBase downcasting
+                for (0..element.attributes.size()) |i| {
+                    if (element.attributes.get(i)) |attr| {
+                        // TODO: Create attribute nodes and add to result
+                        // For now, we'll create pseudo attribute nodes
+                        // This is simplified until we have proper Attr with NodeBase
+                        _ = attr;
+                        // try result.add(&attr_as_node);
+                    }
+                }
             }
         },
         .namespace => {
@@ -483,9 +493,11 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
         .preceding_sibling => {
             // All siblings before this node (in reverse document order)
             if (node.parent_node) |parent| {
-                for (parent.child_nodes.items) |sibling| {
-                    if (sibling == node) break;
-                    try result.add(sibling);
+                for (0..parent.child_nodes.size()) |i| {
+                    if (parent.child_nodes.get(i)) |sibling| {
+                        if (sibling == node) break;
+                        try result.add(sibling);
+                    }
                 }
             }
         },
@@ -493,18 +505,22 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
             // All nodes before this node in document order (not ancestors)
             // This is complex - for now, simplified implementation
             if (node.parent_node) |parent| {
-                for (parent.child_nodes.items) |sibling| {
-                    if (sibling == node) break;
-                    try result.add(sibling);
-                    try addDescendants(allocator, sibling, &result);
+                for (0..parent.child_nodes.size()) |i| {
+                    if (parent.child_nodes.get(i)) |sibling| {
+                        if (sibling == node) break;
+                        try result.add(sibling);
+                        try addDescendants(allocator, sibling, &result);
+                    }
                 }
                 // Recursively apply to ancestors
                 var current = parent;
                 while (current.parent_node) |ancestor| {
-                    for (ancestor.child_nodes.items) |uncle| {
-                        if (uncle == current) break;
-                        try result.add(uncle);
-                        try addDescendants(allocator, uncle, &result);
+                    for (0..ancestor.child_nodes.size()) |j| {
+                        if (ancestor.child_nodes.get(j)) |uncle| {
+                            if (uncle == current) break;
+                            try result.add(uncle);
+                            try addDescendants(allocator, uncle, &result);
+                        }
                     }
                     current = ancestor;
                 }
@@ -516,10 +532,12 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
 }
 
 /// Helper to add all descendants of a node to a NodeSet
-fn addDescendants(allocator: std.mem.Allocator, node: *Node, result: *NodeSet) !void {
-    for (node.child_nodes.items) |child| {
-        try result.add(child);
-        try addDescendants(allocator, child, result);
+fn addDescendants(allocator: std.mem.Allocator, node: *NodeBase, result: *NodeSet) !void {
+    for (0..node.child_nodes.size()) |i| {
+        if (node.child_nodes.get(i)) |child| {
+            try result.add(child);
+            try addDescendants(allocator, child, result);
+        }
     }
 }
 

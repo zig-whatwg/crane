@@ -18,6 +18,7 @@
 
 const std = @import("std");
 const Node = @import("node").Node;
+const NodeBase = @import("../node_base.zig").NodeBase;
 const infra = @import("infra");
 
 /// XPath 1.0 Value (§3.1)
@@ -106,11 +107,11 @@ pub const Value = union(enum) {
 /// An unordered collection of nodes without duplicates.
 /// Internally stored in document order for consistent iteration.
 pub const NodeSet = struct {
-    nodes: infra.List(*Node),
+    nodes: infra.List(*NodeBase),
 
     pub fn init(allocator: std.mem.Allocator) NodeSet {
         return .{
-            .nodes = infra.List(*Node).init(allocator),
+            .nodes = infra.List(*NodeBase).init(allocator),
         };
     }
 
@@ -119,7 +120,7 @@ pub const NodeSet = struct {
     }
 
     /// Add node to set if not already present
-    pub fn add(self: *NodeSet, node: *Node) !void {
+    pub fn add(self: *NodeSet, node: *NodeBase) !void {
         // Check for duplicates
         if (self.contains(node)) {
             return;
@@ -128,7 +129,7 @@ pub const NodeSet = struct {
     }
 
     /// Check if node is in set
-    pub fn contains(self: *const NodeSet, node: *Node) bool {
+    pub fn contains(self: *const NodeSet, node: *NodeBase) bool {
         for (0..self.nodes.size()) |i| {
             if (self.nodes.get(i).? == node) {
                 return true;
@@ -138,12 +139,12 @@ pub const NodeSet = struct {
     }
 
     /// Get node at index (in document order)
-    pub fn get(self: *const NodeSet, index: usize) ?*Node {
+    pub fn get(self: *const NodeSet, index: usize) ?*NodeBase {
         return self.nodes.get(index);
     }
 
     /// Get first node in document order
-    pub fn getFirst(self: *const NodeSet) ?*Node {
+    pub fn getFirst(self: *const NodeSet) ?*NodeBase {
         return self.nodes.get(0);
     }
 
@@ -164,7 +165,7 @@ pub const NodeSet = struct {
 
         // Use std.sort with a custom comparison function
         const Context = struct {
-            fn lessThan(_: void, a: *Node, b: *Node) bool {
+            fn lessThan(_: void, a: *NodeBase, b: *NodeBase) bool {
                 return isBeforeInDocumentOrder(a, b);
             }
         };
@@ -172,11 +173,11 @@ pub const NodeSet = struct {
         // Need to sort mutable slice, so we have to work around infra.List
         // TODO: Add a sortableSlice() method to infra.List for this use case
         if (self.nodes.heap_storage) |*heap| {
-            std.mem.sort(*Node, heap.items, {}, Context.lessThan);
+            std.mem.sort(*NodeBase, heap.items, {}, Context.lessThan);
         } else if (self.nodes.len > 0) {
             // Inline storage - sort directly in array
             const slice = self.nodes.inline_storage[0..self.nodes.len];
-            std.mem.sort(*Node, @constCast(slice), {}, Context.lessThan);
+            std.mem.sort(*NodeBase, @constCast(slice), {}, Context.lessThan);
         }
     }
 
@@ -202,7 +203,7 @@ pub const NodeSet = struct {
 /// 3. Attributes and namespace nodes of an element come before children
 /// 4. Namespace nodes come before attributes
 /// 5. Children ordered by tree order
-fn isBeforeInDocumentOrder(a: *Node, b: *Node) bool {
+fn isBeforeInDocumentOrder(a: *NodeBase, b: *NodeBase) bool {
     // Same node
     if (a == b) return false;
 
@@ -230,7 +231,7 @@ fn isBeforeInDocumentOrder(a: *Node, b: *Node) bool {
 }
 
 /// Check if a is an ancestor of b
-fn isAncestor(a: *Node, b: *Node) bool {
+fn isAncestor(a: *NodeBase, b: *NodeBase) bool {
     var current = b.parent_node;
     while (current) |node| {
         if (node == a) return true;
@@ -240,7 +241,7 @@ fn isAncestor(a: *Node, b: *Node) bool {
 }
 
 /// Find common ancestor of two nodes
-fn findCommonAncestor(a: *Node, b: *Node) ?*Node {
+fn findCommonAncestor(a: *NodeBase, b: *NodeBase) ?*NodeBase {
     // Simple algorithm: for each ancestor of a, check if it's also ancestor of b
     var a_ancestor = a;
     while (true) {
@@ -266,7 +267,7 @@ fn findCommonAncestor(a: *Node, b: *Node) ?*Node {
 }
 
 /// Find which child of ancestor is on the path to node
-fn findChildOnPath(ancestor: *Node, node: *Node) ?*Node {
+fn findChildOnPath(ancestor: *NodeBase, node: *NodeBase) ?*NodeBase {
     var current = node;
     while (current.parent_node) |parent| {
         if (parent == ancestor) return current;
@@ -342,27 +343,29 @@ fn formatNumber(allocator: std.mem.Allocator, n: f64) ![]const u8 {
 /// - Comment: content
 /// - PI: content after target
 /// - Namespace: namespace URI
-fn getStringValue(allocator: std.mem.Allocator, node: *Node) ![]const u8 {
+fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
     switch (node.node_type) {
-        Node.ELEMENT_NODE, Node.DOCUMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE => {
+        NodeBase.ELEMENT_NODE, NodeBase.DOCUMENT_NODE, NodeBase.DOCUMENT_FRAGMENT_NODE => {
             // Concatenate all descendant text nodes
-            // For now, just return empty string until we have full text node access
-            // TODO: Implement full text content collection when CharacterData is available
-            return try allocator.dupe(u8, "");
+            var result = std.ArrayList(u8).init(allocator);
+            defer result.deinit();
+            try collectTextContent(node, &result);
+            return try result.toOwnedSlice();
         },
-        Node.TEXT_NODE, Node.CDATA_SECTION_NODE, Node.COMMENT_NODE => {
-            // For character data nodes, we need to access the data field
-            // This requires casting to CharacterData, but we don't have that available
-            // in this module. For now, return the node_name as a placeholder.
-            // TODO: Properly access CharacterData.data field when available
+        NodeBase.TEXT_NODE, NodeBase.CDATA_SECTION_NODE, NodeBase.COMMENT_NODE => {
+            // For character data nodes, access the data field using NodeBase.asCharacterData
+            if (NodeBase.asCharacterDataConst(node)) |char_data| {
+                return try allocator.dupe(u8, char_data.data);
+            }
+            // Fallback (should not happen)
             return try allocator.dupe(u8, node.node_name);
         },
-        Node.PROCESSING_INSTRUCTION_NODE => {
+        NodeBase.PROCESSING_INSTRUCTION_NODE => {
             // PI content (excluding target)
             // TODO: Properly extract PI data when available
             return try allocator.dupe(u8, "");
         },
-        Node.ATTRIBUTE_NODE => {
+        NodeBase.ATTRIBUTE_NODE => {
             // Attribute value
             // TODO: Properly access attribute value when available
             return try allocator.dupe(u8, node.node_name);
@@ -370,6 +373,23 @@ fn getStringValue(allocator: std.mem.Allocator, node: *Node) ![]const u8 {
         else => {
             return try allocator.dupe(u8, "");
         },
+    }
+}
+
+/// Helper to collect text content from all descendant text nodes
+fn collectTextContent(node: *const NodeBase, result: *std.ArrayList(u8)) !void {
+    // If this is a text node, add its content
+    if (node.node_type == NodeBase.TEXT_NODE or node.node_type == NodeBase.CDATA_SECTION_NODE) {
+        if (NodeBase.asCharacterDataConst(node)) |char_data| {
+            try result.appendSlice(char_data.data);
+        }
+    }
+
+    // Recursively collect from children
+    for (0..node.child_nodes.size()) |i| {
+        if (node.child_nodes.get(i)) |child| {
+            try collectTextContent(child, result);
+        }
     }
 }
 

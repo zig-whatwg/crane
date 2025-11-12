@@ -20,6 +20,7 @@
 
 const std = @import("std");
 const Node = @import("node").Node;
+const NodeBase = @import("../node_base.zig").NodeBase;
 const Value = @import("value.zig").Value;
 const infra = @import("infra");
 
@@ -28,7 +29,7 @@ const infra = @import("infra");
 /// Provides context for evaluating expressions
 pub const Context = struct {
     /// Current node being processed
-    context_node: *Node,
+    context_node: *NodeBase,
 
     /// Position in context node list (1-based, per XPath spec)
     context_position: usize,
@@ -48,7 +49,7 @@ pub const Context = struct {
     /// Allocator for context resources
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, context_node: *Node) !Context {
+    pub fn init(allocator: std.mem.Allocator, context_node: *NodeBase) !Context {
         var ctx = Context{
             .context_node = context_node,
             .context_position = 1,
@@ -108,7 +109,7 @@ pub const Context = struct {
     }
 
     /// Create a new context for a different node (preserves other settings)
-    pub fn withNode(self: *const Context, node: *Node) Context {
+    pub fn withNode(self: *const Context, node: *NodeBase) Context {
         return Context{
             .context_node = node,
             .context_position = self.context_position,

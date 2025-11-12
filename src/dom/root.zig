@@ -62,6 +62,13 @@ pub const html_mock = @import("html_mock.zig");
 pub const node_base = @import("node_base.zig");
 pub const NodeBase = node_base.NodeBase;
 
+// Temporary bridge types with NodeBase pattern (until codegen is updated)
+pub const element_with_base = @import("element_with_base.zig");
+pub const ElementWithBase = element_with_base.ElementWithBase;
+pub const text_with_base = @import("text_with_base.zig");
+pub const TextWithBase = text_with_base.TextWithBase;
+pub const CommentWithBase = text_with_base.CommentWithBase;
+
 // XPath 1.0 implementation
 pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
