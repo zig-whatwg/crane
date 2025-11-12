@@ -721,13 +721,11 @@ pub const Range = webidl.interface(struct {
         }
 
         // Step 3: Extract range contents into a fragment
-        // Note: This is a simplified version - full extractContents is in whatwg-boy
-        // For now, we'll create an empty fragment as placeholder
-        // const fragment = try self.call_extractContents();
-        // defer {
-        //     fragment.deinit();
-        //     self.allocator.destroy(fragment);
-        // }
+        const fragment = try self.call_extractContents();
+        defer {
+            fragment.deinit();
+            self.allocator.destroy(fragment);
+        }
 
         // Step 4: If newParent has children, replace all with null
         while (newParent.child_nodes.size() > 0) {
@@ -741,8 +739,7 @@ pub const Range = webidl.interface(struct {
         try self.call_insertNode(newParent);
 
         // Step 6: Append fragment to newParent
-        // TODO: When extractContents is implemented, uncomment this
-        // _ = try newParent.call_appendChild(&fragment.base);
+        _ = try newParent.call_appendChild(&fragment.base);
 
         // Step 7: Select newParent within range
         try self.call_selectNode(newParent);
