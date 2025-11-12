@@ -188,23 +188,34 @@ pub const Document = webidl.interface(struct {
     ///
     /// Simplified implementation:
     /// - Sets namespace_uri field on element
-    /// - Uses qualifiedName as-is (TODO: parse prefix:localName)
-    /// - Skips custom element handling (TODO: when custom elements implemented)
+    /// - Parses qualified name for prefix:localName
+    /// - Skips custom element handling
     pub fn call_createElementNS(
         self: *Document,
         namespace: ?[]const u8,
         qualified_name: []const u8,
     ) !*Element {
+        // Parse qualified name for prefix and local name
+        var prefix: ?[]const u8 = null;
+        var local_name: []const u8 = qualified_name;
+
+        if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_pos| {
+            prefix = qualified_name[0..colon_pos];
+            local_name = qualified_name[colon_pos + 1 ..];
+        }
+
         // Create element with qualified name
         const element = try self.allocator.create(Element);
         element.* = try Element.init(self.allocator, qualified_name);
 
-        // Set namespace_uri if provided
+        // Set namespace, prefix, and local name
         if (namespace) |ns| {
-            // Duplicate the namespace string for element ownership
-            const ns_copy = try self.allocator.dupe(u8, ns);
-            element.namespace_uri = ns_copy;
+            element.namespace_uri = try self.allocator.dupe(u8, ns);
         }
+        if (prefix) |p| {
+            element.prefix = try self.allocator.dupe(u8, p);
+        }
+        element.local_name = try self.allocator.dupe(u8, local_name);
 
         return element;
     }
