@@ -69,36 +69,89 @@ pub const Range = webidl.interface(struct {
     // Range mutation methods - setStart/setEnd
     // ========================================================================
 
+    /// Helper: Get the length of a node per DOM spec
+    /// Per DOM §5.2: The length of a node is:
+    /// - 0 for DocumentType or Attr nodes
+    /// - data's length for CharacterData nodes
+    /// - number of children for other nodes
+    fn getNodeLength(node: *Node) u32 {
+        switch (node.node_type) {
+            Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
+            Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
+                // CharacterData nodes - get data length
+                const CharacterData = @import("character_data").CharacterData;
+                const charData = CharacterData.fromNode(node) catch return 0;
+                return charData.get_length();
+            },
+            else => {
+                // Element, Document, DocumentFragment, etc. - return number of children
+                return @intCast(node.child_nodes.size());
+            },
+        }
+    }
+
     /// DOM §5.3 - Range.setStart(node, offset)
     /// Sets the start of the range to the given boundary point
     pub fn call_setStart(self: *Range, node: *Node, offset: u32) !void {
-        // TODO: Implement validation and set the boundary point
-        // Per spec: If node is a doctype, throw InvalidNodeTypeError
-        // Set start to boundary point (node, offset)
+        // Step 1: If node is a doctype, throw InvalidNodeTypeError
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 2: If offset > node's length, throw IndexSizeError
+        const nodeLength = getNodeLength(node);
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Let bp be boundary point (node, offset)
+        // Step 4: Set the start
+        const dom = @import("dom");
+        const nodeRoot = dom.tree.getRoot(node);
+        const rangeRoot = dom.tree.getRoot(self.start_container);
+
+        // Step 4.1: If range's root is not equal to node's root, or if bp is after range's end
+        if (nodeRoot != rangeRoot or self.isAfter(node, offset, self.end_container, self.end_offset)) {
+            // Set range's end to bp
+            self.end_container = node;
+            self.end_offset = offset;
+        }
+
+        // Step 4.2: Set range's start to bp
         self.start_container = node;
         self.start_offset = offset;
-
-        // If start is after end, set end to start
-        if (self.isAfter(self.start_container, self.start_offset, self.end_container, self.end_offset)) {
-            self.end_container = self.start_container;
-            self.end_offset = self.start_offset;
-        }
     }
 
     /// DOM §5.3 - Range.setEnd(node, offset)
     /// Sets the end of the range to the given boundary point
     pub fn call_setEnd(self: *Range, node: *Node, offset: u32) !void {
-        // TODO: Implement validation and set the boundary point
-        // Per spec: If node is a doctype, throw InvalidNodeTypeError
-        // Set end to boundary point (node, offset)
+        // Step 1: If node is a doctype, throw InvalidNodeTypeError
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 2: If offset > node's length, throw IndexSizeError
+        const nodeLength = getNodeLength(node);
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Let bp be boundary point (node, offset)
+        // Step 5: Set the end
+        const dom = @import("dom");
+        const nodeRoot = dom.tree.getRoot(node);
+        const rangeRoot = dom.tree.getRoot(self.start_container);
+
+        // Step 5.1: If range's root is not equal to node's root, or if bp is before range's start
+        if (nodeRoot != rangeRoot or self.isAfter(self.start_container, self.start_offset, node, offset)) {
+            // Set range's start to bp
+            self.start_container = node;
+            self.start_offset = offset;
+        }
+
+        // Step 5.2: Set range's end to bp
         self.end_container = node;
         self.end_offset = offset;
-
-        // If end is before start, set start to end
-        if (self.isAfter(self.end_container, self.end_offset, self.start_container, self.start_offset)) {
-            self.start_container = self.end_container;
-            self.start_offset = self.end_offset;
-        }
     }
 
     /// Helper: Check if boundary point A is after boundary point B
