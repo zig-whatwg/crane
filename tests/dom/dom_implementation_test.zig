@@ -260,3 +260,164 @@ test "DOMImplementation: Document.implementation getter" {
     // Both should reference the same document
     // TODO: Test [SameObject] semantics when we have pointer equality
 }
+
+// ============================================================================
+// Document Creation with Tree Structure Tests
+// ============================================================================
+
+test "DOMImplementation: createHTMLDocument creates proper tree structure" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const html_doc = try impl.call_createHTMLDocument("Test Title");
+    defer {
+        html_doc.deinit();
+        allocator.destroy(html_doc);
+    }
+
+    const html_doc_node: *Node = @ptrCast(html_doc);
+
+    // Document should have 2 children: doctype and html element
+    try testing.expectEqual(@as(usize, 2), html_doc_node.child_nodes.len);
+
+    // First child should be doctype
+    const first_child = html_doc_node.child_nodes.get(0);
+    try testing.expectEqual(Node.DOCUMENT_TYPE_NODE, first_child.node_type);
+
+    // Second child should be html element
+    const html_elem = html_doc_node.child_nodes.get(1);
+    try testing.expectEqual(Node.ELEMENT_NODE, html_elem.node_type);
+
+    // html element should have 2 children: head and body
+    try testing.expectEqual(@as(usize, 2), html_elem.child_nodes.len);
+
+    const head = html_elem.child_nodes.get(0);
+    const body = html_elem.child_nodes.get(1);
+
+    // head should have 1 child: title
+    try testing.expectEqual(@as(usize, 1), head.child_nodes.len);
+    const title_elem = head.child_nodes.get(0);
+
+    // title should have 1 child: text node
+    try testing.expectEqual(@as(usize, 1), title_elem.child_nodes.len);
+    const text_node = title_elem.child_nodes.get(0);
+    try testing.expectEqual(Node.TEXT_NODE, text_node.node_type);
+
+    // body should have no children
+    try testing.expectEqual(@as(usize, 0), body.child_nodes.len);
+}
+
+test "DOMImplementation: createHTMLDocument without title has no title element" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const html_doc = try impl.call_createHTMLDocument(null);
+    defer {
+        html_doc.deinit();
+        allocator.destroy(html_doc);
+    }
+
+    const html_doc_node: *Node = @ptrCast(html_doc);
+
+    // Get html element
+    const html_elem = html_doc_node.child_nodes.get(1);
+
+    // html should have 2 children: head and body
+    try testing.expectEqual(@as(usize, 2), html_elem.child_nodes.len);
+
+    const head = html_elem.child_nodes.get(0);
+
+    // head should have NO children (no title)
+    try testing.expectEqual(@as(usize, 0), head.child_nodes.len);
+}
+
+test "DOMImplementation: createDocument with element creates tree" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const xml_doc = try impl.call_createDocument("http://www.example.com/ns", "root", null);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    const xml_doc_node: *Node = @ptrCast(xml_doc);
+
+    // Document should have 1 child: root element
+    try testing.expectEqual(@as(usize, 1), xml_doc_node.child_nodes.len);
+
+    const root = xml_doc_node.child_nodes.get(0);
+    try testing.expectEqual(Node.ELEMENT_NODE, root.node_type);
+}
+
+test "DOMImplementation: createDocument with doctype and element" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const doctype = try impl.call_createDocumentType("myroot", "", "");
+
+    const xml_doc = try impl.call_createDocument(null, "myroot", doctype);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    const xml_doc_node: *Node = @ptrCast(xml_doc);
+
+    // Document should have 2 children: doctype and root element
+    try testing.expectEqual(@as(usize, 2), xml_doc_node.child_nodes.len);
+
+    // First child is doctype
+    const first = xml_doc_node.child_nodes.get(0);
+    try testing.expectEqual(Node.DOCUMENT_TYPE_NODE, first.node_type);
+
+    // Second child is root element
+    const second = xml_doc_node.child_nodes.get(1);
+    try testing.expectEqual(Node.ELEMENT_NODE, second.node_type);
+}
+
+test "DOMImplementation: createDocument with empty qualified name has no element" {
+    const allocator = testing.allocator;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var impl = try DOMImplementation.init(allocator, &doc);
+    defer impl.deinit();
+
+    const xml_doc = try impl.call_createDocument(null, "", null);
+    defer {
+        xml_doc.deinit();
+        allocator.destroy(xml_doc);
+    }
+
+    const xml_doc_node: *Node = @ptrCast(xml_doc);
+
+    // Document should have 0 children (no element, no doctype)
+    try testing.expectEqual(@as(usize, 0), xml_doc_node.child_nodes.len);
+}
