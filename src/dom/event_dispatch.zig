@@ -257,25 +257,62 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
     // Try to cast to Node (most common case)
     // Node's get the parent: return node's assigned slot if assigned, otherwise parent
     if (target_base.tryCast(NodeBase)) |node_base| {
-        // TODO: Check if node is assigned to a slot (Shadow DOM feature)
-        // For now, just return parent_node
+        // Check if node is assigned to a slot (Shadow DOM feature)
+        // Node has assigned_slot field from Slottable mixin
+        if (@hasField(@TypeOf(node_base.*), "assigned_slot")) {
+            if (@field(node_base, "assigned_slot")) |slot| {
+                return @ptrCast(slot);
+            }
+        }
+
+        // Otherwise return parent_node
         if (node_base.parent_node) |parent| {
             return @ptrCast(parent);
         }
         return null;
     }
 
-    // TODO: Handle ShadowRoot
+    // Try to cast to ShadowRoot
     // ShadowRoot's get the parent: return null if event's composed flag is unset
     // and shadow root is the root of event's path's first struct's invocation target,
     // otherwise return shadow root's host
+    const ShadowRootBase = @import("../webidl/generated/dom/ShadowRoot.zig").ShadowRootBase;
+    if (target_base.tryCast(ShadowRootBase)) |shadow_root| {
+        // Check if event's composed flag is unset
+        if (!event.composed) {
+            // Check if shadow root is the root of event's path's first struct's invocation target
+            if (event.path.items.len > 0) {
+                const first_struct = event.path.items[0];
+                const invocation_target = first_struct.invocation_target;
 
-    // TODO: Handle Document
+                // Get the root of the invocation target
+                // For now, simplified check: if invocation target is the shadow root, return null
+                if (@intFromPtr(invocation_target) == @intFromPtr(target)) {
+                    return null;
+                }
+            }
+        }
+
+        // Otherwise return shadow root's host
+        return @ptrCast(shadow_root.host_element);
+    }
+
+    // Try to cast to Document
     // Document's get the parent: return null if event type is "load" or
     // document has no browsing context, otherwise return document's relevant global object
+    const DocumentBase = @import("../webidl/generated/dom/document.zig").DocumentBase;
+    if (target_base.tryCast(DocumentBase)) |_| {
+        // Check if event type is "load"
+        if (std.mem.eql(u8, event.event_type, "load")) {
+            return null;
+        }
+
+        // TODO: Check if document has browsing context
+        // For now, return null (no browsing context / global object implementation yet)
+        return null;
+    }
 
     // Default: return null (as per spec)
-    _ = event;
     return null;
 }
 
