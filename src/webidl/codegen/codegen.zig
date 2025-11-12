@@ -912,6 +912,12 @@ const GlobalRegistry = struct {
                 }
                 self.allocator.free(class_info.properties);
 
+                // Free constants (both individual strings and array)
+                for (class_info.constants) |constant| {
+                    self.allocator.free(constant);
+                }
+                self.allocator.free(class_info.constants);
+
                 // Free WebIDL options (exposed scopes)
                 if (class_info.webidl_options.exposed) |exposed| {
                     self.allocator.free(exposed);
@@ -3790,6 +3796,7 @@ fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8,
             }
             const module = module_map.get(base_type).?;
             const qualified = try std.fmt.allocPrint(allocator, "@import(\"{s}\").{s}", .{ module, base_type });
+            defer allocator.free(qualified);
             if (is_optional) {
                 return try std.fmt.allocPrint(allocator, "?*{s}", .{qualified});
             } else {
@@ -3810,6 +3817,7 @@ fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8,
                 }
                 const module = module_map.get(inner_type).?;
                 const qualified = try std.fmt.allocPrint(allocator, "@import(\"{s}\").{s}", .{ module, inner_type });
+                defer allocator.free(qualified);
                 const prefix = type_name[0..inner_start];
                 const suffix = type_name[inner_start + inner_len ..];
                 return try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ prefix, qualified, suffix });
