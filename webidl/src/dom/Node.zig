@@ -593,8 +593,8 @@ pub const Node = webidl.interface(struct {
         // Returns parent if it's an Element, null otherwise
         const parent = self.parent_node orelse return null;
         if (parent.node_type == ELEMENT_NODE) {
-            // TODO: Proper type casting when Element type is integrated
-            return @ptrCast(parent);
+            // Cast to Element - safe because we checked node_type
+            return @ptrCast(@alignCast(parent));
         }
         return null;
     }
