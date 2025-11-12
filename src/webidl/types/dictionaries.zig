@@ -451,18 +451,6 @@ fn clampToOctet(value: JSValue) u8 {
     return @intFromFloat(x);
 }
 
-// Legacy compatibility wrapper for existing code
-// TODO: Remove when all uses migrate to extractDictionaryMember
-pub fn convertDictionaryMember(
-    comptime T: type,
-    obj: JSObject,
-    comptime key: []const u8,
-    comptime required: bool,
-    comptime default_value: ?T,
-) !T {
-    return try extractDictionaryMember(T, .{ .object = obj }, key, required, default_value);
-}
-
 // ============================================================================
 // Tests
 // ============================================================================
@@ -689,9 +677,9 @@ test "legacy convertDictionaryMember - compatibility" {
 
     try obj.set("count", .{ .number = 42.0 });
 
-    const count = try convertDictionaryMember(
+    const count = try extractDictionaryMember(
         i32,
-        obj,
+        .{ .object = obj },
         "count",
         false,
         null,
