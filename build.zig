@@ -371,6 +371,17 @@ pub fn build(b: *std.Build) void {
     shadow_dom_algorithms_mod.addImport("element", element_mod);
     shadow_dom_algorithms_mod.addImport("shadow_root", shadow_root_mod);
 
+    // Create HTMLSlotElement module (temporary mock for shadow DOM)
+    // TODO: Replace with full HTML spec implementation
+    const html_slot_element_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/src/dom/HTMLSlotElement.zig"),
+        .target = target,
+    });
+    html_slot_element_mod.addImport("webidl", webidl_mod);
+
+    // Add HTMLSlotElement to shadow_dom_algorithms
+    shadow_dom_algorithms_mod.addImport("html_slot_element", html_slot_element_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     event_target_mod.addImport("abort_signal", abort_signal_mod);
@@ -453,6 +464,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("shadow_root", shadow_root_mod);
     dom_mod.addImport("shadow_root_init", shadow_root_init_mod);
     dom_mod.addImport("shadow_dom_algorithms", shadow_dom_algorithms_mod);
+    dom_mod.addImport("html_slot_element", html_slot_element_mod);
     dom_mod.addImport("document", document_mod);
     dom_mod.addImport("dom_token_list", dom_token_list_mod);
     dom_mod.addImport("attr", attr_mod);

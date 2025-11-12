@@ -134,7 +134,154 @@ pub fn attachShadowRoot(
     element.shadow_root = shadow;
 }
 
+// ============================================================================
+// Slot Finding and Assignment Algorithms
+// ============================================================================
+
+/// DOM §4.8.2 - Find a slot for a slottable
+///
+/// Find the slot that a slottable should be assigned to.
+///
+/// Spec: https://dom.spec.whatwg.org/#find-a-slot
+pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
+    // TODO: Implement when we have:
+    // - Node.parent field accessible
+    // - Element.shadow_root accessible as Node
+    // - HTMLSlotElement implementation
+    // - Tree traversal algorithms
+
+    // Step 1: If slottable's parent is null, then return null
+    // Step 2: Let shadow be slottable's parent's shadow root
+    // Step 3: If shadow is null, then return null
+    // Step 4: If open is true and shadow's mode is not "open", then return null
+    // Step 5: If shadow's slot assignment is "manual", return slot with manually assigned nodes
+    // Step 6: Return first slot in tree order whose name matches slottable's name
+
+    _ = slottable;
+    _ = open;
+    return null;
+}
+
+/// DOM §4.8.2 - Find slottables for a slot
+///
+/// Find all slottables that should be assigned to a slot.
+///
+/// Spec: https://dom.spec.whatwg.org/#find-slottables
+pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !std.ArrayList(*anyopaque) {
+    // TODO: Implement when we have:
+    // - HTMLSlotElement implementation
+    // - ShadowRoot as root check
+    // - Host element access
+    // - Tree order traversal
+
+    // Step 1: Let result be « »
+    const result = std.ArrayList(*anyopaque).init(allocator);
+
+    // Step 2: Let root be slot's root
+    // Step 3: If root is not a shadow root, return result
+    // Step 4: Let host be root's host
+    // Step 5: If root's slot assignment is "manual", check manually assigned nodes
+    // Step 6: Otherwise, iterate host's children and find matching slots
+    // Step 7: Return result
+
+    _ = slot;
+    return result;
+}
+
+/// DOM §4.8.2 - Find flattened slottables for a slot
+///
+/// Find all slottables including nested slot distribution.
+///
+/// Spec: https://dom.spec.whatwg.org/#find-flattened-slottables
+pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !std.ArrayList(*anyopaque) {
+    // TODO: Implement when we have HTMLSlotElement
+
+    // Step 1: Let result be « »
+    const result = std.ArrayList(*anyopaque).init(allocator);
+
+    // Step 2: If slot's root is not a shadow root, return result
+    // Step 3: Let slottables be the result of finding slottables given slot
+    // Step 4: If slottables is empty, append slot's slottable children
+    // Step 5: For each node in slottables:
+    //   - If node is a slot in a shadow root, recursively find flattened slottables
+    //   - Otherwise, append node to result
+    // Step 6: Return result
+
+    _ = slot;
+    return result;
+}
+
+/// DOM §4.8.2 - Assign slottables for a slot
+///
+/// Assign slottables to a slot and update their assigned slot references.
+///
+/// Spec: https://dom.spec.whatwg.org/#assign-slottables
+pub fn assignSlottables(allocator: Allocator, slot: *anyopaque) !void {
+    // TODO: Implement when we have:
+    // - HTMLSlotElement with assigned_nodes list
+    // - Slottable.setAssignedSlot() method
+    // - signalSlotChange() function
+
+    // Step 1: Let slottables be the result of finding slottables for slot
+    const slottables = try findSlottables(allocator, slot);
+    defer slottables.deinit(allocator);
+
+    // Step 2: If slottables and slot's assigned nodes are not identical,
+    //         run signal a slot change for slot
+    // Step 3: Set slot's assigned nodes to slottables
+    // Step 4: For each slottable of slottables, set slottable's assigned slot to slot
+}
+
+/// DOM §4.8.2 - Assign slottables for a tree
+///
+/// Assign slottables for all slots in a tree.
+///
+/// Spec: https://dom.spec.whatwg.org/#assign-slottables-for-a-tree
+pub fn assignSlottablesForTree(allocator: Allocator, root: *anyopaque) !void {
+    // TODO: Implement when we have:
+    // - Tree traversal for inclusive descendants
+    // - HTMLSlotElement type checking
+
+    // Run assign slottables for each slot of root's inclusive descendants, in tree order
+
+    _ = allocator;
+    _ = root;
+}
+
+/// DOM §4.8.2 - Assign a slot
+///
+/// Assign a slot for a given slottable.
+///
+/// Spec: https://dom.spec.whatwg.org/#assign-a-slot
+pub fn assignSlot(allocator: Allocator, slottable: *anyopaque) !void {
+    // Step 1: Let slot be the result of finding a slot with slottable
+    const maybe_slot = findSlot(slottable, false);
+
+    // Step 2: If slot is non-null, then run assign slottables for slot
+    if (maybe_slot) |slot| {
+        try assignSlottables(allocator, slot);
+    }
+}
+
+/// DOM §4.8.2 - Signal a slot change
+///
+/// Signal that a slot's assigned nodes have changed.
+///
+/// Spec: https://dom.spec.whatwg.org/#signal-a-slot-change
+pub fn signalSlotChange(slot: *anyopaque) !void {
+    // TODO: Implement when we have:
+    // - Agent's signal slots set
+    // - mutation observer microtask queue
+
+    // Step 1: Append slot to slot's relevant agent's signal slots
+    // Step 2: Queue a mutation observer microtask
+
+    _ = slot;
+}
+
+// ============================================================================
 // Tests
+// ============================================================================
 
 test "isValidShadowHostName - valid names" {
     try std.testing.expect(isValidShadowHostName("div"));

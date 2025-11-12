@@ -28,6 +28,7 @@ pub const ShadowRoot = @import("shadow_root").ShadowRoot;
 pub const ShadowRootMode = @import("shadow_root").ShadowRootMode;
 pub const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
 pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
+pub const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
 pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
 pub const Attr = @import("attr").Attr;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
