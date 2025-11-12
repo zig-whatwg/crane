@@ -741,10 +741,8 @@ pub const Node = webidl.interface(struct {
                 // Attr node - set an existing attribute value
                 const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(self));
-                // TODO: Use "set an existing attribute value" algorithm (line 802)
-                // For now, directly update value
-                self.allocator.free(attr.value);
-                attr.value = try self.allocator.dupe(u8, str_value);
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, str_value);
             },
             TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
                 // CharacterData nodes - replace data
@@ -840,9 +838,8 @@ pub const Node = webidl.interface(struct {
                 // Set an existing attribute value
                 const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(node));
-                // TODO: Use "set an existing attribute value" algorithm
-                // For now, just update the value
-                attr.value = value;
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, value);
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
                 // Replace data with node, offset 0, count node's length, and data value
