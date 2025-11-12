@@ -26,6 +26,11 @@ pub const ComplexSelector = struct {
     compound: CompoundSelector,
     combinators: []CombinatorPair,
     allocator: Allocator,
+    /// If true, this is a relative selector (starts with combinator)
+    /// Used in :has() for relative matching
+    is_relative: bool = false,
+    /// For relative selectors, the initial combinator
+    initial_combinator: ?Combinator = null,
 
     pub fn deinit(self: *ComplexSelector) void {
         self.compound.deinit();
@@ -270,6 +275,18 @@ pub const Parser = struct {
             combinators.deinit(self.allocator);
         }
 
+        // Check for relative selector (starts with combinator)
+        var is_relative = false;
+        var initial_combinator: ?Combinator = null;
+
+        // Peek ahead for combinator at start (relative selector)
+        const first_combinator = try self.parseCombinator();
+        if (first_combinator) |comb| {
+            is_relative = true;
+            initial_combinator = comb;
+            self.skipWhitespace();
+        }
+
         // Parse first compound selector
         const first_compound = try self.parseCompoundSelector();
 
@@ -294,6 +311,8 @@ pub const Parser = struct {
             .compound = first_compound,
             .combinators = try combinators.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
+            .is_relative = is_relative,
+            .initial_combinator = initial_combinator,
         };
     }
 

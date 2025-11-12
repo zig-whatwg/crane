@@ -361,22 +361,84 @@ pub const Matcher = struct {
         };
     }
 
-    /// Match :has() pseudo-class (element has descendant matching selector)
+    /// Match :has() pseudo-class (element has descendant or relative matching selector)
     fn matchesHas(self: *const Matcher, element: *Element, selector_list: *const SelectorList) MatcherError!bool {
-        // Check if any descendant matches selector list
+        // Check each selector in the list
+        for (selector_list.selectors) |*complex_selector| {
+            // Handle relative selectors
+            if (complex_selector.is_relative) {
+                if (complex_selector.initial_combinator) |combinator| {
+                    const has_match = switch (combinator) {
+                        .Child => try self.hasMatchingChild(element, complex_selector),
+                        .NextSibling => try self.hasMatchingNextSibling(element, complex_selector),
+                        .SubsequentSibling => try self.hasMatchingSubsequentSibling(element, complex_selector),
+                        .Descendant => try self.hasMatchingDescendant(element, complex_selector),
+                    };
+                    if (has_match) return true;
+                    continue;
+                }
+            }
+
+            // Non-relative: check descendants
+            if (try self.hasMatchingDescendant(element, complex_selector)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Check if element has descendant matching complex selector
+    fn hasMatchingDescendant(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
         for (0..element.base.child_nodes.size()) |i| {
             const child_node = element.base.child_nodes.get(i) orelse continue;
             if (child_node.node_type == NodeBase.ELEMENT_NODE) {
                 const child_element: *Element = @ptrCast(child_node);
-                // Check if child matches
-                if (try self.matches(child_element, selector_list)) {
+                if (try self.matchesComplexSelector(child_element, complex_selector)) {
                     return true;
                 }
-                // Recursively check child's descendants
-                if (try self.matchesHas(child_element, selector_list)) {
+                if (try self.hasMatchingDescendant(child_element, complex_selector)) {
                     return true;
                 }
             }
+        }
+        return false;
+    }
+
+    /// Check if element has direct child matching selector
+    fn hasMatchingChild(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
+        for (0..element.base.child_nodes.size()) |i| {
+            const child_node = element.base.child_nodes.get(i) orelse continue;
+            if (child_node.node_type == NodeBase.ELEMENT_NODE) {
+                const child_element: *Element = @ptrCast(child_node);
+                if (try self.matchesComplexSelector(child_element, complex_selector)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// Check if element has next sibling matching selector
+    fn hasMatchingNextSibling(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
+        const next = getNextSibling(element) orelse return false;
+        if (next.node_type == NodeBase.ELEMENT_NODE) {
+            const next_elem: *Element = @ptrCast(next);
+            return try self.matchesComplexSelector(next_elem, complex_selector);
+        }
+        return false;
+    }
+
+    /// Check if element has subsequent sibling matching selector
+    fn hasMatchingSubsequentSibling(self: *const Matcher, element: *Element, complex_selector: *const ComplexSelector) MatcherError!bool {
+        var current = getNextSibling(element);
+        while (current) |sibling_node| {
+            if (sibling_node.node_type == NodeBase.ELEMENT_NODE) {
+                const sibling_elem: *Element = @ptrCast(sibling_node);
+                if (try self.matchesComplexSelector(sibling_elem, complex_selector)) {
+                    return true;
+                }
+            }
+            current = getNextSibling(@as(*const Element, @ptrCast(sibling_node)));
         }
         return false;
     }
@@ -1981,4 +2043,128 @@ test "Matcher: :dir(ltr) default when no dir attribute" {
     const result = try matcher.matches(elem, &selector_list);
 
     try testing.expect(result); // Default is ltr
+}
+
+test "Matcher: :has(> p) relative child selector" {
+    const allocator = testing.allocator;
+    
+    // Create: div > p
+    var div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+    
+    var p_elem = try allocator.create(Element);
+    defer {
+        p_elem.deinit();
+        allocator.destroy(p_elem);
+    }
+    p_elem.* = Element.init(allocator, "p");
+    
+    // Link them
+    p_elem.base.parent_node = &div.base;
+    try div.base.child_nodes.append(&p_elem.base);
+    
+    // Test div:has(> p)
+    const input = "div:has(> p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var sel_parser = try Parser.init(allocator, &tokenizer);
+    defer sel_parser.deinit();
+    
+    var selector_list = try sel_parser.parse();
+    defer selector_list.deinit();
+    
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(div, &selector_list);
+    
+    try testing.expect(result); // div has direct child p
+}
+
+test "Matcher: :has(+ span) relative next sibling selector" {
+    const allocator = testing.allocator;
+    
+    // Create parent with two children: div and span
+    var parent = try createTestElement(allocator, "body");
+    defer destroyTestElement(allocator, parent);
+    
+    var div = try allocator.create(Element);
+    defer {
+        div.deinit();
+        allocator.destroy(div);
+    }
+    div.* = Element.init(allocator, "div");
+    
+    var span = try allocator.create(Element);
+    defer {
+        span.deinit();
+        allocator.destroy(span);
+    }
+    span.* = Element.init(allocator, "span");
+    
+    // Link them: parent > div + span
+    div.base.parent_node = &parent.base;
+    span.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&span.base);
+    
+    // Test div:has(+ span)
+    const input = "div:has(+ span)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var sel_parser = try Parser.init(allocator, &tokenizer);
+    defer sel_parser.deinit();
+    
+    var selector_list = try sel_parser.parse();
+    defer selector_list.deinit();
+    
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(div, &selector_list);
+    
+    try testing.expect(result); // div has next sibling span
+}
+
+test "Matcher: :has(~ .error) relative subsequent sibling selector" {
+    const allocator = testing.allocator;
+    
+    // Create parent with children: div, p, span.error
+    var parent = try createTestElement(allocator, "body");
+    defer destroyTestElement(allocator, parent);
+    
+    var div = try allocator.create(Element);
+    defer {
+        div.deinit();
+        allocator.destroy(div);
+    }
+    div.* = Element.init(allocator, "div");
+    
+    var p_elem = try allocator.create(Element);
+    defer {
+        p_elem.deinit();
+        allocator.destroy(p_elem);
+    }
+    p_elem.* = Element.init(allocator, "p");
+    
+    var span = try createTestElementWithAttrs(allocator, "span", &.{
+        .{ .name = "class", .value = "error" },
+    });
+    defer destroyTestElement(allocator, span);
+    
+    // Link them: parent > div ~ p ~ span.error
+    div.base.parent_node = &parent.base;
+    p_elem.base.parent_node = &parent.base;
+    span.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&p_elem.base);
+    try parent.base.child_nodes.append(&span.base);
+    
+    // Test div:has(~ .error)
+    const input = "div:has(~ .error)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var sel_parser = try Parser.init(allocator, &tokenizer);
+    defer sel_parser.deinit();
+    
+    var selector_list = try sel_parser.parse();
+    defer selector_list.deinit();
+    
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(div, &selector_list);
+    
+    try testing.expect(result); // div has subsequent sibling span.error
 }
