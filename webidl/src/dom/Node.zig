@@ -30,6 +30,11 @@ pub const Node = webidl.interface(struct {
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
 
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
+    cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
+
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
     pub const TEXT_NODE: u16 = 3;
@@ -61,6 +66,7 @@ pub const Node = webidl.interface(struct {
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
             // NOTE: Parent EventTarget initialization is handled by codegen
         };
     }
@@ -389,8 +395,11 @@ pub const Node = webidl.interface(struct {
         // Step 2: Let copy be the result of cloning a single node
         var copy = try Node.cloneSingleNode(node, document, fallback_registry);
 
-        // Step 3: Run any cloning steps (not implemented - would be extension point for HTML etc.)
-        // TODO: Call cloning steps hook if defined
+        // Step 3: Run any cloning steps defined for node
+        // Specifications may define cloning steps for specific node types
+        if (node.cloning_steps_hook) |hook| {
+            try hook(node, copy, subtree);
+        }
 
         // Step 4: If parent is non-null, append copy to parent
         if (parent) |p| {
