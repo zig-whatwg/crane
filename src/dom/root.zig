@@ -60,6 +60,7 @@ pub const xpath = struct {
     pub const parser = @import("xpath/parser.zig");
     pub const value = @import("xpath/value.zig");
     pub const context = @import("xpath/context.zig");
+    pub const functions = @import("xpath/functions.zig");
 };
 
 test {

@@ -49,7 +49,7 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, context_node: *Node) !Context {
-        return Context{
+        var ctx = Context{
             .context_node = context_node,
             .context_position = 1,
             .context_size = 1,
@@ -58,6 +58,12 @@ pub const Context = struct {
             .namespaces = std.StringHashMap([]const u8).init(allocator),
             .allocator = allocator,
         };
+
+        // Register core functions
+        const functions = @import("functions.zig");
+        try functions.registerCoreFunctions(&ctx.functions);
+
+        return ctx;
     }
 
     pub fn deinit(self: *Context) void {
@@ -141,48 +147,10 @@ pub const FunctionLibrary = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !FunctionLibrary {
-        var lib = FunctionLibrary{
+        return FunctionLibrary{
             .functions = std.StringHashMap(XPathFunction).init(allocator),
             .allocator = allocator,
         };
-
-        // Register core functions (will be implemented in functions.zig)
-        // Node-set functions
-        try lib.register("last", coreFunctionStub);
-        try lib.register("position", coreFunctionStub);
-        try lib.register("count", coreFunctionStub);
-        try lib.register("id", coreFunctionStub);
-        try lib.register("local-name", coreFunctionStub);
-        try lib.register("namespace-uri", coreFunctionStub);
-        try lib.register("name", coreFunctionStub);
-
-        // String functions
-        try lib.register("string", coreFunctionStub);
-        try lib.register("concat", coreFunctionStub);
-        try lib.register("starts-with", coreFunctionStub);
-        try lib.register("contains", coreFunctionStub);
-        try lib.register("substring-before", coreFunctionStub);
-        try lib.register("substring-after", coreFunctionStub);
-        try lib.register("substring", coreFunctionStub);
-        try lib.register("string-length", coreFunctionStub);
-        try lib.register("normalize-space", coreFunctionStub);
-        try lib.register("translate", coreFunctionStub);
-
-        // Boolean functions
-        try lib.register("boolean", coreFunctionStub);
-        try lib.register("not", coreFunctionStub);
-        try lib.register("true", coreFunctionStub);
-        try lib.register("false", coreFunctionStub);
-        try lib.register("lang", coreFunctionStub);
-
-        // Number functions
-        try lib.register("number", coreFunctionStub);
-        try lib.register("sum", coreFunctionStub);
-        try lib.register("floor", coreFunctionStub);
-        try lib.register("ceiling", coreFunctionStub);
-        try lib.register("round", coreFunctionStub);
-
-        return lib;
     }
 
     pub fn deinit(self: *FunctionLibrary) void {
@@ -199,15 +167,6 @@ pub const FunctionLibrary = struct {
         return self.functions.get(name);
     }
 };
-
-/// Stub function for core functions (will be replaced with real implementations)
-fn coreFunctionStub(
-    _: std.mem.Allocator,
-    _: *const Context,
-    _: []const Value,
-) anyerror!Value {
-    return error.FunctionNotImplemented;
-}
 
 // ============================================================================
 // Tests
