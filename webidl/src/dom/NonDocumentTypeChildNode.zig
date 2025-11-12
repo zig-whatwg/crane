@@ -28,14 +28,28 @@ pub const NonDocumentTypeChildNode = webidl.mixin(struct {
     /// The previousElementSibling getter steps are to return the first preceding
     /// sibling that is an element; otherwise null.
     pub fn previousElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 previousElementSibling getter
-        // 1. Get this node's previous sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to previous sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.previousElementSibling() not yet implemented");
+        const Node = @import("node").Node;
+        const parent = self.parent_node orelse return null;
+
+        // Find our index in parent's children
+        var found_self = false;
+        var i: usize = parent.child_nodes.items.len;
+        while (i > 0) {
+            i -= 1;
+            const sibling = parent.child_nodes.items[i];
+
+            if (sibling == @as(*Node, @ptrCast(self))) {
+                found_self = true;
+                continue;
+            }
+
+            // Only look at siblings before us
+            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(sibling);
+            }
+        }
+
+        return null;
     }
 
     /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
@@ -44,14 +58,24 @@ pub const NonDocumentTypeChildNode = webidl.mixin(struct {
     /// The nextElementSibling getter steps are to return the first following
     /// sibling that is an element; otherwise null.
     pub fn nextElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 nextElementSibling getter
-        // 1. Get this node's next sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to next sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
+        const Node = @import("node").Node;
+        const parent = self.parent_node orelse return null;
+
+        // Find our index in parent's children
+        var found_self = false;
+        for (parent.child_nodes.items) |sibling| {
+            if (sibling == @as(*Node, @ptrCast(self))) {
+                found_self = true;
+                continue;
+            }
+
+            // Only look at siblings after us
+            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(sibling);
+            }
+        }
+
+        return null;
     }
 });
 

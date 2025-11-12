@@ -42,7 +42,7 @@ pub const ChildNode = struct {
     /// 6. Pre-insert node into parent before viablePreviousSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 before() algorithm
@@ -65,7 +65,7 @@ pub const ChildNode = struct {
     /// 5. Pre-insert node into parent before viableNextSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 after() algorithm
@@ -88,7 +88,7 @@ pub const ChildNode = struct {
     /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
     /// 
     /// Throws HierarchyRequestError if constraints violated.
-    pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 replaceWith() algorithm
@@ -106,7 +106,7 @@ pub const ChildNode = struct {
     /// Steps:
     /// 1. If this's parent is null, then return.
     /// 2. Remove this.
-    pub fn remove(self: anytype) !void {
+    pub fn call_remove(self: anytype) !void {
         _ = self;
         // TODO: Implement DOM §4.3.4 remove() algorithm
         // Step 1: If parent is null, return

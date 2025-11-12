@@ -76,7 +76,7 @@ pub const Comment = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 before() algorithm
@@ -100,7 +100,7 @@ pub const Comment = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 after() algorithm
@@ -124,7 +124,7 @@ pub const Comment = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 replaceWith() algorithm
@@ -143,7 +143,7 @@ pub const Comment = struct {
     /// 1. If this's parent is null, then return.
     /// 2. Remove this.
     /// (Included from ChildNode mixin)
-    pub fn remove(self: anytype) !void {
+    pub fn call_remove(self: anytype) !void {
         _ = self;
         // TODO: Implement DOM §4.3.4 remove() algorithm
         // Step 1: If parent is null, return
@@ -161,14 +161,28 @@ pub const Comment = struct {
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
     pub fn previousElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 previousElementSibling getter
-        // 1. Get this node's previous sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to previous sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.previousElementSibling() not yet implemented");
+        const Node = @import("node").Node;
+        const parent = self.parent_node orelse return null;
+
+        // Find our index in parent's children
+        var found_self = false;
+        var i: usize = parent.child_nodes.items.len;
+        while (i > 0) {
+            i -= 1;
+            const sibling = parent.child_nodes.items[i];
+
+            if (sibling == @as(*Node, @ptrCast(self))) {
+                found_self = true;
+                continue;
+            }
+
+            // Only look at siblings before us
+            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(sibling);
+            }
+        }
+
+        return null;
     }
     /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
     /// Returns the first following sibling that is an element; otherwise null.
@@ -177,14 +191,24 @@ pub const Comment = struct {
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
     pub fn nextElementSibling(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.3 nextElementSibling getter
-        // 1. Get this node's next sibling
-        // 2. While sibling exists:
-        //    - If sibling is an Element, return it
-        //    - Move to next sibling
-        // 3. Return null if no element sibling found
-        @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
+        const Node = @import("node").Node;
+        const parent = self.parent_node orelse return null;
+
+        // Find our index in parent's children
+        var found_self = false;
+        for (parent.child_nodes.items) |sibling| {
+            if (sibling == @as(*Node, @ptrCast(self))) {
+                found_self = true;
+                continue;
+            }
+
+            // Only look at siblings after us
+            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(sibling);
+            }
+        }
+
+        return null;
     }
     /// DOM §4.11 - data getter
     /// Returns this's data.

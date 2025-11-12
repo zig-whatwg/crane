@@ -94,7 +94,7 @@ pub const DocumentType = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 before() algorithm
@@ -118,7 +118,7 @@ pub const DocumentType = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 after() algorithm
@@ -142,7 +142,7 @@ pub const DocumentType = struct {
     /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
-    pub fn replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
         _ = self;
         _ = nodes;
         // TODO: Implement DOM §4.3.4 replaceWith() algorithm
@@ -161,7 +161,7 @@ pub const DocumentType = struct {
     /// 1. If this's parent is null, then return.
     /// 2. Remove this.
     /// (Included from ChildNode mixin)
-    pub fn remove(self: anytype) !void {
+    pub fn call_remove(self: anytype) !void {
         _ = self;
         // TODO: Implement DOM §4.3.4 remove() algorithm
         // Step 1: If parent is null, return
@@ -190,48 +190,46 @@ pub const DocumentType = struct {
     /// insertBefore(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *DocumentType, node: *DocumentType, child: ?*DocumentType) !*DocumentType {
-        // TODO: Use mutation.preInsert algorithm from src/dom/mutation.zig
-        // For now, basic implementation
-        _ = child;
-        try self.child_nodes.append(node);
-        node.parent_node = self;
-        return node;
+        // Call mutation.preInsert algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preInsert(node, self, child) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
     }
     /// appendChild(node)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *DocumentType, node: *DocumentType) !*DocumentType {
-        // TODO: Use mutation.append algorithm from src/dom/mutation.zig
-        try self.child_nodes.append(node);
-        node.parent_node = self;
-        return node;
+        // Call mutation.append algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.append(node, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
     }
     /// replaceChild(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *DocumentType, node: *DocumentType, child: *DocumentType) !*DocumentType {
-        // TODO: Use mutation.replace algorithm from src/dom/mutation.zig
-        // For now, basic implementation
-        for (self.child_nodes.items, 0..) |existing, i| {
-            if (existing == child) {
-                self.child_nodes.items[i] = node;
-                child.parent_node = null;
-                node.parent_node = self;
-                return child;
-            }
-        }
-        return error.NotFoundError;
+        // Call mutation.replace algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.replace(child, node, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
     }
     /// removeChild(child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *DocumentType, child: *DocumentType) !*DocumentType {
-        // TODO: Use mutation.preRemove algorithm from src/dom/mutation.zig
-        for (self.child_nodes.items, 0..) |node, i| {
-            if (node == child) {
-                _ = self.child_nodes.orderedRemove(i);
-                child.parent_node = null;
-                return child;
-            }
-        }
-        return error.NotFoundError;
+        // Call mutation.preRemove algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preRemove(child, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
     }
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
