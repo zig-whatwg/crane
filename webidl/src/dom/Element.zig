@@ -336,8 +336,8 @@ pub const Element = webidl.interface(struct {
         const text = try self.allocator.create(Text);
         errdefer self.allocator.destroy(text);
         text.* = try Text.init(self.allocator);
-        // TODO: Set text.data = data when CharacterData has data field accessible
-        _ = data;
+        // Set the text node's data
+        try text.base.set_data(data);
 
         // Step 2: Run insert adjacent, given this, where, and text
         _ = try insertAdjacent(self, where, @ptrCast(text));
