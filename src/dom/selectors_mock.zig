@@ -2,7 +2,7 @@
 // https://drafts.csswg.org/selectors-4/
 //
 // EXTERNAL SPEC DEPENDENCY: Full Selectors Level 4 implementation required
-// TODO(bd-issue): Track in bd for backfill with complete Selectors spec
+// TRACKED: bd issue whatwg-9gc - Epic: Implement complete Selectors Level 4 specification
 //
 // This is a minimal mock to unblock DOM ParentNode mixin implementation.
 // Provides basic selector matching for:

@@ -87,8 +87,7 @@ pub const Document = struct {
         if (self._implementation) |*impl| {
             impl.deinit();
         }
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
+        // NOTE: Parent Node cleanup is handled by codegen
     
         
         // Clean up base fields

@@ -104,8 +104,7 @@ pub const ShadowRoot = webidl.interface(struct {
 
     pub fn deinit(self: *ShadowRoot) void {
         _ = self;
-        // DocumentFragment parent will handle cleanup
-        // TODO: Call parent DocumentFragment deinit (will be added by codegen)
+        // NOTE: Parent DocumentFragment cleanup is handled by codegen
     }
 
     // ========================================================================

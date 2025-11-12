@@ -32,8 +32,7 @@ pub const AbortSignal = webidl.interface(struct {
 
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
-        // NOTE: Parent EventTarget cleanup will be handled by codegen
-        // TODO: Call parent EventTarget deinit (will be added by codegen)
+        // NOTE: Parent EventTarget cleanup is handled by codegen
     }
 
     pub fn get_aborted(self: *const AbortSignal) bool {

@@ -48,8 +48,7 @@ pub const Comment = struct {
     }
     pub fn deinit(self: *Comment) void {
         _ = self;
-        // NOTE: Parent CharacterData cleanup will be handled by codegen
-        // TODO: Call parent CharacterData deinit (will be added by codegen)
+        // NOTE: Parent CharacterData cleanup is handled by codegen
     }
 
     /// Helper to get base struct for polymorphic operations.

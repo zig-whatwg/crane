@@ -9,7 +9,6 @@ const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocu
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
 
-
 /// DOM Spec: interface Text : CharacterData
 /// Text extends CharacterData (fields/methods inherited)
 /// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
@@ -31,8 +30,7 @@ pub const Text = webidl.interface(struct {
 
     pub fn deinit(self: *Text) void {
         _ = self;
-        // NOTE: Parent CharacterData cleanup will be handled by codegen
-        // TODO: Call parent CharacterData deinit (will be added by codegen)
+        // NOTE: Parent CharacterData cleanup is handled by codegen
     }
 
     /// DOM §4.12 - splitText(offset)

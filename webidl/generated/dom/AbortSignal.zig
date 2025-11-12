@@ -49,8 +49,7 @@ pub const AbortSignal = struct {
     }
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
-        // NOTE: Parent EventTarget cleanup will be handled by codegen
-        // TODO: Call parent EventTarget deinit (will be added by codegen)
+        // NOTE: Parent EventTarget cleanup is handled by codegen
     
         
         // Clean up base fields

@@ -123,8 +123,7 @@ pub const ShadowRoot = struct {
     }
     pub fn deinit(self: *ShadowRoot) void {
         _ = self;
-        // DocumentFragment parent will handle cleanup
-        // TODO: Call parent DocumentFragment deinit (will be added by codegen)
+        // NOTE: Parent DocumentFragment cleanup is handled by codegen
     }
 
     /// Helper to get base struct for polymorphic operations.

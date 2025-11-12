@@ -16,7 +16,6 @@ const CDATASection = @import("cdata_section").CDATASection;
 const DocumentType = @import("document_type").DocumentType;
 const DOMImplementation = @import("dom_implementation").DOMImplementation;
 
-
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
     pub const extends = Node;
@@ -51,8 +50,7 @@ pub const Document = webidl.interface(struct {
         if (self._implementation) |*impl| {
             impl.deinit();
         }
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
+        // NOTE: Parent Node cleanup is handled by codegen
     }
 
     /// Intern a string in the document's string pool

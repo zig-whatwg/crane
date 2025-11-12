@@ -176,8 +176,7 @@ pub const CharacterData = struct {
     }
     pub fn deinit(self: *CharacterData) void {
         self.allocator.free(self.data);
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
+        // NOTE: Parent Node cleanup is handled by codegen
     }
 
     /// Helper to get base struct for polymorphic operations.

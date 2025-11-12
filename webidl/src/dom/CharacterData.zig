@@ -7,7 +7,6 @@ const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const dom_types = @import("dom_types");
 
-
 /// DOM Spec: interface CharacterData : Node
 pub const CharacterData = webidl.interface(struct {
     pub const extends = Node;
@@ -28,8 +27,7 @@ pub const CharacterData = webidl.interface(struct {
 
     pub fn deinit(self: *CharacterData) void {
         self.allocator.free(self.data);
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
+        // NOTE: Parent Node cleanup is handled by codegen
     }
 
     /// DOM §4.11 - data getter

@@ -84,9 +84,8 @@ pub const Element = struct {
         };
     }
     pub fn deinit(self: *Element) void {
-        // NOTE: Parent Node cleanup will be handled by codegen
+        // NOTE: Parent Node cleanup is handled by codegen
         self.attributes.deinit();
-        // TODO: Call parent Node deinit (will be added by codegen)
     
         
         // Clean up base fields
