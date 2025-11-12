@@ -189,7 +189,7 @@ pub const NamedNodeMap = webidl.interface(struct {
         // TODO: Set node document when Attr has Node fields accessible
 
         // Step 4: Handle attribute changes
-        // TODO: Call handleAttributeChanges(attribute, element, null, attribute.value)
+        try Attr.handleAttributeChanges(attribute, element, null, attribute.value);
     }
 
     /// Remove an attribute - DOM Spec algorithm
@@ -209,7 +209,7 @@ pub const NamedNodeMap = webidl.interface(struct {
         attribute.owner_element = null;
 
         // Step 4: Handle attribute changes
-        // TODO: Call handleAttributeChanges(attribute, element, attribute.value, null)
+        try Attr.handleAttributeChanges(attribute, element, attribute.value, "");
     }
 
     /// Replace an attribute - DOM Spec algorithm
@@ -234,7 +234,8 @@ pub const NamedNodeMap = webidl.interface(struct {
         // Step 5: Set oldAttribute's element to null
         old_attribute.owner_element = null;
 
-        // TODO: Handle attribute changes
+        // Step 6: Handle attribute changes
+        try Attr.handleAttributeChanges(new_attribute, element, old_attribute.value, new_attribute.value);
     }
 
     /// Get an attribute by namespace and local name
