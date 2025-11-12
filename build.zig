@@ -382,6 +382,20 @@ pub fn build(b: *std.Build) void {
     // Add HTMLSlotElement to shadow_dom_algorithms
     shadow_dom_algorithms_mod.addImport("html_slot_element", html_slot_element_mod);
 
+    // Create slot_helpers module (type-safe utilities for slot algorithms)
+    const slot_helpers_mod = b.createModule(.{
+        .root_source_file = b.path("src/dom/slot_helpers.zig"),
+        .target = target,
+    });
+    slot_helpers_mod.addImport("node", node_mod);
+    slot_helpers_mod.addImport("element", element_mod);
+    slot_helpers_mod.addImport("shadow_root", shadow_root_mod);
+    slot_helpers_mod.addImport("html_slot_element", html_slot_element_mod);
+
+    // Add slot_helpers to shadow_dom_algorithms
+    shadow_dom_algorithms_mod.addImport("slot_helpers", slot_helpers_mod);
+    shadow_dom_algorithms_mod.addImport("node", node_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     event_target_mod.addImport("abort_signal", abort_signal_mod);
