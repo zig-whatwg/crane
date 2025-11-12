@@ -549,6 +549,9 @@ pub fn build(b: *std.Build) void {
     selector_mod.addImport("infra", infra_mod);
     selector_mod.addImport("dom", dom_mod);
 
+    // Add selector to dom (after selector_mod is defined to avoid undefined reference)
+    dom_mod.addImport("selector", selector_mod);
+
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
         .target = target,
