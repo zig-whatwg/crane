@@ -21,3 +21,6 @@ test_arraylist*
 
 # Temporary files (agent-generated docs, scripts, analysis)
 /tmp/
+-e 
+# AI planning documents (ephemeral)
+history/
