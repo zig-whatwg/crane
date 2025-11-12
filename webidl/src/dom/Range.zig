@@ -6,6 +6,7 @@ const webidl = @import("webidl");
 const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
+const AbstractRange = @import("abstract_range").AbstractRange;
 const Node = @import("node").Node;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 
@@ -14,23 +15,12 @@ const DocumentFragment = @import("document_fragment").DocumentFragment;
 /// A Range object represents a sequence of content within the node tree.
 /// Each range has a start and an end which are boundary points.
 /// A boundary point is a tuple consisting of a node and an offset.
+///
+/// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 pub const Range = webidl.interface(struct {
-    // AbstractRange fields (will be flattened by codegen)
-    // We implement AbstractRange inline since it's just readonly attributes
+    pub const extends = AbstractRange;
 
     allocator: Allocator,
-
-    /// Start boundary point - node
-    start_container: *Node,
-
-    /// Start boundary point - offset
-    start_offset: u32,
-
-    /// End boundary point - node
-    end_container: *Node,
-
-    /// End boundary point - offset
-    end_offset: u32,
 
     /// DOM §5 - Range constructor
     /// The new Range() constructor steps are to set this's start and end to
@@ -51,42 +41,7 @@ pub const Range = webidl.interface(struct {
     }
 
     // ========================================================================
-    // AbstractRange attributes
-    // ========================================================================
-
-    /// DOM §5 - AbstractRange.startContainer
-    /// Returns the node at the start of the range
-    pub fn get_startContainer(self: *const Range) *Node {
-        return self.start_container;
-    }
-
-    /// DOM §5 - AbstractRange.startOffset
-    /// Returns the offset within the start node
-    pub fn get_startOffset(self: *const Range) u32 {
-        return self.start_offset;
-    }
-
-    /// DOM §5 - AbstractRange.endContainer
-    /// Returns the node at the end of the range
-    pub fn get_endContainer(self: *const Range) *Node {
-        return self.end_container;
-    }
-
-    /// DOM §5 - AbstractRange.endOffset
-    /// Returns the offset within the end node
-    pub fn get_endOffset(self: *const Range) u32 {
-        return self.end_offset;
-    }
-
-    /// DOM §5 - AbstractRange.collapsed
-    /// Returns true if the range's start and end are the same position
-    pub fn get_collapsed(self: *const Range) bool {
-        return self.start_container == self.end_container and
-            self.start_offset == self.end_offset;
-    }
-
-    // ========================================================================
-    // Range attributes
+    // Range-specific attributes (AbstractRange attributes inherited via extends)
     // ========================================================================
 
     /// DOM §5 - Range.commonAncestorContainer

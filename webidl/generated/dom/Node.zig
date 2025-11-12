@@ -25,8 +25,8 @@ pub const NodeTypeTag = enum {
     Element,
     DocumentType,
     CharacterData,
-    Comment,
     Document,
+    Comment,
     DocumentFragment,
     Text,
     Attr,
@@ -146,23 +146,6 @@ pub const NodeBase = struct {
         };
     }
 
-    /// Create a base struct initialized for Comment.
-    /// Use this in Comment.init() to properly initialize the base field.
-    /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForComment(allocator: Allocator) NodeBase {
-        return .{
-            .type_tag = .Comment,
-            .event_listener_list = null,
-            .allocator = allocator,
-            .node_type = Node.COMMENT_NODE,
-            .node_name = "",
-            .parent_node = null,
-            .child_nodes = infra.List(*Node).init(allocator),
-            .owner_document = null,
-            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-        };
-    }
-
     /// Create a base struct initialized for Document.
     /// Use this in Document.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
@@ -172,6 +155,23 @@ pub const NodeBase = struct {
             .event_listener_list = null,
             .allocator = allocator,
             .node_type = Node.DOCUMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
+    }
+
+    /// Create a base struct initialized for Comment.
+    /// Use this in Comment.init() to properly initialize the base field.
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForComment(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Comment,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.COMMENT_NODE,
             .node_name = "",
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
@@ -305,8 +305,8 @@ pub const NodeBase = struct {
     //   - Element
     //   - DocumentType
     //   - CharacterData
-    //   - Comment
     //   - Document
+    //   - Comment
     //   - DocumentFragment
     //   - Text
     //   - Attr
