@@ -84,6 +84,70 @@ pub const EventTargetBase = struct {
     event_listener_list: ?*std.ArrayList(EventListener),
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for Element.
+    /// Use this in Element.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForElement() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .Element;
+        return result;
+    }
+
+    /// Create a base struct initialized for DocumentType.
+    /// Use this in DocumentType.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForDocumentType() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .DocumentType;
+        return result;
+    }
+
+    /// Create a base struct initialized for Node.
+    /// Use this in Node.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForNode() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .Node;
+        return result;
+    }
+
+    /// Create a base struct initialized for Document.
+    /// Use this in Document.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForDocument() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .Document;
+        return result;
+    }
+
+    /// Create a base struct initialized for AbortSignal.
+    /// Use this in AbortSignal.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForAbortSignal() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .AbortSignal;
+        return result;
+    }
+
+    /// Create a base struct initialized for Attr.
+    /// Use this in Attr.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForAttr() EventTargetBase {
+        var result: EventTargetBase = undefined;
+        result.type_tag = .Attr;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //

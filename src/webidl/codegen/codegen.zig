@@ -3638,8 +3638,8 @@ fn generateCastingMethods(
 }
 
 /// Inject base field initialization into init() method return statement.
-/// Adds `.base = undefined` to the struct literal.
-fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, _: []const u8) ![]const u8 {
+/// Uses the initForXxx() helper to properly initialize the base field.
+fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, class_name: []const u8, base_type_name: []const u8) ![]const u8 {
     // Find "return .{" in the method source
     const return_start = std.mem.indexOf(u8, method_source, "return .{") orelse {
         // No return .{ found - return unchanged
@@ -3648,12 +3648,15 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
 
     const after_return_brace = return_start + "return .{".len;
 
-    // Just add .base = undefined in the struct literal
+    // Add .base = BaseTypeName.initForClassName() in the struct literal
+    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(),", .{ base_type_name, class_name });
+    defer allocator.free(base_init);
+
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
     try result.appendSlice(allocator, method_source[0..after_return_brace]);
-    try result.appendSlice(allocator, "\n            .base = undefined,");
+    try result.appendSlice(allocator, base_init);
     try result.appendSlice(allocator, method_source[after_return_brace..]);
 
     return result.toOwnedSlice(allocator);
@@ -4009,6 +4012,31 @@ fn generateBaseStruct(
         } else {
             try writer.print("    {s}: {s},\n", .{ field.name, qualified_type });
         }
+    }
+
+    // Generate initialization helper for each derived type
+    try writer.writeAll("\n    // ========================================================================\n");
+    try writer.writeAll("    // Base struct initialization helpers\n");
+    try writer.writeAll("    // ========================================================================\n");
+    try writer.writeAll("    //\n");
+    try writer.writeAll("    // Helper functions to create properly initialized base structs.\n");
+    try writer.writeAll("    // Each derived type gets its own initialization helper.\n");
+    try writer.writeAll("    // All fields except type_tag are initialized to undefined.\n");
+    try writer.writeAll("    //\n\n");
+
+    for (base_info.children.items) |child_name| {
+        try writer.print(
+            \\    /// Create a base struct initialized for {s}.
+            \\    /// Use this in {s}.init() to properly initialize the base field.
+            \\    /// All fields except type_tag are set to undefined - caller must initialize them.
+            \\    pub fn initFor{s}() {s}Base {{
+            \\        var result: {s}Base = undefined;
+            \\        result.type_tag = .{s};
+            \\        return result;
+            \\    }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, parsed.name, parsed.name, child_name });
     }
 
     // Generate casting methods for all children
@@ -4426,7 +4454,7 @@ fn generateEnhancedClassWithRegistry(
 
             // If this is init() and class has a base field, inject base initialization
             const final_source = if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null)
-                try injectBaseFieldInit(allocator, renamed_source, parsed.name)
+                try injectBaseFieldInit(allocator, renamed_source, parsed.name, parent_base_type_name.?)
             else
                 renamed_source;
             defer if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null) allocator.free(final_source);

@@ -4,11 +4,14 @@ const Document = @import("document").Document;
 const NodeBase = @import("node").NodeBase;
 const EventTargetBase = @import("event_target").EventTargetBase;
 
-test "NodeBase.tryCast - successful downcast to Element" {
+test "NodeBase.tryCast - successful downcast to Element with auto-initialized type_tag" {
     const allocator = std.testing.allocator;
 
     var element = try Element.init(allocator, "div");
     defer element.deinit();
+
+    // Verify type_tag is automatically set
+    try std.testing.expectEqual(NodeBase.NodeTypeTag.Element, element.base.type_tag);
 
     const node_base: *NodeBase = element.toBase();
 

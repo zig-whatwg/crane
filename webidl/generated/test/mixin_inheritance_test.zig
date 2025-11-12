@@ -47,6 +47,25 @@ pub const ParentBase = struct {
     parent_field: u32 = 100,
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for Child.
+    /// Use this in Child.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForChild() ParentBase {
+        var result: ParentBase = undefined;
+        result.type_tag = .Child;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //
@@ -240,6 +259,34 @@ pub const ParentMultiBase = struct {
     parent_multi_field: u32 = 300,
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for ChildMulti.
+    /// Use this in ChildMulti.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForChildMulti() ParentMultiBase {
+        var result: ParentMultiBase = undefined;
+        result.type_tag = .ChildMulti;
+        return result;
+    }
+
+    /// Create a base struct initialized for GrandChild.
+    /// Use this in GrandChild.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForGrandChild() ParentMultiBase {
+        var result: ParentMultiBase = undefined;
+        result.type_tag = .GrandChild;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //
@@ -363,6 +410,25 @@ pub const ChildMultiBase = struct {
     field_a: u32 = 10,
 
     child_multi_field: u32 = 400,
+
+    // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for GrandChild.
+    /// Use this in GrandChild.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForGrandChild() ChildMultiBase {
+        var result: ChildMultiBase = undefined;
+        result.type_tag = .GrandChild;
+        return result;
+    }
+
 
     // ========================================================================
     // Type-safe downcasting helpers

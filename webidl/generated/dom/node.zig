@@ -53,6 +53,115 @@ pub const NodeBase = struct {
     registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for CDATASection.
+    /// Use this in CDATASection.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForCDATASection() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .CDATASection;
+        return result;
+    }
+
+    /// Create a base struct initialized for ShadowRoot.
+    /// Use this in ShadowRoot.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForShadowRoot() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .ShadowRoot;
+        return result;
+    }
+
+    /// Create a base struct initialized for Element.
+    /// Use this in Element.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForElement() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .Element;
+        return result;
+    }
+
+    /// Create a base struct initialized for DocumentType.
+    /// Use this in DocumentType.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForDocumentType() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .DocumentType;
+        return result;
+    }
+
+    /// Create a base struct initialized for CharacterData.
+    /// Use this in CharacterData.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForCharacterData() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .CharacterData;
+        return result;
+    }
+
+    /// Create a base struct initialized for Comment.
+    /// Use this in Comment.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForComment() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .Comment;
+        return result;
+    }
+
+    /// Create a base struct initialized for Document.
+    /// Use this in Document.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForDocument() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .Document;
+        return result;
+    }
+
+    /// Create a base struct initialized for DocumentFragment.
+    /// Use this in DocumentFragment.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForDocumentFragment() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .DocumentFragment;
+        return result;
+    }
+
+    /// Create a base struct initialized for Text.
+    /// Use this in Text.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForText() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .Text;
+        return result;
+    }
+
+    /// Create a base struct initialized for Attr.
+    /// Use this in Attr.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForAttr() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .Attr;
+        return result;
+    }
+
+    /// Create a base struct initialized for ProcessingInstruction.
+    /// Use this in ProcessingInstruction.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForProcessingInstruction() NodeBase {
+        var result: NodeBase = undefined;
+        result.type_tag = .ProcessingInstruction;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //
@@ -169,7 +278,7 @@ pub const Node = struct {
         // NOTE: Parent EventTarget fields will be flattened by codegen
         // Don't manually initialize parent fields here
         return .{
-            .base = undefined,
+            .base = EventTargetBase.initForNode(),
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,

@@ -63,6 +63,25 @@ pub const EventBase = struct {
     touch_target_list: std.ArrayList(*EventTarget),
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for CustomEvent.
+    /// Use this in CustomEvent.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForCustomEvent() EventBase {
+        var result: EventBase = undefined;
+        result.type_tag = .CustomEvent;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //

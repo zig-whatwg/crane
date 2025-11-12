@@ -68,7 +68,7 @@ pub const Document = struct {
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = undefined,
+            .base = NodeBase.initForDocument(),
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),

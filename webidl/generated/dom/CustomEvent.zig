@@ -28,7 +28,7 @@ pub const CustomEvent = struct {
         const custom_init = event_init orelse CustomEventInit{};
 
         return .{
-            .base = undefined,
+            .base = EventBase.initForCustomEvent(),
             .allocator = allocator,
             .detail = custom_init.detail,
             // TODO: Initialize Event parent fields (will be added by codegen)

@@ -38,6 +38,52 @@ pub const CharacterDataBase = struct {
     data: []u8,
 
     // ========================================================================
+    // Base struct initialization helpers
+    // ========================================================================
+    //
+    // Helper functions to create properly initialized base structs.
+    // Each derived type gets its own initialization helper.
+    // All fields except type_tag are initialized to undefined.
+    //
+
+    /// Create a base struct initialized for CDATASection.
+    /// Use this in CDATASection.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForCDATASection() CharacterDataBase {
+        var result: CharacterDataBase = undefined;
+        result.type_tag = .CDATASection;
+        return result;
+    }
+
+    /// Create a base struct initialized for Comment.
+    /// Use this in Comment.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForComment() CharacterDataBase {
+        var result: CharacterDataBase = undefined;
+        result.type_tag = .Comment;
+        return result;
+    }
+
+    /// Create a base struct initialized for Text.
+    /// Use this in Text.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForText() CharacterDataBase {
+        var result: CharacterDataBase = undefined;
+        result.type_tag = .Text;
+        return result;
+    }
+
+    /// Create a base struct initialized for ProcessingInstruction.
+    /// Use this in ProcessingInstruction.init() to properly initialize the base field.
+    /// All fields except type_tag are set to undefined - caller must initialize them.
+    pub fn initForProcessingInstruction() CharacterDataBase {
+        var result: CharacterDataBase = undefined;
+        result.type_tag = .ProcessingInstruction;
+        return result;
+    }
+
+
+    // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
     //
@@ -122,7 +168,7 @@ pub const CharacterData = struct {
     pub fn init(allocator: Allocator) !CharacterData {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = undefined,
+            .base = NodeBase.initForCharacterData(),
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
             // TODO: Initialize Node parent fields (will be added by codegen)
