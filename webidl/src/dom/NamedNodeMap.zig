@@ -83,10 +83,7 @@ pub const NamedNodeMap = webidl.interface(struct {
     /// Steps: Return the result of setting an attribute given attr and element.
     /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItem(self: *NamedNodeMap, attr: *Attr) !?*Attr {
-        _ = self;
-        _ = attr;
-        // TODO: Implement attribute setting with proper mutation handling
-        return error.NotImplemented;
+        return try NamedNodeMap.setAttribute(attr, self.element);
     }
 
     /// DOM §4.9 - setNamedItemNS(attr)
@@ -95,10 +92,8 @@ pub const NamedNodeMap = webidl.interface(struct {
     /// Steps: Return the result of setting an attribute given attr and element.
     /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItemNS(self: *NamedNodeMap, attr: *Attr) !?*Attr {
-        _ = self;
-        _ = attr;
-        // TODO: Implement namespace-aware attribute setting
-        return error.NotImplemented;
+        // Same as setNamedItem - the method handles namespaces automatically via attr's properties
+        return try NamedNodeMap.setAttribute(attr, self.element);
     }
 
     /// DOM §4.9 - removeNamedItem(qualifiedName)
@@ -111,10 +106,16 @@ pub const NamedNodeMap = webidl.interface(struct {
     /// 3. Return attr.
     /// [CEReactions] - Causes DOM mutations
     pub fn call_removeNamedItem(self: *NamedNodeMap, qualified_name: []const u8) !*Attr {
-        _ = self;
-        _ = qualified_name;
-        // TODO: Implement attribute removal with proper mutation handling
-        return error.NotImplemented;
+        // Step 1: Remove an attribute by name
+        const attr_opt = try NamedNodeMap.removeAttributeByName(qualified_name, self.element);
+
+        // Step 2: If attr is null, throw NotFoundError
+        if (attr_opt == null) {
+            return error.NotFoundError;
+        }
+
+        // Step 3: Return attr
+        return attr_opt.?;
     }
 
     /// DOM §4.9 - removeNamedItemNS(namespace, localName)
@@ -131,11 +132,173 @@ pub const NamedNodeMap = webidl.interface(struct {
         namespace: ?[]const u8,
         local_name: []const u8,
     ) !*Attr {
-        _ = self;
-        _ = namespace;
-        _ = local_name;
-        // TODO: Implement namespace-aware attribute removal
-        return error.NotImplemented;
+        // Step 1: Remove an attribute by namespace and local name
+        const attr_opt = try NamedNodeMap.removeAttributeByNamespaceAndLocalName(namespace, local_name, self.element);
+
+        // Step 2: If attr is null, throw NotFoundError
+        if (attr_opt == null) {
+            return error.NotFoundError;
+        }
+
+        // Step 3: Return attr
+        return attr_opt.?;
+    }
+    // ========================================================================
+    // Helper Functions - DOM Spec Algorithms
+    // ========================================================================
+
+    /// Set an attribute - DOM Spec algorithm
+    /// Given an attribute attr and an element element
+    pub fn setAttribute(attr: *Attr, element: *Element) !?*Attr {
+        // Step 1: If attr's element is neither null nor element, throw InUseAttributeError
+        if (attr.owner_element != null and attr.owner_element != element) {
+            return error.InUseAttributeError;
+        }
+
+        // Step 2: Let oldAttr be the result of getting an attribute
+        const old_attr = NamedNodeMap.getAttributeByNamespaceAndLocalName(
+            attr.namespace_uri,
+            attr.local_name,
+            element,
+        );
+
+        // Step 3: If oldAttr is attr, return attr
+        if (old_attr != null and old_attr.? == attr) {
+            return attr;
+        }
+
+        // Step 4: If oldAttr is non-null, replace oldAttr with attr
+        if (old_attr) |old| {
+            try NamedNodeMap.replaceAttribute(old, attr);
+            return old;
+        }
+
+        // Step 5: Otherwise, append attr to element
+        try NamedNodeMap.appendAttribute(attr, element);
+
+        // Step 6: Return oldAttr (null in this case)
+        return null;
+    }
+
+    /// Append an attribute - DOM Spec algorithm
+    pub fn appendAttribute(attribute: *Attr, element: *Element) !void {
+        // Step 1: Append attribute to element's attribute list
+        try element.attributes.append(attribute.*);
+
+        // Step 2: Set attribute's element to element
+        attribute.owner_element = element;
+
+        // Step 3: Set attribute's node document to element's node document
+        // TODO: Set node document when Attr has Node fields accessible
+
+        // Step 4: Handle attribute changes
+        // TODO: Call handleAttributeChanges(attribute, element, null, attribute.value)
+    }
+
+    /// Remove an attribute - DOM Spec algorithm
+    pub fn removeAttribute(attribute: *Attr) !void {
+        // Step 1: Let element be attribute's element
+        const element = attribute.owner_element orelse return;
+
+        // Step 2: Remove attribute from element's attribute list
+        for (element.attributes.items, 0..) |*attr, i| {
+            if (attr == attribute) {
+                _ = element.attributes.orderedRemove(i);
+                break;
+            }
+        }
+
+        // Step 3: Set attribute's element to null
+        attribute.owner_element = null;
+
+        // Step 4: Handle attribute changes
+        // TODO: Call handleAttributeChanges(attribute, element, attribute.value, null)
+    }
+
+    /// Replace an attribute - DOM Spec algorithm
+    pub fn replaceAttribute(old_attribute: *Attr, new_attribute: *Attr) !void {
+        // Step 1: Let element be oldAttribute's element
+        const element = old_attribute.owner_element orelse return error.InvalidState;
+
+        // Step 2: Replace oldAttribute by newAttribute in element's attribute list
+        for (element.attributes.items, 0..) |*attr, i| {
+            if (attr == old_attribute) {
+                element.attributes.items[i] = new_attribute.*;
+                break;
+            }
+        }
+
+        // Step 3: Set newAttribute's element to element
+        new_attribute.owner_element = element;
+
+        // Step 4: Set newAttribute's node document to element's node document
+        // TODO: Set node document when accessible
+
+        // Step 5: Set oldAttribute's element to null
+        old_attribute.owner_element = null;
+
+        // TODO: Handle attribute changes
+    }
+
+    /// Get an attribute by namespace and local name
+    fn getAttributeByNamespaceAndLocalName(
+        namespace: ?[]const u8,
+        local_name: []const u8,
+        element: *Element,
+    ) ?*Attr {
+        for (element.attributes.items) |*attr| {
+            // Check namespace match
+            const ns_match = if (namespace == null and attr.namespace_uri == null)
+                true
+            else if (namespace != null and attr.namespace_uri != null)
+                std.mem.eql(u8, namespace.?, attr.namespace_uri.?)
+            else
+                false;
+
+            // Check local name match
+            if (ns_match and std.mem.eql(u8, attr.local_name, local_name)) {
+                return attr;
+            }
+        }
+        return null;
+    }
+
+    /// Remove an attribute by name - DOM Spec algorithm
+    pub fn removeAttributeByName(qualified_name: []const u8, element: *Element) !?*Attr {
+        // Step 1: Let attr be the result of getting an attribute
+        for (element.attributes.items, 0..) |*attr, i| {
+            // For now, compare qualified name to local name (simplified)
+            // TODO: Full qualified name handling with namespace prefix
+            if (std.mem.eql(u8, attr.local_name, qualified_name)) {
+                // Step 2: If attr is non-null, remove attr
+                const removed = element.attributes.orderedRemove(i);
+                removed.owner_element = null;
+
+                // Step 3: Return attr
+                return &removed;
+            }
+        }
+
+        // Step 3: Return null if not found
+        return null;
+    }
+
+    /// Remove an attribute by namespace and local name - DOM Spec algorithm
+    pub fn removeAttributeByNamespaceAndLocalName(
+        namespace: ?[]const u8,
+        local_name: []const u8,
+        element: *Element,
+    ) !?*Attr {
+        // Step 1: Let attr be the result of getting an attribute
+        const attr = getAttributeByNamespaceAndLocalName(namespace, local_name, element);
+
+        // Step 2: If attr is non-null, remove attr
+        if (attr) |a| {
+            try removeAttribute(a);
+        }
+
+        // Step 3: Return attr
+        return attr;
     }
 }, .{
     .exposed = &.{.Window},
