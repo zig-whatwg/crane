@@ -35,6 +35,10 @@ pub const Selector = union(enum) {
         value: []const u8,
     }, // [attr=value]
 
+    /// Pseudo-classes
+    pseudo_first_child, // :first-child
+    pseudo_last_child, // :last-child
+
     /// Parse error - invalid selector syntax
     parse_error: []const u8,
 };
@@ -80,6 +84,17 @@ pub fn parseSelector(allocator: std.mem.Allocator, selectors: []const u8) !Selec
             return Selector{ .parse_error = "Empty class selector" };
         }
         return Selector{ .class_selector = trimmed[1..] };
+    }
+
+    // Pseudo-class selector: :first-child, :last-child
+    if (trimmed[0] == ':') {
+        if (std.mem.eql(u8, trimmed, ":first-child")) {
+            return Selector.pseudo_first_child;
+        }
+        if (std.mem.eql(u8, trimmed, ":last-child")) {
+            return Selector.pseudo_last_child;
+        }
+        return Selector{ .parse_error = "Unsupported pseudo-class (mock implementation)" };
     }
 
     // Attribute selector: [attr] or [attr=value]
@@ -255,6 +270,14 @@ fn matchesSelector(selector: Selector, element: anytype) bool {
             // For now, return false for unknown attributes
             return false;
         },
+        .pseudo_first_child => {
+            // :first-child matches if element is the first child of its parent
+            return isFirstChild(element);
+        },
+        .pseudo_last_child => {
+            // :last-child matches if element is the last child of its parent
+            return isLastChild(element);
+        },
         .parse_error => {
             // Parse errors don't match anything
             return false;
@@ -307,6 +330,40 @@ fn classListContains(class_list: []const u8, target_class: []const u8) bool {
         }
     }
     return false;
+}
+
+/// Check if element is the first child of its parent
+fn isFirstChild(element: anytype) bool {
+    // Check if element has parent_node field
+    if (!@hasField(@TypeOf(element.*), "parent_node")) return false;
+
+    const parent = @field(element, "parent_node") orelse return false;
+
+    // Check if parent has child_nodes
+    if (!@hasField(@TypeOf(parent.*), "child_nodes")) return false;
+
+    const children = @field(parent, "child_nodes");
+    if (children.items.len == 0) return false;
+
+    // Element is first child if it's the first item in parent's children
+    return @intFromPtr(children.items[0]) == @intFromPtr(element);
+}
+
+/// Check if element is the last child of its parent
+fn isLastChild(element: anytype) bool {
+    // Check if element has parent_node field
+    if (!@hasField(@TypeOf(element.*), "parent_node")) return false;
+
+    const parent = @field(element, "parent_node") orelse return false;
+
+    // Check if parent has child_nodes
+    if (!@hasField(@TypeOf(parent.*), "child_nodes")) return false;
+
+    const children = @field(parent, "child_nodes");
+    if (children.items.len == 0) return false;
+
+    // Element is last child if it's the last item in parent's children
+    return @intFromPtr(children.items[children.items.len - 1]) == @intFromPtr(element);
 }
 
 // ============================================================================
@@ -419,4 +476,19 @@ test "Selectors mock - parse error on malformed attribute selector" {
 
     const selector2 = try parseSelector(testing.allocator, "[]");
     try testing.expectEqual(@as(std.meta.Tag(Selector), .parse_error), @as(std.meta.Tag(Selector), selector2));
+}
+
+test "Selectors mock - parse pseudo-class :first-child" {
+    const selector = try parseSelector(testing.allocator, ":first-child");
+    try testing.expectEqual(Selector.pseudo_first_child, selector);
+}
+
+test "Selectors mock - parse pseudo-class :last-child" {
+    const selector = try parseSelector(testing.allocator, ":last-child");
+    try testing.expectEqual(Selector.pseudo_last_child, selector);
+}
+
+test "Selectors mock - parse error on unsupported pseudo-class" {
+    const selector = try parseSelector(testing.allocator, ":hover");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .parse_error), @as(std.meta.Tag(Selector), selector));
 }
