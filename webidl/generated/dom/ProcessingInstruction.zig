@@ -19,20 +19,11 @@ pub const Element = @import("element").Element;
 /// DOM §4.13 - ProcessingInstruction interface
 /// ProcessingInstruction nodes represent processing instructions.
 /// They extend CharacterData and have an associated target.
+const CharacterDataBase = @import("character_data").CharacterDataBase;
 pub const ProcessingInstruction = struct {
     allocator: std.mem.Allocator,
 
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
-    data: []u8,
-    allocator: Allocator,
+    base: CharacterDataBase,
 
     // ========================================================================
     // ProcessingInstruction fields

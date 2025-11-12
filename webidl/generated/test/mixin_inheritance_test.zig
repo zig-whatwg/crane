@@ -88,9 +88,9 @@ pub const Parent = struct {
 
 // Child interface that extends Parent
 // Expected: Child automatically gets mixin_field from Parent's TestMixin
+const ParentBase = @import("parent").ParentBase;
 pub const Child = struct {
-    parent_field: u32 = 100,
-    mixin_field: u32 = 42,
+    base: ParentBase,
 
     // ========================================================================
     // Child fields
@@ -256,10 +256,9 @@ pub const ChildMultiBase = struct {
 
 };
 
+const ParentMultiBase = @import("parent_multi").ParentMultiBase;
 pub const ChildMulti = struct {
-    parent_multi_field: u32 = 300,
-    field_b: u32 = 20,
-    field_a: u32 = 10,
+    base: ParentMultiBase,
 
     // ========================================================================
     // ChildMulti fields
@@ -298,11 +297,9 @@ pub const ChildMulti = struct {
 // Test Case 3: Grandchild (3-level inheritance)
 // Expected: GrandChild gets field_a, field_b from ParentMulti's mixins,
 //           plus parent_multi_field, child_multi_field
+const ChildMultiBase = @import("child_multi").ChildMultiBase;
 pub const GrandChild = struct {
-    parent_multi_field: u32 = 300,
-    field_b: u32 = 20,
-    field_a: u32 = 10,
-    child_multi_field: u32 = 400,
+    base: ChildMultiBase,
 
     // ========================================================================
     // GrandChild fields

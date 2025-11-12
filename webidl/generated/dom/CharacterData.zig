@@ -17,6 +17,8 @@ pub const dom_types = @import("dom_types");
 pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 /// Base struct for CharacterData hierarchy polymorphism.
 /// All CharacterData-derived types have `base: CharacterDataBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
@@ -72,18 +74,11 @@ pub const CharacterDataBase = struct {
 };
 
 /// DOM Spec: interface CharacterData : Node
+const NodeBase = @import("node").NodeBase;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const CharacterData = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
+    base: NodeBase,
 
     // ========================================================================
     // CharacterData fields

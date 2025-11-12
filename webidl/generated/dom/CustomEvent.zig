@@ -13,26 +13,9 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const Event = @import("event").Event;
 /// DOM Spec: interface CustomEvent : Event
+const EventBase = @import("event").EventBase;
 pub const CustomEvent = struct {
-    touch_target_list: std.ArrayList(*EventTarget),
-    related_target: ?*EventTarget,
-    path: std.ArrayList(EventPathItem),
-    time_stamp: f64,
-    is_trusted: bool,
-    dispatch_flag: bool,
-    initialized_flag: bool,
-    in_passive_listener_flag: bool,
-    canceled_flag: bool,
-    stop_immediate_propagation_flag: bool,
-    stop_propagation_flag: bool,
-    composed: bool,
-    cancelable: bool,
-    bubbles: bool,
-    event_phase: u16,
-    current_target: ?*EventTarget,
-    target: ?*EventTarget,
-    event_type: []const u8,
-    allocator: Allocator,
+    base: EventBase,
 
     // ========================================================================
     // CustomEvent fields

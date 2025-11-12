@@ -16,6 +16,9 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 pub const EventTarget = @import("event_target").EventTarget;
+const EventListener = @import("event_target").EventListener;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 /// Base struct for Node hierarchy polymorphism.
 /// All Node-derived types have `base: NodeBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
@@ -135,9 +138,9 @@ pub const NodeBase = struct {
 
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
+const EventTargetBase = @import("event_target").EventTargetBase;
 pub const Node = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
+    base: EventTargetBase,
 
     // ========================================================================
     // Node fields

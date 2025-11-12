@@ -43,18 +43,11 @@ pub const DocumentFragmentBase = struct {
 };
 
 /// DOM Spec: interface DocumentFragment : Node
+const NodeBase = @import("node").NodeBase;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 pub const DocumentFragment = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
+    base: NodeBase,
 
     // ========================================================================
     // DocumentFragment fields

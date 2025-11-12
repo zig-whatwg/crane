@@ -3606,6 +3606,36 @@ fn generateBaseStruct(
     // Debug: print what we're generating
     std.debug.print("Generating {s}Base (parent: {s})\n", .{ parsed.name, if (parsed.parent_name) |p| p else "none" });
 
+    // Import types from parent if needed and types needed by this base struct
+    // Use _ prefix to avoid conflicts with nested declarations in main struct
+    if (parsed.parent_name) |parent_ref| {
+        // Extract parent class name (handle "base.Type" format)
+        const parent_class_name = if (std.mem.indexOfScalar(u8, parent_ref, '.')) |dot_pos|
+            parent_ref[dot_pos + 1 ..]
+        else
+            parent_ref;
+
+        // Import common types from parent module that base structs typically need
+        const parent_module = try pascalToSnakeCase(allocator, parent_class_name);
+        defer allocator.free(parent_module);
+
+        // Import EventListener if parent is EventTarget (most base structs need this)
+        if (std.mem.eql(u8, parent_class_name, "EventTarget")) {
+            try writer.print("const _Base_EventListener = @import(\"{s}\").EventListener;\n", .{parent_module});
+        }
+    }
+
+    // Import types that this specific base struct needs (based on its own fields)
+    if (std.mem.eql(u8, parsed.name, "Node")) {
+        try writer.print("const _Base_Document = @import(\"document\").Document;\n", .{});
+        try writer.print("const _Base_RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
+    }
+
+    if (std.mem.eql(u8, parsed.name, "CharacterData")) {
+        try writer.print("const _Base_Document = @import(\"document\").Document;\n", .{});
+        try writer.print("const _Base_RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
+    }
+
     // Generate doc comment
     try writer.print(
         \\/// Base struct for {s} hierarchy polymorphism.
@@ -3861,6 +3891,25 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
+    // Emit base type import (if parent is a base type)
+    var parent_base_type_name: ?[]const u8 = null;
+    if (parsed.parent_name) |parent_ref| {
+        // Extract parent class name (handle "base.Type" format)
+        const parent_class_name = if (std.mem.indexOfScalar(u8, parent_ref, '.')) |dot_pos|
+            parent_ref[dot_pos + 1 ..]
+        else
+            parent_ref;
+
+        // Check if parent is a base type
+        if (base_types.contains(parent_class_name)) {
+            parent_base_type_name = parent_class_name;
+            // Import the base type
+            const base_module = try pascalToSnakeCase(allocator, parent_class_name);
+            defer allocator.free(base_module);
+            try writer.print("const {s}Base = @import(\"{s}\").{s}Base;\n", .{ parent_class_name, base_module, parent_class_name });
+        }
+    }
+
     // Emit mixin imports (if any)
     if (parsed.mixin_names.len > 0) {
         for (parsed.mixin_names) |mixin_name| {
@@ -3916,56 +3965,62 @@ fn generateEnhancedClassWithRegistry(
 
     // Generate parent fields (flattened - copy fields directly from parent classes)
     if (parsed.parent_name) |parent_ref| {
-        var current_parent: ?[]const u8 = parent_ref;
-        var current_file_path = current_file;
+        if (parent_base_type_name) |base_name| {
+            // Use base field instead of flattening (import already added above)
+            try writer.print("    base: {s}Base,\n\n", .{base_name});
+        } else {
+            // Flatten parent fields (existing logic)
+            var current_parent: ?[]const u8 = parent_ref;
+            var current_file_path = current_file;
 
-        // Collect all parent fields by walking up the hierarchy
-        var all_parent_fields: std.ArrayList(FieldDef) = .empty;
-        defer all_parent_fields.deinit(allocator);
-        var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
-        defer all_parent_properties.deinit(allocator);
+            // Collect all parent fields by walking up the hierarchy
+            var all_parent_fields: std.ArrayList(FieldDef) = .empty;
+            defer all_parent_fields.deinit(allocator);
+            var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
+            defer all_parent_properties.deinit(allocator);
 
-        while (current_parent) |parent| {
-            const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse break;
+            while (current_parent) |parent| {
+                const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse break;
 
-            // Add parent fields (in reverse order, will reverse later)
-            for (parent_info.fields) |field| {
-                try all_parent_fields.append(allocator, field);
+                // Add parent fields (in reverse order, will reverse later)
+                for (parent_info.fields) |field| {
+                    try all_parent_fields.append(allocator, field);
+                }
+                for (parent_info.properties) |prop| {
+                    try all_parent_properties.append(allocator, prop);
+                }
+
+                current_parent = parent_info.parent_name;
+                current_file_path = parent_info.file_path;
             }
-            for (parent_info.properties) |prop| {
-                try all_parent_properties.append(allocator, prop);
+
+            // Reverse to get correct inheritance order (grandparent first)
+            std.mem.reverse(FieldDef, all_parent_fields.items);
+            std.mem.reverse(PropertyDef, all_parent_properties.items);
+
+            // Write parent fields
+            for (all_parent_fields.items) |field| {
+                if (field.default_value) |default| {
+                    try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+                } else {
+                    try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+                }
+            }
+            for (all_parent_properties.items) |prop| {
+                if (prop.default_value) |default| {
+                    try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+                } else {
+                    try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+                }
             }
 
-            current_parent = parent_info.parent_name;
-            current_file_path = parent_info.file_path;
-        }
-
-        // Reverse to get correct inheritance order (grandparent first)
-        std.mem.reverse(FieldDef, all_parent_fields.items);
-        std.mem.reverse(PropertyDef, all_parent_properties.items);
-
-        // Write parent fields
-        for (all_parent_fields.items) |field| {
-            if (field.default_value) |default| {
-                try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
-            } else {
-                try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            if (all_parent_fields.items.len > 0 or all_parent_properties.items.len > 0) {
+                if (parsed.mixin_names.len > 0 or parsed.properties.len > 0 or parsed.fields.len > 0) {
+                    try writer.writeAll("\n");
+                }
             }
-        }
-        for (all_parent_properties.items) |prop| {
-            if (prop.default_value) |default| {
-                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
-            } else {
-                try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
-            }
-        }
-
-        if (all_parent_fields.items.len > 0 or all_parent_properties.items.len > 0) {
-            if (parsed.mixin_names.len > 0 or parsed.properties.len > 0 or parsed.fields.len > 0) {
-                try writer.writeAll("\n");
-            }
-        }
-    }
+        } // end else (not a base type - flatten fields)
+    } // end if (has parent)
 
     // Generate mixin fields (flattened - copy fields directly from mixin classes)
     for (mixin_infos.items) |mixin_info| {

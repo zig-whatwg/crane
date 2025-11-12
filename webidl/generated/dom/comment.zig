@@ -18,20 +18,11 @@ pub const Element = @import("element").Element;
 /// Comment extends CharacterData (fields/methods inherited)
 /// Comment must EXPLICITLY include parent mixins (codegen doesn't inherit them)
 /// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+const CharacterDataBase = @import("character_data").CharacterDataBase;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const Comment = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
-    data: []u8,
-    allocator: Allocator,
+    base: CharacterDataBase,
 
     // ========================================================================
     // Comment fields

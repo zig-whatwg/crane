@@ -50,18 +50,10 @@ pub const SlotAssignmentMode = enum {
 /// 
 /// Shadow roots are DocumentFragments that serve as the root of a shadow tree.
 /// A shadow root is always attached to another node tree through its host element.
+const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 pub const ShadowRoot = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
-    allocator: std.mem.Allocator,
+    base: DocumentFragmentBase,
 
     // ========================================================================
     // Fields from DocumentOrShadowRoot mixin

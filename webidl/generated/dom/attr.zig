@@ -18,16 +18,9 @@ pub const Element = @import("element").Element;
 /// DOM §4.9 - Attr interface
 /// Attr nodes represent attributes.
 /// Attributes have a namespace, namespace prefix, local name, value, and element.
+const NodeBase = @import("node").NodeBase;
 pub const Attr = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
+    base: NodeBase,
 
     // ========================================================================
     // Attr fields

@@ -17,22 +17,10 @@ pub const Text = @import("text").Text;
 /// DOM §4.12 - CDATASection interface
 /// CDATASection extends Text but adds no additional members.
 /// It's used to represent CDATA sections in XML documents.
+const TextBase = @import("text").TextBase;
 pub const CDATASection = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
-    data: []u8,
-    allocator: Allocator,
-    allocator: Allocator,
-    manual_slot_assignment: ?*anyopaque = null,
-    assigned_slot: ?*anyopaque = null,
-    slottable_name: []const u8 = "",
+    base: TextBase,
+
 
     pub const includes = .{}; // No mixins
 

@@ -21,20 +21,13 @@ pub const NodeList = @import("node_list").NodeList;
 pub const dom_types = @import("dom_types");
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
+const NodeBase = @import("node").NodeBase;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const ParentNode = @import("parent_node").ParentNode;
 const Slottable = @import("slottable").Slottable;
 pub const Element = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
-    child_nodes: infra.List(*Node),
-    parent_node: ?*Node,
-    node_name: []const u8,
-    node_type: u16,
-    allocator: Allocator,
+    base: NodeBase,
 
     // ========================================================================
     // Fields from Slottable mixin

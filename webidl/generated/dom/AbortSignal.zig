@@ -18,9 +18,9 @@ pub const EventTarget = @import("event_target").EventTarget;
 /// Takes the abort reason as parameter
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
 /// DOM Spec: interface AbortSignal : EventTarget
+const EventTargetBase = @import("event_target").EventTargetBase;
 pub const AbortSignal = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
+    base: EventTargetBase,
 
     // ========================================================================
     // AbortSignal fields
