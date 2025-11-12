@@ -1,0 +1,89 @@
+const std = @import("std");
+const Node = @import("node").Node;
+const Element = @import("element").Element;
+const NodeList = @import("node_list").NodeList;
+
+test "Node.childNodes - [SameObject] returns same NodeList" {
+    const allocator = std.testing.allocator;
+
+    var elem = try Element.create(allocator, "div", null, null);
+    defer elem.deinit();
+
+    const elem_node = elem.asNode();
+
+    // Get childNodes first time
+    const list1 = try elem_node.get_childNodes();
+
+    // Get childNodes second time
+    const list2 = try elem_node.get_childNodes();
+
+    // Should return the SAME object per [SameObject]
+    try std.testing.expect(list1 == list2);
+}
+
+test "Node.childNodes - NodeList is initially populated" {
+    const allocator = std.testing.allocator;
+
+    var parent = try Element.create(allocator, "div", null, null);
+    defer parent.deinit();
+
+    var child1 = try Element.create(allocator, "span", null, null);
+    defer child1.deinit();
+
+    var child2 = try Element.create(allocator, "p", null, null);
+    defer child2.deinit();
+
+    const parent_node = parent.asNode();
+    const child1_node = child1.asNode();
+    const child2_node = child2.asNode();
+
+    // Add children before getting NodeList
+    _ = try parent_node.appendChild(child1_node);
+    _ = try parent_node.appendChild(child2_node);
+
+    // Get childNodes
+    const list = try parent_node.get_childNodes();
+
+    // Should contain both children
+    try std.testing.expectEqual(@as(u32, 2), list.get_length());
+    try std.testing.expect(list.call_item(0) == child1_node);
+    try std.testing.expect(list.call_item(1) == child2_node);
+}
+
+test "Node.childNodes - empty node has empty NodeList" {
+    const allocator = std.testing.allocator;
+
+    var elem = try Element.create(allocator, "div", null, null);
+    defer elem.deinit();
+
+    const elem_node = elem.asNode();
+
+    // Get childNodes for empty node
+    const list = try elem_node.get_childNodes();
+
+    // Should be empty
+    try std.testing.expectEqual(@as(u32, 0), list.get_length());
+}
+
+test "Node.childNodes - NodeList uses item() method" {
+    const allocator = std.testing.allocator;
+
+    var parent = try Element.create(allocator, "ul", null, null);
+    defer parent.deinit();
+
+    var child = try Element.create(allocator, "li", null, null);
+    defer child.deinit();
+
+    const parent_node = parent.asNode();
+    const child_node = child.asNode();
+
+    _ = try parent_node.appendChild(child_node);
+
+    const list = try parent_node.get_childNodes();
+
+    // item(0) should return first child
+    try std.testing.expect(list.call_item(0) == child_node);
+
+    // item(1) should return null (out of bounds)
+    try std.testing.expect(list.call_item(1) == null);
+}

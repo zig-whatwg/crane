@@ -35,6 +35,11 @@ pub const Node = webidl.interface(struct {
     /// Specifications (like HTML) can define cloning steps for specific node types
     cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
 
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
+    cached_child_nodes: ?*@import("node_list").NodeList = null,
+
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
     pub const TEXT_NODE: u16 = 3;
@@ -67,6 +72,7 @@ pub const Node = webidl.interface(struct {
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             // NOTE: Parent EventTarget initialization is handled by codegen
         };
     }
@@ -75,6 +81,12 @@ pub const Node = webidl.interface(struct {
         // NOTE: EventTarget parent cleanup is handled by codegen
         self.child_nodes.deinit();
         self.registered_observers.deinit();
+
+        // Clean up cached NodeList if it exists
+        if (self.cached_child_nodes) |list| {
+            list.deinit();
+            self.allocator.destroy(list);
+        }
     }
 
     /// insertBefore(node, child)
@@ -599,10 +611,26 @@ pub const Node = webidl.interface(struct {
         return null;
     }
 
-    pub fn get_childNodes(self: *const Node) *const infra.List(*Node) {
-        // Returns a NodeList rooted at this matching only children
-        // TODO: Return actual NodeList interface when implemented
-        return &self.child_nodes;
+    pub fn get_childNodes(self: *Node) !*@import("node_list").NodeList {
+        // [SameObject] - Return the same NodeList object each time
+        // The NodeList is a live view of this node's children
+
+        if (self.cached_child_nodes) |list| {
+            return list;
+        }
+
+        // Create new NodeList on first access
+        const NodeList = @import("node_list").NodeList;
+        const list = try self.allocator.create(NodeList);
+        list.* = try NodeList.init(self.allocator);
+
+        // Populate with current children (live view will track changes)
+        for (self.child_nodes.items) |child| {
+            try list.addNode(child);
+        }
+
+        self.cached_child_nodes = list;
+        return list;
     }
 
     pub fn get_firstChild(self: *const Node) ?*Node {
