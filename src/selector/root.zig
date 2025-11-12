@@ -6,7 +6,7 @@
 //! ## Modules
 //! - `tokenizer` - CSS tokenization (CSS Syntax Module Level 3)
 //! - `parser` - Selector parsing (recursive descent)
-//! - `matcher` - Selector matching (right-to-left with bloom filter)
+//! - `matcher` - Selector matching (right-to-left evaluation)
 //!
 //! ## Usage
 //! ```zig
@@ -38,7 +38,8 @@ pub const PseudoClassKind = parser.PseudoClassKind;
 pub const NthPattern = parser.NthPattern;
 pub const PseudoElementSelector = parser.PseudoElementSelector;
 
-// Phase 3: matcher (coming soon)
+pub const matcher = @import("matcher.zig");
+pub const Matcher = matcher.Matcher;
 
 test {
     @import("std").testing.refAllDecls(@This());

@@ -16,7 +16,7 @@ const Allocator = std.mem.Allocator;
 
 // Forward declarations at file scope
 const DocumentType = @import("document").Document;
-const RegisteredObserverType = @import("registered_observer").RegisteredObserver;
+pub const RegisteredObserverType = @import("registered_observer").RegisteredObserver;
 
 /// Base structure containing all fields from the Node interface
 /// This is used as the first field in all concrete node types (Element, CharacterData, etc.)

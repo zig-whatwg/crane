@@ -65,7 +65,7 @@ pub const AttrWithBase = struct {
                 .parent_node = null,
                 .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(@TypeOf(node_base.RegisteredObserverType)).init(allocator),
+                .registered_observers = std.ArrayList(node_base.RegisteredObserverType){},
             },
             .local_name = try allocator.dupe(u8, local_name),
             .value = try allocator.dupe(u8, value),
@@ -83,7 +83,7 @@ pub const AttrWithBase = struct {
         if (self.namespace_uri) |ns| self.base.allocator.free(ns);
         if (self.prefix) |p| self.base.allocator.free(p);
         self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.base.registered_observers.deinit(self.base.allocator);
     }
 
     /// Upcast Attr to NodeBase

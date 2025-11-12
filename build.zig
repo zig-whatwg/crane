@@ -541,6 +541,14 @@ pub fn build(b: *std.Build) void {
     range_mod.addImport("document_fragment", document_fragment_mod);
     range_mod.addImport("dom", dom_mod);
 
+    // Selector module (CSS Selectors Level 4 implementation)
+    const selector_mod = b.addModule("selector", .{
+        .root_source_file = b.path("src/selector/root.zig"),
+        .target = target,
+    });
+    selector_mod.addImport("infra", infra_mod);
+    selector_mod.addImport("dom", dom_mod);
+
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
         .target = target,
@@ -1226,6 +1234,7 @@ pub fn build(b: *std.Build) void {
     const test_infra = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "infra"));
     const test_webidl = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "webidl"));
     const test_dom = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "dom"));
+    const test_selector = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "selector"));
     const test_encoding = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "encoding"));
     const test_url = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "url"));
     const test_console = test_all or (spec_filter != null and std.mem.eql(u8, spec_filter.?, "console"));
@@ -1248,6 +1257,12 @@ pub fn build(b: *std.Build) void {
         const dom_tests = b.addTest(.{ .root_module = dom_mod });
         const run_dom_tests = b.addRunArtifact(dom_tests);
         test_step.dependOn(&run_dom_tests.step);
+    }
+
+    if (test_selector) {
+        const selector_tests = b.addTest(.{ .root_module = selector_mod });
+        const run_selector_tests = b.addRunArtifact(selector_tests);
+        test_step.dependOn(&run_selector_tests.step);
     }
 
     if (test_encoding) {
