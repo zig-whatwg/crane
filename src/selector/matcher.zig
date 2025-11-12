@@ -2176,3 +2176,92 @@ test "Matcher: :has(~ .error) relative subsequent sibling selector" {
     // span should NOT match (no subsequent sibling span.error - can't match itself)
     try std.testing.expect(!try matcher.matches(span, &selector_list));
 }
+
+test "Matcher: forgiving selector parsing with valid selectors" {
+    const allocator = std.testing.allocator;
+
+    var parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    var div = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "foo" },
+    });
+    defer destroyTestElement(allocator, div);
+
+    var p_elem = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p_elem);
+    p_elem.* = Element.init(allocator, "p");
+
+    var span = try createTestElementWithAttrs(allocator, "span", &.{
+        .{ .name = "class", .value = "bar" },
+    });
+    defer destroyTestElement(allocator, span);
+
+    // Link them: parent > div.foo, p, span.bar
+    div.base.parent_node = &parent.base;
+    p_elem.base.parent_node = &parent.base;
+    span.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&p_elem.base);
+    try parent.base.child_nodes.append(&span.base);
+
+    // Test :is(.foo, .bar) - forgiving parsing with all valid selectors
+    const input = ":is(.foo, .bar)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var sel_parser = try Parser.init(allocator, &tokenizer);
+    defer sel_parser.deinit();
+
+    var selector_list = try sel_parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+
+    // div.foo should match (matches .foo in :is())
+    try std.testing.expect(try matcher.matches(div, &selector_list));
+
+    // p should NOT match (no .foo or .bar class)
+    try std.testing.expect(!try matcher.matches(p_elem, &selector_list));
+
+    // span.bar should match (matches .bar in :is())
+    try std.testing.expect(try matcher.matches(span, &selector_list));
+}
+
+test "Matcher: forgiving selector parsing drops invalid selectors" {
+    const allocator = std.testing.allocator;
+
+    var parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    var div = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "foo" },
+    });
+    defer destroyTestElement(allocator, div);
+
+    var p_elem = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p_elem);
+    p_elem.* = Element.init(allocator, "p");
+
+    // Link them
+    div.base.parent_node = &parent.base;
+    p_elem.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&p_elem.base);
+
+    // Test :is(.foo, +++invalid+++, p) - forgiving parsing should drop invalid selector
+    // This should behave like :is(.foo, p)
+    const input = ":is(.foo, +++, p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var sel_parser = try Parser.init(allocator, &tokenizer);
+    defer sel_parser.deinit();
+
+    var selector_list = try sel_parser.parseSelectorList();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+
+    // div.foo should match (matches .foo in :is())
+    try std.testing.expect(try matcher.matches(div, &selector_list));
+
+    // p should match (matches p in :is())
+    try std.testing.expect(try matcher.matches(p_elem, &selector_list));
+}
