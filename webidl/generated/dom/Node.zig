@@ -525,12 +525,120 @@ pub const Node = struct {
     /// isEqualNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const Node, other_node: ?*const Node) bool {
+        // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
-        // TODO: Implement deep equality check per spec
-        const other = other_node.?;
-        if (self.node_type != other.node_type) return false;
-        if (!std.mem.eql(u8, self.node_name, other.node_name)) return false;
-        // TODO: Check children, attributes, etc.
+        return Node.nodeEquals(self, other_node.?);
+    }
+    /// Node A equals node B - DOM Spec algorithm
+    /// A node A equals a node B if all of the following conditions are true:
+    /// - A and B implement the same interfaces
+    /// - Node-specific properties are equal
+    /// - If A is an element, each attribute in its list equals an attribute in B's list
+    /// - A and B have the same number of children
+    /// - Each child of A equals the child of B at the identical index
+    pub fn nodeEquals(a: *const Node, b: *const Node) bool {
+        // Step 1: A and B implement the same interfaces (check node_type)
+        if (a.node_type != b.node_type) return false;
+
+        // Step 2: Check node-type-specific properties
+        switch (a.node_type) {
+            DOCUMENT_TYPE_NODE => {
+                // DocumentType: check name, public ID, and system ID
+                // TODO: Cast to DocumentType when implemented
+                // For now, just check node_name
+                if (!std.mem.eql(u8, a.node_name, b.node_name)) return false;
+            },
+            ELEMENT_NODE => {
+                // Element: check namespace, namespace prefix, local name, and attribute list size
+                const elem_a: *const Element = @ptrCast(@alignCast(a));
+                const elem_b: *const Element = @ptrCast(@alignCast(b));
+
+                // Check namespace
+                if (elem_a.namespace_uri == null and elem_b.namespace_uri != null) return false;
+                if (elem_a.namespace_uri != null and elem_b.namespace_uri == null) return false;
+                if (elem_a.namespace_uri != null and elem_b.namespace_uri != null) {
+                    if (!std.mem.eql(u8, elem_a.namespace_uri.?, elem_b.namespace_uri.?)) return false;
+                }
+
+                // Check local name (tag_name)
+                if (!std.mem.eql(u8, elem_a.tag_name, elem_b.tag_name)) return false;
+
+                // Check attribute list size
+                if (elem_a.attributes.len != elem_b.attributes.len) return false;
+
+                // Step 3: Each attribute in A's list has an equal attribute in B's list
+                for (elem_a.attributes.items) |attr_a| {
+                    var found = false;
+                    for (elem_b.attributes.items) |attr_b| {
+                        if (Node.attributeEquals(&attr_a, &attr_b)) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) return false;
+                }
+            },
+            ATTRIBUTE_NODE => {
+                // Attr: check namespace, local name, and value
+                // Note: Attr nodes don't participate in tree, but we check for completeness
+                const Attr = @import("attr").Attr;
+                const attr_a: *const Attr = @ptrCast(@alignCast(a));
+                const attr_b: *const Attr = @ptrCast(@alignCast(b));
+                return Node.attributeEquals(attr_a, attr_b);
+            },
+            PROCESSING_INSTRUCTION_NODE => {
+                // ProcessingInstruction: check target and data
+                const PI = @import("processing_instruction").ProcessingInstruction;
+                const pi_a: *const PI = @ptrCast(@alignCast(a));
+                const pi_b: *const PI = @ptrCast(@alignCast(b));
+
+                if (!std.mem.eql(u8, pi_a.target, pi_b.target)) return false;
+                if (!std.mem.eql(u8, pi_a.data, pi_b.data)) return false;
+            },
+            TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE => {
+                // Text, Comment, CDATASection: check data
+                const CharacterData = @import("character_data").CharacterData;
+                const cd_a: *const CharacterData = @ptrCast(@alignCast(a));
+                const cd_b: *const CharacterData = @ptrCast(@alignCast(b));
+
+                if (!std.mem.eql(u8, cd_a.data, cd_b.data)) return false;
+            },
+            else => {
+                // For other node types, basic node_name check is sufficient
+                if (!std.mem.eql(u8, a.node_name, b.node_name)) return false;
+            },
+        }
+
+        // Step 4: A and B have the same number of children
+        if (a.child_nodes.len != b.child_nodes.len) return false;
+
+        // Step 5: Each child of A equals the child of B at the identical index
+        for (a.child_nodes.items, 0..) |child_a, i| {
+            const child_b = b.child_nodes.items[i];
+            if (!Node.nodeEquals(child_a, child_b)) return false;
+        }
+
+        return true;
+    }
+    /// Attribute equality check
+    /// An attribute A equals an attribute B if:
+    /// - namespace is equal
+    /// - local name is equal
+    /// - value is equal
+    pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
+        // Check namespace
+        if (a.namespace_uri == null and b.namespace_uri != null) return false;
+        if (a.namespace_uri != null and b.namespace_uri == null) return false;
+        if (a.namespace_uri != null and b.namespace_uri != null) {
+            if (!std.mem.eql(u8, a.namespace_uri.?, b.namespace_uri.?)) return false;
+        }
+
+        // Check local name
+        if (!std.mem.eql(u8, a.local_name, b.local_name)) return false;
+
+        // Check value
+        if (!std.mem.eql(u8, a.value, b.value)) return false;
+
         return true;
     }
     /// isSameNode(otherNode)

@@ -442,13 +442,9 @@ pub const DocumentType = struct {
     /// isEqualNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const DocumentType, other_node: ?*const DocumentType) bool {
+        // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
-        // TODO: Implement deep equality check per spec
-        const other = other_node.?;
-        if (self.node_type != other.node_type) return false;
-        if (!std.mem.eql(u8, self.node_name, other.node_name)) return false;
-        // TODO: Check children, attributes, etc.
-        return true;
+        return DocumentType.nodeEquals(self, other_node.?);
     }
     /// isSameNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
