@@ -13,7 +13,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const Text = @import("text").Text;
 /// DOM §4.12 - CDATASection interface
 /// CDATASection extends Text but adds no additional members.
 /// It's used to represent CDATA sections in XML documents.
@@ -103,6 +102,7 @@ pub const CDATASection = struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Step 6.1: Insert new node into parent before node's next sibling
+            const mutation = @import("dom").mutation;
             const next_sibling = self_node.get_nextSibling();
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 

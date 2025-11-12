@@ -261,7 +261,6 @@ pub const ChildNode = struct {
 /// 5. Return node.
 pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_types.NodeOrDOMString, document: *@import("document").Document) !*@import("node").Node {
     pub const NodeType = @import("node").Node;
-    pub const Text = @import("text").Text;
     pub const DocumentFragment = @import("document_fragment").DocumentFragment;
     pub const mutation = @import("dom").mutation;
 

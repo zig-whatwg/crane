@@ -12,9 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const CharacterData = @import("character_data").CharacterData;
 pub const dom_types = @import("dom_types");
-pub const mutation = @import("../../dom/mutation.zig");
 /// Runtime type tag for Text hierarchy.
 /// Used for safe downcasting from TextBase to derived types.
 pub const TextTypeTag = enum {
@@ -548,6 +546,7 @@ pub const Text = struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Step 6.1: Insert new node into parent before node's next sibling
+            const mutation = @import("dom").mutation;
             const next_sibling = self_node.get_nextSibling();
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 

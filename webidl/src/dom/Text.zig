@@ -8,7 +8,6 @@ const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
-const mutation = @import("../../dom/mutation.zig");
 const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
 
@@ -84,6 +83,7 @@ pub const Text = webidl.interface(struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Step 6.1: Insert new node into parent before node's next sibling
+            const mutation = @import("dom").mutation;
             const next_sibling = self_node.get_nextSibling();
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 

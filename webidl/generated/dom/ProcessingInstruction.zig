@@ -13,7 +13,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const CharacterData = @import("character_data").CharacterData;
 pub const dom_types = @import("dom_types");
 /// DOM §4.13 - ProcessingInstruction interface
 /// ProcessingInstruction nodes represent processing instructions.

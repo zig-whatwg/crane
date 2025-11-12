@@ -13,7 +13,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
-pub const AbortSignal = @import("abort_signal").AbortSignal;
 
 /// DOM §2.7 - Event listener structure
 /// An event listener can be used to observe a specific event and consists of:

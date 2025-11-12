@@ -11,7 +11,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const CharacterData = @import("character_data").CharacterData;
 pub const dom_types = @import("dom_types");
 /// DOM Spec: interface Comment : CharacterData
 /// Comment extends CharacterData (fields/methods inherited)

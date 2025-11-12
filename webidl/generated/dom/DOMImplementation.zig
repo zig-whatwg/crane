@@ -14,7 +14,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
 pub const DocumentType = @import("document_type").DocumentType;
-pub const Text = @import("text").Text;
 
 /// DOM Spec: interface DOMImplementation
 /// 
