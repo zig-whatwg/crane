@@ -28,6 +28,13 @@ pub const Selector = union(enum) {
     id_selector: []const u8, // #myId
     class_selector: []const u8, // .myClass
 
+    /// Attribute selectors
+    attribute_exists: []const u8, // [attr]
+    attribute_equals: struct {
+        name: []const u8,
+        value: []const u8,
+    }, // [attr=value]
+
     /// Parse error - invalid selector syntax
     parse_error: []const u8,
 };
@@ -75,6 +82,11 @@ pub fn parseSelector(allocator: std.mem.Allocator, selectors: []const u8) !Selec
         return Selector{ .class_selector = trimmed[1..] };
     }
 
+    // Attribute selector: [attr] or [attr=value]
+    if (trimmed[0] == '[') {
+        return parseAttributeSelector(trimmed);
+    }
+
     // Type selector: div, p, span, etc.
     // Very basic validation: starts with ASCII alpha
     if (isAsciiAlpha(trimmed[0])) {
@@ -83,6 +95,50 @@ pub fn parseSelector(allocator: std.mem.Allocator, selectors: []const u8) !Selec
 
     // Unsupported selector syntax
     return Selector{ .parse_error = "Unsupported selector syntax (mock implementation)" };
+}
+
+/// Parse attribute selector [attr] or [attr=value]
+fn parseAttributeSelector(selector: []const u8) Selector {
+    if (selector.len < 3) {
+        return Selector{ .parse_error = "Invalid attribute selector" };
+    }
+
+    if (selector[selector.len - 1] != ']') {
+        return Selector{ .parse_error = "Attribute selector must end with ]" };
+    }
+
+    // Extract content between brackets
+    const content = selector[1 .. selector.len - 1];
+
+    // Look for = sign
+    if (std.mem.indexOfScalar(u8, content, '=')) |equals_pos| {
+        // [attr=value]
+        const attr_name = std.mem.trim(u8, content[0..equals_pos], " \t");
+        var value = std.mem.trim(u8, content[equals_pos + 1 ..], " \t");
+
+        // Remove quotes if present
+        if (value.len >= 2 and ((value[0] == '"' and value[value.len - 1] == '"') or
+            (value[0] == '\'' and value[value.len - 1] == '\'')))
+        {
+            value = value[1 .. value.len - 1];
+        }
+
+        if (attr_name.len == 0) {
+            return Selector{ .parse_error = "Empty attribute name" };
+        }
+
+        return Selector{ .attribute_equals = .{
+            .name = attr_name,
+            .value = value,
+        } };
+    } else {
+        // [attr]
+        const attr_name = std.mem.trim(u8, content, " \t");
+        if (attr_name.len == 0) {
+            return Selector{ .parse_error = "Empty attribute name" };
+        }
+        return Selector{ .attribute_exists = attr_name };
+    }
 }
 
 /// DOM §3.4 - match a selector against a tree
@@ -168,6 +224,35 @@ fn matchesSelector(selector: Selector, element: anytype) bool {
                 // Token-based matching: split class list by whitespace and check each token
                 return classListContains(classes, class_name);
             }
+            return false;
+        },
+        .attribute_exists => |attr_name| {
+            // Attribute exists selector matches if element has the attribute
+            // Check for common attributes via fields
+            if (std.mem.eql(u8, attr_name, "id")) {
+                return has_id and @field(element, "id") != null;
+            }
+            if (std.mem.eql(u8, attr_name, "class")) {
+                return has_class_list and @field(element, "class_list") != null;
+            }
+
+            // For other attributes, would need to check element.attributes
+            // For now, return false for unknown attributes
+            return false;
+        },
+        .attribute_equals => |attr_spec| {
+            // Attribute equals selector matches if element has attribute with specific value
+            if (std.mem.eql(u8, attr_spec.name, "id")) {
+                if (has_id) {
+                    if (@field(element, "id")) |elem_id| {
+                        return std.mem.eql(u8, elem_id, attr_spec.value);
+                    }
+                }
+                return false;
+            }
+
+            // For other attributes, would need to check element.attributes
+            // For now, return false for unknown attributes
             return false;
         },
         .parse_error => {
@@ -301,4 +386,37 @@ test "Selectors mock - classListContains with tokens" {
     // Tab/newline separators
     try testing.expect(classListContains("myClass\totherClass", "otherClass"));
     try testing.expect(classListContains("myClass\notherClass", "otherClass"));
+}
+
+test "Selectors mock - parse attribute exists selector" {
+    const selector = try parseSelector(testing.allocator, "[href]");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .attribute_exists), @as(std.meta.Tag(Selector), selector));
+    try testing.expectEqualStrings("href", selector.attribute_exists);
+}
+
+test "Selectors mock - parse attribute equals selector" {
+    const selector1 = try parseSelector(testing.allocator, "[type=text]");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .attribute_equals), @as(std.meta.Tag(Selector), selector1));
+    try testing.expectEqualStrings("type", selector1.attribute_equals.name);
+    try testing.expectEqualStrings("text", selector1.attribute_equals.value);
+
+    // With quotes
+    const selector2 = try parseSelector(testing.allocator, "[type=\"text\"]");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .attribute_equals), @as(std.meta.Tag(Selector), selector2));
+    try testing.expectEqualStrings("type", selector2.attribute_equals.name);
+    try testing.expectEqualStrings("text", selector2.attribute_equals.value);
+
+    // With spaces
+    const selector3 = try parseSelector(testing.allocator, "[ type = text ]");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .attribute_equals), @as(std.meta.Tag(Selector), selector3));
+    try testing.expectEqualStrings("type", selector3.attribute_equals.name);
+    try testing.expectEqualStrings("text", selector3.attribute_equals.value);
+}
+
+test "Selectors mock - parse error on malformed attribute selector" {
+    const selector1 = try parseSelector(testing.allocator, "[");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .parse_error), @as(std.meta.Tag(Selector), selector1));
+
+    const selector2 = try parseSelector(testing.allocator, "[]");
+    try testing.expectEqual(@as(std.meta.Tag(Selector), .parse_error), @as(std.meta.Tag(Selector), selector2));
 }
