@@ -29,7 +29,7 @@
 //! // Parse selector
 //! const tokenizer = Tokenizer.init("div.container");
 //! var parser = Parser.init(allocator, tokenizer);
-//! defer parser.deinit();
+//! defer p_parser.deinit();
 //! const selector_list = try parser.parse();
 //!
 //! // Match element
@@ -1147,6 +1147,721 @@ test "Matcher: subsequent-sibling combinator (h1 ~ p)" {
     const result = try matcher.matches(p, &selector_list);
 
     try testing.expect(result); // p follows h1 (not immediately)
+}
+
+// ============================================================================
+// Structural Pseudo-Class Tests
+// ============================================================================
+
+test "Matcher: :first-child pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "ul");
+    defer destroyTestElement(allocator, parent);
+
+    // Create children
+    const li1 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li1);
+
+    const li2 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li2);
+
+    // Link
+    li1.base.parent_node = &parent.base;
+    li2.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&li1.base);
+    try parent.base.child_nodes.append(&li2.base);
+
+    const input = "li:first-child";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(li1, &selector_list)); // li1 is first-child
+    try testing.expect(!try matcher.matches(li2, &selector_list)); // li2 is not first-child
+}
+
+test "Matcher: :last-child pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "ul");
+    defer destroyTestElement(allocator, parent);
+
+    // Create children
+    const li1 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li1);
+
+    const li2 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li2);
+
+    // Link
+    li1.base.parent_node = &parent.base;
+    li2.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&li1.base);
+    try parent.base.child_nodes.append(&li2.base);
+
+    const input = "li:last-child";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(!try matcher.matches(li1, &selector_list)); // li1 is not last-child
+    try testing.expect(try matcher.matches(li2, &selector_list)); // li2 is last-child
+}
+
+test "Matcher: :only-child pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent with one child
+    const parent1 = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent1);
+
+    const only = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, only);
+
+    only.base.parent_node = &parent1.base;
+    try parent1.base.child_nodes.append(&only.base);
+
+    // Create parent with multiple children
+    const parent2 = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent2);
+
+    const child1 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, child1);
+
+    const child2 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, child2);
+
+    child1.base.parent_node = &parent2.base;
+    child2.base.parent_node = &parent2.base;
+    try parent2.base.child_nodes.append(&child1.base);
+    try parent2.base.child_nodes.append(&child2.base);
+
+    const input = "p:only-child";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(only, &selector_list)); // only is only-child
+    try testing.expect(!try matcher.matches(child1, &selector_list)); // child1 has siblings
+}
+
+test "Matcher: :first-of-type pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    // Create mixed children: div, p, p
+    const div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+
+    const p1 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p1);
+
+    const p2 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p2);
+
+    // Link
+    div.base.parent_node = &parent.base;
+    p1.base.parent_node = &parent.base;
+    p2.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&p1.base);
+    try parent.base.child_nodes.append(&p2.base);
+
+    const input = "p:first-of-type";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(p1, &selector_list)); // p1 is first p
+    try testing.expect(!try matcher.matches(p2, &selector_list)); // p2 is second p
+}
+
+test "Matcher: :last-of-type pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    // Create mixed children: p, p, div
+    const p1 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p1);
+
+    const p2 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p2);
+
+    const div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+
+    // Link
+    p1.base.parent_node = &parent.base;
+    p2.base.parent_node = &parent.base;
+    div.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&p1.base);
+    try parent.base.child_nodes.append(&p2.base);
+    try parent.base.child_nodes.append(&div.base);
+
+    const input = "p:last-of-type";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(!try matcher.matches(p1, &selector_list)); // p1 is not last p
+    try testing.expect(try matcher.matches(p2, &selector_list)); // p2 is last p
+}
+
+test "Matcher: :only-of-type pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent with mixed types: div, p, span
+    const parent = try createTestElement(allocator, "section");
+    defer destroyTestElement(allocator, parent);
+
+    const div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    const span = try createTestElement(allocator, "span");
+    defer destroyTestElement(allocator, span);
+
+    // Link
+    div.base.parent_node = &parent.base;
+    p.base.parent_node = &parent.base;
+    span.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&div.base);
+    try parent.base.child_nodes.append(&p.base);
+    try parent.base.child_nodes.append(&span.base);
+
+    const input = "p:only-of-type";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(p, &selector_list)); // p is only p
+}
+
+test "Matcher: :nth-child(2n) even" {
+    const allocator = testing.allocator;
+
+    // Create parent with 4 children
+    const parent = try createTestElement(allocator, "ul");
+    defer destroyTestElement(allocator, parent);
+
+    const li1 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li1);
+    const li2 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li2);
+    const li3 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li3);
+    const li4 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li4);
+
+    // Link all
+    li1.base.parent_node = &parent.base;
+    li2.base.parent_node = &parent.base;
+    li3.base.parent_node = &parent.base;
+    li4.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&li1.base);
+    try parent.base.child_nodes.append(&li2.base);
+    try parent.base.child_nodes.append(&li3.base);
+    try parent.base.child_nodes.append(&li4.base);
+
+    const input = "li:nth-child(even)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(!try matcher.matches(li1, &selector_list)); // odd
+    try testing.expect(try matcher.matches(li2, &selector_list)); // even
+    try testing.expect(!try matcher.matches(li3, &selector_list)); // odd
+    try testing.expect(try matcher.matches(li4, &selector_list)); // even
+}
+
+test "Matcher: :nth-child(2n+1) odd" {
+    const allocator = testing.allocator;
+
+    // Create parent with 3 children
+    const parent = try createTestElement(allocator, "ul");
+    defer destroyTestElement(allocator, parent);
+
+    const li1 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li1);
+    const li2 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li2);
+    const li3 = try createTestElement(allocator, "li");
+    defer destroyTestElement(allocator, li3);
+
+    // Link all
+    li1.base.parent_node = &parent.base;
+    li2.base.parent_node = &parent.base;
+    li3.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&li1.base);
+    try parent.base.child_nodes.append(&li2.base);
+    try parent.base.child_nodes.append(&li3.base);
+
+    const input = "li:nth-child(odd)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(li1, &selector_list)); // odd
+    try testing.expect(!try matcher.matches(li2, &selector_list)); // even
+    try testing.expect(try matcher.matches(li3, &selector_list)); // odd
+}
+
+test "Matcher: :nth-last-child(2)" {
+    const allocator = testing.allocator;
+
+    // Create parent with 3 children
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    const p1 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p1);
+    const p2 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p2);
+    const p3 = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p3);
+
+    // Link
+    p1.base.parent_node = &parent.base;
+    p2.base.parent_node = &parent.base;
+    p3.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&p1.base);
+    try parent.base.child_nodes.append(&p2.base);
+    try parent.base.child_nodes.append(&p3.base);
+
+    const input = "p:nth-last-child(2)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(!try matcher.matches(p1, &selector_list)); // 3rd from end
+    try testing.expect(try matcher.matches(p2, &selector_list)); // 2nd from end
+    try testing.expect(!try matcher.matches(p3, &selector_list)); // 1st from end
+}
+
+test "Matcher: :root pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create root element (no parent)
+    const root = try createTestElement(allocator, "html");
+    defer destroyTestElement(allocator, root);
+
+    // Create child element
+    const child = try createTestElement(allocator, "body");
+    defer destroyTestElement(allocator, child);
+
+    child.base.parent_node = &root.base;
+    try root.base.child_nodes.append(&child.base);
+
+    const input = ":root";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(root, &selector_list)); // root has no parent
+    try testing.expect(!try matcher.matches(child, &selector_list)); // child has parent
+}
+
+// ============================================================================
+// Attribute Matcher Tests
+// ============================================================================
+
+test "Matcher: attribute exact match [type='text']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "input", &.{
+        .{ .name = "type", .value = "text" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[type='text']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: attribute prefix match [href^='https']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "a", &.{
+        .{ .name = "href", .value = "https://example.com" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[href^='https']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: attribute suffix match [src$='.png']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "img", &.{
+        .{ .name = "src", .value = "/images/logo.png" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[src$='.png']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: attribute substring match [title*='hello']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "title", .value = "Say hello world" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[title*='hello']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: attribute includes word [class~='active']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "btn btn-primary active" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[class~='active']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: attribute dash match [lang|='en']" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "lang", .value = "en-US" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[lang|='en']";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+// TODO: Case-insensitive attribute matching needs parser support for 'i' flag
+// test "Matcher: attribute case-insensitive [type='TEXT' i]" {
+//     const allocator = testing.allocator;
+//     const elem = try createTestElementWithAttrs(allocator, "input", &.{
+//         .{ .name = "type", .value = "text" },
+//     });
+//     defer destroyTestElement(allocator, elem);
+//
+//     const input = "[type='TEXT' i]";
+//     var tokenizer = Tokenizer.init(allocator, input);
+//     var p = try Parser.init(allocator, &tokenizer);
+//     defer p.deinit();
+//
+//     var selector_list = try p.parse();
+//     defer selector_list.deinit();
+//
+//     const matcher = Matcher.init(allocator);
+//     try testing.expect(try matcher.matches(elem, &selector_list));
+// }
+
+// ============================================================================
+// Logical Pseudo-Class Tests
+// ============================================================================
+
+test "Matcher: :not() pseudo-class" {
+    const allocator = testing.allocator;
+    const div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    const input = "*:not(p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(div, &selector_list)); // div is not p
+    try testing.expect(!try matcher.matches(p, &selector_list)); // p is p
+}
+
+test "Matcher: :is() pseudo-class" {
+    const allocator = testing.allocator;
+    const h1 = try createTestElement(allocator, "h1");
+    defer destroyTestElement(allocator, h1);
+
+    const h2 = try createTestElement(allocator, "h2");
+    defer destroyTestElement(allocator, h2);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    const input = ":is(h1, h2)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(h1, &selector_list)); // h1 matches
+    try testing.expect(try matcher.matches(h2, &selector_list)); // h2 matches
+    try testing.expect(!try matcher.matches(p, &selector_list)); // p doesn't match
+}
+
+test "Matcher: :where() pseudo-class" {
+    const allocator = testing.allocator;
+    const article = try createTestElement(allocator, "article");
+    defer destroyTestElement(allocator, article);
+
+    const section = try createTestElement(allocator, "section");
+    defer destroyTestElement(allocator, section);
+
+    const input = ":where(article, section)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(article, &selector_list));
+    try testing.expect(try matcher.matches(section, &selector_list));
+}
+
+test "Matcher: :has() pseudo-class" {
+    const allocator = testing.allocator;
+
+    // Create parent with child p
+    const parent1 = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent1);
+
+    const child_p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, child_p);
+
+    child_p.base.parent_node = &parent1.base;
+    try parent1.base.child_nodes.append(&child_p.base);
+
+    // Create parent with child span (no p)
+    const parent2 = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent2);
+
+    const child_span = try createTestElement(allocator, "span");
+    defer destroyTestElement(allocator, child_span);
+
+    child_span.base.parent_node = &parent2.base;
+    try parent2.base.child_nodes.append(&child_span.base);
+
+    const input = "div:has(p)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(parent1, &selector_list)); // has p
+    try testing.expect(!try matcher.matches(parent2, &selector_list)); // no p
+}
+
+// ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+test "Matcher: empty selector list behavior" {
+    const allocator = testing.allocator;
+    const elem = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, elem);
+
+    // Parser should fail on empty input, but test error handling
+    const input = "div";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    // Verify we have a valid selector list
+    try testing.expect(selector_list.selectors.len > 0);
+}
+
+test "Matcher: class selector with multiple classes" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "foo bar baz" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = ".bar";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: element with no parent (root)" {
+    const allocator = testing.allocator;
+    const elem = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, elem);
+
+    // Element with no parent should still match simple selectors
+    const input = "div";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
+
+test "Matcher: complex selector chain (div > p.text)" {
+    const allocator = testing.allocator;
+
+    // Create: div > p.text
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    const child = try createTestElementWithAttrs(allocator, "p", &.{
+        .{ .name = "class", .value = "text important" },
+    });
+    defer destroyTestElement(allocator, child);
+
+    child.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&child.base);
+
+    const input = "div > p.text";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(child, &selector_list));
+}
+
+test "Matcher: nested :not(:is()) combination" {
+    const allocator = testing.allocator;
+    const div = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, div);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    const input = "*:not(:is(p, span))";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(div, &selector_list)); // div is not (p or span)
+    try testing.expect(!try matcher.matches(p, &selector_list)); // p is (p or span)
 }
 //
 // TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
