@@ -104,13 +104,78 @@ pub fn matchSelectorAgainstTree(
 ) !std.ArrayList(*@TypeOf(root.*)) {
     _ = scoping_root; // Ignored in mock - :scope not implemented
 
-    const matches = std.ArrayList(*@TypeOf(root.*)).init(allocator);
+    var matches = std.ArrayList(*@TypeOf(root.*)).init(allocator);
+    errdefer matches.deinit();
 
-    // TODO: Implement tree traversal and matching
-    // For now, return empty list
-    _ = selector;
+    // Depth-first tree traversal to find matching elements
+    try traverseAndMatch(selector, root, &matches);
 
     return matches;
+}
+
+/// Helper function to recursively traverse tree and collect matches
+fn traverseAndMatch(
+    selector: Selector,
+    node: anytype,
+    matches: *std.ArrayList(*@TypeOf(node.*)),
+) !void {
+    // Try to match this node if it's an Element
+    // Note: In real implementation, we'd need to check node type
+    // For now, assume all nodes could be elements and try to match
+    if (matchesSelector(selector, node)) {
+        try matches.append(node);
+    }
+
+    // Traverse children (assuming node has child_nodes field)
+    // In real implementation, would need proper Node interface checking
+    if (@hasField(@TypeOf(node.*), "child_nodes")) {
+        for (node.child_nodes.items) |child| {
+            try traverseAndMatch(selector, child, matches);
+        }
+    }
+}
+
+/// Check if a single element matches the selector
+fn matchesSelector(selector: Selector, element: anytype) bool {
+    // Type check: Only Element nodes can match selectors
+    // For mock, we check if element has the fields we need
+    const has_tag_name = @hasField(@TypeOf(element.*), "tag_name");
+    const has_id = @hasField(@TypeOf(element.*), "id");
+    const has_class_list = @hasField(@TypeOf(element.*), "class_list");
+
+    switch (selector) {
+        .universal => {
+            // Universal selector matches all elements
+            return has_tag_name;
+        },
+        .type_selector => |tag| {
+            // Type selector matches by tag name
+            if (!has_tag_name) return false;
+            return std.mem.eql(u8, element.tag_name, tag);
+        },
+        .id_selector => |id| {
+            // ID selector matches by id attribute
+            if (!has_id) return false;
+            if (element.id) |elem_id| {
+                return std.mem.eql(u8, elem_id, id);
+            }
+            return false;
+        },
+        .class_selector => |class_name| {
+            // Class selector matches if element has the class
+            if (!has_class_list) return false;
+            if (element.class_list) |classes| {
+                // Simple check: see if class_name appears in the class list
+                // In real implementation, would use DOMTokenList.contains()
+                return std.mem.indexOf(u8, classes, class_name) != null;
+            }
+            return false;
+        },
+        .parse_error => {
+            // Parse errors don't match anything
+            return false;
+        },
+    }
 }
 
 /// DOM §3.4 - scope-match a selectors string
@@ -196,3 +261,8 @@ test "Selectors mock - parse error on empty class" {
     const selector = try parseSelector(testing.allocator, ".");
     try testing.expectEqual(@as(std.meta.Tag(Selector), .parse_error), @as(std.meta.Tag(Selector), selector));
 }
+
+// NOTE: More comprehensive tests for matchSelectorAgainstTree would require
+// actual DOM Node/Element types. The parsing tests above validate the core
+// selector parsing logic. The matching logic can be tested via integration
+// tests with real DOM elements in tests/dom/element_test.zig
