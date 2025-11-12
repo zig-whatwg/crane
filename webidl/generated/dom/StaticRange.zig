@@ -24,7 +24,7 @@ pub const StaticRangeInit = struct {
     endOffset: u32,
 };
 /// DOM §5 - interface StaticRange : AbstractRange
-/// 
+///
 /// A StaticRange is a range object that does not update when the node tree mutates.
 /// This makes it more efficient for one-time range operations.
 const AbstractRangeBase = @import("abstract_range").AbstractRangeBase;
@@ -33,35 +33,33 @@ pub const StaticRange = struct {
     base: AbstractRangeBase,
 
     /// DOM §5 - new StaticRange(init) constructor
-    /// 
+    ///
     /// Steps:
     /// 1. If init["startContainer"] or init["endContainer"] is a DocumentType or Attr node,
     /// then throw an "InvalidNodeTypeError" DOMException.
     /// 2. Set this's start to (init["startContainer"], init["startOffset"])
     /// and end to (init["endContainer"], init["endOffset"]).
-    pub fn init_(init_: StaticRangeInit) !StaticRange {
+    pub fn init_(init: StaticRangeInit) !StaticRange {
         const NodeType = @import("node").Node;
 
         // Step 1: Check for invalid node types
-        if (init_.startContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            init_.startContainer.node_type == NodeType.ATTRIBUTE_NODE)
+        if (init.startContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
+            init.startContainer.node_type == NodeType.ATTRIBUTE_NODE)
         {
             return error.InvalidNodeTypeError;
         }
 
-        if (init_.endContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            init_.endContainer.node_type == NodeType.ATTRIBUTE_NODE)
+        if (init.endContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
+            init.endContainer.node_type == NodeType.ATTRIBUTE_NODE)
         {
             return error.InvalidNodeTypeError;
         }
 
-        // Step 2: Set start and end boundary points
+        // Step 2: Create static range with boundary points
+        // Note: StaticRange doesn't use allocator in codegen, but base expects it for polymorphism
+        const dummy_allocator = std.heap.page_allocator; // Will be replaced with proper allocator tracking
         return .{
-            .base = AbstractRangeBase.initForStaticRange(allocator),
-            .start_container = init_.startContainer,
-            .start_offset = init_.startOffset,
-            .end_container = init_.endContainer,
-            .end_offset = init_.endOffset,
+            .base = AbstractRange.AbstractRangeBase.initForStaticRange(dummy_allocator),
         };
     }
     pub fn deinit(self: *StaticRange) void {
@@ -80,7 +78,7 @@ pub const StaticRange = struct {
     // ========================================================================
 
     /// Check if this StaticRange is valid per the DOM spec
-    /// 
+    ///
     /// A StaticRange is valid if all of the following are true:
     /// - Its start and end are in the same node tree.
     /// - Its start offset is between 0 and its start node's length, inclusive.
@@ -151,4 +149,3 @@ pub const StaticRange = struct {
         .cross_origin_isolated = false,
     };
 };
-

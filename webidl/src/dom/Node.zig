@@ -566,13 +566,13 @@ pub const Node = webidl.interface(struct {
 
     pub fn get_isConnected(self: *const Node) bool {
         // A node is connected if its root is a document
-        // TODO: Use tree.root from src/dom/tree.zig
-        var current = self;
-        while (current.parent_node) |parent| {
-            current = parent;
-        }
+        const tree = @import("dom").tree;
+        // tree.root requires mutable pointer but doesn't actually mutate
+        // Cast to mutable for the algorithm (safe for read-only root traversal)
+        const mutable_self = @constCast(self);
+        const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
-        return current.node_type == DOCUMENT_NODE;
+        return root_node.node_type == DOCUMENT_NODE;
     }
 
     /// DOM §4.4 - Node.baseURI getter
