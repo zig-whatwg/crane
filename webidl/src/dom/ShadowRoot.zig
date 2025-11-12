@@ -7,6 +7,7 @@ const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Element = @import("element").Element;
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 
 /// DOM §4.8.1 - ShadowRootMode enum
 ///
@@ -45,6 +46,7 @@ pub const SlotAssignmentMode = enum {
 pub const ShadowRoot = webidl.interface(struct {
     /// Extends DocumentFragment
     pub const extends = DocumentFragment;
+    pub const includes = .{DocumentOrShadowRoot};
 
     allocator: Allocator,
 
@@ -72,11 +74,8 @@ pub const ShadowRoot = webidl.interface(struct {
     /// Whether this shadow root is declarative
     declarative_flag: bool,
 
-    /// Custom element registry (null or CustomElementRegistry object)
-    /// TODO: Implement when CustomElementRegistry is available
-    custom_element_registry: ?*anyopaque,
-
     /// Keep custom element registry null (for declarative shadow roots)
+    /// Note: custom_element_registry comes from DocumentOrShadowRoot mixin
     keep_custom_element_registry_null: bool,
 
     /// DOM §4.8.1 - ShadowRoot constructor (internal)
@@ -101,8 +100,8 @@ pub const ShadowRoot = webidl.interface(struct {
             .serializable_flag = serializable,
             .available_to_element_internals = false,
             .declarative_flag = false,
-            .custom_element_registry = null,
             .keep_custom_element_registry_null = false,
+            // custom_element_registry comes from DocumentOrShadowRoot mixin
         };
     }
 

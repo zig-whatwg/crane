@@ -8,6 +8,7 @@ const Node = @import("node").Node;
 const Element = @import("element").Element;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 const NodeList = @import("node_list").NodeList;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const dom_types = @import("dom_types");
@@ -21,7 +22,7 @@ const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
     pub const extends = Node;
-    pub const includes = .{ ParentNode, NonElementParentNode };
+    pub const includes = .{ ParentNode, NonElementParentNode, DocumentOrShadowRoot };
 
     allocator: Allocator,
     /// Cached DOMImplementation instance ([SameObject])

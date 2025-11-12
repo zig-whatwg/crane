@@ -50,7 +50,15 @@ pub const SlotAssignmentMode = enum {
 /// 
 /// Shadow roots are DocumentFragments that serve as the root of a shadow tree.
 /// A shadow root is always attached to another node tree through its host element.
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 pub const ShadowRoot = struct {
+    // ========================================================================
+    // Fields from DocumentOrShadowRoot mixin
+    // ========================================================================
+    /// Custom element registry for this document or shadow root
+    /// TODO: Implement when CustomElementRegistry is available
+    custom_element_registry: ?*anyopaque = null,
+
     // ========================================================================
     // ShadowRoot fields
     // ========================================================================
@@ -71,11 +79,11 @@ pub const ShadowRoot = struct {
     available_to_element_internals: bool,
     /// Whether this shadow root is declarative
     declarative_flag: bool,
-    /// Custom element registry (null or CustomElementRegistry object)
-    /// TODO: Implement when CustomElementRegistry is available
-    custom_element_registry: ?*anyopaque,
     /// Keep custom element registry null (for declarative shadow roots)
+    /// Note: custom_element_registry comes from DocumentOrShadowRoot mixin
     keep_custom_element_registry_null: bool,
+
+    pub const includes = .{DocumentOrShadowRoot};
 
     /// DOM §4.8.1 - ShadowRoot constructor (internal)
     /// 
@@ -99,8 +107,8 @@ pub const ShadowRoot = struct {
             .serializable_flag = serializable,
             .available_to_element_internals = false,
             .declarative_flag = false,
-            .custom_element_registry = null,
             .keep_custom_element_registry_null = false,
+            // custom_element_registry comes from DocumentOrShadowRoot mixin
         };
     }
     pub fn deinit(self: *ShadowRoot) void {
@@ -109,6 +117,16 @@ pub const ShadowRoot = struct {
         // TODO: Call parent DocumentFragment deinit (will be added by codegen)
     }
 
+
+    // ========================================================================
+    // Methods from DocumentOrShadowRoot mixin
+    // ========================================================================
+
+    /// Set the custom element registry
+    /// (Included from DocumentOrShadowRoot mixin)
+    pub fn setCustomElementRegistry(self: *@This(), registry: ?*anyopaque) void {
+        self.custom_element_registry = registry;
+    }
     // ========================================================================
     // ShadowRoot methods
     // ========================================================================

@@ -27,7 +27,15 @@ const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 pub const Document = struct {
+    // ========================================================================
+    // Fields from DocumentOrShadowRoot mixin
+    // ========================================================================
+    /// Custom element registry for this document or shadow root
+    /// TODO: Implement when CustomElementRegistry is available
+    custom_element_registry: ?*anyopaque = null,
+
     // ========================================================================
     // Document fields
     // ========================================================================
@@ -38,7 +46,7 @@ pub const Document = struct {
     /// Provides memory savings (20-30%) and O(1) string comparison via pointer equality
     _string_pool: std.StringHashMap(void),
 
-    pub const includes = .{ ParentNode, NonElementParentNode };
+    pub const includes = .{ ParentNode, NonElementParentNode, DocumentOrShadowRoot };
     pub const Text = @import("text").Text;
     pub const Comment = @import("comment").Comment;
     pub const DocumentFragment = @import("document_fragment").DocumentFragment;
@@ -262,6 +270,15 @@ pub const Document = struct {
         _ = allocator;
         _ = element_id;
         return error.NotImplemented;
+    }
+    // ========================================================================
+    // Methods from DocumentOrShadowRoot mixin
+    // ========================================================================
+
+    /// Set the custom element registry
+    /// (Included from DocumentOrShadowRoot mixin)
+    pub fn setCustomElementRegistry(self: *@This(), registry: ?*anyopaque) void {
+        self.custom_element_registry = registry;
     }
     // ========================================================================
     // Document methods
