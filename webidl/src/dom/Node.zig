@@ -337,29 +337,162 @@ pub const Node = webidl.interface(struct {
     /// cloneNode(deep)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
-        // TODO: Implement full clone algorithm from DOM §4.2.4
-        // Steps:
-        // 1. Let document be node's node document
-        // 2. Let copy be result of cloning a single node (node, document, null)
-        // 3. Run cloning steps for node (pass node, copy, deep)
-        // 4. If deep is true, clone all descendants recursively
-        // 5. If node is shadow host and clonable, clone shadow root too
-        // 6. Return copy
-
-        // For now, shallow clone only
-        const copy = try Node.init(self.allocator, self.node_type, self.node_name);
-
-        // If deep, should recursively clone children
-        if (deep) {
-            // TODO: Clone all children recursively
-            // for (self.child_nodes.items) |child| {
-            //     const child_copy = try child.call_cloneNode(true);
-            //     try copy.child_nodes.append(child_copy);
-            //     child_copy.parent_node = &copy;
-            // }
+        // Step 1: If this is a shadow root, throw NotSupportedError
+        if (self.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+            // TODO: Check if this is specifically a ShadowRoot and throw error
+            // For now, allow cloning of DocumentFragment
         }
 
+        // Step 2: Return the result of cloning this node with subtree set to deep
+        return try Node.cloneNodeInternal(self, self.owner_document, deep, null, null);
+    }
+
+    /// Clone a node - DOM Spec algorithm
+    /// Given a node `node` and optional document, subtree flag, parent, and fallbackRegistry
+    pub fn cloneNodeInternal(
+        node: *Node,
+        document_param: ?*Document,
+        subtree: bool,
+        parent: ?*Node,
+        fallback_registry: ?*anyopaque, // CustomElementRegistry - not implemented yet
+    ) !*Node {
+        // Step 1: Let document be document_param or node's owner_document
+        const document = document_param orelse node.owner_document;
+
+        // Assert: node is not a document or node is document
+        // (We don't have full Document implementation yet, skip this assert)
+
+        // Step 2: Let copy be the result of cloning a single node
+        var copy = try Node.cloneSingleNode(node, document, fallback_registry);
+
+        // Step 3: Run any cloning steps (not implemented - would be extension point for HTML etc.)
+        // TODO: Call cloning steps hook if defined
+
+        // Step 4: If parent is non-null, append copy to parent
+        if (parent) |p| {
+            try p.child_nodes.append(copy);
+            copy.parent_node = p;
+        }
+
+        // Step 5: If subtree is true, clone all children recursively
+        if (subtree) {
+            for (node.child_nodes.items) |child| {
+                _ = try Node.cloneNodeInternal(child, document, subtree, copy, fallback_registry);
+            }
+        }
+
+        // Step 6: If node is an element and shadow host, clone shadow root (not implemented yet)
+        // TODO: Handle shadow root cloning when shadow DOM is fully implemented
+
+        // Step 7: Return copy
         return copy;
+    }
+
+    /// Clone a single node - DOM Spec algorithm
+    /// Creates a new node with the same properties but no children
+    pub fn cloneSingleNode(
+        node: *Node,
+        document: ?*Document,
+        fallback_registry: ?*anyopaque,
+    ) !*Node {
+        _ = fallback_registry; // Not used yet - for custom elements
+
+        // Step 2-3: Handle different node types
+        switch (node.node_type) {
+            Node.ELEMENT_NODE => {
+                // Clone element with attributes
+                const elem: *Element = @ptrCast(@alignCast(node));
+
+                // Create new element
+                var copy_elem = try Element.init(elem.allocator, elem.tag_name);
+                copy_elem.namespace_uri = elem.namespace_uri;
+
+                // Clone attributes
+                for (elem.attributes.items) |attr| {
+                    const Attr = @import("attr").Attr;
+                    const copy_attr = Attr{
+                        .allocator = elem.allocator,
+                        .namespace_uri = attr.namespace_uri,
+                        .prefix = attr.prefix,
+                        .local_name = attr.local_name,
+                        .value = attr.value,
+                        .owner_element = &copy_elem,
+                    };
+                    try copy_elem.attributes.append(copy_attr);
+                }
+
+                const copy_node = @as(*Node, @ptrCast(&copy_elem));
+                copy_node.owner_document = document;
+                return copy_node;
+            },
+            Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
+                // Clone CharacterData (Text, Comment, CDATASection)
+                const CharacterData = @import("character_data").CharacterData;
+                const cd: *CharacterData = @ptrCast(@alignCast(node));
+
+                var copy_cd = try CharacterData.init(cd.allocator);
+                copy_cd.data = try cd.allocator.dupe(u8, cd.data);
+
+                const copy_node = @as(*Node, @ptrCast(&copy_cd));
+                copy_node.node_type = node.node_type;
+                copy_node.node_name = node.node_name;
+                copy_node.owner_document = document;
+                return copy_node;
+            },
+            Node.PROCESSING_INSTRUCTION_NODE => {
+                // Clone ProcessingInstruction
+                const PI = @import("processing_instruction").ProcessingInstruction;
+                const pi: *PI = @ptrCast(@alignCast(node));
+
+                var copy_pi = try PI.init(pi.allocator, pi.target, pi.data);
+
+                const copy_node = @as(*Node, @ptrCast(&copy_pi));
+                copy_node.owner_document = document;
+                return copy_node;
+            },
+            Node.ATTRIBUTE_NODE => {
+                // Clone Attr
+                const Attr = @import("attr").Attr;
+                const attr: *Attr = @ptrCast(@alignCast(node));
+
+                var copy_attr = try Attr.init(
+                    attr.allocator,
+                    attr.namespace_uri,
+                    attr.prefix,
+                    attr.local_name,
+                    attr.value,
+                );
+
+                const copy_node = @as(*Node, @ptrCast(&copy_attr));
+                copy_node.owner_document = document;
+                return copy_node;
+            },
+            Node.DOCUMENT_TYPE_NODE => {
+                // Clone DocumentType (simplified - full implementation needs public ID, system ID)
+                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                copy.owner_document = document;
+                return copy;
+            },
+            Node.DOCUMENT_FRAGMENT_NODE => {
+                // Clone DocumentFragment
+                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                copy.owner_document = document;
+                return copy;
+            },
+            Node.DOCUMENT_NODE => {
+                // Cloning Document is complex and not fully supported yet
+                // For now, just create a basic copy
+                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                copy.owner_document = document;
+                return copy;
+            },
+            else => {
+                // Default: create basic node copy
+                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                copy.owner_document = document;
+                return copy;
+            },
+        }
     }
 
     /// normalize()

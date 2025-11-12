@@ -303,29 +303,14 @@ pub const Attr = struct {
     /// cloneNode(deep)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Attr, deep: bool) !*Attr {
-        // TODO: Implement full clone algorithm from DOM §4.2.4
-        // Steps:
-        // 1. Let document be node's node document
-        // 2. Let copy be result of cloning a single node (node, document, null)
-        // 3. Run cloning steps for node (pass node, copy, deep)
-        // 4. If deep is true, clone all descendants recursively
-        // 5. If node is shadow host and clonable, clone shadow root too
-        // 6. Return copy
-
-        // For now, shallow clone only
-        const copy = try Attr.init(self.allocator, self.node_type, self.node_name);
-
-        // If deep, should recursively clone children
-        if (deep) {
-            // TODO: Clone all children recursively
-            // for (self.child_nodes.items) |child| {
-            //     const child_copy = try child.call_cloneNode(true);
-            //     try copy.child_nodes.append(child_copy);
-            //     child_copy.parent_node = &copy;
-            // }
+        // Step 1: If this is a shadow root, throw NotSupportedError
+        if (self.node_type == Attr.DOCUMENT_FRAGMENT_NODE) {
+            // TODO: Check if this is specifically a ShadowRoot and throw error
+            // For now, allow cloning of DocumentFragment
         }
 
-        return copy;
+        // Step 2: Return the result of cloning this node with subtree set to deep
+        return try Attr.cloneNodeInternal(self, self.owner_document, deep, null, null);
     }
     /// normalize()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
