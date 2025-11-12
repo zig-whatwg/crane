@@ -89,61 +89,67 @@ pub const EventTargetBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for Element.
     /// Use this in Element.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForElement() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .Element;
-        return result;
+    pub fn initForElement(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Element,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for DocumentType.
     /// Use this in DocumentType.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForDocumentType() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .DocumentType;
-        return result;
+    pub fn initForDocumentType(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .DocumentType,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for Node.
     /// Use this in Node.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForNode() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .Node;
-        return result;
+    pub fn initForNode(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Node,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for Document.
     /// Use this in Document.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForDocument() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .Document;
-        return result;
+    pub fn initForDocument(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Document,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for AbortSignal.
     /// Use this in AbortSignal.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForAbortSignal() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .AbortSignal;
-        return result;
+    pub fn initForAbortSignal(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .AbortSignal,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for Attr.
     /// Use this in Attr.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForAttr() EventTargetBase {
-        var result: EventTargetBase = undefined;
-        result.type_tag = .Attr;
-        return result;
+    pub fn initForAttr(allocator: Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Attr,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
     }
 
 

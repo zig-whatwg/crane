@@ -54,7 +54,7 @@ pub const DocumentType = struct {
     ) !DocumentType {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = NodeBase.initForDocumentType(),
+            .base = NodeBase.initForDocumentType(allocator),
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),
@@ -68,7 +68,16 @@ pub const DocumentType = struct {
         self.allocator.free(self.system_id);
         // NOTE: Parent Node cleanup will be handled by codegen
         // TODO: Call parent Node deinit (will be added by codegen)
-    }
+    
+        
+        // Clean up base fields
+        if (self.base.event_listener_list) |list| {
+            list.deinit(self.allocator);
+            self.allocator.destroy(list);
+        }
+        self.base.child_nodes.deinit();
+        self.base.registered_observers.deinit();
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to NodeBase for type-generic code.

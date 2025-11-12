@@ -50,7 +50,7 @@ pub const NodeBase = struct {
     owner_document: ?*@import("document").Document,
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
-    registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
+    registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
 
     // ========================================================================
     // Base struct initialization helpers
@@ -58,106 +58,194 @@ pub const NodeBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for CDATASection.
     /// Use this in CDATASection.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForCDATASection() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .CDATASection;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForCDATASection(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .CDATASection,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.CDATA_SECTION_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for ShadowRoot.
     /// Use this in ShadowRoot.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForShadowRoot() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .ShadowRoot;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForShadowRoot(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .ShadowRoot,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.DOCUMENT_FRAGMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for Element.
     /// Use this in Element.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForElement() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .Element;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForElement(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Element,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.ELEMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for DocumentType.
     /// Use this in DocumentType.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForDocumentType() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .DocumentType;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForDocumentType(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .DocumentType,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.DOCUMENT_TYPE_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for CharacterData.
     /// Use this in CharacterData.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForCharacterData() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .CharacterData;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForCharacterData(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .CharacterData,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.TEXT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for Comment.
     /// Use this in Comment.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForComment() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .Comment;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForComment(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Comment,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.COMMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for Document.
     /// Use this in Document.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForDocument() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .Document;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForDocument(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Document,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.DOCUMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for DocumentFragment.
     /// Use this in DocumentFragment.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForDocumentFragment() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .DocumentFragment;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForDocumentFragment(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .DocumentFragment,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.DOCUMENT_FRAGMENT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for Text.
     /// Use this in Text.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForText() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .Text;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForText(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Text,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.TEXT_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for Attr.
     /// Use this in Attr.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForAttr() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .Attr;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForAttr(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .Attr,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.ATTRIBUTE_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
     /// Create a base struct initialized for ProcessingInstruction.
     /// Use this in ProcessingInstruction.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForProcessingInstruction() NodeBase {
-        var result: NodeBase = undefined;
-        result.type_tag = .ProcessingInstruction;
-        return result;
+    /// All collection fields are properly initialized with the provided allocator.
+    pub fn initForProcessingInstruction(allocator: Allocator) NodeBase {
+        return .{
+            .type_tag = .ProcessingInstruction,
+            .event_listener_list = null,
+            .allocator = allocator,
+            .node_type = Node.PROCESSING_INSTRUCTION_NODE,
+            .node_name = "",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+        };
     }
 
 
@@ -249,7 +337,7 @@ pub const Node = struct {
     owner_document: ?*Document,
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
-    registered_observers: std.ArrayList(RegisteredObserver),
+    registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
 
     pub const Document = @import("document").Document;
     pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
@@ -278,14 +366,14 @@ pub const Node = struct {
         // NOTE: Parent EventTarget fields will be flattened by codegen
         // Don't manually initialize parent fields here
         return .{
-            .base = EventTargetBase.initForNode(),
+            .base = EventTargetBase.initForNode(allocator),
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
-            .registered_observers = std.ArrayList(RegisteredObserver).init(allocator),
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
@@ -294,7 +382,14 @@ pub const Node = struct {
         self.child_nodes.deinit();
         self.registered_observers.deinit();
         // TODO: Call parent EventTarget deinit (will be added by codegen)
-    }
+    
+        
+        // Clean up base fields
+        if (self.base.event_listener_list) |list| {
+            list.deinit(self.allocator);
+            self.allocator.destroy(list);
+        }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to EventTargetBase for type-generic code.

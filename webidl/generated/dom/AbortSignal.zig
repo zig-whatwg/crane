@@ -39,7 +39,7 @@ pub const AbortSignal = struct {
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
-            .base = EventTargetBase.initForAbortSignal(),
+            .base = EventTargetBase.initForAbortSignal(allocator),
             .allocator = allocator,
             .aborted = false,
             .reason = null,
@@ -51,7 +51,14 @@ pub const AbortSignal = struct {
         self.abort_algorithms.deinit();
         // NOTE: Parent EventTarget cleanup will be handled by codegen
         // TODO: Call parent EventTarget deinit (will be added by codegen)
-    }
+    
+        
+        // Clean up base fields
+        if (self.base.event_listener_list) |list| {
+            list.deinit(self.allocator);
+            self.allocator.destroy(list);
+        }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to EventTargetBase for type-generic code.

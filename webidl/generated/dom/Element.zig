@@ -74,7 +74,7 @@ pub const Element = struct {
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = NodeBase.initForElement(),
+            .base = NodeBase.initForElement(allocator),
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,
@@ -87,7 +87,16 @@ pub const Element = struct {
         // NOTE: Parent Node cleanup will be handled by codegen
         self.attributes.deinit();
         // TODO: Call parent Node deinit (will be added by codegen)
-    }
+    
+        
+        // Clean up base fields
+        if (self.base.event_listener_list) |list| {
+            list.deinit(self.allocator);
+            self.allocator.destroy(list);
+        }
+        self.base.child_nodes.deinit();
+        self.base.registered_observers.deinit();
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to NodeBase for type-generic code.

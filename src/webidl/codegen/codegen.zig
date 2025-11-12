@@ -3648,8 +3648,9 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
 
     const after_return_brace = return_start + "return .{".len;
 
-    // Add .base = BaseTypeName.initForClassName() in the struct literal
-    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(),", .{ base_type_name, class_name });
+    // Add .base = BaseTypeName.initForClassName(allocator) in the struct literal
+    // Passes allocator to properly initialize collections
+    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(allocator),", .{ base_type_name, class_name });
     defer allocator.free(base_init);
 
     var result: std.ArrayList(u8) = .empty;
@@ -3658,6 +3659,77 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
     try result.appendSlice(allocator, method_source[0..after_return_brace]);
     try result.appendSlice(allocator, base_init);
     try result.appendSlice(allocator, method_source[after_return_brace..]);
+
+    return result.toOwnedSlice(allocator);
+}
+
+/// Inject base field cleanup into deinit() methods for classes with inheritance.
+/// Adds cleanup code for base fields that were properly initialized by initForXxx().
+fn injectBaseFieldDeinit(
+    allocator: std.mem.Allocator,
+    method_source: []const u8,
+    class_name: []const u8,
+    base_type_name: []const u8,
+    registry: *GlobalRegistry,
+    current_file: []const u8,
+) ![]const u8 {
+    _ = class_name;
+
+    // Find the closing brace of the deinit function
+    const last_brace_pos = std.mem.lastIndexOfScalar(u8, method_source, '}') orelse {
+        return try allocator.dupe(u8, method_source);
+    };
+
+    // Check if this class directly extends a base type with collections
+    const parent_info = (registry.resolveParentReference(base_type_name, current_file) catch null) orelse {
+        return try allocator.dupe(u8, method_source);
+    };
+
+    var cleanup_code: std.ArrayList(u8) = .empty;
+    errdefer cleanup_code.deinit(allocator);
+
+    try cleanup_code.appendSlice(allocator, "\n        \n");
+    try cleanup_code.appendSlice(allocator, "        // Clean up base fields\n");
+
+    var needs_cleanup = false;
+
+    if (std.mem.eql(u8, parent_info.name, "Node")) {
+        // Node classes have event_listener_list, child_nodes, and registered_observers
+        try cleanup_code.appendSlice(allocator,
+            \\        if (self.base.event_listener_list) |list| {
+            \\            list.deinit(self.allocator);
+            \\            self.allocator.destroy(list);
+            \\        }
+            \\        self.base.child_nodes.deinit();
+            \\        self.base.registered_observers.deinit();
+            \\
+        );
+        needs_cleanup = true;
+    } else if (std.mem.eql(u8, parent_info.name, "EventTarget")) {
+        // EventTarget classes only have event_listener_list
+        try cleanup_code.appendSlice(allocator,
+            \\        if (self.base.event_listener_list) |list| {
+            \\            list.deinit(self.allocator);
+            \\            self.allocator.destroy(list);
+            \\        }
+            \\
+        );
+        needs_cleanup = true;
+    }
+
+    if (!needs_cleanup) {
+        cleanup_code.deinit(allocator);
+        return try allocator.dupe(u8, method_source);
+    }
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    try result.appendSlice(allocator, method_source[0..last_brace_pos]);
+    const cleanup_slice = try cleanup_code.toOwnedSlice(allocator);
+    defer allocator.free(cleanup_slice);
+    try result.appendSlice(allocator, cleanup_slice);
+    try result.appendSlice(allocator, method_source[last_brace_pos..]);
 
     return result.toOwnedSlice(allocator);
 }
@@ -3747,6 +3819,85 @@ fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8,
 
     // No qualification needed, return as-is
     return try allocator.dupe(u8, type_name);
+}
+
+/// Map child type name to NODE_TYPE constant for proper initialization
+fn getNodeTypeConstant(child_name: []const u8) []const u8 {
+    if (std.mem.eql(u8, child_name, "Element")) return "Node.ELEMENT_NODE";
+    if (std.mem.eql(u8, child_name, "Attr")) return "Node.ATTRIBUTE_NODE";
+    if (std.mem.eql(u8, child_name, "Text")) return "Node.TEXT_NODE";
+    if (std.mem.eql(u8, child_name, "CDATASection")) return "Node.CDATA_SECTION_NODE";
+    if (std.mem.eql(u8, child_name, "ProcessingInstruction")) return "Node.PROCESSING_INSTRUCTION_NODE";
+    if (std.mem.eql(u8, child_name, "Comment")) return "Node.COMMENT_NODE";
+    if (std.mem.eql(u8, child_name, "Document")) return "Node.DOCUMENT_NODE";
+    if (std.mem.eql(u8, child_name, "DocumentType")) return "Node.DOCUMENT_TYPE_NODE";
+    if (std.mem.eql(u8, child_name, "DocumentFragment")) return "Node.DOCUMENT_FRAGMENT_NODE";
+    if (std.mem.eql(u8, child_name, "CharacterData")) return "Node.TEXT_NODE";
+    if (std.mem.eql(u8, child_name, "ShadowRoot")) return "Node.DOCUMENT_FRAGMENT_NODE";
+    return "1"; // ELEMENT_NODE as fallback
+}
+
+/// Generate init helper for a base struct child type
+fn generateBaseInitHelper(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    base_type_name: []const u8,
+    child_name: []const u8,
+) !void {
+    _ = allocator; // Future use for dynamic allocations
+    if (std.mem.eql(u8, base_type_name, "Node")) {
+        // Node base includes EventTarget fields + Node fields
+        const node_type = getNodeTypeConstant(child_name);
+        try writer.print(
+            \\    /// Create a base struct initialized for {s}.
+            \\    /// Use this in {s}.init() to properly initialize the base field.
+            \\    /// All collection fields are properly initialized with the provided allocator.
+            \\    pub fn initFor{s}(allocator: Allocator) NodeBase {{
+            \\        return .{{
+            \\            .type_tag = .{s},
+            \\            .event_listener_list = null,
+            \\            .allocator = allocator,
+            \\            .node_type = {s},
+            \\            .node_name = "",
+            \\            .parent_node = null,
+            \\            .child_nodes = infra.List(*Node).init(allocator),
+            \\            .owner_document = null,
+            \\            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            \\        }};
+            \\    }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, child_name, node_type });
+    } else if (std.mem.eql(u8, base_type_name, "EventTarget")) {
+        // EventTarget base only has event_listener_list and allocator
+        try writer.print(
+            \\    /// Create a base struct initialized for {s}.
+            \\    /// Use this in {s}.init() to properly initialize the base field.
+            \\    pub fn initFor{s}(allocator: Allocator) EventTargetBase {{
+            \\        return .{{
+            \\            .type_tag = .{s},
+            \\            .event_listener_list = null,
+            \\            .allocator = allocator,
+            \\        }};
+            \\    }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, child_name });
+    } else {
+        // Other base types (e.g., DocumentFragment which extends Node)
+        try writer.print(
+            \\    /// Create a base struct initialized for {s}.
+            \\    /// Use this in {s}.init() to properly initialize the base field.
+            \\    pub fn initFor{s}(allocator: Allocator) {s}Base {{
+            \\        return .{{
+            \\            .type_tag = .{s},
+            \\            .allocator = allocator,
+            \\        }};
+            \\    }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, base_type_name, child_name });
+    }
 }
 
 /// This struct contains all fields from the base interface (including inherited fields).
@@ -4021,22 +4172,11 @@ fn generateBaseStruct(
     try writer.writeAll("    //\n");
     try writer.writeAll("    // Helper functions to create properly initialized base structs.\n");
     try writer.writeAll("    // Each derived type gets its own initialization helper.\n");
-    try writer.writeAll("    // All fields except type_tag are initialized to undefined.\n");
+    try writer.writeAll("    // All collection fields (lists) are properly initialized with allocator.\n");
     try writer.writeAll("    //\n\n");
 
     for (base_info.children.items) |child_name| {
-        try writer.print(
-            \\    /// Create a base struct initialized for {s}.
-            \\    /// Use this in {s}.init() to properly initialize the base field.
-            \\    /// All fields except type_tag are set to undefined - caller must initialize them.
-            \\    pub fn initFor{s}() {s}Base {{
-            \\        var result: {s}Base = undefined;
-            \\        result.type_tag = .{s};
-            \\        return result;
-            \\    }}
-            \\
-            \\
-        , .{ child_name, child_name, child_name, parsed.name, parsed.name, child_name });
+        try generateBaseInitHelper(allocator, writer, parsed.name, child_name);
     }
 
     // Generate casting methods for all children
@@ -4453,11 +4593,20 @@ fn generateEnhancedClassWithRegistry(
             defer allocator.free(renamed_source);
 
             // If this is init() and class has a base field, inject base initialization
-            const final_source = if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null)
-                try injectBaseFieldInit(allocator, renamed_source, parsed.name, parent_base_type_name.?)
-            else
-                renamed_source;
-            defer if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null) allocator.free(final_source);
+            // If this is deinit() and class has a base field, inject base cleanup
+            const final_source = blk: {
+                if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null) {
+                    break :blk try injectBaseFieldInit(allocator, renamed_source, parsed.name, parent_base_type_name.?);
+                } else if (std.mem.eql(u8, method.name, "deinit") and parent_base_type_name != null) {
+                    break :blk try injectBaseFieldDeinit(allocator, renamed_source, parsed.name, parent_base_type_name.?, registry, current_file);
+                }
+                break :blk renamed_source;
+            };
+            defer if (parent_base_type_name != null and
+                (std.mem.eql(u8, method.name, "init") or std.mem.eql(u8, method.name, "deinit")))
+            {
+                allocator.free(final_source);
+            };
 
             try writer.print("    {s}\n", .{final_source});
         }

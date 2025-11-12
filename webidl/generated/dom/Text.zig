@@ -41,16 +41,16 @@ pub const TextBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for CDATASection.
     /// Use this in CDATASection.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForCDATASection() TextBase {
-        var result: TextBase = undefined;
-        result.type_tag = .CDATASection;
-        return result;
+    pub fn initForCDATASection(allocator: Allocator) TextBase {
+        return .{
+            .type_tag = .CDATASection,
+            .allocator = allocator,
+        };
     }
 
 
@@ -151,7 +151,7 @@ pub const Text = struct {
 
     pub fn init(allocator: Allocator) !Text {
         return .{
-            .base = CharacterDataBase.initForText(),
+            .base = CharacterDataBase.initForText(allocator),
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };

@@ -68,16 +68,16 @@ pub const EventBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for CustomEvent.
     /// Use this in CustomEvent.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForCustomEvent() EventBase {
-        var result: EventBase = undefined;
-        result.type_tag = .CustomEvent;
-        return result;
+    pub fn initForCustomEvent(allocator: Allocator) EventBase {
+        return .{
+            .type_tag = .CustomEvent,
+            .allocator = allocator,
+        };
     }
 
 

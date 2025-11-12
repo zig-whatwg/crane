@@ -52,16 +52,16 @@ pub const ParentBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for Child.
     /// Use this in Child.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForChild() ParentBase {
-        var result: ParentBase = undefined;
-        result.type_tag = .Child;
-        return result;
+    pub fn initForChild(allocator: Allocator) ParentBase {
+        return .{
+            .type_tag = .Child,
+            .allocator = allocator,
+        };
     }
 
 
@@ -264,25 +264,25 @@ pub const ParentMultiBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for ChildMulti.
     /// Use this in ChildMulti.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForChildMulti() ParentMultiBase {
-        var result: ParentMultiBase = undefined;
-        result.type_tag = .ChildMulti;
-        return result;
+    pub fn initForChildMulti(allocator: Allocator) ParentMultiBase {
+        return .{
+            .type_tag = .ChildMulti,
+            .allocator = allocator,
+        };
     }
 
     /// Create a base struct initialized for GrandChild.
     /// Use this in GrandChild.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForGrandChild() ParentMultiBase {
-        var result: ParentMultiBase = undefined;
-        result.type_tag = .GrandChild;
-        return result;
+    pub fn initForGrandChild(allocator: Allocator) ParentMultiBase {
+        return .{
+            .type_tag = .GrandChild,
+            .allocator = allocator,
+        };
     }
 
 
@@ -417,16 +417,16 @@ pub const ChildMultiBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for GrandChild.
     /// Use this in GrandChild.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForGrandChild() ChildMultiBase {
-        var result: ChildMultiBase = undefined;
-        result.type_tag = .GrandChild;
-        return result;
+    pub fn initForGrandChild(allocator: Allocator) ChildMultiBase {
+        return .{
+            .type_tag = .GrandChild,
+            .allocator = allocator,
+        };
     }
 
 

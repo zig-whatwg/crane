@@ -107,7 +107,7 @@ pub const ShadowRoot = struct {
         serializable: bool,
     ) !ShadowRoot {
         return .{
-            .base = DocumentFragmentBase.initForShadowRoot(),
+            .base = DocumentFragmentBase.initForShadowRoot(allocator),
             .allocator = allocator,
             .host_element = host,
             .shadow_mode = mode,

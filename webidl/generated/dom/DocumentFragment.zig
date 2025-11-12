@@ -40,16 +40,16 @@ pub const DocumentFragmentBase = struct {
     //
     // Helper functions to create properly initialized base structs.
     // Each derived type gets its own initialization helper.
-    // All fields except type_tag are initialized to undefined.
+    // All collection fields (lists) are properly initialized with allocator.
     //
 
     /// Create a base struct initialized for ShadowRoot.
     /// Use this in ShadowRoot.init() to properly initialize the base field.
-    /// All fields except type_tag are set to undefined - caller must initialize them.
-    pub fn initForShadowRoot() DocumentFragmentBase {
-        var result: DocumentFragmentBase = undefined;
-        result.type_tag = .ShadowRoot;
-        return result;
+    pub fn initForShadowRoot(allocator: Allocator) DocumentFragmentBase {
+        return .{
+            .type_tag = .ShadowRoot,
+            .allocator = allocator,
+        };
     }
 
 
@@ -133,7 +133,7 @@ pub const DocumentFragment = struct {
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = NodeBase.initForDocumentFragment(),
+            .base = NodeBase.initForDocumentFragment(allocator),
             .allocator = allocator,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };

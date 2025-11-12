@@ -58,7 +58,7 @@ pub const Attr = struct {
         value: []const u8,
     ) !Attr {
         return .{
-            .base = NodeBase.initForAttr(),
+            .base = NodeBase.initForAttr(allocator),
             .allocator = allocator,
             .namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null,
             .prefix = if (prefix) |p| try allocator.dupe(u8, p) else null,
@@ -74,7 +74,16 @@ pub const Attr = struct {
         self.allocator.free(self.local_name);
         self.allocator.free(self.value);
         // NOTE: Parent Node cleanup will be handled by codegen
-    }
+    
+        
+        // Clean up base fields
+        if (self.base.event_listener_list) |list| {
+            list.deinit(self.allocator);
+            self.allocator.destroy(list);
+        }
+        self.base.child_nodes.deinit();
+        self.base.registered_observers.deinit();
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to NodeBase for type-generic code.

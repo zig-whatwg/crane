@@ -22,7 +22,7 @@ pub const Node = webidl.interface(struct {
 
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
-    registered_observers: std.ArrayList(RegisteredObserver),
+    registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
 
     const Document = @import("document").Document;
     const RegisteredObserver = @import("registered_observer").RegisteredObserver;
@@ -58,7 +58,7 @@ pub const Node = webidl.interface(struct {
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
-            .registered_observers = std.ArrayList(RegisteredObserver).init(allocator),
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
