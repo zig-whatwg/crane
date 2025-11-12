@@ -364,7 +364,6 @@ pub const Node = struct {
     pub const DOCUMENT_POSITION_CONTAINS: u16 = 0x08;
     pub const DOCUMENT_POSITION_CONTAINED_BY: u16 = 0x10;
     pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
-    pub const Element = @import("element").Element;
 
     pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
         // NOTE: Parent EventTarget fields will be flattened by codegen
@@ -601,7 +600,6 @@ pub const Node = struct {
             },
             TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE => {
                 // Text, Comment, CDATASection: check data
-                const CharacterData = @import("character_data").CharacterData;
                 const cd_a: *const CharacterData = @ptrCast(@alignCast(a));
                 const cd_b: *const CharacterData = @ptrCast(@alignCast(b));
 
@@ -748,7 +746,6 @@ pub const Node = struct {
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
                 // Clone CharacterData (Text, Comment, CDATASection)
-                const CharacterData = @import("character_data").CharacterData;
                 const cd: *CharacterData = @ptrCast(@alignCast(node));
 
                 var copy_cd = try CharacterData.init(cd.allocator);
@@ -949,7 +946,6 @@ pub const Node = struct {
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE, Node.PROCESSING_INSTRUCTION_NODE => {
                 // Return node's data (no allocation - returns reference)
-                const CharacterData = @import("character_data").CharacterData;
                 const cd: *const CharacterData = @ptrCast(@alignCast(node));
                 return cd.data;
             },
@@ -973,8 +969,6 @@ pub const Node = struct {
     }
     /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
-        const CharacterData = @import("character_data").CharacterData;
-
         // If this is a Text node, collect its data
         if (node.node_type == Node.TEXT_NODE) {
             const cd: *const CharacterData = @ptrCast(@alignCast(node));
@@ -1006,7 +1000,6 @@ pub const Node = struct {
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
                 // Replace data with node, offset 0, count node's length, and data value
-                const CharacterData = @import("character_data").CharacterData;
                 const cd: *CharacterData = @ptrCast(@alignCast(node));
                 const length = @as(u32, @intCast(cd.data.len));
                 try cd.replaceData(0, length, value);
@@ -1024,10 +1017,8 @@ pub const Node = struct {
 
         // Step 2: If string is not the empty string, create a new Text node
         if (string.len > 0) {
-            const Text = @import("text").Text;
             var text_node = try Text.init(parent.allocator);
 
-            const CharacterData = @import("character_data").CharacterData;
             const cd: *CharacterData = @ptrCast(@alignCast(&text_node));
             cd.data = try parent.allocator.dupe(u8, string);
 

@@ -72,7 +72,6 @@ pub const Element = struct {
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode, Slottable };
     pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
     pub const HTMLCollection = @import("html_collection").HTMLCollection;
-    pub const Text = @import("text").Text;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen

@@ -17,6 +17,7 @@ const Allocator = std.mem.Allocator;
 const Attr = @import("attr").Attr;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
+const Text = @import("text").Text;
 
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
@@ -401,7 +402,6 @@ pub const Element = webidl.interface(struct {
     // Forward declarations for not-yet-implemented types
     const DOMTokenList = @import("dom_token_list").DOMTokenList;
     const HTMLCollection = @import("html_collection").HTMLCollection;
-    const Text = @import("text").Text;
 }, .{
     .exposed = &.{.Window},
 });
