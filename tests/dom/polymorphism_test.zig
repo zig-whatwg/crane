@@ -1,0 +1,62 @@
+const std = @import("std");
+const Element = @import("element").Element;
+const Document = @import("document").Document;
+const NodeBase = @import("node").NodeBase;
+const EventTargetBase = @import("event_target").EventTargetBase;
+
+test "NodeBase.tryCast - successful downcast to Element" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    const node_base: *NodeBase = element.toBase();
+
+    // Test successful downcast
+    if (node_base.tryCast(Element)) |elem| {
+        try std.testing.expectEqualStrings("div", elem.tag_name);
+    } else {
+        return error.DowncastFailed;
+    }
+}
+
+test "NodeBase.tryCast - failed downcast to wrong type" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    const node_base: *NodeBase = element.toBase();
+
+    // Test failed downcast to wrong type
+    const doc = node_base.tryCast(Document);
+    try std.testing.expectEqual(@as(?*Document, null), doc);
+}
+
+test "NodeBase type tag is correctly set" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    const node_base: *NodeBase = element.toBase();
+
+    // Verify type tag is Element
+    try std.testing.expectEqual(NodeBase.NodeTypeTag.Element, node_base.type_tag);
+}
+
+test "tryCastConst works with const pointers" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    const node_base: *const NodeBase = element.toBase();
+
+    // Test const downcast
+    if (node_base.tryCastConst(Element)) |elem| {
+        try std.testing.expectEqualStrings("div", elem.tag_name);
+    } else {
+        return error.DowncastFailed;
+    }
+}

@@ -53,29 +53,67 @@ pub const NodeBase = struct {
     registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
 
     // ========================================================================
-    // Polymorphic downcasting
+    // Type-safe downcasting helpers
     // ========================================================================
-    // 
-    // Downcasting from base to derived type is done via @ptrCast:
-    // 
-    //   const base: *NodeBase = element.toBase();
-    //   const elem: *Element = @ptrCast(@alignCast(base));
-    // 
-    // This is safe because all derived types have `base` as their first field.
-    // For type-safe downcasting, add runtime type checking in your code.
-    // 
-    // This base type has 11 derived type(s):
-    //   - CDATASection (upcast: CDATASection.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - ShadowRoot (upcast: ShadowRoot.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Element (upcast: Element.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - DocumentType (upcast: DocumentType.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - CharacterData (upcast: CharacterData.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Comment (upcast: Comment.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Document (upcast: Document.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - DocumentFragment (upcast: DocumentFragment.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Text (upcast: Text.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Attr (upcast: Attr.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - ProcessingInstruction (upcast: ProcessingInstruction.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
+    // Generic downcast function that checks type tag before casting.
+    // Use this for safe runtime downcasting:
+    //
+    //   const base: *NodeBase = ...;
+    //   if (base.tryCast(Element)) |elem| {
+    //       // elem is *Element
+    //   }
+    //
+
+    /// Type-safe downcast to any derived type.
+    /// Returns null if type_tag doesn't match the requested type.
+    /// 
+    /// Example:
+    ///   if (base.tryCast(Element)) |elem| {
+    ///       // elem is *Element
+    ///   }
+    pub fn tryCast(self: *NodeBase, comptime T: type) ?*T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            // Extract just the type name from the full path
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(NodeTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+
+    /// Type-safe downcast to any derived type (const version).
+    pub fn tryCastConst(self: *const NodeBase, comptime T: type) ?*const T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(NodeTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+    //
+    // Available types for tryCast() in Node hierarchy:
+    //   - CDATASection
+    //   - ShadowRoot
+    //   - Element
+    //   - DocumentType
+    //   - CharacterData
+    //   - Comment
+    //   - Document
+    //   - DocumentFragment
+    //   - Text
+    //   - Attr
+    //   - ProcessingInstruction
     //
 
 };
@@ -130,8 +168,9 @@ pub const Node = struct {
     pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
         // NOTE: Parent EventTarget fields will be flattened by codegen
         // Don't manually initialize parent fields here
-        return .{
-            .base = .{ .type_tag = .Node },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,
@@ -141,6 +180,8 @@ pub const Node = struct {
             .registered_observers = std.ArrayList(RegisteredObserver).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
+        result.base.type_tag = .Node;
+        return result;
     }
     pub fn deinit(self: *Node) void {
         // NOTE: EventTarget parent cleanup will be handled by codegen

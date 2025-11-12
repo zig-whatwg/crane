@@ -53,14 +53,17 @@ pub const DocumentType = struct {
         system_id: []const u8,
     ) !DocumentType {
         // NOTE: Parent Node fields will be flattened by codegen
-        return .{
-            .base = .{ .type_tag = .DocumentType },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),
             .system_id = try allocator.dupe(u8, system_id),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
+        result.base.type_tag = .DocumentType;
+        return result;
     }
     pub fn deinit(self: *DocumentType) void {
         self.allocator.free(self.name);

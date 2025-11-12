@@ -106,8 +106,9 @@ pub const ShadowRoot = struct {
         clonable: bool,
         serializable: bool,
     ) !ShadowRoot {
-        return .{
-            .base = .{ .type_tag = .ShadowRoot },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .host_element = host,
             .shadow_mode = mode,
@@ -120,6 +121,8 @@ pub const ShadowRoot = struct {
             .keep_custom_element_registry_null = false,
             // custom_element_registry comes from DocumentOrShadowRoot mixin
         };
+        result.base.type_tag = .ShadowRoot;
+        return result;
     }
     pub fn deinit(self: *ShadowRoot) void {
         _ = self;

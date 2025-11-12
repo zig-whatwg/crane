@@ -57,8 +57,9 @@ pub const Attr = struct {
         local_name: []const u8,
         value: []const u8,
     ) !Attr {
-        return .{
-            .base = .{ .type_tag = .Attr },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null,
             .prefix = if (prefix) |p| try allocator.dupe(u8, p) else null,
@@ -67,6 +68,8 @@ pub const Attr = struct {
             .owner_element = null,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
+        result.base.type_tag = .Attr;
+        return result;
     }
     pub fn deinit(self: *Attr) void {
         if (self.namespace_uri) |ns| self.allocator.free(ns);

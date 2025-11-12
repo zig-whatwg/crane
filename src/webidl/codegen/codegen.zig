@@ -3569,32 +3569,76 @@ fn generateSmartInit(
 fn generateCastingMethods(
     _: std.mem.Allocator,
     writer: anytype,
-    _: []const u8,
+    base_name: []const u8,
     children: [][]const u8,
 ) !void {
     if (children.len == 0) return;
 
     try writer.writeAll("\n    // ========================================================================\n");
-    try writer.writeAll("    // Polymorphic downcasting\n");
+    try writer.writeAll("    // Type-safe downcasting helpers\n");
     try writer.writeAll("    // ========================================================================\n");
-    try writer.writeAll("    // \n");
-    try writer.writeAll("    // Downcasting from base to derived type is done via @ptrCast:\n");
-    try writer.writeAll("    // \n");
-    try writer.writeAll("    //   const base: *NodeBase = element.toBase();\n");
-    try writer.writeAll("    //   const elem: *Element = @ptrCast(@alignCast(base));\n");
-    try writer.writeAll("    // \n");
-    try writer.writeAll("    // This is safe because all derived types have `base` as their first field.\n");
-    try writer.writeAll("    // For type-safe downcasting, add runtime type checking in your code.\n");
-    try writer.writeAll("    // \n");
-    try writer.print("    // This base type has {d} derived type(s):\n", .{children.len});
+    try writer.writeAll("    //\n");
+    try writer.writeAll("    // Generic downcast function that checks type tag before casting.\n");
+    try writer.writeAll("    // Use this for safe runtime downcasting:\n");
+    try writer.writeAll("    //\n");
+    try writer.print("    //   const base: *{s}Base = ...;\n", .{base_name});
+    try writer.print("    //   if (base.tryCast(Element)) |elem| {{\n", .{});
+    try writer.writeAll("    //       // elem is *Element\n");
+    try writer.writeAll("    //   }\n");
+    try writer.writeAll("    //\n");
+
+    try writer.print(
+        \\
+        \\    /// Type-safe downcast to any derived type.
+        \\    /// Returns null if type_tag doesn't match the requested type.
+        \\    /// 
+        \\    /// Example:
+        \\    ///   if (base.tryCast(Element)) |elem| {{
+        \\    ///       // elem is *Element
+        \\    ///   }}
+        \\    pub fn tryCast(self: *{s}Base, comptime T: type) ?*T {{
+        \\        const type_name = @typeName(T);
+        \\        const tag = comptime blk: {{
+        \\            // Extract just the type name from the full path
+        \\            var iter = std.mem.splitScalar(u8, type_name, '.');
+        \\            var last: []const u8 = "";
+        \\            while (iter.next()) |part| {{
+        \\                last = part;
+        \\            }}
+        \\            break :blk std.meta.stringToEnum({s}TypeTag, last) orelse return null;
+        \\        }};
+        \\        if (self.type_tag != tag) return null;
+        \\        return @ptrCast(@alignCast(self));
+        \\    }}
+        \\
+        \\    /// Type-safe downcast to any derived type (const version).
+        \\    pub fn tryCastConst(self: *const {s}Base, comptime T: type) ?*const T {{
+        \\        const type_name = @typeName(T);
+        \\        const tag = comptime blk: {{
+        \\            var iter = std.mem.splitScalar(u8, type_name, '.');
+        \\            var last: []const u8 = "";
+        \\            while (iter.next()) |part| {{
+        \\                last = part;
+        \\            }}
+        \\            break :blk std.meta.stringToEnum({s}TypeTag, last) orelse return null;
+        \\        }};
+        \\        if (self.type_tag != tag) return null;
+        \\        return @ptrCast(@alignCast(self));
+        \\    }}
+        \\
+    , .{ base_name, base_name, base_name, base_name });
+
+    // Add documentation about available types
+    try writer.writeAll("    //\n");
+    try writer.print("    // Available types for tryCast() in {s} hierarchy:\n", .{base_name});
     for (children) |child_name| {
-        try writer.print("    //   - {s} (upcast: {s}.toBase(), downcast: @ptrCast(@alignCast(base)))\n", .{ child_name, child_name });
+        try writer.print("    //   - {s}\n", .{child_name});
     }
     try writer.writeAll("    //\n\n");
 }
 
 /// Inject base field initialization into init() method return statement.
-/// Finds `return .{` and adds `.base = .{ .type_tag = .ClassName }` after it.
+/// Modifies init() to initialize base with undefined and set type_tag in function body.
 fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, class_name: []const u8) ![]const u8 {
     // Find "return .{" in the method source
     const return_start = std.mem.indexOf(u8, method_source, "return .{") orelse {
@@ -3602,19 +3646,43 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
         return try allocator.dupe(u8, method_source);
     };
 
-    const after_brace = return_start + "return .{".len;
+    const after_return_brace = return_start + "return .{".len;
 
-    // Build base initialization with type tag
-    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = .{{ .type_tag = .{s} }},", .{class_name});
-    defer allocator.free(base_init);
+    // Build initialization code
+    const before_return = try std.fmt.allocPrint(allocator, "\n        var result = ", .{});
+    defer allocator.free(before_return);
 
-    // Build modified source: before + "return .{" + base_init + after
+    const after_init = try std.fmt.allocPrint(allocator, ";\n        result.base.type_tag = .{s};\n        return result;\n    }}", .{class_name});
+    defer allocator.free(after_init);
+
+    // Find the closing of the return statement (the last } before end of function)
+    const return_end = std.mem.lastIndexOf(u8, method_source, "};") orelse {
+        // Fallback: just add .base = undefined in the struct literal
+        var result: std.ArrayList(u8) = .empty;
+        defer result.deinit(allocator);
+
+        try result.appendSlice(allocator, method_source[0..after_return_brace]);
+        try result.appendSlice(allocator, "\n            .base = undefined,");
+        try result.appendSlice(allocator, method_source[after_return_brace..]);
+
+        return result.toOwnedSlice(allocator);
+    };
+
+    // Build modified source: before return + "var result = .{" + fields + "};" + set type_tag + return result
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
-    try result.appendSlice(allocator, method_source[0..after_brace]);
-    try result.appendSlice(allocator, base_init);
-    try result.appendSlice(allocator, method_source[after_brace..]);
+    // Keep everything before "return"
+    try result.appendSlice(allocator, method_source[0..return_start]);
+    // Add "var result = .{"
+    try result.appendSlice(allocator, before_return);
+    try result.appendSlice(allocator, ".{");
+    try result.appendSlice(allocator, "\n            .base = undefined,");
+    // Add the original struct fields (everything between "return .{" and "};"
+    try result.appendSlice(allocator, method_source[after_return_brace..return_end]);
+    // Close struct literal and set type tag
+    try result.appendSlice(allocator, "}");
+    try result.appendSlice(allocator, after_init);
 
     return result.toOwnedSlice(allocator);
 }

@@ -34,12 +34,15 @@ pub const CDATASection = struct {
     pub const includes = .{}; // No mixins
 
     pub fn init(allocator: std.mem.Allocator, data: []const u8) !CDATASection {
-        return .{
-            .base = .{ .type_tag = .CDATASection },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .data = try allocator.dupe(u8, data),
             // TODO: Initialize Text/CharacterData/Node parent fields (will be added by codegen)
         };
+        result.base.type_tag = .CDATASection;
+        return result;
     }
     pub fn deinit(self: *CDATASection) void {
         self.allocator.free(self.data);

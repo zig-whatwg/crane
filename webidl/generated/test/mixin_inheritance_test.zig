@@ -47,19 +47,57 @@ pub const ParentBase = struct {
     parent_field: u32 = 100,
 
     // ========================================================================
-    // Polymorphic downcasting
+    // Type-safe downcasting helpers
     // ========================================================================
-    // 
-    // Downcasting from base to derived type is done via @ptrCast:
-    // 
-    //   const base: *NodeBase = element.toBase();
-    //   const elem: *Element = @ptrCast(@alignCast(base));
-    // 
-    // This is safe because all derived types have `base` as their first field.
-    // For type-safe downcasting, add runtime type checking in your code.
-    // 
-    // This base type has 1 derived type(s):
-    //   - Child (upcast: Child.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
+    // Generic downcast function that checks type tag before casting.
+    // Use this for safe runtime downcasting:
+    //
+    //   const base: *ParentBase = ...;
+    //   if (base.tryCast(Element)) |elem| {
+    //       // elem is *Element
+    //   }
+    //
+
+    /// Type-safe downcast to any derived type.
+    /// Returns null if type_tag doesn't match the requested type.
+    /// 
+    /// Example:
+    ///   if (base.tryCast(Element)) |elem| {
+    ///       // elem is *Element
+    ///   }
+    pub fn tryCast(self: *ParentBase, comptime T: type) ?*T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            // Extract just the type name from the full path
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ParentTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+
+    /// Type-safe downcast to any derived type (const version).
+    pub fn tryCastConst(self: *const ParentBase, comptime T: type) ?*const T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ParentTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+    //
+    // Available types for tryCast() in Parent hierarchy:
+    //   - Child
     //
 
 };
@@ -202,20 +240,58 @@ pub const ParentMultiBase = struct {
     parent_multi_field: u32 = 300,
 
     // ========================================================================
-    // Polymorphic downcasting
+    // Type-safe downcasting helpers
     // ========================================================================
-    // 
-    // Downcasting from base to derived type is done via @ptrCast:
-    // 
-    //   const base: *NodeBase = element.toBase();
-    //   const elem: *Element = @ptrCast(@alignCast(base));
-    // 
-    // This is safe because all derived types have `base` as their first field.
-    // For type-safe downcasting, add runtime type checking in your code.
-    // 
-    // This base type has 2 derived type(s):
-    //   - ChildMulti (upcast: ChildMulti.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - GrandChild (upcast: GrandChild.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
+    // Generic downcast function that checks type tag before casting.
+    // Use this for safe runtime downcasting:
+    //
+    //   const base: *ParentMultiBase = ...;
+    //   if (base.tryCast(Element)) |elem| {
+    //       // elem is *Element
+    //   }
+    //
+
+    /// Type-safe downcast to any derived type.
+    /// Returns null if type_tag doesn't match the requested type.
+    /// 
+    /// Example:
+    ///   if (base.tryCast(Element)) |elem| {
+    ///       // elem is *Element
+    ///   }
+    pub fn tryCast(self: *ParentMultiBase, comptime T: type) ?*T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            // Extract just the type name from the full path
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ParentMultiTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+
+    /// Type-safe downcast to any derived type (const version).
+    pub fn tryCastConst(self: *const ParentMultiBase, comptime T: type) ?*const T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ParentMultiTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+    //
+    // Available types for tryCast() in ParentMulti hierarchy:
+    //   - ChildMulti
+    //   - GrandChild
     //
 
 };
@@ -289,19 +365,57 @@ pub const ChildMultiBase = struct {
     child_multi_field: u32 = 400,
 
     // ========================================================================
-    // Polymorphic downcasting
+    // Type-safe downcasting helpers
     // ========================================================================
-    // 
-    // Downcasting from base to derived type is done via @ptrCast:
-    // 
-    //   const base: *NodeBase = element.toBase();
-    //   const elem: *Element = @ptrCast(@alignCast(base));
-    // 
-    // This is safe because all derived types have `base` as their first field.
-    // For type-safe downcasting, add runtime type checking in your code.
-    // 
-    // This base type has 1 derived type(s):
-    //   - GrandChild (upcast: GrandChild.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
+    // Generic downcast function that checks type tag before casting.
+    // Use this for safe runtime downcasting:
+    //
+    //   const base: *ChildMultiBase = ...;
+    //   if (base.tryCast(Element)) |elem| {
+    //       // elem is *Element
+    //   }
+    //
+
+    /// Type-safe downcast to any derived type.
+    /// Returns null if type_tag doesn't match the requested type.
+    /// 
+    /// Example:
+    ///   if (base.tryCast(Element)) |elem| {
+    ///       // elem is *Element
+    ///   }
+    pub fn tryCast(self: *ChildMultiBase, comptime T: type) ?*T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            // Extract just the type name from the full path
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ChildMultiTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+
+    /// Type-safe downcast to any derived type (const version).
+    pub fn tryCastConst(self: *const ChildMultiBase, comptime T: type) ?*const T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(ChildMultiTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+    //
+    // Available types for tryCast() in ChildMulti hierarchy:
+    //   - GrandChild
     //
 
 };

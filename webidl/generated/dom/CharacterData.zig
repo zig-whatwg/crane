@@ -38,22 +38,60 @@ pub const CharacterDataBase = struct {
     data: []u8,
 
     // ========================================================================
-    // Polymorphic downcasting
+    // Type-safe downcasting helpers
     // ========================================================================
-    // 
-    // Downcasting from base to derived type is done via @ptrCast:
-    // 
-    //   const base: *NodeBase = element.toBase();
-    //   const elem: *Element = @ptrCast(@alignCast(base));
-    // 
-    // This is safe because all derived types have `base` as their first field.
-    // For type-safe downcasting, add runtime type checking in your code.
-    // 
-    // This base type has 4 derived type(s):
-    //   - CDATASection (upcast: CDATASection.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Comment (upcast: Comment.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - Text (upcast: Text.toBase(), downcast: @ptrCast(@alignCast(base)))
-    //   - ProcessingInstruction (upcast: ProcessingInstruction.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
+    // Generic downcast function that checks type tag before casting.
+    // Use this for safe runtime downcasting:
+    //
+    //   const base: *CharacterDataBase = ...;
+    //   if (base.tryCast(Element)) |elem| {
+    //       // elem is *Element
+    //   }
+    //
+
+    /// Type-safe downcast to any derived type.
+    /// Returns null if type_tag doesn't match the requested type.
+    /// 
+    /// Example:
+    ///   if (base.tryCast(Element)) |elem| {
+    ///       // elem is *Element
+    ///   }
+    pub fn tryCast(self: *CharacterDataBase, comptime T: type) ?*T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            // Extract just the type name from the full path
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(CharacterDataTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+
+    /// Type-safe downcast to any derived type (const version).
+    pub fn tryCastConst(self: *const CharacterDataBase, comptime T: type) ?*const T {
+        const type_name = @typeName(T);
+        const tag = comptime blk: {
+            var iter = std.mem.splitScalar(u8, type_name, '.');
+            var last: []const u8 = "";
+            while (iter.next()) |part| {
+                last = part;
+            }
+            break :blk std.meta.stringToEnum(CharacterDataTypeTag, last) orelse return null;
+        };
+        if (self.type_tag != tag) return null;
+        return @ptrCast(@alignCast(self));
+    }
+    //
+    // Available types for tryCast() in CharacterData hierarchy:
+    //   - CDATASection
+    //   - Comment
+    //   - Text
+    //   - ProcessingInstruction
     //
 
 };
@@ -83,12 +121,15 @@ pub const CharacterData = struct {
 
     pub fn init(allocator: Allocator) !CharacterData {
         // NOTE: Parent Node fields will be flattened by codegen
-        return .{
-            .base = .{ .type_tag = .CharacterData },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
+        result.base.type_tag = .CharacterData;
+        return result;
     }
     pub fn deinit(self: *CharacterData) void {
         self.allocator.free(self.data);

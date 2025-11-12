@@ -67,13 +67,16 @@ pub const Document = struct {
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
-        return .{
-            .base = .{ .type_tag = .Document },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
+        result.base.type_tag = .Document;
+        return result;
     }
     pub fn deinit(self: *Document) void {
         // Free all interned strings from pool

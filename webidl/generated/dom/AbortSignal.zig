@@ -38,14 +38,17 @@ pub const AbortSignal = struct {
     abort_algorithms: infra.List(AbortAlgorithm),
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
-        return .{
-            .base = .{ .type_tag = .AbortSignal },
+        
+        var result = .{
+            .base = undefined,
             .allocator = allocator,
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
+        result.base.type_tag = .AbortSignal;
+        return result;
     }
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
