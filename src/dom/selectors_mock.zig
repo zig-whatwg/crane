@@ -165,9 +165,8 @@ fn matchesSelector(selector: Selector, element: anytype) bool {
             // Class selector matches if element has the class
             if (!has_class_list) return false;
             if (element.class_list) |classes| {
-                // Simple check: see if class_name appears in the class list
-                // In real implementation, would use DOMTokenList.contains()
-                return std.mem.indexOf(u8, classes, class_name) != null;
+                // Token-based matching: split class list by whitespace and check each token
+                return classListContains(classes, class_name);
             }
             return false;
         },
@@ -211,6 +210,18 @@ pub fn scopeMatchSelectorsString(
 
 fn isAsciiAlpha(c: u8) bool {
     return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z');
+}
+
+/// Check if a space-separated class list contains a specific token
+/// Per HTML spec, class names are separated by ASCII whitespace
+fn classListContains(class_list: []const u8, target_class: []const u8) bool {
+    var it = std.mem.tokenizeAny(u8, class_list, " \t\n\r\x0c");
+    while (it.next()) |token| {
+        if (std.mem.eql(u8, token, target_class)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ============================================================================
@@ -266,3 +277,28 @@ test "Selectors mock - parse error on empty class" {
 // actual DOM Node/Element types. The parsing tests above validate the core
 // selector parsing logic. The matching logic can be tested via integration
 // tests with real DOM elements in tests/dom/element_test.zig
+
+test "Selectors mock - classListContains with tokens" {
+    // Single class
+    try testing.expect(classListContains("myClass", "myClass"));
+
+    // Multiple classes
+    try testing.expect(classListContains("myClass otherClass", "myClass"));
+    try testing.expect(classListContains("myClass otherClass", "otherClass"));
+
+    // Class not present
+    try testing.expect(!classListContains("myClass otherClass", "notThere"));
+
+    // Partial match should not match (token-based, not substring)
+    try testing.expect(!classListContains("myClassExtended", "myClass"));
+
+    // Multiple spaces
+    try testing.expect(classListContains("myClass  otherClass", "myClass"));
+
+    // Leading/trailing whitespace
+    try testing.expect(classListContains("  myClass  ", "myClass"));
+
+    // Tab/newline separators
+    try testing.expect(classListContains("myClass\totherClass", "otherClass"));
+    try testing.expect(classListContains("myClass\notherClass", "otherClass"));
+}
