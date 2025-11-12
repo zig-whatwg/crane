@@ -333,6 +333,19 @@ pub fn build(b: *std.Build) void {
     mutation_observer_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
     mutation_observer_mod.addImport("registered_observer", registered_observer_mod);
 
+    // Create mutation_observer_algorithms module (implementation algorithms)
+    const mutation_observer_algorithms_mod = b.createModule(.{
+        .root_source_file = b.path("src/dom/mutation_observer_algorithms.zig"),
+        .target = target,
+    });
+    mutation_observer_algorithms_mod.addImport("infra", infra_mod);
+    mutation_observer_algorithms_mod.addImport("webidl", webidl_mod);
+    mutation_observer_algorithms_mod.addImport("node", node_mod);
+    mutation_observer_algorithms_mod.addImport("node_list", node_list_mod);
+    mutation_observer_algorithms_mod.addImport("mutation_observer", mutation_observer_mod);
+    mutation_observer_algorithms_mod.addImport("mutation_record", mutation_record_mod);
+    mutation_observer_algorithms_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     event_target_mod.addImport("abort_signal", abort_signal_mod);
@@ -422,6 +435,7 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("mutation_observer", mutation_observer_mod);
     dom_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
     dom_mod.addImport("registered_observer", registered_observer_mod);
+    dom_mod.addImport("mutation_observer_algorithms", mutation_observer_algorithms_mod);
 
     // Handle circular dependencies by adding imports after all modules are created
     node_iterator_mod.addImport("dom", dom_mod); // Circular: dom -> node_iterator, node_iterator -> dom
