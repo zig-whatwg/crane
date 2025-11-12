@@ -17,7 +17,6 @@ pub const CDATASection = webidl.interface(struct {
         return .{
             .allocator = allocator,
             .data = try allocator.dupe(u8, data),
-            // TODO: Initialize Text/CharacterData/Node parent fields (will be added by codegen)
         };
     }
 

@@ -41,7 +41,6 @@ pub const Element = webidl.interface(struct {
             .namespace_uri = null,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 

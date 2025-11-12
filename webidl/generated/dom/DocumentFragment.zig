@@ -159,13 +159,28 @@ pub const DocumentFragment = struct {
     /// 
     /// The children getter steps are to return an HTMLCollection collection rooted
     /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     /// (Included from ParentNode mixin)
-    pub fn get_children(self: anytype) *HTMLCollection {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 children getter
-        // 1. Return HTMLCollection rooted at this
-        // 2. Collection matches only element children (not text, comment, etc.)
-        @panic("ParentNode.children() not yet implemented");
+    pub fn get_children(self: anytype) !*HTMLCollection {
+        const NodeType = @import("node").Node;
+        const allocator = self.allocator;
+
+        // Create HTMLCollection
+        const collection = try allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(allocator);
+
+        // Filter child_nodes for elements only (ELEMENT_NODE = 1)
+        for (self.child_nodes.items) |child| {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
+                const element: *Element = @ptrCast(child);
+                try collection.addElement(element);
+            }
+        }
+
+        return collection;
     }
     /// DOM §4.3.2 - ParentNode.firstElementChild
     /// Returns the first child that is an element; otherwise null.

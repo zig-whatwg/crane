@@ -27,7 +27,6 @@ pub const Text = webidl.interface(struct {
     pub fn init(allocator: Allocator) !Text {
         return .{
             .allocator = allocator,
-            // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
     }
 

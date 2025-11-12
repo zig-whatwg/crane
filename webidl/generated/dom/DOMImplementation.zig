@@ -98,28 +98,36 @@ pub const DOMImplementation = struct {
         qualified_name: []const u8,
         doctype: ?*DocumentType,
     ) !*Document {
+        const Node = @import("node").Node;
+        const mutation = dom.mutation;
+
         // Step 1: Create new XMLDocument
         const document = try self.allocator.create(Document);
         document.* = try Document.init(self.allocator);
         // TODO: Mark as XMLDocument when we have document type distinction
 
+        const document_node: *Node = @ptrCast(document);
+
         // Step 2: element = null (handled by step 3 condition)
 
         // Step 3: If qualifiedName is not empty, create element
         // This throws the same exceptions as createElementNS()
+        var element: ?*Element = null;
         if (qualified_name.len > 0) {
-            const element = try document.call_createElementNS(namespace, qualified_name);
-            // TODO: Append element to document when tree operations are available
-            _ = element;
+            element = try document.call_createElementNS(namespace, qualified_name);
         }
 
         // Step 4: If doctype is non-null, append to document
         if (doctype) |dt| {
-            // TODO: Append doctype to document when tree operations are available
-            _ = dt;
+            const dt_node: *Node = @ptrCast(dt);
+            _ = try mutation.append(dt_node, document_node);
         }
 
-        // Step 5: Already handled in step 3
+        // Step 5: If element is non-null, append to document
+        if (element) |elem| {
+            const elem_node: *Node = @ptrCast(elem);
+            _ = try mutation.append(elem_node, document_node);
+        }
 
         // Step 6: Set document's origin
         // TODO: Set origin from self.document.origin when origin tracking is implemented
@@ -129,7 +137,6 @@ pub const DOMImplementation = struct {
         // HTML namespace: "application/xhtml+xml"
         // SVG namespace: "image/svg+xml"
         // Other: "application/xml"
-        // Note: namespace is used in step 3, so no need to discard
 
         // Step 8: Return document
         return document;
@@ -153,45 +160,50 @@ pub const DOMImplementation = struct {
         self: *DOMImplementation,
         title: ?[]const u8,
     ) !*Document {
+        const Node = @import("node").Node;
+        const mutation = dom.mutation;
+
         // Step 1: Create new HTML document
         const doc = try self.allocator.create(Document);
         doc.* = try Document.init(self.allocator);
         // TODO: Mark as HTML document when we have document type distinction
+
+        const doc_node: *Node = @ptrCast(doc);
 
         // Step 2: Set content type to "text/html"
         // TODO: Set contentType when Document has contentType field
 
         // Step 3: Create and append doctype
         const doctype = try doc.call_createDocumentType("html", "", "");
-        // TODO: Append doctype to doc when tree operations are available
-        _ = doctype;
+        const doctype_node: *Node = @ptrCast(doctype);
+        _ = try mutation.append(doctype_node, doc_node);
 
         // Step 4: Create and append html element
         const html_namespace = "http://www.w3.org/1999/xhtml";
         const html = try doc.call_createElementNS(html_namespace, "html");
-        // TODO: Append html to doc when tree operations are available
+        const html_node: *Node = @ptrCast(html);
+        _ = try mutation.append(html_node, doc_node);
 
-        // Step 5: Create and append head element
+        // Step 5: Create and append head element to html
         const head = try doc.call_createElementNS(html_namespace, "head");
-        // TODO: Append head to html when tree operations are available
-        _ = head;
+        const head_node: *Node = @ptrCast(head);
+        _ = try mutation.append(head_node, html_node);
 
         // Step 6: If title is given, create title element with text
         if (title) |title_text| {
             const title_elem = try doc.call_createElementNS(html_namespace, "title");
-            // TODO: Append title_elem to head when tree operations are available
+            const title_node: *Node = @ptrCast(title_elem);
+            _ = try mutation.append(title_node, head_node);
 
             const text_node = try doc.call_createTextNode(title_text);
-            // TODO: Append text_node to title_elem when tree operations are available
-            _ = title_elem;
-            _ = text_node;
+            const text_node_as_node: *Node = @ptrCast(text_node);
+            _ = try mutation.append(text_node_as_node, title_node);
         }
 
-        // Step 7: Create and append body element
+        // Step 7: Create and append body element to html
         const body = try doc.call_createElementNS(html_namespace, "body");
-        // TODO: Append body to html when tree operations are available
-        _ = body;
-        _ = html;
+        const body_node: *Node = @ptrCast(body);
+        _ = try mutation.append(body_node, html_node);
 
         // Step 8: Set doc's origin
         // TODO: Set origin from self.document.origin when origin tracking is implemented

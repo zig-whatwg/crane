@@ -43,7 +43,6 @@ pub const Comment = struct {
         return .{
             .base = CharacterDataBase.initForComment(allocator),
             .allocator = allocator,
-            // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *Comment) void {

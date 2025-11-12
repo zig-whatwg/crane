@@ -13,10 +13,12 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
+const infra = @import("infra");
 
 pub const Node = @import("node").Node;
 pub const NodeList = @import("node_list").NodeList;
 pub const dom_types = @import("dom_types");
+const Allocator = std.mem.Allocator;
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
 const NodeBase = @import("node").NodeBase;
@@ -80,12 +82,16 @@ pub const Element = struct {
             .namespace_uri = null,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *Element) void {
         // NOTE: Parent Node cleanup is handled by codegen
         self.attributes.deinit();
+
+        // Free namespace_uri if allocated
+        if (self.namespace_uri) |ns| {
+            self.allocator.free(ns);
+        }
     
         
         // Clean up base fields
@@ -388,13 +394,28 @@ pub const Element = struct {
     /// 
     /// The children getter steps are to return an HTMLCollection collection rooted
     /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     /// (Included from ParentNode mixin)
-    pub fn get_children(self: anytype) *HTMLCollection {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 children getter
-        // 1. Return HTMLCollection rooted at this
-        // 2. Collection matches only element children (not text, comment, etc.)
-        @panic("ParentNode.children() not yet implemented");
+    pub fn get_children(self: anytype) !*HTMLCollection {
+        const NodeType = @import("node").Node;
+        const allocator = self.allocator;
+
+        // Create HTMLCollection
+        const collection = try allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(allocator);
+
+        // Filter child_nodes for elements only (ELEMENT_NODE = 1)
+        for (self.child_nodes.items) |child| {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
+                const element: *Element = @ptrCast(child);
+                try collection.addElement(element);
+            }
+        }
+
+        return collection;
     }
     /// DOM §4.3.2 - ParentNode.firstElementChild
     /// Returns the first child that is an element; otherwise null.
@@ -722,11 +743,31 @@ pub const Element = struct {
     /// DOM §4.10.1 - Element.classList
     /// The classList getter steps are to return a DOMTokenList object whose associated element
     /// is this and whose associated attribute's local name is class.
-    /// TODO: Implement DOMTokenList
-    /// For now, return error as DOMTokenList is not implemented
+    /// 
+    /// Returns a DOMTokenList representing the class attribute.
+    /// The DOMTokenList is [SameObject] - should return same instance on repeated calls.
+    /// TODO: Implement [SameObject] caching
     pub fn get_classList(self: *const Element) !*DOMTokenList {
-        _ = self;
-        return error.NotImplemented;
+        const TokenList = @import("dom_token_list").DOMTokenList;
+
+        // Create DOMTokenList associated with this element's "class" attribute
+        const token_list = try self.allocator.create(TokenList);
+        token_list.* = try TokenList.init(self.allocator, @constCast(self), "class");
+
+        // Parse current class attribute value into tokens
+        const class_value = self.call_getAttribute("class") orelse "";
+        if (class_value.len > 0) {
+            var iter = std.mem.tokenizeScalar(u8, class_value, ' ');
+            while (iter.next()) |token| {
+                // Skip empty tokens
+                if (token.len == 0) continue;
+
+                const token_copy = try self.allocator.dupe(u8, token);
+                try token_list.tokens.append(token_copy);
+            }
+        }
+
+        return token_list;
     }
     /// DOM §4.10.1 - Element.slot
     /// The slot getter steps are to return the value of this's slot content attribute.
@@ -780,20 +821,70 @@ pub const Element = struct {
     }
     /// DOM §4.10.4 - Element.matches(selectors)
     /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
-    /// TODO: Implement using Selectors API (requires CSS selector parser)
-    pub fn call_matches(self: *const Element, selectors: []const u8) !bool {
-        _ = self;
-        _ = selectors;
-        return error.NotImplemented;
+    /// 
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. If the result of match a selector against an element, using s, this,
+    /// and :scope element this, returns success, then return true; otherwise, return false.
+    pub fn call_matches(self: *const Element, allocator: Allocator, selectors: []const u8) !bool {
+        // Use scopeMatchSelectorsString to parse and match
+        // This will throw SyntaxError if parsing fails
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // Check if self is in the matches list
+        for (matches.items) |match| {
+            if (match == self) {
+                return true;
+            }
+        }
+
+        return false;
     }
     /// DOM §4.10.4 - Element.closest(selectors)
     /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
     /// Returns null if no such element exists.
-    /// TODO: Implement using Selectors API (requires CSS selector parser)
-    pub fn call_closest(self: *const Element, selectors: []const u8) !?*Element {
-        _ = self;
-        _ = selectors;
-        return error.NotImplemented;
+    /// 
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. Let elements be this's inclusive ancestors that are elements, in reverse tree order.
+    /// 4. For each element in elements, if the result of match a selector against an element,
+    /// using s, element, and :scope element this, returns success, return element.
+    /// 5. Return null.
+    pub fn call_closest(self: *const Element, allocator: Allocator, selectors: []const u8) !?*Element {
+        const NodeType = @import("node").Node;
+
+        // Parse selectors (will throw SyntaxError if invalid)
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // Step 3: Walk up the tree from this element
+        // Check this element and its ancestors
+        const self_node: *const NodeType = @ptrCast(self);
+        var current: ?*const NodeType = self_node;
+
+        while (current) |node| {
+            // Only check elements
+            if (node.node_type == NodeType.ELEMENT_NODE) {
+                const elem: *const Element = @ptrCast(node);
+
+                // Check if this element is in the matches
+                for (matches.items) |match| {
+                    if (match == elem) {
+                        // Cast away const - closest returns mutable pointer
+                        return @constCast(elem);
+                    }
+                }
+            }
+
+            // Move to parent
+            current = node.parent_node;
+        }
+
+        // Step 5: No match found
+        return null;
     }
     /// DOM §4.10.7 - insert adjacent algorithm
     /// To insert adjacent, given an element element, string where, and a node node, run the steps
@@ -1133,11 +1224,20 @@ pub const Element = struct {
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return current.node_type == DOCUMENT_NODE;
     }
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Element) []const u8 {
-        // Returns node document's document base URL, serialized
-        // TODO: Implement once Document has base URL support
-        _ = self;
-        return "";
+        // Get owner document
+        const doc = self.owner_document orelse {
+            // If no owner document, return empty string (should not happen in normal DOM)
+            return "about:blank";
+        };
+
+        // Return document's base URI
+        return doc.base_uri;
     }
     pub fn get_nodeValue(self: *const Element) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue

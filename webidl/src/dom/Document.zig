@@ -39,7 +39,6 @@ pub const Document = webidl.interface(struct {
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
             .base_uri = "about:blank",
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 

@@ -22,7 +22,6 @@ pub const ProcessingInstruction = webidl.interface(struct {
             .allocator = allocator,
             .target = try allocator.dupe(u8, target),
             .data = try allocator.dupe(u8, data),
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 

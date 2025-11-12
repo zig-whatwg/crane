@@ -21,6 +21,7 @@ pub const ProcessingInstruction = @import("processing_instruction").ProcessingIn
 pub const CDATASection = @import("cdata_section").CDATASection;
 pub const DocumentType = @import("document_type").DocumentType;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
+const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 const NodeBase = @import("node").NodeBase;
 const EventListener = @import("event_target").EventListener;
@@ -58,6 +59,9 @@ pub const Document = struct {
     /// String interning pool for tag names, attribute names, etc.
     /// Provides memory savings (20-30%) and O(1) string comparison via pointer equality
     _string_pool: std.StringHashMap(void),
+    /// Document base URL (fallback: empty string for about:blank)
+    /// TODO: Implement full URL parsing and document URL when URL spec is integrated
+    base_uri: []const u8,
 
     pub const includes = .{ ParentNode, NonElementParentNode, DocumentOrShadowRoot };
     pub const Text = @import("text").Text;
@@ -72,7 +76,7 @@ pub const Document = struct {
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
-            // TODO: Initialize Node parent fields (will be added by codegen)
+            .base_uri = "about:blank",
         };
     }
     pub fn deinit(self: *Document) void {
@@ -115,13 +119,28 @@ pub const Document = struct {
     /// 
     /// The children getter steps are to return an HTMLCollection collection rooted
     /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     /// (Included from ParentNode mixin)
-    pub fn get_children(self: anytype) *HTMLCollection {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 children getter
-        // 1. Return HTMLCollection rooted at this
-        // 2. Collection matches only element children (not text, comment, etc.)
-        @panic("ParentNode.children() not yet implemented");
+    pub fn get_children(self: anytype) !*HTMLCollection {
+        const NodeType = @import("node").Node;
+        const allocator = self.allocator;
+
+        // Create HTMLCollection
+        const collection = try allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(allocator);
+
+        // Filter child_nodes for elements only (ELEMENT_NODE = 1)
+        for (self.child_nodes.items) |child| {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
+                const element: *Element = @ptrCast(child);
+                try collection.addElement(element);
+            }
+        }
+
+        return collection;
     }
     /// DOM §4.3.2 - ParentNode.firstElementChild
     /// Returns the first child that is an element; otherwise null.
@@ -501,16 +520,32 @@ pub const Document = struct {
     }
     /// createElementNS(namespace, qualifiedName)
     /// DOM §4.6.1 - Creates an element in the given namespace
-    /// TODO: Implement full namespace handling and qualified name parsing
+    /// 
+    /// Spec: Internal createElementNS steps:
+    /// 1. Validate and extract namespace and qualifiedName
+    /// 2. Flatten element creation options (for custom elements)
+    /// 3. Create an element with namespace, prefix, localName
+    /// 
+    /// Simplified implementation:
+    /// - Sets namespace_uri field on element
+    /// - Uses qualifiedName as-is (TODO: parse prefix:localName)
+    /// - Skips custom element handling (TODO: when custom elements implemented)
     pub fn call_createElementNS(
         self: *Document,
         namespace: ?[]const u8,
         qualified_name: []const u8,
     ) !*Element {
+        // Create element with qualified name
         const element = try self.allocator.create(Element);
         element.* = try Element.init(self.allocator, qualified_name);
-        // TODO: Set namespace_uri from namespace parameter
-        _ = namespace;
+
+        // Set namespace_uri if provided
+        if (namespace) |ns| {
+            // Duplicate the namespace string for element ownership
+            const ns_copy = try self.allocator.dupe(u8, ns);
+            element.namespace_uri = ns_copy;
+        }
+
         return element;
     }
     /// createAttribute(localName)
@@ -544,12 +579,36 @@ pub const Document = struct {
     }
     /// adoptNode(node)
     /// DOM §4.6.1 - Moves node from another document to this document.
-    /// Removes node from its current document and changes its owner document to this.
-    /// TODO: Implement full adoption algorithm with parent removal
+    /// 
+    /// Spec steps:
+    /// 1. If node is a document, throw "NotSupportedError".
+    /// 2. If node is a shadow root, throw "HierarchyRequestError".
+    /// 3. If node is a DocumentFragment whose host is non-null, return.
+    /// 4. Adopt node into this.
+    /// 5. Return node.
     pub fn call_adoptNode(self: *Document, node: *Node) !*Node {
-        _ = self;
-        _ = node;
-        return error.NotImplemented;
+        const mutation = @import("dom").mutation;
+
+        // Step 1: If node is a document, throw "NotSupportedError"
+        if (node.node_type == Node.DOCUMENT_NODE) {
+            return error.NotSupportedError;
+        }
+
+        // Step 2: If node is a shadow root, throw "HierarchyRequestError"
+        // TODO: Check for shadow root when shadow DOM is implemented
+        // For now, we don't have shadow roots, so skip this check
+
+        // Step 3: If node is a DocumentFragment whose host is non-null, return
+        if (node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+            // TODO: Check DocumentFragment.host when shadow DOM is implemented
+            // For now, DocumentFragment doesn't have host field, so skip
+        }
+
+        // Step 4: Adopt node into this
+        try mutation.adopt(node, self);
+
+        // Step 5: Return node
+        return node;
     }
     /// insertBefore(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
@@ -779,11 +838,20 @@ pub const Document = struct {
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return current.node_type == DOCUMENT_NODE;
     }
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Document) []const u8 {
-        // Returns node document's document base URL, serialized
-        // TODO: Implement once Document has base URL support
-        _ = self;
-        return "";
+        // Get owner document
+        const doc = self.owner_document orelse {
+            // If no owner document, return empty string (should not happen in normal DOM)
+            return "about:blank";
+        };
+
+        // Return document's base URI
+        return doc.base_uri;
     }
     pub fn get_nodeValue(self: *const Document) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue

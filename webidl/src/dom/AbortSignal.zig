@@ -26,7 +26,6 @@ pub const AbortSignal = webidl.interface(struct {
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
-            // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
 

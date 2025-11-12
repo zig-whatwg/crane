@@ -44,7 +44,6 @@ pub const AbortSignal = struct {
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
-            // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *AbortSignal) void {
