@@ -1,8 +1,7 @@
 const std = @import("std");
-const dom = @import("dom");
-const Node = dom.Node;
-const Document = dom.Document;
-const Element = dom.Element;
+const Node = @import("node").Node;
+const Element = @import("element").Element;
+const Document = @import("document").Document;
 
 test "Node.isConnected - document is connected" {
     const allocator = std.testing.allocator;
