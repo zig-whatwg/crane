@@ -1,0 +1,152 @@
+//! ElementWithBase - Temporary Element implementation with NodeBase
+//!
+//! This is a temporary type that demonstrates the NodeBase pattern for Elements.
+//! It will be replaced once the WebIDL codegen is updated to automatically
+//! generate this structure.
+//!
+//! Key difference from webidl/generated/dom/element.zig:
+//! - Has `base: NodeBase` as the FIRST field (critical for safe casting)
+//! - Allows safe downcasting from NodeBase* to ElementWithBase*
+//! - Enables XPath to access Element.attributes from NodeBase* pointers
+//!
+//! TODO: Remove this file once webidl codegen generates NodeBase pattern automatically
+
+const std = @import("std");
+const infra = @import("infra");
+const node_base = @import("node_base.zig");
+const Allocator = std.mem.Allocator;
+
+pub const NodeBase = node_base.NodeBase;
+pub const Attr = @import("attr").Attr;
+
+/// Element with NodeBase integration
+/// This demonstrates the pattern that codegen should eventually generate
+pub const ElementWithBase = struct {
+    // ========================================================================
+    // CRITICAL: NodeBase MUST be the first field for safe @ptrCast
+    // ========================================================================
+    base: NodeBase,
+
+    // ========================================================================
+    // Element-specific fields
+    // ========================================================================
+    tag_name: []const u8,
+    namespace_uri: ?[]const u8,
+    attributes: infra.List(Attr),
+
+    /// Initialize a new Element
+    pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
+        return .{
+            .base = NodeBase{
+                .allocator = allocator,
+                .node_type = NodeBase.ELEMENT_NODE,
+                .node_name = tag_name,
+                .parent_node = null,
+                .child_nodes = infra.List(*NodeBase).init(allocator),
+                .owner_document = null,
+                .registered_observers = std.ArrayList(@TypeOf(node_base.RegisteredObserverType)).init(allocator),
+            },
+            .tag_name = tag_name,
+            .namespace_uri = null,
+            .attributes = infra.List(Attr).init(allocator),
+        };
+    }
+
+    /// Clean up resources
+    pub fn deinit(self: *ElementWithBase) void {
+        self.base.child_nodes.deinit();
+        self.base.registered_observers.deinit();
+
+        // Clean up attributes
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |*attr| {
+                attr.deinit();
+            }
+        }
+        self.attributes.deinit();
+    }
+
+    /// Upcast Element to NodeBase
+    pub fn asNode(self: *ElementWithBase) *NodeBase {
+        return &self.base;
+    }
+
+    /// Upcast Element to const NodeBase
+    pub fn asNodeConst(self: *const ElementWithBase) *const NodeBase {
+        return &self.base;
+    }
+
+    /// Get element's ID attribute
+    pub fn getId(self: *const ElementWithBase) ?[]const u8 {
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |attr| {
+                if (std.mem.eql(u8, attr.local_name, "id")) {
+                    return attr.value;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Set element's ID attribute
+    pub fn setId(self: *ElementWithBase, value: []const u8) !void {
+        // Find existing id attribute
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |*attr| {
+                if (std.mem.eql(u8, attr.local_name, "id")) {
+                    // TODO: Properly free old value if allocated
+                    attr.value = value;
+                    return;
+                }
+            }
+        }
+
+        // Add new id attribute
+        var attr = try Attr.init(
+            self.base.allocator,
+            null, // namespace_uri
+            null, // prefix
+            "id", // local_name
+            value, // value
+        );
+        attr.owner_element = null; // TODO: Set to self when we support Element* in Attr
+        try self.attributes.append(attr);
+    }
+
+    /// Get attribute by name
+    pub fn getAttribute(self: *const ElementWithBase, name: []const u8) ?[]const u8 {
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |attr| {
+                if (std.mem.eql(u8, attr.local_name, name)) {
+                    return attr.value;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Set attribute
+    pub fn setAttribute(self: *ElementWithBase, name: []const u8, value: []const u8) !void {
+        // Find existing attribute
+        for (0..self.attributes.size()) |i| {
+            if (self.attributes.get(i)) |*attr| {
+                if (std.mem.eql(u8, attr.local_name, name)) {
+                    // TODO: Properly free old value if allocated
+                    attr.value = value;
+                    return;
+                }
+            }
+        }
+
+        // Add new attribute
+        var attr = try Attr.init(
+            self.base.allocator,
+            null, // namespace_uri
+            null, // prefix
+            name, // local_name
+            value, // value
+        );
+        attr.owner_element = null; // TODO: Set to self when we support Element* in Attr
+        try self.attributes.append(attr);
+    }
+};
