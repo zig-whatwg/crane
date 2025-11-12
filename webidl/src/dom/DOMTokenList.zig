@@ -26,13 +26,13 @@ const Element = @import("element").Element;
 /// ```
 pub const DOMTokenList = webidl.interface(struct {
     allocator: Allocator,
-    
+
     /// The token set (ordered set of unique tokens)
     tokens: infra.List([]const u8),
-    
+
     /// Associated element (for updating attribute)
     element: ?*Element,
-    
+
     /// Associated attribute's local name (e.g., "class")
     attribute_name: []const u8,
 
@@ -81,28 +81,37 @@ pub const DOMTokenList = webidl.interface(struct {
 
     /// DOM §4.7 - DOMTokenList.add(tokens...)
     /// Adds all arguments passed, except those already present.
-    /// TODO: Implement full validation and update steps
     pub fn call_add(self: *DOMTokenList, tokens: []const []const u8) !void {
+        // Step 1: Validate all tokens first
+        for (tokens) |token| {
+            try DOMTokenList.validateToken(token);
+        }
+
+        // Step 2: Add tokens to set (skip duplicates)
         for (tokens) |token| {
             // Skip if already present
             if (self.call_contains(token)) {
                 continue;
             }
-            
+
             // Add token (duplicate the string for ownership)
             const token_copy = try self.allocator.dupe(u8, token);
             try self.tokens.append(token_copy);
         }
-        
-        // TODO: Run update steps to sync with element's attribute
-        _ = self.element;
-        _ = self.attribute_name;
+
+        // Step 3: Run update steps
+        try self.runUpdateSteps();
     }
 
     /// DOM §4.7 - DOMTokenList.remove(tokens...)
     /// Removes all arguments passed, if they are present.
-    /// TODO: Implement full validation and update steps
     pub fn call_remove(self: *DOMTokenList, tokens: []const []const u8) !void {
+        // Step 1: Validate all tokens first
+        for (tokens) |token| {
+            try DOMTokenList.validateToken(token);
+        }
+
+        // Step 2: Remove tokens from set
         for (tokens) |token| {
             // Find and remove token
             for (self.tokens.items, 0..) |t, i| {
@@ -113,8 +122,9 @@ pub const DOMTokenList = webidl.interface(struct {
                 }
             }
         }
-        
-        // TODO: Run update steps to sync with element's attribute
+
+        // Step 3: Run update steps
+        try self.runUpdateSteps();
     }
 
     /// DOM §4.7 - DOMTokenList.toggle(token, force)
@@ -123,44 +133,73 @@ pub const DOMTokenList = webidl.interface(struct {
     /// is false, removes token (same as remove()). Returns true if token is now
     /// present, and false otherwise.
     pub fn call_toggle(self: *DOMTokenList, token: []const u8, force: ?bool) !bool {
-        if (force) |f| {
-            if (f) {
-                try self.call_add(&[_][]const u8{token});
-                return true;
-            } else {
-                try self.call_remove(&[_][]const u8{token});
+        // Step 1-2: Validate token
+        try DOMTokenList.validateToken(token);
+
+        // Step 3: If token exists in set
+        if (self.call_contains(token)) {
+            // Step 3.1: If force is false or not given, remove and return false
+            if (force == null or force.? == false) {
+                // Remove token
+                for (self.tokens.items, 0..) |t, i| {
+                    if (std.mem.eql(u8, t, token)) {
+                        const removed = self.tokens.orderedRemove(i);
+                        self.allocator.free(removed);
+                        break;
+                    }
+                }
+                try self.runUpdateSteps();
                 return false;
             }
-        }
-        
-        // No force parameter - toggle based on current state
-        if (self.call_contains(token)) {
-            try self.call_remove(&[_][]const u8{token});
-            return false;
-        } else {
-            try self.call_add(&[_][]const u8{token});
+            // Step 3.2: Return true (force is true, token stays)
             return true;
         }
+
+        // Step 4: Otherwise, if force is not given or is true, add token
+        if (force == null or force.? == true) {
+            const token_copy = try self.allocator.dupe(u8, token);
+            try self.tokens.append(token_copy);
+            try self.runUpdateSteps();
+            return true;
+        }
+
+        // Step 5: Return false (force is false, token not in set)
+        return false;
     }
 
     /// DOM §4.7 - DOMTokenList.replace(token, newToken)
     /// Replaces token with newToken. Returns true if token was replaced;
     /// otherwise false.
     pub fn call_replace(self: *DOMTokenList, token: []const u8, new_token: []const u8) !bool {
+        // Step 1-2: Validate both tokens
+        try DOMTokenList.validateToken(token);
+        try DOMTokenList.validateToken(new_token);
+
+        // Step 3: If token set does not contain token, return false
+        var found = false;
+        var found_index: usize = 0;
         for (self.tokens.items, 0..) |t, i| {
             if (std.mem.eql(u8, t, token)) {
-                // Free old token
-                self.allocator.free(t);
-                
-                // Replace with new token
-                const new_copy = try self.allocator.dupe(u8, new_token);
-                self.tokens.items[i] = new_copy;
-                
-                // TODO: Run update steps
-                return true;
+                found = true;
+                found_index = i;
+                break;
             }
         }
-        return false;
+        if (!found) {
+            return false;
+        }
+
+        // Step 4: Replace token with newToken
+        const old = self.tokens.items[found_index];
+        self.allocator.free(old);
+        const new_copy = try self.allocator.dupe(u8, new_token);
+        self.tokens.items[found_index] = new_copy;
+
+        // Step 5: Run update steps
+        try self.runUpdateSteps();
+
+        // Step 6: Return true
+        return true;
     }
 
     /// DOM §4.7 - DOMTokenList.value (getter)
@@ -169,14 +208,14 @@ pub const DOMTokenList = webidl.interface(struct {
         if (self.tokens.items.len == 0) {
             return "";
         }
-        
+
         // Calculate total length needed
         var total_len: usize = 0;
         for (self.tokens.items) |token| {
             total_len += token.len;
         }
         total_len += self.tokens.items.len - 1; // spaces between tokens
-        
+
         // Allocate and build string
         const result = try self.allocator.alloc(u8, total_len);
         var pos: usize = 0;
@@ -188,27 +227,98 @@ pub const DOMTokenList = webidl.interface(struct {
                 pos += 1;
             }
         }
-        
+
         return result;
     }
 
     /// DOM §4.7 - DOMTokenList.value (setter)
     /// Sets the associated attribute to the given value.
     pub fn set_value(self: *DOMTokenList, value: []const u8) !void {
-        // Clear existing tokens
+        // Set an attribute value for the associated element using associated
+        // attribute's local name and the given value
+        if (self.element) |elem| {
+            // Use Element's setAttribute which handles the full algorithm
+            try elem.call_setAttribute(self.attribute_name, value);
+
+            // Re-parse tokens from the new attribute value
+            for (self.tokens.items) |token| {
+                self.allocator.free(token);
+            }
+            self.tokens.clearRetainingCapacity();
+
+            var iter = std.mem.tokenizeScalar(u8, value, ' ');
+            while (iter.next()) |token| {
+                const token_copy = try self.allocator.dupe(u8, token);
+                try self.tokens.append(token_copy);
+            }
+        }
+    }
+
+    // ========================================================================
+    // Helper Functions - DOM Spec Algorithms
+    // ========================================================================
+
+    /// Validate token - DOM Spec validation
+    /// Throws SyntaxError if empty, InvalidCharacterError if contains whitespace
+    fn validateToken(token: []const u8) !void {
+        // If token is empty string, throw SyntaxError
+        if (token.len == 0) {
+            return error.SyntaxError;
+        }
+
+        // If token contains ASCII whitespace, throw InvalidCharacterError
+        for (token) |c| {
+            if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '\x0C') {
+                return error.InvalidCharacterError;
+            }
+        }
+    }
+
+    /// Update steps - DOM Spec algorithm
+    /// Syncs token set with element's attribute
+    fn runUpdateSteps(self: *DOMTokenList) !void {
+        // Step 1: If element is null and token set is empty, return
+        if (self.element == null and self.tokens.items.len == 0) {
+            return;
+        }
+
+        // Step 2: Set an attribute value for the associated element
+        if (self.element) |elem| {
+            // Serialize token set (space-separated)
+            const serialized = try self.serializeTokenSet();
+            defer self.allocator.free(serialized);
+
+            // Set attribute value
+            try elem.call_setAttribute(self.attribute_name, serialized);
+        }
+    }
+
+    /// Serialize token set as space-separated string
+    fn serializeTokenSet(self: *const DOMTokenList) ![]const u8 {
+        if (self.tokens.items.len == 0) {
+            return "";
+        }
+
+        // Calculate total length
+        var total_len: usize = 0;
         for (self.tokens.items) |token| {
-            self.allocator.free(token);
+            total_len += token.len;
         }
-        self.tokens.clearRetainingCapacity();
-        
-        // Parse value as space-separated tokens
-        var iter = std.mem.tokenizeScalar(u8, value, ' ');
-        while (iter.next()) |token| {
-            const token_copy = try self.allocator.dupe(u8, token);
-            try self.tokens.append(token_copy);
+        total_len += self.tokens.items.len - 1; // spaces
+
+        // Build string
+        const result = try self.allocator.alloc(u8, total_len);
+        var pos: usize = 0;
+        for (self.tokens.items, 0..) |token, i| {
+            @memcpy(result[pos..][0..token.len], token);
+            pos += token.len;
+            if (i < self.tokens.items.len - 1) {
+                result[pos] = ' ';
+                pos += 1;
+            }
         }
-        
-        // TODO: Run update steps to sync with element's attribute
+
+        return result;
     }
 }, .{
     .exposed = &.{.Window},
