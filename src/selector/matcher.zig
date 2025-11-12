@@ -783,11 +783,39 @@ const testing = std.testing;
 const infra = @import("infra");
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Parser = @import("parser.zig").Parser;
+const AttrWithBase = dom.AttrWithBase;
 
 /// Helper to create element for testing
 fn createTestElement(allocator: Allocator, tag_name: []const u8) !*Element {
     const elem = try allocator.create(Element);
     elem.* = Element.init(allocator, tag_name);
+    return elem;
+}
+
+/// Helper to create element with attributes (workaround for ArrayList bug)
+fn createTestElementWithAttrs(
+    allocator: Allocator,
+    tag_name: []const u8,
+    attributes: []const struct { name: []const u8, value: []const u8 },
+) !*Element {
+    const elem = try allocator.create(Element);
+    elem.* = Element.init(allocator, tag_name);
+
+    // Manually populate attributes without using setAttribute (which triggers ArrayList bug)
+    for (attributes) |attr| {
+        const attr_node = try allocator.create(AttrWithBase);
+        errdefer allocator.destroy(attr_node);
+
+        attr_node.* = try AttrWithBase.init(
+            allocator,
+            attr.name,
+            attr.value,
+            null, // namespace_uri
+            null, // prefix
+        );
+        try elem.attributes.append(attr_node);
+    }
+
     return elem;
 }
 
@@ -835,25 +863,26 @@ test "Matcher: type selector mismatch" {
     try testing.expect(!result);
 }
 
-// TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
-// test "Matcher: class selector" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElement(allocator, "div");
-//     defer destroyTestElement(allocator, elem);
-//
-//     try elem.setAttribute("class", "container active");
-//
-//     const input = ".container";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     const selector_list = try p.parse();
-//     const matcher = Matcher.init(allocator);
-//     const result = try matcher.matches(elem, &selector_list);
-//
-//     try testing.expect(result);
-// }
+test "Matcher: class selector" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "container active" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = ".container";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
 
 test "Matcher: ID selector" {
     const allocator = testing.allocator;
@@ -876,45 +905,47 @@ test "Matcher: ID selector" {
     try testing.expect(result);
 }
 
-// TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
-// test "Matcher: compound selector (div.container)" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElement(allocator, "div");
-//     defer destroyTestElement(allocator, elem);
-//
-//     try elem.setAttribute("class", "container");
-//
-//     const input = "div.container";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     const selector_list = try p.parse();
-//     const matcher = Matcher.init(allocator);
-//     const result = try matcher.matches(elem, &selector_list);
-//
-//     try testing.expect(result);
-// }
+test "Matcher: compound selector (div.container)" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "class", .value = "container" },
+    });
+    defer destroyTestElement(allocator, elem);
 
-// TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
-// test "Matcher: attribute selector [href]" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElement(allocator, "a");
-//     defer destroyTestElement(allocator, elem);
-//
-//     try elem.setAttribute("href", "https://example.com");
-//
-//     const input = "[href]";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     const selector_list = try p.parse();
-//     const matcher = Matcher.init(allocator);
-//     const result = try matcher.matches(elem, &selector_list);
-//
-//     try testing.expect(result);
-// }
+    const input = "div.container";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
+
+test "Matcher: attribute selector [href]" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "a", &.{
+        .{ .name = "href", .value = "https://example.com" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[href]";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
 
 test "Matcher: :empty pseudo-class" {
     const allocator = testing.allocator;
@@ -935,27 +966,188 @@ test "Matcher: :empty pseudo-class" {
     try testing.expect(result); // Empty div should match
 }
 
-// TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
-// test "Matcher: :lang(en) pseudo-class" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElement(allocator, "div");
-//     defer destroyTestElement(allocator, elem);
-//
-//     try elem.setAttribute("lang", "en");
-//
-//     const input = "div:lang(en)";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = try Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     var selector_list = try p.parse();
-//     defer selector_list.deinit();
-//
-//     const matcher = Matcher.init(allocator);
-//     const result = try matcher.matches(elem, &selector_list);
-//
-//     try testing.expect(result);
-// }
+test "Matcher: :lang(en) pseudo-class" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "lang", .value = "en" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "div:lang(en)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result);
+}
+
+test "Matcher: :lang(en) matches en-US variant" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "div", &.{
+        .{ .name = "lang", .value = "en-US" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "div:lang(en)";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(elem, &selector_list);
+
+    try testing.expect(result); // en-US should match :lang(en)
+}
+
+// ============================================================================
+// Combinator Tests
+// ============================================================================
+
+test "Matcher: child combinator (div > p)" {
+    const allocator = testing.allocator;
+
+    // Create parent div
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    // Create child p
+    const child = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, child);
+
+    // Link them
+    child.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&child.base);
+
+    const input = "div > p";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(child, &selector_list);
+
+    try testing.expect(result);
+}
+
+test "Matcher: descendant combinator (div p)" {
+    const allocator = testing.allocator;
+
+    // Create grandparent div
+    const grandparent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, grandparent);
+
+    // Create parent span
+    const parent = try createTestElement(allocator, "span");
+    defer destroyTestElement(allocator, parent);
+
+    // Create child p
+    const child = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, child);
+
+    // Link: div > span > p
+    parent.base.parent_node = &grandparent.base;
+    try grandparent.base.child_nodes.append(&parent.base);
+    child.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&child.base);
+
+    const input = "div p";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(child, &selector_list);
+
+    try testing.expect(result); // p is descendant of div
+}
+
+test "Matcher: next-sibling combinator (h1 + p)" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    // Create siblings
+    const h1 = try createTestElement(allocator, "h1");
+    defer destroyTestElement(allocator, h1);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    // Link as siblings: div > h1, p
+    h1.base.parent_node = &parent.base;
+    p.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&h1.base);
+    try parent.base.child_nodes.append(&p.base);
+
+    const input = "h1 + p";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(p, &selector_list);
+
+    try testing.expect(result); // p immediately follows h1
+}
+
+test "Matcher: subsequent-sibling combinator (h1 ~ p)" {
+    const allocator = testing.allocator;
+
+    // Create parent
+    const parent = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, parent);
+
+    // Create siblings: h1, span, p
+    const h1 = try createTestElement(allocator, "h1");
+    defer destroyTestElement(allocator, h1);
+
+    const span = try createTestElement(allocator, "span");
+    defer destroyTestElement(allocator, span);
+
+    const p = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, p);
+
+    // Link as siblings
+    h1.base.parent_node = &parent.base;
+    span.base.parent_node = &parent.base;
+    p.base.parent_node = &parent.base;
+    try parent.base.child_nodes.append(&h1.base);
+    try parent.base.child_nodes.append(&span.base);
+    try parent.base.child_nodes.append(&p.base);
+
+    const input = "h1 ~ p";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p_parser = try Parser.init(allocator, &tokenizer);
+    defer p_parser.deinit();
+
+    var selector_list = try p_parser.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    const result = try matcher.matches(p, &selector_list);
+
+    try testing.expect(result); // p follows h1 (not immediately)
+}
 //
 // TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
 // test "Matcher: :lang(en) matches en-US variant" {
