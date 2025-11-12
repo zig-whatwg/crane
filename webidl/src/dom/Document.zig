@@ -16,6 +16,11 @@ const CDATASection = @import("cdata_section").CDATASection;
 const DocumentType = @import("document_type").DocumentType;
 const DOMImplementation = @import("dom_implementation").DOMImplementation;
 const Allocator = std.mem.Allocator;
+const Element = @import("element").Element;
+const Text = @import("text").Text;
+const Comment = @import("comment").Comment;
+const DocumentFragment = @import("document_fragment").DocumentFragment;
+const Attr = @import("attr").Attr;
 
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
@@ -269,12 +274,6 @@ pub const Document = webidl.interface(struct {
         // Step 5: Return node
         return node;
     }
-
-    // Forward declarations
-    const Text = @import("text").Text;
-    const Comment = @import("comment").Comment;
-    const DocumentFragment = @import("document_fragment").DocumentFragment;
-    const Attr = @import("attr").Attr;
 }, .{
     .exposed = &.{.Window},
 });

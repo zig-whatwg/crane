@@ -16,6 +16,9 @@ pub const dom = @import("dom");
 
 pub const NodeList = @import("node_list").NodeList;
 pub const dom_types = @import("dom_types");
+pub const Attr = @import("attr").Attr;
+pub const ShadowRoot = @import("shadow_root").ShadowRoot;
+pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
 const NodeBase = @import("node").NodeBase;
@@ -67,9 +70,6 @@ pub const Element = struct {
     shadow_root: ?*ShadowRoot,
 
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode, Slottable };
-    pub const Attr = @import("attr").Attr;
-    pub const ShadowRoot = @import("shadow_root").ShadowRoot;
-    pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
     pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
     pub const HTMLCollection = @import("html_collection").HTMLCollection;
     pub const Text = @import("text").Text;

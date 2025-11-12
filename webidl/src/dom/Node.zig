@@ -7,6 +7,9 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 const EventTarget = @import("event_target").EventTarget;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
@@ -23,10 +26,6 @@ pub const Node = webidl.interface(struct {
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
-
-    const Document = @import("document").Document;
-    const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-    const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;

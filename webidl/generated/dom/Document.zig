@@ -20,6 +20,9 @@ pub const ProcessingInstruction = @import("processing_instruction").ProcessingIn
 pub const CDATASection = @import("cdata_section").CDATASection;
 pub const DocumentType = @import("document_type").DocumentType;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
+pub const Comment = @import("comment").Comment;
+pub const DocumentFragment = @import("document_fragment").DocumentFragment;
+pub const Attr = @import("attr").Attr;
 /// DOM Spec: interface Document : Node
 const NodeBase = @import("node").NodeBase;
 const EventListener = @import("event_target").EventListener;
@@ -66,10 +69,6 @@ pub const Document = struct {
     base_uri: []const u8,
 
     pub const includes = .{ ParentNode, NonElementParentNode, DocumentOrShadowRoot };
-    pub const Text = @import("text").Text;
-    pub const Comment = @import("comment").Comment;
-    pub const DocumentFragment = @import("document_fragment").DocumentFragment;
-    pub const Attr = @import("attr").Attr;
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen

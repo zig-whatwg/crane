@@ -14,6 +14,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 pub const EventTarget = @import("event_target").EventTarget;
+pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 /// Runtime type tag for Node hierarchy.
 /// Used for safe downcasting from NodeBase to derived types.
 pub const NodeTypeTag = enum {
@@ -345,9 +346,6 @@ pub const Node = struct {
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
 
-    pub const Document = @import("document").Document;
-    pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-    pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
     pub const TEXT_NODE: u16 = 3;

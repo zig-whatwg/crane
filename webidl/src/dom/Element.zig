@@ -14,6 +14,9 @@ const Slottable = @import("slottable").Slottable;
 const NodeList = @import("node_list").NodeList;
 const dom_types = @import("dom_types");
 const Allocator = std.mem.Allocator;
+const Attr = @import("attr").Attr;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
+const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
@@ -28,10 +31,6 @@ pub const Element = webidl.interface(struct {
 
     /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*ShadowRoot,
-
-    const Attr = @import("attr").Attr;
-    const ShadowRoot = @import("shadow_root").ShadowRoot;
-    const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
