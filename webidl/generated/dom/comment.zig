@@ -41,6 +41,7 @@ pub const Comment = struct {
 
     pub fn init(allocator: std.mem.Allocator) !Comment {
         return .{
+            .base = undefined,
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };

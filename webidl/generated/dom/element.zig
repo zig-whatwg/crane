@@ -74,6 +74,7 @@ pub const Element = struct {
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .base = undefined,
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,

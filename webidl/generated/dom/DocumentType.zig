@@ -54,6 +54,7 @@ pub const DocumentType = struct {
     ) !DocumentType {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .base = undefined,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),

@@ -3592,21 +3592,59 @@ fn generateCastingMethods(
     }
 }
 
+/// Inject base field initialization into init() method return statement.
+/// Finds `return .{` and adds `.base = undefined,` after it.
+fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8) ![]const u8 {
+    // Find "return .{" in the method source
+    const return_start = std.mem.indexOf(u8, method_source, "return .{") orelse {
+        // No return .{ found - return unchanged
+        return try allocator.dupe(u8, method_source);
+    };
+
+    const after_brace = return_start + "return .{".len;
+
+    // Build modified source: before + "return .{" + "\n            .base = undefined," + after
+    var result: std.ArrayList(u8) = .empty;
+    defer result.deinit(allocator);
+
+    try result.appendSlice(allocator, method_source[0..after_brace]);
+    try result.appendSlice(allocator, "\n            .base = undefined,");
+    try result.appendSlice(allocator, method_source[after_brace..]);
+
+    return result.toOwnedSlice(allocator);
+}
+
 /// Generate XxxBase struct for polymorphism support.
 /// Helper to qualify type names to avoid conflicts with nested declarations.
 /// Replaces simple type names with fully qualified imports for known conflicting types.
-fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8) ![]const u8 {
+fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8, current_class: []const u8) ![]const u8 {
+    // Map of type names to their defining class (to avoid self-imports)
+    const class_map = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "Document", "Document" },
+        .{ "RegisteredObserver", "RegisteredObserver" },
+        .{ "EventListener", "EventTarget" }, // EventListener is defined in EventTarget module
+        .{ "Event", "Event" },
+    });
+
     // Map of type names to their module paths
-    const type_map = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "Document", "@import(\"document\").Document" },
-        .{ "RegisteredObserver", "@import(\"registered_observer\").RegisteredObserver" },
-        .{ "EventListener", "@import(\"event_target\").EventListener" },
-        .{ "Event", "@import(\"event\").Event" },
+    const module_map = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "Document", "document" },
+        .{ "RegisteredObserver", "registered_observer" },
+        .{ "EventListener", "event_target" },
+        .{ "Event", "event" },
     });
 
     // Check if this is a simple type name that needs qualification
-    if (type_map.get(type_name)) |qualified| {
-        return try allocator.dupe(u8, qualified);
+    if (class_map.get(type_name)) |defining_class| {
+        // Don't qualify if this type is defined in the current class's module
+        if (std.mem.eql(u8, defining_class, current_class)) {
+            // Type is local to this module, don't qualify
+            return try allocator.dupe(u8, type_name);
+        }
+        // Qualify with full import path
+        const module = module_map.get(type_name).?; // Must exist if class_map has it
+        const qualified = try std.fmt.allocPrint(allocator, "@import(\"{s}\").{s}", .{ module, type_name });
+        return qualified;
     }
 
     // Check for pointer types like "?*Document" or "*Document"
@@ -3625,7 +3663,13 @@ fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8)
 
     if (is_pointer) {
         const base_type = type_name[base_type_start..];
-        if (type_map.get(base_type)) |qualified| {
+        if (class_map.get(base_type)) |defining_class| {
+            // Don't qualify if type is local
+            if (std.mem.eql(u8, defining_class, current_class)) {
+                return try allocator.dupe(u8, type_name);
+            }
+            const module = module_map.get(base_type).?;
+            const qualified = try std.fmt.allocPrint(allocator, "@import(\"{s}\").{s}", .{ module, base_type });
             if (is_optional) {
                 return try std.fmt.allocPrint(allocator, "?*{s}", .{qualified});
             } else {
@@ -3639,7 +3683,13 @@ fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8)
         const inner_start = start + "ArrayList(".len;
         if (std.mem.indexOfScalar(u8, type_name[inner_start..], ')')) |inner_len| {
             const inner_type = type_name[inner_start..][0..inner_len];
-            if (type_map.get(inner_type)) |qualified| {
+            if (class_map.get(inner_type)) |defining_class| {
+                // Don't qualify if type is local
+                if (std.mem.eql(u8, defining_class, current_class)) {
+                    return try allocator.dupe(u8, type_name);
+                }
+                const module = module_map.get(inner_type).?;
+                const qualified = try std.fmt.allocPrint(allocator, "@import(\"{s}\").{s}", .{ module, inner_type });
                 const prefix = type_name[0..inner_start];
                 const suffix = type_name[inner_start + inner_len ..];
                 return try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ prefix, qualified, suffix });
@@ -3821,7 +3871,7 @@ fn generateBaseStruct(
 
         // Write parent fields (with qualified type names to avoid conflicts)
         for (all_parent_fields.items) |field| {
-            const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name);
+            const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name, parsed.name);
             defer allocator.free(qualified_type);
 
             if (field.default_value) |default| {
@@ -3831,7 +3881,7 @@ fn generateBaseStruct(
             }
         }
         for (all_parent_properties.items) |prop| {
-            const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name);
+            const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name, parsed.name);
             defer allocator.free(qualified_type);
 
             if (prop.default_value) |default| {
@@ -3861,7 +3911,7 @@ fn generateBaseStruct(
             }
         }
 
-        const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name);
+        const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name, parsed.name);
         defer allocator.free(qualified_type);
 
         if (prop.default_value) |default| {
@@ -3886,7 +3936,7 @@ fn generateBaseStruct(
             }
         }
 
-        const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name);
+        const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name, parsed.name);
         defer allocator.free(qualified_type);
 
         if (field.default_value) |default| {
@@ -4049,24 +4099,41 @@ fn generateEnhancedClassWithRegistry(
     }
 
     // If this class inherits from Node, import types needed by Node methods
-    // Skip if this is a base type (base struct generation already added these)
-    if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node") and !is_base_type) {
-        // Import types that Node methods use
-        try writer.print("const Allocator = std.mem.Allocator;\n", .{});
-        try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
-        try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
-        // Don't import Document/Element if this IS Document/Element (avoid recursive imports)
-        if (!std.mem.eql(u8, parsed.name, "Document")) {
-            try writer.print("const Document = @import(\"document\").Document;\n", .{});
+    if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node")) {
+        // For base types, the base struct already added: Node, Allocator, infra
+        // For non-base types, we need to add everything
+        if (is_base_type) {
+            // Base type: only add what the base struct didn't add
+            try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
+            try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
+            // Don't import Document/Element if this IS Document/Element
+            if (!std.mem.eql(u8, parsed.name, "Document")) {
+                try writer.print("const Document = @import(\"document\").Document;\n", .{});
+            }
+            if (!std.mem.eql(u8, parsed.name, "Element")) {
+                try writer.print("const Element = @import(\"element\").Element;\n", .{});
+            }
+            try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
+            try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
+            try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
+        } else {
+            // Non-base type: add everything
+            try writer.print("const Allocator = std.mem.Allocator;\n", .{});
+            try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
+            try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
+            // Don't import Document/Element if this IS Document/Element
+            if (!std.mem.eql(u8, parsed.name, "Document")) {
+                try writer.print("const Document = @import(\"document\").Document;\n", .{});
+            }
+            if (!std.mem.eql(u8, parsed.name, "Element")) {
+                try writer.print("const Element = @import(\"element\").Element;\n", .{});
+            }
+            try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
+            try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
+            try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
+            // Node methods also use infra.List
+            try writer.print("const infra = @import(\"infra\");\n", .{});
         }
-        if (!std.mem.eql(u8, parsed.name, "Element")) {
-            try writer.print("const Element = @import(\"element\").Element;\n", .{});
-        }
-        try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
-        try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
-        try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
-        // Node methods also use infra.List
-        try writer.print("const infra = @import(\"infra\");\n", .{});
     }
 
     // Emit mixin imports (if any)
@@ -4291,7 +4358,15 @@ fn generateEnhancedClassWithRegistry(
             // Rename reserved parameters to avoid shadowing
             const renamed_source = try renameReservedParams(allocator, method.source);
             defer allocator.free(renamed_source);
-            try writer.print("    {s}\n", .{renamed_source});
+
+            // If this is init() and class has a base field, inject base initialization
+            const final_source = if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null)
+                try injectBaseFieldInit(allocator, renamed_source)
+            else
+                renamed_source;
+            defer if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null) allocator.free(final_source);
+
+            try writer.print("    {s}\n", .{final_source});
         }
     }
 

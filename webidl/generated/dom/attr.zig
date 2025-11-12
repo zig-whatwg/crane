@@ -58,6 +58,7 @@ pub const Attr = struct {
         value: []const u8,
     ) !Attr {
         return .{
+            .base = undefined,
             .allocator = allocator,
             .namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null,
             .prefix = if (prefix) |p| try allocator.dupe(u8, p) else null,

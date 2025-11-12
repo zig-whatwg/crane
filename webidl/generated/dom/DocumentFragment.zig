@@ -37,6 +37,13 @@ pub const DocumentFragmentBase = struct {
 
 /// DOM Spec: interface DocumentFragment : Node
 const NodeBase = @import("node").NodeBase;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Document = @import("document").Document;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 pub const DocumentFragment = struct {
@@ -52,6 +59,7 @@ pub const DocumentFragment = struct {
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .base = undefined,
             .allocator = allocator,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };

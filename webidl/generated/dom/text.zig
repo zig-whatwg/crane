@@ -42,6 +42,13 @@ pub const TextBase = struct {
 /// CharacterData includes: ChildNode, NonDocumentTypeChildNode
 /// Text also includes: Slottable
 const CharacterDataBase = @import("character_data").CharacterDataBase;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Document = @import("document").Document;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;
@@ -70,6 +77,7 @@ pub const Text = struct {
 
     pub fn init(allocator: Allocator) !Text {
         return .{
+            .base = undefined,
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };

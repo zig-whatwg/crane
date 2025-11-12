@@ -184,6 +184,7 @@ pub const Node = struct {
         // NOTE: Parent EventTarget fields will be flattened by codegen
         // Don't manually initialize parent fields here
         return .{
+            .base = undefined,
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,

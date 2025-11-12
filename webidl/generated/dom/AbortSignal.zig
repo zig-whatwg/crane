@@ -39,6 +39,7 @@ pub const AbortSignal = struct {
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
+            .base = undefined,
             .allocator = allocator,
             .aborted = false,
             .reason = null,

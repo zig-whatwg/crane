@@ -64,6 +64,13 @@ pub const CharacterDataBase = struct {
 
 /// DOM Spec: interface CharacterData : Node
 const NodeBase = @import("node").NodeBase;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Document = @import("document").Document;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const CharacterData = struct {
@@ -81,6 +88,7 @@ pub const CharacterData = struct {
     pub fn init(allocator: Allocator) !CharacterData {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .base = undefined,
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
             // TODO: Initialize Node parent fields (will be added by codegen)
