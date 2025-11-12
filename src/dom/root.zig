@@ -58,6 +58,7 @@ pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
     pub const ast = @import("xpath/ast.zig");
     pub const parser = @import("xpath/parser.zig");
+    pub const value = @import("xpath/value.zig");
 };
 
 test {
