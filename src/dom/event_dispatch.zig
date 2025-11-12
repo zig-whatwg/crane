@@ -244,14 +244,37 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 
 /// DOM §2.9 - get the parent
 /// Each EventTarget has an associated get the parent algorithm
+/// DOM §2.9 - get the parent
+/// Each EventTarget has an associated "get the parent" algorithm.
+/// Nodes, shadow roots, and documents override this algorithm.
 fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
-    // TODO: Implement get the parent algorithm based on target type
-    // - For Node: return node's assigned slot if assigned, otherwise parent
-    // - For ShadowRoot: return null if event's composed flag is unset and shadowRoot
-    //   is the root of event's path's first struct's invocation target, otherwise host
-    // - For Document: return null if event type is "load" or no browsing context, otherwise global
-    // For now, return null (no tree structure implemented yet)
-    _ = target;
+    const NodeBase = @import("../webidl/generated/dom/node.zig").NodeBase;
+    const EventTargetBase = @import("../webidl/generated/dom/event_target.zig").EventTargetBase;
+
+    // Cast EventTarget to EventTargetBase to access polymorphic features
+    const target_base = @as(*EventTargetBase, @ptrCast(target));
+
+    // Try to cast to Node (most common case)
+    // Node's get the parent: return node's assigned slot if assigned, otherwise parent
+    if (target_base.tryCast(NodeBase)) |node_base| {
+        // TODO: Check if node is assigned to a slot (Shadow DOM feature)
+        // For now, just return parent_node
+        if (node_base.parent_node) |parent| {
+            return @ptrCast(parent);
+        }
+        return null;
+    }
+
+    // TODO: Handle ShadowRoot
+    // ShadowRoot's get the parent: return null if event's composed flag is unset
+    // and shadow root is the root of event's path's first struct's invocation target,
+    // otherwise return shadow root's host
+
+    // TODO: Handle Document
+    // Document's get the parent: return null if event type is "load" or
+    // document has no browsing context, otherwise return document's relevant global object
+
+    // Default: return null (as per spec)
     _ = event;
     return null;
 }
