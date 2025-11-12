@@ -47,7 +47,7 @@ pub const DOMTokenList = webidl.interface(struct {
 
     pub fn deinit(self: *DOMTokenList) void {
         // Free duplicated token strings
-        for (self.tokens.items) |token| {
+        for (self.tokens.items()) |token| {
             self.allocator.free(token);
         }
         self.tokens.deinit();
@@ -56,22 +56,22 @@ pub const DOMTokenList = webidl.interface(struct {
     /// DOM §4.7 - DOMTokenList.length
     /// Returns the number of tokens.
     pub fn get_length(self: *const DOMTokenList) u32 {
-        return @intCast(self.tokens.items.len);
+        return @intCast(self.tokens.items().len);
     }
 
     /// DOM §4.7 - DOMTokenList.item(index)
     /// Returns the token at the given index, or null if out of bounds.
     pub fn call_item(self: *const DOMTokenList, index: u32) ?[]const u8 {
-        if (index >= self.tokens.items.len) {
+        if (index >= self.tokens.items().len) {
             return null;
         }
-        return self.tokens.items[index];
+        return self.tokens.items()[index];
     }
 
     /// DOM §4.7 - DOMTokenList.contains(token)
     /// Returns true if token is present; otherwise false.
     pub fn call_contains(self: *const DOMTokenList, token: []const u8) bool {
-        for (self.tokens.items) |t| {
+        for (self.tokens.items()) |t| {
             if (std.mem.eql(u8, t, token)) {
                 return true;
             }
@@ -114,7 +114,7 @@ pub const DOMTokenList = webidl.interface(struct {
         // Step 2: Remove tokens from set
         for (tokens) |token| {
             // Find and remove token
-            for (self.tokens.items, 0..) |t, i| {
+            for (self.tokens.items(), 0..) |t, i| {
                 if (std.mem.eql(u8, t, token)) {
                     const removed = self.tokens.orderedRemove(i);
                     self.allocator.free(removed);
@@ -141,7 +141,7 @@ pub const DOMTokenList = webidl.interface(struct {
             // Step 3.1: If force is false or not given, remove and return false
             if (force == null or force.? == false) {
                 // Remove token
-                for (self.tokens.items, 0..) |t, i| {
+                for (self.tokens.items(), 0..) |t, i| {
                     if (std.mem.eql(u8, t, token)) {
                         const removed = self.tokens.orderedRemove(i);
                         self.allocator.free(removed);
@@ -178,7 +178,7 @@ pub const DOMTokenList = webidl.interface(struct {
         // Step 3: If token set does not contain token, return false
         var found = false;
         var found_index: usize = 0;
-        for (self.tokens.items, 0..) |t, i| {
+        for (self.tokens.items(), 0..) |t, i| {
             if (std.mem.eql(u8, t, token)) {
                 found = true;
                 found_index = i;
@@ -190,10 +190,10 @@ pub const DOMTokenList = webidl.interface(struct {
         }
 
         // Step 4: Replace token with newToken
-        const old = self.tokens.items[found_index];
+        const old = self.tokens.items()[found_index];
         self.allocator.free(old);
         const new_copy = try self.allocator.dupe(u8, new_token);
-        self.tokens.items[found_index] = new_copy;
+        self.tokens.items()[found_index] = new_copy;
 
         // Step 5: Run update steps
         try self.runUpdateSteps();
@@ -205,24 +205,24 @@ pub const DOMTokenList = webidl.interface(struct {
     /// DOM §4.7 - DOMTokenList.value (getter)
     /// Returns the associated set as string (space-separated tokens).
     pub fn get_value(self: *const DOMTokenList) ![]const u8 {
-        if (self.tokens.items.len == 0) {
+        if (self.tokens.items().len == 0) {
             return "";
         }
 
         // Calculate total length needed
         var total_len: usize = 0;
-        for (self.tokens.items) |token| {
+        for (self.tokens.items()) |token| {
             total_len += token.len;
         }
-        total_len += self.tokens.items.len - 1; // spaces between tokens
+        total_len += self.tokens.items().len - 1; // spaces between tokens
 
         // Allocate and build string
         const result = try self.allocator.alloc(u8, total_len);
         var pos: usize = 0;
-        for (self.tokens.items, 0..) |token, i| {
+        for (self.tokens.items(), 0..) |token, i| {
             @memcpy(result[pos..][0..token.len], token);
             pos += token.len;
-            if (i < self.tokens.items.len - 1) {
+            if (i < self.tokens.items().len - 1) {
                 result[pos] = ' ';
                 pos += 1;
             }
@@ -241,7 +241,7 @@ pub const DOMTokenList = webidl.interface(struct {
             try elem.call_setAttribute(self.attribute_name, value);
 
             // Re-parse tokens from the new attribute value
-            for (self.tokens.items) |token| {
+            for (self.tokens.items()) |token| {
                 self.allocator.free(token);
             }
             self.tokens.clearRetainingCapacity();
@@ -278,7 +278,7 @@ pub const DOMTokenList = webidl.interface(struct {
     /// Syncs token set with element's attribute
     fn runUpdateSteps(self: *DOMTokenList) !void {
         // Step 1: If element is null and token set is empty, return
-        if (self.element == null and self.tokens.items.len == 0) {
+        if (self.element == null and self.tokens.items().len == 0) {
             return;
         }
 
@@ -295,24 +295,24 @@ pub const DOMTokenList = webidl.interface(struct {
 
     /// Serialize token set as space-separated string
     fn serializeTokenSet(self: *const DOMTokenList) ![]const u8 {
-        if (self.tokens.items.len == 0) {
+        if (self.tokens.items().len == 0) {
             return "";
         }
 
         // Calculate total length
         var total_len: usize = 0;
-        for (self.tokens.items) |token| {
+        for (self.tokens.items()) |token| {
             total_len += token.len;
         }
-        total_len += self.tokens.items.len - 1; // spaces
+        total_len += self.tokens.items().len - 1; // spaces
 
         // Build string
         const result = try self.allocator.alloc(u8, total_len);
         var pos: usize = 0;
-        for (self.tokens.items, 0..) |token, i| {
+        for (self.tokens.items(), 0..) |token, i| {
             @memcpy(result[pos..][0..token.len], token);
             pos += token.len;
-            if (i < self.tokens.items.len - 1) {
+            if (i < self.tokens.items().len - 1) {
                 result[pos] = ' ';
                 pos += 1;
             }
