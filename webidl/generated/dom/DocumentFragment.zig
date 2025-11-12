@@ -17,6 +17,23 @@ pub const Element = @import("element").Element;
 pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
+/// Base struct for DocumentFragment hierarchy polymorphism.
+/// All DocumentFragment-derived types have `base: DocumentFragmentBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const DocumentFragmentBase = struct {
+    allocator: std.mem.Allocator,
+
+    // Safe downcast to ShadowRoot
+    // Returns null if this is not a ShadowRoot instance
+    // TODO: Fix circular dependency - ShadowRoot imports DocumentFragment, so we can't import ShadowRoot here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then ShadowRoot can have: pub fn toBase(node: *ShadowRoot) *DocumentFragmentBase { return &node.base; }
+    // pub fn asShadowRoot(base: *DocumentFragmentBase) ?*ShadowRoot {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+};
+
 /// DOM Spec: interface DocumentFragment : Node
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;

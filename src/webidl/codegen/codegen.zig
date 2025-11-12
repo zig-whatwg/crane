@@ -1220,7 +1220,8 @@ fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
         base_types.deinit();
     }
 
-    // First pass: Find all interfaces with parent_name == null
+    // First pass: Find all interfaces (regardless of parent)
+    // We'll check for children in second pass
     var potential_bases = std.StringHashMap(struct {
         file_path: []const u8,
         class_info: ClassInfo,
@@ -1231,8 +1232,9 @@ fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
     while (file_it.next()) |file_entry| {
         const file_path = file_entry.key_ptr.*;
         for (file_entry.value_ptr.classes.items) |class_info| {
-            // Only consider interfaces (not namespaces or mixins) with no parent
-            if (class_info.parent_name == null and class_info.class_kind == .interface) {
+            // Consider all interfaces (not namespaces or mixins)
+            // Even if they have a parent - if they have children, they need a Base struct
+            if (class_info.class_kind == .interface) {
                 try potential_bases.put(class_info.name, .{
                     .file_path = file_path,
                     .class_info = class_info,

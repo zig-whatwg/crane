@@ -235,6 +235,27 @@ pub const ParentMulti = struct {
 
 
 // Expected: ChildMulti gets field_a, field_b, parent_multi_field
+/// Base struct for ChildMulti hierarchy polymorphism.
+/// All ChildMulti-derived types have `base: ChildMultiBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const ChildMultiBase = struct {
+    parent_multi_field: u32 = 300,
+    field_b: u32 = 20,
+    field_a: u32 = 10,
+
+    child_multi_field: u32 = 400,
+
+    // Safe downcast to GrandChild
+    // Returns null if this is not a GrandChild instance
+    // TODO: Fix circular dependency - GrandChild imports ChildMulti, so we can't import GrandChild here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then GrandChild can have: pub fn toBase(node: *GrandChild) *ChildMultiBase { return &node.base; }
+    // pub fn asGrandChild(base: *ChildMultiBase) ?*GrandChild {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+};
+
 pub const ChildMulti = struct {
     parent_multi_field: u32 = 300,
     field_b: u32 = 20,

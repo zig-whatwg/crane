@@ -16,6 +16,76 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 pub const EventTarget = @import("event_target").EventTarget;
+/// Base struct for Node hierarchy polymorphism.
+/// All Node-derived types have `base: NodeBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const NodeBase = struct {
+    allocator: Allocator,
+    node_type: u16,
+    node_name: []const u8,
+    parent_node: ?*Node,
+    child_nodes: infra.List(*Node),
+    owner_document: ?*Document,
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
+    registered_observers: std.ArrayList(RegisteredObserver),
+
+    // Safe downcast to Element
+    // Returns null if this is not a Element instance
+    // TODO: Fix circular dependency - Element imports Node, so we can't import Element here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Element can have: pub fn toBase(node: *Element) *NodeBase { return &node.base; }
+    // pub fn asElement(base: *NodeBase) ?*Element {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to DocumentType
+    // Returns null if this is not a DocumentType instance
+    // TODO: Fix circular dependency - DocumentType imports Node, so we can't import DocumentType here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then DocumentType can have: pub fn toBase(node: *DocumentType) *NodeBase { return &node.base; }
+    // pub fn asDocumentType(base: *NodeBase) ?*DocumentType {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to CharacterData
+    // Returns null if this is not a CharacterData instance
+    // TODO: Fix circular dependency - CharacterData imports Node, so we can't import CharacterData here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then CharacterData can have: pub fn toBase(node: *CharacterData) *NodeBase { return &node.base; }
+    // pub fn asCharacterData(base: *NodeBase) ?*CharacterData {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to Document
+    // Returns null if this is not a Document instance
+    // TODO: Fix circular dependency - Document imports Node, so we can't import Document here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Document can have: pub fn toBase(node: *Document) *NodeBase { return &node.base; }
+    // pub fn asDocument(base: *NodeBase) ?*Document {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to DocumentFragment
+    // Returns null if this is not a DocumentFragment instance
+    // TODO: Fix circular dependency - DocumentFragment imports Node, so we can't import DocumentFragment here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then DocumentFragment can have: pub fn toBase(node: *DocumentFragment) *NodeBase { return &node.base; }
+    // pub fn asDocumentFragment(base: *NodeBase) ?*DocumentFragment {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to Attr
+    // Returns null if this is not a Attr instance
+    // TODO: Fix circular dependency - Attr imports Node, so we can't import Attr here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Attr can have: pub fn toBase(node: *Attr) *NodeBase { return &node.base; }
+    // pub fn asAttr(base: *NodeBase) ?*Attr {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+};
+
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
 pub const Node = struct {

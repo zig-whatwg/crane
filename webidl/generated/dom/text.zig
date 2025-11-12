@@ -17,6 +17,23 @@ pub const dom_types = @import("dom_types");
 pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
+/// Base struct for Text hierarchy polymorphism.
+/// All Text-derived types have `base: TextBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const TextBase = struct {
+    allocator: Allocator,
+
+    // Safe downcast to CDATASection
+    // Returns null if this is not a CDATASection instance
+    // TODO: Fix circular dependency - CDATASection imports Text, so we can't import CDATASection here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then CDATASection can have: pub fn toBase(node: *CDATASection) *TextBase { return &node.base; }
+    // pub fn asCDATASection(base: *TextBase) ?*CDATASection {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+};
+
 /// DOM Spec: interface Text : CharacterData
 /// Text extends CharacterData (fields/methods inherited)
 /// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)

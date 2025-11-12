@@ -17,6 +17,43 @@ pub const dom_types = @import("dom_types");
 pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
+/// Base struct for CharacterData hierarchy polymorphism.
+/// All CharacterData-derived types have `base: CharacterDataBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const CharacterDataBase = struct {
+    allocator: Allocator,
+    /// The mutable string data associated with this node
+    data: []u8,
+
+    // Safe downcast to Comment
+    // Returns null if this is not a Comment instance
+    // TODO: Fix circular dependency - Comment imports CharacterData, so we can't import Comment here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Comment can have: pub fn toBase(node: *Comment) *CharacterDataBase { return &node.base; }
+    // pub fn asComment(base: *CharacterDataBase) ?*Comment {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to Text
+    // Returns null if this is not a Text instance
+    // TODO: Fix circular dependency - Text imports CharacterData, so we can't import Text here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Text can have: pub fn toBase(node: *Text) *CharacterDataBase { return &node.base; }
+    // pub fn asText(base: *CharacterDataBase) ?*Text {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to ProcessingInstruction
+    // Returns null if this is not a ProcessingInstruction instance
+    // TODO: Fix circular dependency - ProcessingInstruction imports CharacterData, so we can't import ProcessingInstruction here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then ProcessingInstruction can have: pub fn toBase(node: *ProcessingInstruction) *CharacterDataBase { return &node.base; }
+    // pub fn asProcessingInstruction(base: *CharacterDataBase) ?*ProcessingInstruction {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+};
+
 /// DOM Spec: interface CharacterData : Node
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
