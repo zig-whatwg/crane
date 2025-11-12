@@ -1,0 +1,268 @@
+//! Comprehensive Tests for DOM Mutation Algorithms
+//!
+//! Spec: https://dom.spec.whatwg.org/#mutation-algorithms
+//!
+//! These tests verify complete mutation algorithm implementation
+
+const std = @import("std");
+const testing = std.testing;
+const dom = @import("dom");
+const mutation = dom.mutation;
+const Node = @import("node").Node;
+const Element = @import("element").Element;
+const Document = @import("document").Document;
+const DocumentFragment = @import("document_fragment").DocumentFragment;
+const Text = @import("text").Text;
+const DocumentType = @import("document_type").DocumentType;
+
+test "mutation - ensurePreInsertValidity: valid Element into Element" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var child = try Element.init(allocator, "span");
+    defer child.deinit();
+
+    // Should not throw
+    try mutation.ensurePreInsertValidity(&child, &parent, null);
+}
+
+test "mutation - ensurePreInsertValidity: reject Text into Document" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    var text = try Text.init(allocator, "hello");
+    defer text.deinit();
+
+    // Should throw HierarchyRequestError
+    try testing.expectError(error.HierarchyRequestError, mutation.ensurePreInsertValidity(&text, &doc, null));
+}
+
+test "mutation - ensurePreInsertValidity: reject doctype into Element" {
+    const allocator = testing.allocator;
+
+    var elem = try Element.init(allocator, "div");
+    defer elem.deinit();
+
+    var doctype = try DocumentType.init(allocator, "html", "", "");
+    defer doctype.deinit();
+
+    // Should throw HierarchyRequestError
+    try testing.expectError(error.HierarchyRequestError, mutation.ensurePreInsertValidity(&doctype, &elem, null));
+}
+
+test "mutation - ensurePreInsertValidity: reject when child parent mismatch" {
+    const allocator = testing.allocator;
+
+    var parent1 = try Element.init(allocator, "div");
+    defer parent1.deinit();
+
+    var parent2 = try Element.init(allocator, "span");
+    defer parent2.deinit();
+
+    var child = try Element.init(allocator, "p");
+    defer child.deinit();
+    child.parent_node = &parent1;
+
+    var node = try Element.init(allocator, "a");
+    defer node.deinit();
+
+    // Should throw NotFoundError (child's parent is parent1, not parent2)
+    try testing.expectError(error.NotFoundError, mutation.ensurePreInsertValidity(&node, &parent2, &child));
+}
+
+test "mutation - appendChild: basic insertion" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var child = try Element.init(allocator, "span");
+    defer child.deinit();
+
+    const result = try mutation.append(&child, &parent);
+
+    // Should return the child
+    try testing.expect(result == &child);
+
+    // Child should be in parent's children
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
+    try testing.expect(parent.child_nodes.items[0] == &child);
+
+    // Child's parent should be set
+    try testing.expect(child.parent_node == &parent);
+}
+
+test "mutation - appendChild: multiple children" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var child1 = try Element.init(allocator, "span");
+    defer child1.deinit();
+
+    var child2 = try Element.init(allocator, "p");
+    defer child2.deinit();
+
+    var child3 = try Element.init(allocator, "a");
+    defer child3.deinit();
+
+    _ = try mutation.append(&child1, &parent);
+    _ = try mutation.append(&child2, &parent);
+    _ = try mutation.append(&child3, &parent);
+
+    // Should have 3 children in order
+    try testing.expectEqual(@as(usize, 3), parent.child_nodes.items.len);
+    try testing.expect(parent.child_nodes.items[0] == &child1);
+    try testing.expect(parent.child_nodes.items[1] == &child2);
+    try testing.expect(parent.child_nodes.items[2] == &child3);
+}
+
+test "mutation - insertBefore: insert at beginning" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var existing = try Element.init(allocator, "span");
+    defer existing.deinit();
+    _ = try mutation.append(&existing, &parent);
+
+    var new_child = try Element.init(allocator, "p");
+    defer new_child.deinit();
+
+    _ = try mutation.preInsert(&new_child, &parent, &existing);
+
+    // new_child should be first
+    try testing.expectEqual(@as(usize, 2), parent.child_nodes.items.len);
+    try testing.expect(parent.child_nodes.items[0] == &new_child);
+    try testing.expect(parent.child_nodes.items[1] == &existing);
+}
+
+test "mutation - removeChild: basic removal" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var child = try Element.init(allocator, "span");
+    defer child.deinit();
+
+    _ = try mutation.append(&child, &parent);
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
+
+    const removed = try mutation.preRemove(&child, &parent);
+
+    // Should return the child
+    try testing.expect(removed == &child);
+
+    // Parent should be empty
+    try testing.expectEqual(@as(usize, 0), parent.child_nodes.items.len);
+
+    // Child's parent should be null
+    try testing.expect(child.parent_node == null);
+}
+
+test "mutation - removeChild: remove from middle" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var child1 = try Element.init(allocator, "span");
+    defer child1.deinit();
+    var child2 = try Element.init(allocator, "p");
+    defer child2.deinit();
+    var child3 = try Element.init(allocator, "a");
+    defer child3.deinit();
+
+    _ = try mutation.append(&child1, &parent);
+    _ = try mutation.append(&child2, &parent);
+    _ = try mutation.append(&child3, &parent);
+
+    _ = try mutation.preRemove(&child2, &parent);
+
+    // Should have child1 and child3
+    try testing.expectEqual(@as(usize, 2), parent.child_nodes.items.len);
+    try testing.expect(parent.child_nodes.items[0] == &child1);
+    try testing.expect(parent.child_nodes.items[1] == &child3);
+}
+
+test "mutation - replaceChild: basic replacement" {
+    const allocator = testing.allocator;
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+
+    var old_child = try Element.init(allocator, "span");
+    defer old_child.deinit();
+    _ = try mutation.append(&old_child, &parent);
+
+    var new_child = try Element.init(allocator, "p");
+    defer new_child.deinit();
+
+    const removed = try mutation.replace(&old_child, &new_child, &parent);
+
+    // Should return old child
+    try testing.expect(removed == &old_child);
+
+    // Parent should have new child
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
+    try testing.expect(parent.child_nodes.items[0] == &new_child);
+
+    // Old child should be detached
+    try testing.expect(old_child.parent_node == null);
+
+    // New child should be attached
+    try testing.expect(new_child.parent_node == &parent);
+}
+
+test "mutation - adopt: change document" {
+    const allocator = testing.allocator;
+
+    var doc1 = try Document.init(allocator);
+    defer doc1.deinit();
+
+    var doc2 = try Document.init(allocator);
+    defer doc2.deinit();
+
+    var elem = try Element.init(allocator, "div");
+    defer elem.deinit();
+    elem.owner_document = &doc1;
+
+    // Adopt to doc2
+    try mutation.adopt(&elem, &doc2);
+
+    // Element's document should be doc2
+    try testing.expect(elem.owner_document == &doc2);
+}
+
+test "mutation - adopt: with descendants" {
+    const allocator = testing.allocator;
+
+    var doc1 = try Document.init(allocator);
+    defer doc1.deinit();
+
+    var doc2 = try Document.init(allocator);
+    defer doc2.deinit();
+
+    var parent = try Element.init(allocator, "div");
+    defer parent.deinit();
+    parent.owner_document = &doc1;
+
+    var child = try Element.init(allocator, "span");
+    defer child.deinit();
+    child.owner_document = &doc1;
+    _ = try mutation.append(&child, &parent);
+
+    // Adopt parent to doc2
+    try mutation.adopt(&parent, &doc2);
+
+    // Both parent and child should have doc2
+    try testing.expect(parent.owner_document == &doc2);
+    try testing.expect(child.owner_document == &doc2);
+}
