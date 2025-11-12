@@ -22,7 +22,6 @@ pub const dom_types = @import("dom_types");
 /// This enables safe downcasting via @ptrCast.
 pub const DocumentFragmentBase = struct {
     event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
     registered_observers: std.ArrayList(RegisteredObserver),
     owner_document: ?*Document,
     child_nodes: infra.List(*Node),
@@ -31,7 +30,6 @@ pub const DocumentFragmentBase = struct {
     node_type: u16,
     allocator: Allocator,
 
-    allocator: std.mem.Allocator,
 
     // Safe downcast to ShadowRoot
     // Returns null if this is not a ShadowRoot instance

@@ -23,7 +23,6 @@ pub const NodeBase = struct {
     event_listener_list: ?*std.ArrayList(EventListener),
     allocator: Allocator,
 
-    allocator: Allocator,
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,

@@ -22,7 +22,6 @@ const Allocator = std.mem.Allocator;
 /// This enables safe downcasting via @ptrCast.
 pub const CharacterDataBase = struct {
     event_listener_list: ?*std.ArrayList(EventListener),
-    allocator: Allocator,
     registered_observers: std.ArrayList(RegisteredObserver),
     owner_document: ?*Document,
     child_nodes: infra.List(*Node),
@@ -31,7 +30,6 @@ pub const CharacterDataBase = struct {
     node_type: u16,
     allocator: Allocator,
 
-    allocator: Allocator,
     /// The mutable string data associated with this node
     data: []u8,
 

@@ -3639,17 +3639,19 @@ fn generateBaseStruct(
         break :blk false;
     };
 
-    // Add allocator if needed
-    if (!has_allocator_field and needs_allocator) {
-        try writer.writeAll("    allocator: std.mem.Allocator,\n\n");
-    }
+    // Collect parent fields (if any)
+    var all_parent_fields: std.ArrayList(FieldDef) = .empty;
+    defer all_parent_fields.deinit(allocator);
+    var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
+    defer all_parent_properties.deinit(allocator);
+    var has_parent_allocator = false;
 
-    // Collect and write parent fields (if any)
     if (parsed.parent_name) |parent_ref| {
-        var all_parent_fields: std.ArrayList(FieldDef) = .empty;
-        defer all_parent_fields.deinit(allocator);
-        var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
-        defer all_parent_properties.deinit(allocator);
+        // Track field names to avoid duplicates
+        var seen_field_names = std.StringHashMap(void).init(allocator);
+        defer seen_field_names.deinit();
+        var seen_property_names = std.StringHashMap(void).init(allocator);
+        defer seen_property_names.deinit();
 
         var current_parent: ?[]const u8 = parent_ref;
         var current_file_path = current_file;
@@ -3693,10 +3695,27 @@ fn generateBaseStruct(
             std.debug.print("  {s}Base: collecting from parent {s} ({d} fields, {d} props)\n", .{ parsed.name, parent_info.name, parent_info.fields.len, parent_info.properties.len });
 
             for (parent_info.fields) |field| {
-                try all_parent_fields.append(allocator, field);
+                // Track if parent has allocator
+                if (std.mem.eql(u8, field.name, "allocator")) {
+                    has_parent_allocator = true;
+                }
+
+                // Skip if we've already seen this field name
+                const gop = try seen_field_names.getOrPut(field.name);
+                if (!gop.found_existing) {
+                    try all_parent_fields.append(allocator, field);
+                } else {
+                    std.debug.print("    Skipping duplicate field: {s}\n", .{field.name});
+                }
             }
             for (parent_info.properties) |prop| {
-                try all_parent_properties.append(allocator, prop);
+                // Skip if we've already seen this property name
+                const gop = try seen_property_names.getOrPut(prop.name);
+                if (!gop.found_existing) {
+                    try all_parent_properties.append(allocator, prop);
+                } else {
+                    std.debug.print("    Skipping duplicate property: {s}\n", .{prop.name});
+                }
             }
 
             current_parent = parent_info.parent_name;
@@ -3728,6 +3747,12 @@ fn generateBaseStruct(
         }
     }
 
+    // Add allocator if needed and not from parent
+    std.debug.print("  {s}Base: has_allocator_field={}, has_parent_allocator={}, needs_allocator={}\n", .{ parsed.name, has_allocator_field, has_parent_allocator, needs_allocator });
+    if (!has_allocator_field and !has_parent_allocator and needs_allocator) {
+        try writer.writeAll("    allocator: std.mem.Allocator,\n\n");
+    }
+
     // Write own properties
     for (parsed.properties) |prop| {
         if (prop.doc_comment) |doc| {
@@ -3745,6 +3770,12 @@ fn generateBaseStruct(
 
     // Write own fields
     for (parsed.fields) |field| {
+        // Skip allocator if parent already has it
+        if (has_parent_allocator and std.mem.eql(u8, field.name, "allocator")) {
+            std.debug.print("  {s}Base: Skipping own allocator field (parent has it)\n", .{parsed.name});
+            continue;
+        }
+
         if (field.doc_comment) |doc| {
             var doc_lines = std.mem.splitScalar(u8, doc, '\n');
             while (doc_lines.next()) |line| {
