@@ -42,6 +42,7 @@ const webidl = @import("webidl");
 /// ```
 /// 
 /// The including interfaces must provide these readonly fields.
+const webidl = @import("webidl");
 pub const TextDecoderCommon = struct {
     allocator: std.mem.Allocator,
 

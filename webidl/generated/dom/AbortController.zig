@@ -13,6 +13,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = std.mem.Allocator;
+const AbortSignal = @import("abort_signal").AbortSignal;
 pub const AbortController = struct {
     // ========================================================================
     // AbortController fields

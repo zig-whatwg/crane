@@ -19,6 +19,7 @@ pub const NodeList = @import("node_list").NodeList;
 /// They are created by the MutationObserver API and contain information
 /// about what changed in the tree.
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
 pub const MutationRecord = struct {
     // ========================================================================
     // MutationRecord fields

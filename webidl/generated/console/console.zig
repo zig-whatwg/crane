@@ -222,6 +222,8 @@ fn defaultPrinter(message: []const u8) void {
 /// - `messageBuffer`: Circular buffer for message history (default 1000)
 /// - `labelPool`: Interned label strings for performance
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
+const webidl = @import("webidl");
 pub const console = struct {
     // ========================================================================
     // console fields

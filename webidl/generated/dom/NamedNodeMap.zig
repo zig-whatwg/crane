@@ -19,6 +19,7 @@ pub const Attr = @import("attr").Attr;
 /// 
 /// A NamedNodeMap has an associated element (an element).
 /// A NamedNodeMap object's attribute list is its element's attribute list.
+const Element = @import("element").Element;
 pub const NamedNodeMap = struct {
     // ========================================================================
     // NamedNodeMap fields

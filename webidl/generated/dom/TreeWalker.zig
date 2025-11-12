@@ -20,6 +20,7 @@ pub const NodeFilter = @import("node_filter").NodeFilter;
 /// (parentNode, firstChild, lastChild, previousSibling, nextSibling)
 /// and maintains a mutable currentNode pointer.
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
 pub const TreeWalker = struct {
     // ========================================================================
     // TreeWalker fields

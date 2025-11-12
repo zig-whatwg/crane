@@ -4515,9 +4515,48 @@ fn generateEnhancedClassWithRegistry(
         if (std.mem.eql(u8, field.name, "allocator")) {
             try imports.addStdType("Allocator");
         }
-        // If any field uses infra.List, add infra module
-        if (std.mem.indexOf(u8, field.type_name, "infra.List")) |_| {
+        // If any field uses infra.* types, add infra module
+        if (std.mem.indexOf(u8, field.type_name, "infra.")) |_| {
             try imports.addModule("infra");
+        }
+
+        // If any field uses webidl.* types, add webidl module (usually already added, but be safe)
+        if (std.mem.indexOf(u8, field.type_name, "webidl.")) |_| {
+            try imports.addModule("webidl");
+        }
+
+        // Extract referenced types from field types (e.g., "*Element", "?*Node")
+        // Strip pointer/optional prefixes to get the actual type name
+        const type_name = blk: {
+            var name = field.type_name;
+            // Strip leading ?, *, [, and ]
+            while (name.len > 0 and (name[0] == '?' or name[0] == '*' or name[0] == '[' or name[0] == ']')) {
+                name = name[1..];
+            }
+            // If it contains a dot, it's a qualified name (module.Type) - skip it
+            if (std.mem.indexOf(u8, name, ".")) |_| break :blk "";
+            break :blk name;
+        };
+
+        // Add imports for common DOM types referenced in fields
+        if (type_name.len > 0) {
+            if (std.mem.eql(u8, type_name, "Element")) {
+                try imports.addPackageType("Element", "element");
+            } else if (std.mem.eql(u8, type_name, "Node")) {
+                try imports.addPackageType("Node", "node");
+            } else if (std.mem.eql(u8, type_name, "Document")) {
+                try imports.addPackageType("Document", "document");
+            } else if (std.mem.eql(u8, type_name, "Event")) {
+                try imports.addPackageType("Event", "event");
+            } else if (std.mem.eql(u8, type_name, "CharacterData")) {
+                try imports.addPackageType("CharacterData", "character_data");
+            } else if (std.mem.eql(u8, type_name, "Text")) {
+                try imports.addPackageType("Text", "text");
+            } else if (std.mem.eql(u8, type_name, "RegisteredObserver")) {
+                try imports.addPackageType("RegisteredObserver", "registered_observer");
+            } else if (std.mem.eql(u8, type_name, "AbortSignal")) {
+                try imports.addPackageType("AbortSignal", "abort_signal");
+            }
         }
     }
 

@@ -16,6 +16,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Allocator = std.mem.Allocator;
+const webidl = @import("webidl");
 pub const ReadableStreamBYOBRequest = struct {
     // ========================================================================
     // ReadableStreamBYOBRequest fields

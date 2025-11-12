@@ -378,7 +378,7 @@ pub const EventTarget = struct {
     /// Compare two callbacks for equality
     /// In JavaScript, callbacks are compared by reference.
     /// For JSValue, we compare the union tags and values.
-    fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+    pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
         // If both null, equal
         if (a == null and b == null) return true;
         // If only one is null, not equal

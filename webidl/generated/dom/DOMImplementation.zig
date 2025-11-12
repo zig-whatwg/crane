@@ -21,6 +21,7 @@ pub const Text = @import("text").Text;
 /// Factory interface for creating documents and document types.
 /// Accessed via document.implementation getter.
 const Allocator = std.mem.Allocator;
+const Document = @import("document").Document;
 pub const DOMImplementation = struct {
     // ========================================================================
     // DOMImplementation fields

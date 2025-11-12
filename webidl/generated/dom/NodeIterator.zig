@@ -19,6 +19,7 @@ pub const NodeFilter = @import("node_filter").NodeFilter;
 /// They maintain a reference pointer that moves through the tree as you
 /// call nextNode() and previousNode().
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
 pub const NodeIterator = struct {
     // ========================================================================
     // NodeIterator fields

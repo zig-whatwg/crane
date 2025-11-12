@@ -31,6 +31,7 @@ const webidl = @import("webidl");
 /// ```
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const Element = @import("element").Element;
 pub const DOMTokenList = struct {
     // ========================================================================
     // DOMTokenList fields

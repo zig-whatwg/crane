@@ -128,6 +128,7 @@ pub const AbstractRangeBase = struct {
 /// 
 /// Objects implementing AbstractRange are known as ranges.
 /// A range has two associated boundary points - a start and end.
+const Node = @import("node").Node;
 pub const AbstractRange = struct {
     // ========================================================================
     // AbstractRange fields
