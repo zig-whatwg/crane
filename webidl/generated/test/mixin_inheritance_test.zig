@@ -96,6 +96,12 @@ pub const Child = struct {
     // Child fields
     // ========================================================================
     child_field: u32 = 200,
+
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to ParentBase for type-generic code.
+    pub fn toBase(self: *Child) *ParentBase {
+        return &self.base;
+    }
     pub fn init(allocator: std.mem.Allocator, parent_field: u32, mixin_field: u32, child_field: u32) !Child {
         return try Child.initFields(allocator, &.{
             .parent_field = parent_field,
@@ -264,6 +270,12 @@ pub const ChildMulti = struct {
     // ChildMulti fields
     // ========================================================================
     child_multi_field: u32 = 400,
+
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to ParentMultiBase for type-generic code.
+    pub fn toBase(self: *ChildMulti) *ParentMultiBase {
+        return &self.base;
+    }
     pub fn init(allocator: std.mem.Allocator, parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32) !ChildMulti {
         return try ChildMulti.initFields(allocator, &.{
             .parent_multi_field = parent_multi_field,
@@ -305,6 +317,12 @@ pub const GrandChild = struct {
     // GrandChild fields
     // ========================================================================
     grandchild_field: u32 = 500,
+
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to ChildMultiBase for type-generic code.
+    pub fn toBase(self: *GrandChild) *ChildMultiBase {
+        return &self.base;
+    }
     pub fn init(allocator: std.mem.Allocator, parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, grandchild_field: u32) !GrandChild {
         return try GrandChild.initFields(allocator, &.{
             .parent_multi_field = parent_multi_field,

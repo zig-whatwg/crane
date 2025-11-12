@@ -53,6 +53,12 @@ pub const AbortSignal = struct {
         // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to EventTargetBase for type-generic code.
+    pub fn toBase(self: *AbortSignal) *EventTargetBase {
+        return &self.base;
+    }
+
     // ========================================================================
     // AbortSignal methods
     // ========================================================================

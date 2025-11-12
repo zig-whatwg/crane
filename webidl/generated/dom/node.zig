@@ -202,6 +202,12 @@ pub const Node = struct {
         // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to EventTargetBase for type-generic code.
+    pub fn toBase(self: *Node) *EventTargetBase {
+        return &self.base;
+    }
+
     // ========================================================================
     // Node methods
     // ========================================================================

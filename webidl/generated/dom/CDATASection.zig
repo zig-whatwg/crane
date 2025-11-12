@@ -46,6 +46,12 @@ pub const CDATASection = struct {
         // NOTE: Parent Text/CharacterData/Node cleanup will be handled by codegen
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to TextBase for type-generic code.
+    pub fn toBase(self: *CDATASection) *TextBase {
+        return &self.base;
+    }
+
     /// DOM §4.12 - splitText(offset)
     /// Splits this text node at the given offset and returns the remainder as a new Text node.
     /// 

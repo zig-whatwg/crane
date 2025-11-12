@@ -4370,6 +4370,19 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
+    // Generate toBase() helper method if this class has a base field
+    if (parent_base_type_name) |base_name| {
+        try writer.writeAll("\n");
+        try writer.print(
+            \\    /// Helper to get base struct for polymorphic operations.
+            \\    /// This enables safe upcasting to {s}Base for type-generic code.
+            \\    pub fn toBase(self: *{s}) *{s}Base {{
+            \\        return &self.base;
+            \\    }}
+            \\
+        , .{ base_name, parsed.name, base_name });
+    }
+
     // Track child method names for override detection (used by both parent and mixin generation)
     var child_method_names = std.StringHashMap(void).init(allocator);
     defer child_method_names.deinit();

@@ -100,6 +100,12 @@ pub const CharacterData = struct {
         // TODO: Call parent Node deinit (will be added by codegen)
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to NodeBase for type-generic code.
+    pub fn toBase(self: *CharacterData) *NodeBase {
+        return &self.base;
+    }
+
 
     // ========================================================================
     // Methods from ChildNode mixin

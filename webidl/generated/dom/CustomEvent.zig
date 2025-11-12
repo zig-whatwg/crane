@@ -40,6 +40,12 @@ pub const CustomEvent = struct {
         // TODO: Call parent Event deinit (will be added by codegen)
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to EventBase for type-generic code.
+    pub fn toBase(self: *CustomEvent) *EventBase {
+        return &self.base;
+    }
+
     // ========================================================================
     // CustomEvent methods
     // ========================================================================

@@ -127,6 +127,12 @@ pub const ShadowRoot = struct {
         // TODO: Call parent DocumentFragment deinit (will be added by codegen)
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to DocumentFragmentBase for type-generic code.
+    pub fn toBase(self: *ShadowRoot) *DocumentFragmentBase {
+        return &self.base;
+    }
+
 
     // ========================================================================
     // Methods from DocumentOrShadowRoot mixin

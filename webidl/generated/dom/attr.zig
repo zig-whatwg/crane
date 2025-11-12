@@ -76,6 +76,12 @@ pub const Attr = struct {
         // NOTE: Parent Node cleanup will be handled by codegen
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to NodeBase for type-generic code.
+    pub fn toBase(self: *Attr) *NodeBase {
+        return &self.base;
+    }
+
     // ========================================================================
     // Attr methods
     // ========================================================================

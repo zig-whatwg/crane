@@ -47,6 +47,12 @@ pub const ProcessingInstruction = struct {
         // NOTE: Parent CharacterData/Node cleanup will be handled by codegen
     }
 
+    /// Helper to get base struct for polymorphic operations.
+    /// This enables safe upcasting to CharacterDataBase for type-generic code.
+    pub fn toBase(self: *ProcessingInstruction) *CharacterDataBase {
+        return &self.base;
+    }
+
     pub fn init(allocator: std.mem.Allocator, target: []const u8) !ProcessingInstruction {
 
         // NOTE: Parent Node fields will be flattened by codegen
