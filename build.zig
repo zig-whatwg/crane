@@ -356,6 +356,21 @@ pub fn build(b: *std.Build) void {
     shadow_root_mod.addImport("document_fragment", document_fragment_mod);
     shadow_root_mod.addImport("element", element_mod);
 
+    // Create ShadowRootInit module (plain dictionary, no codegen)
+    const shadow_root_init_mod = b.createModule(.{
+        .root_source_file = b.path("webidl/src/dom/ShadowRootInit.zig"),
+        .target = target,
+    });
+    shadow_root_init_mod.addImport("shadow_root", shadow_root_mod);
+
+    // Create shadow_dom_algorithms module (implementation algorithms)
+    const shadow_dom_algorithms_mod = b.createModule(.{
+        .root_source_file = b.path("src/dom/shadow_dom_algorithms.zig"),
+        .target = target,
+    });
+    shadow_dom_algorithms_mod.addImport("element", element_mod);
+    shadow_dom_algorithms_mod.addImport("shadow_root", shadow_root_mod);
+
     // Add cross-module imports (these aren't in the base auto-discovery)
     event_mod.addImport("event_target", event_target_mod);
     event_target_mod.addImport("abort_signal", abort_signal_mod);
@@ -369,6 +384,8 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("node", node_mod);
     element_mod.addImport("event_target", event_target_mod);
     element_mod.addImport("dom_types", dom_types_mod);
+    element_mod.addImport("shadow_root", shadow_root_mod);
+    element_mod.addImport("shadow_root_init", shadow_root_init_mod);
     element_mod.addImport("node_list", node_list_mod);
     // Note: dom -> element circular dependency is OK in Zig if handled carefully
     character_data_mod.addImport("node", node_mod);
@@ -434,6 +451,8 @@ pub fn build(b: *std.Build) void {
     dom_mod.addImport("document_type", document_type_mod);
     dom_mod.addImport("document_fragment", document_fragment_mod);
     dom_mod.addImport("shadow_root", shadow_root_mod);
+    dom_mod.addImport("shadow_root_init", shadow_root_init_mod);
+    dom_mod.addImport("shadow_dom_algorithms", shadow_dom_algorithms_mod);
     dom_mod.addImport("document", document_mod);
     dom_mod.addImport("dom_token_list", dom_token_list_mod);
     dom_mod.addImport("attr", attr_mod);

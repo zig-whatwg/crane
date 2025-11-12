@@ -32,9 +32,13 @@ pub const Element = struct {
     tag_name: []const u8,
     namespace_uri: ?[]const u8,
     attributes: infra.List(Attr),
+    /// Shadow root attached to this element (null if not a shadow host)
+    shadow_root: ?*ShadowRoot,
 
     pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode };
     pub const Attr = @import("attr").Attr;
+    pub const ShadowRoot = @import("shadow_root").ShadowRoot;
+    pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
     pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
     pub const HTMLCollection = @import("html_collection").HTMLCollection;
     pub const Text = @import("text").Text;
@@ -46,6 +50,7 @@ pub const Element = struct {
             .tag_name = tag_name,
             .namespace_uri = null,
             .attributes = infra.List(Attr).init(allocator),
+            .shadow_root = null,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
@@ -557,6 +562,56 @@ pub const Element = struct {
 
         // Step 2: Run insert adjacent, given this, where, and text
         _ = try insertAdjacent(self, where, @ptrCast(text));
+    }
+    /// DOM §4.10.2 - Element.attachShadow(init)
+    /// 
+    /// Creates a shadow root for this element and returns it.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
+    pub fn call_attachShadow(self: *Element, shadow_init: ShadowRootInit) !*ShadowRoot {
+        // Step 1: Let registry be this's node document's custom element registry
+        // TODO: Implement when CustomElementRegistry is available
+        const registry = shadow_init.customElementRegistry;
+
+        // Step 2: If init["customElementRegistry"] is non-null:
+        if (shadow_init.customElementRegistry) |_| {
+            // Step 2.1: Set registry to init["customElementRegistry"]
+            // Step 2.2: If registry's is scoped is false and registry is not this's node document's custom element registry, then throw NotSupportedError
+            // TODO: Implement when CustomElementRegistry is available
+        }
+
+        // Step 3: Run attach a shadow root with this, init["mode"], init["clonable"],
+        // init["serializable"], init["delegatesFocus"], init["slotAssignment"], and registry
+        const shadow_dom_algorithms = dom.shadow_dom_algorithms;
+        try shadow_dom_algorithms.attachShadowRoot(
+            self,
+            shadow_init.mode,
+            shadow_init.clonable,
+            shadow_init.serializable,
+            shadow_init.delegatesFocus,
+            shadow_init.slotAssignment,
+            registry,
+        );
+
+        // Step 4: Return this's shadow root
+        return self.shadow_root.?;
+    }
+    /// DOM §4.10.2 - Element.shadowRoot getter
+    /// 
+    /// Returns element's shadow root, if any, and if shadow root's mode is "open"; otherwise null.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-shadowroot
+    pub fn get_shadowRoot(self: *const Element) ?*ShadowRoot {
+        // Step 1: Let shadow be this's shadow root
+        const shadow = self.shadow_root orelse return null;
+
+        // Step 2: If shadow's mode is "closed", then return null
+        if (shadow.getMode() == .closed) {
+            return null;
+        }
+
+        // Step 3: Return shadow
+        return shadow;
     }
 
     // WebIDL extended attributes metadata
