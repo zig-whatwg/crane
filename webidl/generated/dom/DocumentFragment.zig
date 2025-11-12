@@ -15,9 +15,6 @@ pub const dom = @import("dom");
 pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
-const Node = @import("node").Node;
-const Allocator = std.mem.Allocator;
-const infra = @import("infra");
 /// Runtime type tag for DocumentFragment hierarchy.
 /// Used for safe downcasting from DocumentFragmentBase to derived types.
 pub const DocumentFragmentTypeTag = enum {
@@ -110,6 +107,9 @@ pub const DocumentFragmentBase = struct {
 };
 
 /// DOM Spec: interface DocumentFragment : Node
+const Node = @import("node").Node;
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const NodeBase = @import("node").NodeBase;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;

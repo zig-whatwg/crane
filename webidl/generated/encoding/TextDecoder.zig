@@ -162,7 +162,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
 // Import dictionaries
 pub const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
@@ -224,6 +223,7 @@ pub const TextDecoderError = error{
 /// };
 /// ```
 const TextDecoderCommon = @import("text_decoder_common").TextDecoderCommon;
+const Allocator = std.mem.Allocator;
 pub const TextDecoder = struct {
     // ========================================================================
     // Fields from TextDecoderCommon mixin

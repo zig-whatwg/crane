@@ -15,11 +15,6 @@ const webidl = @import("webidl");
 pub const CharacterData = @import("character_data").CharacterData;
 pub const dom_types = @import("dom_types");
 pub const mutation = @import("../../dom/mutation.zig");
-pub const Node = @import("node").Node;
-const Allocator = std.mem.Allocator;
-const Node = @import("node").Node;
-const Allocator = std.mem.Allocator;
-const infra = @import("infra");
 /// Runtime type tag for Text hierarchy.
 /// Used for safe downcasting from TextBase to derived types.
 pub const TextTypeTag = enum {
@@ -118,6 +113,9 @@ pub const TextBase = struct {
 /// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
 /// CharacterData includes: ChildNode, NonDocumentTypeChildNode
 /// Text also includes: Slottable
+const Node = @import("node").Node;
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const CharacterDataBase = @import("character_data").CharacterDataBase;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;

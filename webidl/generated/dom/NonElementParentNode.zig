@@ -14,7 +14,6 @@ const std = @import("std");
 const webidl = @import("../../root.zig");
 
 // Forward declaration
-pub const Element = @import("element").Element;
 /// NonElementParentNode mixin provides getElementById for Document and DocumentFragment.
 /// Included by: Document, DocumentFragment
 /// 

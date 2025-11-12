@@ -13,9 +13,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 pub const Attr = @import("attr").Attr;
-pub const Element = @import("element").Element;
 /// DOM §4.9 - NamedNodeMap interface
 /// A NamedNodeMap is a live collection of attributes.
 /// 

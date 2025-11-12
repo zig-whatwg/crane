@@ -10,9 +10,9 @@
 //! NodeList interface per WHATWG DOM Standard
 
 const std = @import("std");
-const infra = @import("infra");
 const webidl = @import("webidl");
-pub const Node = @import("node").Node;
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 pub const NodeList = struct {
     // ========================================================================
     // NodeList fields

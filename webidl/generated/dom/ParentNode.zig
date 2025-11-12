@@ -16,7 +16,6 @@ pub const dom_types = @import("dom_types");
 pub const dom = @import("dom");
 
 // Forward declarations
-pub const Element = @import("element").Element;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const NodeList = @import("node_list").NodeList;
 /// ParentNode mixin provides methods for manipulating child elements.

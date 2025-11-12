@@ -19,6 +19,7 @@ const webidl = @import("webidl");
 pub const common = @import("common");
 pub const TransformStream = @import("transform_stream").TransformStream;
 pub const ReadableStream = @import("readable_stream").ReadableStream;
+const Allocator = std.mem.Allocator;
 pub const TransformStreamDefaultController = struct {
     // ========================================================================
     // TransformStreamDefaultController fields

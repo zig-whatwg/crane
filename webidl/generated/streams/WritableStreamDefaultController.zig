@@ -22,6 +22,7 @@ pub const eventLoop = @import("event_loop");
 pub const AsyncPromise = @import("async_promise").AsyncPromise;
 pub const WritableStream = @import("writable_stream").WritableStream;
 pub const AbortController = @import("dom").AbortController;
+const Allocator = std.mem.Allocator;
 pub const WritableStreamDefaultController = struct {
     // ========================================================================
     // WritableStreamDefaultController fields

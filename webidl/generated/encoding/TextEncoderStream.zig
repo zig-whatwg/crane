@@ -16,7 +16,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
 // Import mixins
 pub const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
@@ -39,6 +38,7 @@ pub const TransformStreamDefaultController = @import("transform_stream_default_c
 /// TextEncoderStream includes TextEncoderCommon;
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
+const Allocator = std.mem.Allocator;
 pub const TextEncoderStream = struct {
     // ========================================================================
     // TextEncoderStream fields

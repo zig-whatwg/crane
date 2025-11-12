@@ -18,6 +18,7 @@ pub const url_serializer = @import("url_serializer");
 // Import URLSearchParams - use the module name set up in build.zig
 // We'll access it through the generated interface
 pub const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
+const Allocator = std.mem.Allocator;
 pub const URL = struct {
     // ========================================================================
     // URL fields

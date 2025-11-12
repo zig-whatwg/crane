@@ -12,14 +12,13 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Allocator = std.mem.Allocator;
-pub const Node = @import("node").Node;
 pub const NodeFilter = @import("node_filter").NodeFilter;
 /// DOM §6.2 - NodeIterator interface
 /// 
 /// NodeIterator objects can be used to filter and traverse node trees.
 /// They maintain a reference pointer that moves through the tree as you
 /// call nextNode() and previousNode().
+const Allocator = std.mem.Allocator;
 pub const NodeIterator = struct {
     // ========================================================================
     // NodeIterator fields

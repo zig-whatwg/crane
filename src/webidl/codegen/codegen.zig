@@ -93,6 +93,144 @@ pub const ClassConfig = struct {
     setter_prefix: []const u8 = "set_",
 };
 
+/// Import Set - Manages deduplication of import declarations
+///
+/// This solves the root cause of duplicate declaration bugs by treating imports
+/// as a set (no duplicates allowed) and coordinating between all code paths that
+/// need to generate imports.
+///
+/// Usage:
+/// ```zig
+/// var imports = ImportSet.init(allocator);
+/// defer imports.deinit();
+///
+/// try imports.addStdType("Allocator");
+/// try imports.addPackageType("Node", "node");
+/// try imports.addPackageConst("ELEMENT_NODE", "node");
+///
+/// try imports.emit(writer);
+/// ```
+const ImportSet = struct {
+    allocator: std.mem.Allocator,
+    /// Map from declaration name to its full code string
+    /// Using StringArrayHashMap maintains insertion order for deterministic output
+    declarations: std.StringArrayHashMap([]const u8),
+
+    pub fn init(allocator: std.mem.Allocator) ImportSet {
+        return .{
+            .allocator = allocator,
+            .declarations = std.StringArrayHashMap([]const u8).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *ImportSet) void {
+        // Free all generated code strings
+        // Note: StringArrayHashMap doesn't own its keys, so we must manage them
+        var it = self.declarations.iterator();
+        while (it.next()) |entry| {
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.declarations.deinit();
+    }
+
+    /// Add a type from std library (e.g., "Allocator" -> "const Allocator = std.mem.Allocator;")
+    pub fn addStdType(self: *ImportSet, name: []const u8) !void {
+        if (self.declarations.contains(name)) return; // Already added
+
+        const code = try std.fmt.allocPrint(self.allocator, "const {s} = std.mem.{s};\n", .{ name, name });
+        try self.declarations.put(name, code);
+    }
+
+    /// Add a module import (e.g., "infra" -> "const infra = @import("infra");")
+    pub fn addModule(self: *ImportSet, name: []const u8) !void {
+        if (self.declarations.contains(name)) return;
+
+        const code = try std.fmt.allocPrint(self.allocator, "const {s} = @import(\"{s}\");\n", .{ name, name });
+        try self.declarations.put(name, code);
+    }
+
+    /// Add a type from a package (e.g., "Node", "node" -> "const Node = @import("node").Node;")
+    pub fn addPackageType(self: *ImportSet, type_name: []const u8, package: []const u8) !void {
+        if (self.declarations.contains(type_name)) return;
+
+        const code = try std.fmt.allocPrint(self.allocator, "const {s} = @import(\"{s}\").{s};\n", .{ type_name, package, type_name });
+        try self.declarations.put(type_name, code);
+    }
+
+    /// Add a constant from a package (e.g., "ELEMENT_NODE", "node" -> "const ELEMENT_NODE = @import("node").ELEMENT_NODE;")
+    pub fn addPackageConst(self: *ImportSet, const_name: []const u8, package: []const u8) !void {
+        if (self.declarations.contains(const_name)) return;
+
+        const code = try std.fmt.allocPrint(self.allocator, "const {s} = @import(\"{s}\").{s};\n", .{ const_name, package, const_name });
+        try self.declarations.put(const_name, code);
+    }
+
+    /// Add a raw declaration (for special cases)
+    /// Takes ownership of the code string (does NOT duplicate it).
+    pub fn addRawOwned(self: *ImportSet, name: []const u8, owned_code: []const u8) !void {
+        if (self.declarations.contains(name)) {
+            // Already exists, free the passed-in code to prevent leak
+            self.allocator.free(owned_code);
+            return;
+        }
+
+        try self.declarations.put(name, owned_code);
+    }
+
+    /// Add a raw declaration (duplicates the code string)
+    pub fn addRaw(self: *ImportSet, name: []const u8, code: []const u8) !void {
+        if (self.declarations.contains(name)) return;
+
+        const owned_code = try self.allocator.dupe(u8, code);
+        try self.declarations.put(name, owned_code);
+    }
+
+    /// Emit all imports to the writer in insertion order
+    pub fn emit(self: *const ImportSet, writer: anytype) !void {
+        var it = self.declarations.iterator();
+        while (it.next()) |entry| {
+            try writer.writeAll(entry.value_ptr.*);
+        }
+    }
+
+    /// Add all imports needed for Node inheritance
+    pub fn addNodeInheritanceImports(self: *ImportSet, class_name: []const u8) !void {
+        try self.addPackageType("Node", "node");
+        try self.addStdType("Allocator");
+        try self.addModule("infra");
+        try self.addPackageType("RegisteredObserver", "registered_observer");
+        try self.addPackageType("GetRootNodeOptions", "node");
+
+        // Don't import Document/Element if this IS Document/Element
+        if (!std.mem.eql(u8, class_name, "Document")) {
+            try self.addPackageType("Document", "document");
+        }
+        if (!std.mem.eql(u8, class_name, "Element")) {
+            try self.addPackageType("Element", "element");
+        }
+
+        try self.addPackageConst("ELEMENT_NODE", "node");
+        try self.addPackageConst("DOCUMENT_NODE", "node");
+        try self.addPackageConst("DOCUMENT_POSITION_DISCONNECTED", "node");
+    }
+
+    /// Add all imports needed for EventTarget inheritance
+    pub fn addEventTargetInheritanceImports(self: *ImportSet) !void {
+        try self.addPackageType("EventListener", "event_target");
+        try self.addPackageType("Event", "event");
+
+        // Helper functions from EventTarget
+        const helpers = [_][]const u8{
+            "flattenOptions",
+            "flattenMoreOptions",
+            "defaultPassiveValue",
+        };
+        for (helpers) |helper| {
+            try self.addPackageConst(helper, "event_target");
+        }
+    }
+};
+
 /// Class generation specification
 pub const ClassSpec = struct {
     name: []const u8,
@@ -1679,13 +1817,40 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
         const line = source[line_start..line_end];
 
         const should_filter = blk: {
+            const trimmed = std.mem.trim(u8, line, " \t\r");
+
             // Filter out webidl/zoop imports
             if (std.mem.indexOf(u8, line, "@import(\"zoop\")")) |_| {
-                const trimmed = std.mem.trim(u8, line, " \t\r");
                 if (std.mem.startsWith(u8, trimmed, "const ")) {
                     if (std.mem.indexOf(u8, trimmed, "=")) |_| {
                         break :blk true;
                     }
+                }
+            }
+
+            // Filter out imports that will be generated by ImportSet
+            // These are always added by the codegen based on inheritance
+            const imports_to_filter = [_][]const u8{
+                "const Node = @import(\"node\").Node;",
+                "const Allocator = std.mem.Allocator;",
+                "const infra = @import(\"infra\");",
+                "const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;",
+                "const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;",
+                "const Document = @import(\"document\").Document;",
+                "const Element = @import(\"element\").Element;",
+                "const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;",
+                "const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;",
+                "const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;",
+                "const EventListener = @import(\"event_target\").EventListener;",
+                "const Event = @import(\"event\").Event;",
+                "const flattenOptions = @import(\"event_target\").flattenOptions;",
+                "const flattenMoreOptions = @import(\"event_target\").flattenMoreOptions;",
+                "const defaultPassiveValue = @import(\"event_target\").defaultPassiveValue;",
+            };
+
+            for (imports_to_filter) |import_to_filter| {
+                if (std.mem.eql(u8, trimmed, import_to_filter)) {
+                    break :blk true;
                 }
             }
 
@@ -3917,11 +4082,12 @@ fn generateBaseStruct(
     registry: *GlobalRegistry,
     current_file: []const u8,
     base_info: *const BaseTypeInfo,
+    imports: *ImportSet, // Shared ImportSet for the entire file
 ) !void {
     // Debug: print what we're generating
     std.debug.print("Generating {s}Base (parent: {s})\n", .{ parsed.name, if (parsed.parent_name) |p| p else "none" });
 
-    // For base structs that inherit from Node, add necessary imports
+    // For base structs that inherit from Node, add necessary imports to the shared ImportSet
     // These are needed by fields like infra.List(*Node), owner_document: ?*Document, etc.
     if (parsed.parent_name) |parent_ref| {
         // Check if this inherits from Node
@@ -3948,13 +4114,15 @@ fn generateBaseStruct(
             }
         }
 
-        // If this base struct inherits from Node, add necessary type aliases
+        // If this base struct inherits from Node, add necessary type aliases to shared ImportSet
         if (inherits_from_node_for_base) {
-            try writer.print("const Node = @import(\"node\").Node;\n", .{});
-            try writer.print("const Allocator = std.mem.Allocator;\n", .{});
-            try writer.print("const infra = @import(\"infra\");\n", .{});
+            try imports.addPackageType("Node", "node");
+            try imports.addStdType("Allocator");
+            try imports.addModule("infra");
         }
     }
+
+    // NOTE: Imports are NOT emitted here - they'll be emitted once by the caller
 
     // Generate TypeTag enum for runtime type checking
     try writer.print(
@@ -4245,10 +4413,21 @@ fn generateEnhancedClassWithRegistry(
 
     const writer = code.writer(allocator);
 
+    // ========================================================================
+    // DECLARATIVE IMPORT COLLECTION
+    // Create ONE ImportSet for the entire generated file (base struct + class).
+    // All imports are collected into a set first, then emitted once.
+    // This prevents duplicate declarations regardless of code path.
+    // ========================================================================
+
+    var imports = ImportSet.init(allocator);
+    defer imports.deinit();
+
     // Generate XxxBase struct if this is a base type
+    // (Collects its imports into the shared ImportSet, but doesn't emit yet)
     if (is_base_type) {
         const base_info = base_types.get(parsed.name).?; // Safe unwrap - we checked is_base_type
-        try generateBaseStruct(allocator, writer, parsed, registry, current_file, &base_info);
+        try generateBaseStruct(allocator, writer, parsed, registry, current_file, &base_info, &imports);
     }
 
     // Emit class-level doc comment if present
@@ -4259,9 +4438,10 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
-    // Emit base type import (if parent is a base type)
+    // Track inheritance relationships for import decisions
     var parent_base_type_name: ?[]const u8 = null;
     var inherits_from_event_target = false;
+    var inherits_from_node = false;
 
     if (parsed.parent_name) |parent_ref| {
         // Extract parent class name (handle "base.Type" format)
@@ -4276,11 +4456,14 @@ fn generateEnhancedClassWithRegistry(
             // Import the base type
             const base_module = try pascalToSnakeCase(allocator, parent_class_name);
             defer allocator.free(base_module);
-            try writer.print("const {s}Base = @import(\"{s}\").{s}Base;\n", .{ parent_class_name, base_module, parent_class_name });
+            const base_import = try std.fmt.allocPrint(allocator, "const {s}Base = @import(\"{s}\").{s}Base;\n", .{ parent_class_name, base_module, parent_class_name });
+            const base_name = try std.fmt.allocPrint(allocator, "{s}Base", .{parent_class_name});
+            defer allocator.free(base_name);
+            // addRawOwned takes ownership of base_import
+            try imports.addRawOwned(base_name, base_import);
         }
 
-        // Check if this class inherits from EventTarget (directly or indirectly)
-        // Walk up the parent chain to check
+        // Check inheritance chain for EventTarget and Node
         var check_parent: ?[]const u8 = parent_ref;
         var check_file = current_file;
         while (check_parent) |p| {
@@ -4291,7 +4474,10 @@ fn generateEnhancedClassWithRegistry(
 
             if (std.mem.eql(u8, p_name, "EventTarget")) {
                 inherits_from_event_target = true;
-                break;
+            }
+
+            if (std.mem.eql(u8, p_name, "Node")) {
+                inherits_from_node = true;
             }
 
             // Try to resolve parent to check its parent
@@ -4304,88 +4490,41 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
-    // If this class inherits from EventTarget, import types needed by inherited methods
+    // Add imports based on inheritance (using ImportSet methods for deduplication)
     if (inherits_from_event_target) {
-        try writer.print("const EventListener = @import(\"event_target\").EventListener;\n", .{});
-        try writer.print("const Event = @import(\"event\").Event;\n", .{});
-        // Import helper functions from EventTarget
-        try writer.print("const flattenOptions = @import(\"event_target\").flattenOptions;\n", .{});
-        try writer.print("const flattenMoreOptions = @import(\"event_target\").flattenMoreOptions;\n", .{});
-        try writer.print("const defaultPassiveValue = @import(\"event_target\").defaultPassiveValue;\n", .{});
+        try imports.addEventTargetInheritanceImports();
     }
 
-    // Check if this class inherits from Node (directly or indirectly)
-    var inherits_from_node = false;
-    if (parsed.parent_name) |parent_ref| {
-        var check_parent: ?[]const u8 = parent_ref;
-        var check_file = current_file;
-        while (check_parent) |p| {
-            const p_name = if (std.mem.indexOfScalar(u8, p, '.')) |dot_pos|
-                p[dot_pos + 1 ..]
-            else
-                p;
-
-            if (std.mem.eql(u8, p_name, "Node")) {
-                inherits_from_node = true;
-                break;
-            }
-
-            if (try registry.resolveParentReference(p, check_file)) |parent_info| {
-                check_parent = parent_info.parent_name;
-                check_file = parent_info.file_path;
-            } else {
-                break;
-            }
-        }
-    }
-
-    // If this class inherits from Node, import types needed by Node methods
     if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node")) {
-        // For base types, the base struct already added: Node, Allocator, infra
-        // For non-base types, we need to add everything
-        if (is_base_type) {
-            // Base type: only add what the base struct didn't add
-            try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
-            try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
-            // Don't import Document/Element if this IS Document/Element
-            if (!std.mem.eql(u8, parsed.name, "Document")) {
-                try writer.print("const Document = @import(\"document\").Document;\n", .{});
-            }
-            if (!std.mem.eql(u8, parsed.name, "Element")) {
-                try writer.print("const Element = @import(\"element\").Element;\n", .{});
-            }
-            try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
-            try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
-            try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
-        } else {
-            // Non-base type: add everything
-            try writer.print("const Allocator = std.mem.Allocator;\n", .{});
-            try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
-            try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
-            // Don't import Document/Element if this IS Document/Element
-            if (!std.mem.eql(u8, parsed.name, "Document")) {
-                try writer.print("const Document = @import(\"document\").Document;\n", .{});
-            }
-            if (!std.mem.eql(u8, parsed.name, "Element")) {
-                try writer.print("const Element = @import(\"element\").Element;\n", .{});
-            }
-            try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
-            try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
-            try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
-            // Node methods also use infra.List
-            try writer.print("const infra = @import(\"infra\");\n", .{});
-        }
+        try imports.addNodeInheritanceImports(parsed.name);
     }
 
-    // Emit mixin imports (if any)
+    // Add mixin imports (if any)
     if (parsed.mixin_names.len > 0) {
         for (parsed.mixin_names) |mixin_name| {
             // Convert PascalCase to snake_case for module name
             const module_name = try pascalToSnakeCase(allocator, mixin_name);
             defer allocator.free(module_name);
-            try writer.print("const {s} = @import(\"{s}\").{s};\n", .{ mixin_name, module_name, mixin_name });
+            try imports.addPackageType(mixin_name, module_name);
         }
     }
+
+    // Add common imports based on field usage
+    for (parsed.fields) |field| {
+        // If any field uses Allocator type, add it
+        if (std.mem.eql(u8, field.name, "allocator")) {
+            try imports.addStdType("Allocator");
+        }
+        // If any field uses infra.List, add infra module
+        if (std.mem.indexOf(u8, field.type_name, "infra.List")) |_| {
+            try imports.addModule("infra");
+        }
+    }
+
+    // ========================================================================
+    // EMIT ALL IMPORTS (deduplicated)
+    // ========================================================================
+    try imports.emit(writer);
 
     try writer.print("pub const {s} = struct {{\n", .{parsed.name});
 

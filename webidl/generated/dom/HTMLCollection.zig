@@ -12,10 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
-const Allocator = std.mem.Allocator;
-pub const Element = @import("element").Element;
 /// HTMLCollection is a collection of elements.
 /// 
 /// This is a live collection - it automatically updates when the DOM changes.
@@ -27,6 +24,8 @@ pub const Element = @import("element").Element;
 /// getter Element? namedItem(DOMString name);
 /// };
 /// ```
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 pub const HTMLCollection = struct {
     // ========================================================================
     // HTMLCollection fields

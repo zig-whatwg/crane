@@ -138,11 +138,9 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 pub const types = @import("types");
 pub const format = @import("format");
 
-const Allocator = std.mem.Allocator;
 const Group = types.Group;
 const LogLevel = types.LogLevel;
 const Message = types.Message;
@@ -223,6 +221,7 @@ fn defaultPrinter(message: []const u8) void {
 /// - `groupStack`: Stack of active groups for indentation
 /// - `messageBuffer`: Circular buffer for message history (default 1000)
 /// - `labelPool`: Interned label strings for performance
+const Allocator = std.mem.Allocator;
 pub const console = struct {
     // ========================================================================
     // console fields

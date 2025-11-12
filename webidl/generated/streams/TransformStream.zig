@@ -22,6 +22,7 @@ pub const eventLoop = @import("event_loop");
 pub const ReadableStream = @import("readable_stream").ReadableStream;
 pub const WritableStream = @import("writable_stream").WritableStream;
 pub const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
+const Allocator = std.mem.Allocator;
 pub const TransformStream = struct {
     // ========================================================================
     // TransformStream fields

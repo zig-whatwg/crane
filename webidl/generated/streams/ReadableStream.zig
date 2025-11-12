@@ -80,6 +80,7 @@ pub const TeeBranches = struct {
     branch1: *ReadableStream,
     branch2: *ReadableStream,
 };
+const Allocator = std.mem.Allocator;
 pub const ReadableStream = struct {
     // ========================================================================
     // ReadableStream fields

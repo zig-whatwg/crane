@@ -12,9 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
-const Allocator = std.mem.Allocator;
 pub const EventTarget = @import("event_target").EventTarget;
 
 /// EventPath struct - used by event dispatch algorithm
@@ -138,6 +136,7 @@ pub const EventBase = struct {
 };
 
 /// Event WebIDL interface
+const Allocator = std.mem.Allocator;
 pub const Event = struct {
     // ========================================================================
     // Event fields

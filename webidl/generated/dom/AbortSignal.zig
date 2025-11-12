@@ -10,7 +10,6 @@
 //! AbortSignal interface per WHATWG DOM Standard
 
 const std = @import("std");
-const infra = @import("infra");
 const webidl = @import("webidl");
 pub const EventTarget = @import("event_target").EventTarget;
 
@@ -24,6 +23,8 @@ const Event = @import("event").Event;
 const flattenOptions = @import("event_target").flattenOptions;
 const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 pub const AbortSignal = struct {
     base: EventTargetBase,
 
@@ -165,9 +166,7 @@ pub const AbortSignal = struct {
 
         // Step 2: If listener's signal is not null and is aborted, then return
         if (listener.signal) |signal| {
-            _ = signal;
-            // TODO: Check if signal is aborted
-            // if (signal.aborted) return;
+            if (signal.aborted) return;
         }
 
         // Step 3: If listener's callback is null, then return
@@ -184,10 +183,9 @@ pub const AbortSignal = struct {
 
         const already_exists = for (list.items) |existing| {
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume same callback if type and capture match
                 break true;
             }
         } else false;
@@ -245,10 +243,9 @@ pub const AbortSignal = struct {
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume match if type and capture match
                 existing.removed = true;
                 _ = list.orderedRemove(i);
                 return;

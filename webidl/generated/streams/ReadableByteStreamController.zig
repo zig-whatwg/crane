@@ -47,6 +47,7 @@ const ByteStreamQueueEntry = struct {
     /// Length in bytes of this chunk
     byteLength: u64,
 };
+const Allocator = std.mem.Allocator;
 pub const ReadableByteStreamController = struct {
     // ========================================================================
     // ReadableByteStreamController fields

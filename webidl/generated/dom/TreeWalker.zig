@@ -12,8 +12,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Allocator = std.mem.Allocator;
-pub const Node = @import("node").Node;
 pub const NodeFilter = @import("node_filter").NodeFilter;
 /// DOM §6.3 - TreeWalker interface
 /// 
@@ -21,6 +19,7 @@ pub const NodeFilter = @import("node_filter").NodeFilter;
 /// Unlike NodeIterator, TreeWalker provides rich navigation methods
 /// (parentNode, firstChild, lastChild, previousSibling, nextSibling)
 /// and maintains a mutable currentNode pointer.
+const Allocator = std.mem.Allocator;
 pub const TreeWalker = struct {
     // ========================================================================
     // TreeWalker fields

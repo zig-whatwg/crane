@@ -12,9 +12,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
-const Allocator = std.mem.Allocator;
-pub const Node = @import("node").Node;
 pub const MutationRecord = @import("mutation_record").MutationRecord;
 
 /// DOM §7.1 - MutationCallback
@@ -25,7 +22,6 @@ pub const MutationCallback = *const fn (mutations: []const MutationRecord, obser
 
 // Import types that are shared between Node and MutationObserver
 pub const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
-pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
 // Re-export for convenience
@@ -35,6 +31,7 @@ pub const TransientRegistered = TransientRegisteredObserver;
 /// DOM §7.1 - MutationObserver interface
 /// 
 /// MutationObservers can be used to observe mutations to the tree of nodes.
+const Allocator = std.mem.Allocator;
 pub const MutationObserver = struct {
     // ========================================================================
     // MutationObserver fields

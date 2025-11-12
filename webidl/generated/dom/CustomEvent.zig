@@ -11,9 +11,9 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const Event = @import("event").Event;
 /// DOM Spec: interface CustomEvent : Event
 const EventBase = @import("event").EventBase;
+const Allocator = std.mem.Allocator;
 pub const CustomEvent = struct {
     base: EventBase,
 

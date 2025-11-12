@@ -128,7 +128,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
 // Import dictionary
 pub const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
@@ -210,6 +209,7 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
 /// Note: TextEncoder only supports UTF-8 encoding (no label argument).
 /// Note: TextEncoder offers no stream option (no buffering needed).
 const TextEncoderCommon = @import("text_encoder_common").TextEncoderCommon;
+const Allocator = std.mem.Allocator;
 pub const TextEncoder = struct {
     // ========================================================================
     // Fields from TextEncoderCommon mixin

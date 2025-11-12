@@ -48,6 +48,7 @@ const Decoder = encoding_mod.Decoder;
 /// ```
 const TextDecoderCommon = @import("text_decoder_common").TextDecoderCommon;
 const GenericTransformStream = @import("generic_transform_stream").GenericTransformStream;
+const Allocator = std.mem.Allocator;
 pub const TextDecoderStream = struct {
     // ========================================================================
     // Fields from TextDecoderCommon mixin

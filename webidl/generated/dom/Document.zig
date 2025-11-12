@@ -13,7 +13,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
-pub const Node = @import("node").Node;
 pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
@@ -21,7 +20,6 @@ pub const ProcessingInstruction = @import("processing_instruction").ProcessingIn
 pub const CDATASection = @import("cdata_section").CDATASection;
 pub const DocumentType = @import("document_type").DocumentType;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
-const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 const NodeBase = @import("node").NodeBase;
 const EventListener = @import("event_target").EventListener;
@@ -29,14 +27,15 @@ const Event = @import("event").Event;
 const flattenOptions = @import("event_target").flattenOptions;
 const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Element = @import("element").Element;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
-const infra = @import("infra");
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
@@ -868,10 +867,10 @@ pub const Document = struct {
         _ = self;
         _ = value;
     }
-    pub fn get_textContent(self: *const Document) ?[]const u8 {
+    pub fn get_textContent(self: *const Document) !?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
-        return Document.getTextContent(self);
+        return Document.getTextContent(self, self.allocator);
     }
     pub fn set_textContent(self: *Document, value: ?[]const u8) !void {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
@@ -959,9 +958,7 @@ pub const Document = struct {
 
         // Step 2: If listener's signal is not null and is aborted, then return
         if (listener.signal) |signal| {
-            _ = signal;
-            // TODO: Check if signal is aborted
-            // if (signal.aborted) return;
+            if (signal.aborted) return;
         }
 
         // Step 3: If listener's callback is null, then return
@@ -978,10 +975,9 @@ pub const Document = struct {
 
         const already_exists = for (list.items) |existing| {
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume same callback if type and capture match
                 break true;
             }
         } else false;
@@ -1039,10 +1035,9 @@ pub const Document = struct {
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture)
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
             {
-                // TODO: Compare callbacks properly
-                // For now, assume match if type and capture match
                 existing.removed = true;
                 _ = list.orderedRemove(i);
                 return;

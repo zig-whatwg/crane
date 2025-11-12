@@ -19,7 +19,9 @@ pub const dom_types = @import("dom_types");
 /// ProcessingInstruction nodes represent processing instructions.
 /// They extend CharacterData and have an associated target.
 const CharacterDataBase = @import("character_data").CharacterDataBase;
+const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
@@ -27,7 +29,6 @@ const Element = @import("element").Element;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
-const infra = @import("infra");
 pub const ProcessingInstruction = struct {
     allocator: std.mem.Allocator,
 

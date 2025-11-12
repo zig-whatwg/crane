@@ -12,10 +12,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
-const Allocator = std.mem.Allocator;
-pub const Element = @import("element").Element;
 /// DOMTokenList represents a set of space-separated tokens.
 /// Commonly used for Element.classList.
 /// 
@@ -32,6 +29,8 @@ pub const Element = @import("element").Element;
 /// [CEReactions] stringifier attribute DOMString value;
 /// };
 /// ```
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 pub const DOMTokenList = struct {
     // ========================================================================
     // DOMTokenList fields

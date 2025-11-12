@@ -12,15 +12,13 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
-const Allocator = std.mem.Allocator;
-pub const Node = @import("node").Node;
 pub const NodeList = @import("node_list").NodeList;
 /// DOM §7.2 - MutationRecord interface
 /// 
 /// MutationRecord objects represent individual DOM mutations.
 /// They are created by the MutationObserver API and contain information
 /// about what changed in the tree.
+const Allocator = std.mem.Allocator;
 pub const MutationRecord = struct {
     // ========================================================================
     // MutationRecord fields

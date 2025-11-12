@@ -13,9 +13,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom_types = @import("dom_types");
-const Node = @import("node").Node;
-const Allocator = std.mem.Allocator;
-const infra = @import("infra");
 /// Runtime type tag for CharacterData hierarchy.
 /// Used for safe downcasting from CharacterDataBase to derived types.
 pub const CharacterDataTypeTag = enum {
@@ -143,6 +140,9 @@ pub const CharacterDataBase = struct {
 };
 
 /// DOM Spec: interface CharacterData : Node
+const Node = @import("node").Node;
+const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const NodeBase = @import("node").NodeBase;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;

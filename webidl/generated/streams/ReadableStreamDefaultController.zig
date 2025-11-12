@@ -44,6 +44,7 @@ pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader"
 /// undefined error(optional any e);
 /// };
 /// ```
+const Allocator = std.mem.Allocator;
 pub const ReadableStreamDefaultController = struct {
     // ========================================================================
     // ReadableStreamDefaultController fields

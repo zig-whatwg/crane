@@ -15,7 +15,6 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-pub const Node = @import("node").Node;
 /// Runtime type tag for AbstractRange hierarchy.
 /// Used for safe downcasting from AbstractRangeBase to derived types.
 pub const AbstractRangeTypeTag = enum {

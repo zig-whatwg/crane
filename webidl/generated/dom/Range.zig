@@ -12,11 +12,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 
-const Allocator = std.mem.Allocator;
 pub const AbstractRange = @import("abstract_range").AbstractRange;
-pub const Node = @import("node").Node;
 pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 /// DOM Spec: interface Range : AbstractRange
 /// 
@@ -26,6 +23,7 @@ pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 /// 
 /// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 const AbstractRangeBase = @import("abstract_range").AbstractRangeBase;
+const Allocator = std.mem.Allocator;
 pub const Range = struct {
     base: AbstractRangeBase,
 

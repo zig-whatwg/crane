@@ -15,7 +15,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const AbstractRange = @import("abstract_range").AbstractRange;
-pub const Node = @import("node").Node;
 
 /// StaticRangeInit dictionary
 pub const StaticRangeInit = struct {

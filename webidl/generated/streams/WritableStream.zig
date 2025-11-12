@@ -43,6 +43,7 @@ pub const Writer = union(enum) {
     none: void,
     default: *WritableStreamDefaultWriter,
 };
+const Allocator = std.mem.Allocator;
 pub const WritableStream = struct {
     // ========================================================================
     // WritableStream fields
