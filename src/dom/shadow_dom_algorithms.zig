@@ -165,15 +165,29 @@ pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
     if (shadow.getSlotAssignmentMode() == .manual) {
         // TODO: Implement manual slot assignment search
         // Need to traverse shadow's descendants and find slot whose manually_assigned_nodes contains slottable
+        // This requires HTMLSlotElement.manually_assigned_nodes integration
         return null;
     }
 
     // Step 6: Return first slot in tree order whose name matches slottable's name
-    // TODO: Implement named slot search
-    // Need to:
-    // 1. Get slottable's name (from "slot" attribute)
-    // 2. Traverse shadow's descendants in tree order
-    // 3. Find first slot whose name matches
+    const slottable_name = slot_helpers.getSlottableName(slottable);
+
+    // Traverse shadow's descendants to find matching slot
+    // For now, use a simple traversal of immediate children
+    // TODO: Full tree order traversal for nested descendants
+    const shadow_node: *Node = @ptrCast(@alignCast(shadow));
+    const children = shadow_node.get_childNodes();
+
+    for (children.items) |child| {
+        if (slot_helpers.isSlot(child)) {
+            const slot_name = slot_helpers.getSlotName(child);
+            // Match names (both empty string means default slot)
+            if (std.mem.eql(u8, slot_name, slottable_name)) {
+                return child;
+            }
+        }
+    }
+
     return null;
 }
 
@@ -305,13 +319,8 @@ pub fn assignSlottables(allocator: Allocator, slot: *anyopaque) !void {
 
     // Step 4: For each slottable of slottables, set slottable's assigned slot to slot
     for (slottables.items) |slottable| {
-        // Cast to Element or Text (both have Slottable mixin)
-        if (slot_helpers.asElement(slottable)) |element| {
-            // Access Slottable mixin through Element
-            // TODO: This requires accessing the mixin fields through Element
-            // For now, leave as TODO - needs proper mixin integration
-            _ = element;
-        }
+        // Set the assigned slot using the helper (handles Element and Text)
+        slot_helpers.setSlottableAssignedSlot(slottable, slot);
     }
 }
 

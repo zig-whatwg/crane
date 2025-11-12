@@ -371,10 +371,11 @@ pub fn build(b: *std.Build) void {
     shadow_dom_algorithms_mod.addImport("element", element_mod);
     shadow_dom_algorithms_mod.addImport("shadow_root", shadow_root_mod);
 
-    // Create HTMLSlotElement module (temporary mock for shadow DOM)
+    // Create HTMLSlotElement module (temporary HTML mock for shadow DOM)
+    // Located in webidl/src/html/ to separate HTML mocks from DOM implementation
     // TODO: Replace with full HTML spec implementation
     const html_slot_element_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/HTMLSlotElement.zig"),
+        .root_source_file = b.path("webidl/src/html/HTMLSlotElement.zig"),
         .target = target,
     });
     html_slot_element_mod.addImport("webidl", webidl_mod);

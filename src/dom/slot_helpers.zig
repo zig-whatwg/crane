@@ -114,6 +114,48 @@ pub fn getRoot(node: *anyopaque) *anyopaque {
     return @ptrCast(root);
 }
 
+/// Get the slottable name from a slottable (Element or Text)
+/// Returns empty string if not accessible
+pub fn getSlottableName(node: *const anyopaque) []const u8 {
+    if (asElementConst(node)) |element| {
+        // Element has Slottable mixin with slottable_name field
+        // Access through the generated interface
+        return element.Slottable.getSlottableName();
+    }
+    // TODO: Handle Text nodes when they have Slottable mixin accessible
+    return "";
+}
+
+/// Set the assigned slot for a slottable
+pub fn setSlottableAssignedSlot(node: *anyopaque, slot: ?*anyopaque) void {
+    if (asElement(node)) |element| {
+        // Element has Slottable mixin with setAssignedSlot method
+        element.Slottable.setAssignedSlot(slot);
+    }
+    // TODO: Handle Text nodes when they have Slottable mixin accessible
+}
+
+/// Get the name of a slot element
+/// Returns empty string if not a slot or name not found
+pub fn getSlotName(slot_element: *const anyopaque) []const u8 {
+    if (asElementConst(slot_element)) |element| {
+        // Slot name comes from the "name" attribute
+        // For now, since HTMLSlotElement isn't integrated with Element,
+        // we would need to access the "name" attribute
+        // TODO: Access element's "name" attribute when attribute system is available
+        // For now, return empty string (default slot)
+        _ = element;
+        return "";
+    }
+    return "";
+}
+
+/// Get the children of a node
+pub fn getChildren(node: *const anyopaque) *const @import("infra").List(*Node) {
+    const node_ptr: *const Node = @ptrCast(@alignCast(node));
+    return node_ptr.get_childNodes();
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -167,4 +209,39 @@ test "slot_helpers - isSlot detects slot elements" {
 
     // Non-slot element should not be detected
     try std.testing.expect(!isSlot(@ptrCast(&div_elem)));
+}
+
+test "slot_helpers - getSlottableName" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    // Default slottable name is empty
+    const name = getSlottableName(@ptrCast(&element));
+    try std.testing.expectEqualStrings("", name);
+
+    // Set a name
+    element.Slottable.setSlottableName("header");
+    const name2 = getSlottableName(@ptrCast(&element));
+    try std.testing.expectEqualStrings("header", name2);
+}
+
+test "slot_helpers - setSlottableAssignedSlot" {
+    const allocator = std.testing.allocator;
+
+    var element = try Element.init(allocator, "div");
+    defer element.deinit();
+
+    // Initially no assigned slot
+    try std.testing.expect(!element.Slottable.isAssigned());
+
+    // Create a mock slot
+    var mock_slot: u32 = 42;
+
+    // Assign the slot
+    setSlottableAssignedSlot(@ptrCast(&element), @ptrCast(&mock_slot));
+
+    // Check it was assigned
+    try std.testing.expect(element.Slottable.isAssigned());
 }

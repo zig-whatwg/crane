@@ -2,12 +2,17 @@
 //!
 //! Spec: https://html.spec.whatwg.org/multipage/scripting.html#the-slot-element
 //!
-//! This is a TEMPORARY MOCK to support Shadow DOM algorithms.
-//! Will be replaced when the full HTML specification is implemented.
+//! **TEMPORARY MOCK** - Located in webidl/src/html/ to separate HTML mocks from DOM.
+//! This will be replaced when the full HTML specification is implemented.
 //!
 //! DOM §4.8.2.3: "A slot can only be created through HTML's slot element."
 //! Slots are part of the shadow DOM specification and referenced by the
 //! DOM Standard, but the actual <slot> element is defined in HTML.
+//!
+//! This mock provides minimal functionality needed for Shadow DOM slot algorithms:
+//! - Slot name management
+//! - Assigned nodes tracking
+//! - Manual slot assignment support
 
 const std = @import("std");
 const webidl = @import("webidl");
