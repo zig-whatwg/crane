@@ -3652,7 +3652,7 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
     const before_return = try std.fmt.allocPrint(allocator, "\n        var result = ", .{});
     defer allocator.free(before_return);
 
-    const after_init = try std.fmt.allocPrint(allocator, ";\n        result.base.type_tag = .{s};\n        return result;\n    }}", .{class_name});
+    const after_init = try std.fmt.allocPrint(allocator, ";\n        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));\n        result.base.type_tag = .{s};\n        return result;\n    }}", .{class_name});
     defer allocator.free(after_init);
 
     // Find the closing of the return statement (the last } before end of function)

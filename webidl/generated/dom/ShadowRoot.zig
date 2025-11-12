@@ -121,6 +121,7 @@ pub const ShadowRoot = struct {
             .keep_custom_element_registry_null = false,
             // custom_element_registry comes from DocumentOrShadowRoot mixin
         };
+        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
         result.base.type_tag = .ShadowRoot;
         return result;
     }

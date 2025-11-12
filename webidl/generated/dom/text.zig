@@ -137,6 +137,7 @@ pub const Text = struct {
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };
+        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
         result.base.type_tag = .Text;
         return result;
     }

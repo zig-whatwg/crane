@@ -180,6 +180,7 @@ pub const Node = struct {
             .registered_observers = std.ArrayList(RegisteredObserver).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
+        result.base = @bitCast(@as([@sizeOf(@TypeOf(result.base))]u8, undefined));
         result.base.type_tag = .Node;
         return result;
     }
