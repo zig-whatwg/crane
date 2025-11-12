@@ -166,7 +166,15 @@ pub const NodeSet = struct {
             }
         };
 
-        std.mem.sort(*Node, self.nodes.items, {}, Context.lessThan);
+        // Need to sort mutable slice, so we have to work around infra.List
+        // TODO: Add a sortableSlice() method to infra.List for this use case
+        if (self.nodes.heap_storage) |*heap| {
+            std.mem.sort(*Node, heap.items, {}, Context.lessThan);
+        } else if (self.nodes.len > 0) {
+            // Inline storage - sort directly in array
+            const slice = self.nodes.inline_storage[0..self.nodes.len];
+            std.mem.sort(*Node, @constCast(slice), {}, Context.lessThan);
+        }
     }
 
     /// Create union of two node-sets (§3.3 Union operator)
@@ -209,7 +217,8 @@ fn isBeforeInDocumentOrder(a: *Node, b: *Node) bool {
     if (a_child == null or b_child == null) return false;
 
     // Compare positions in parent's child list
-    for (common.child_nodes.items) |child| {
+    for (0..common.child_nodes.size()) |i| {
+        const child = common.child_nodes.get(i) orelse continue;
         if (child == a_child) return true;
         if (child == b_child) return false;
     }
@@ -229,28 +238,22 @@ fn isAncestor(a: *Node, b: *Node) bool {
 
 /// Find common ancestor of two nodes
 fn findCommonAncestor(a: *Node, b: *Node) ?*Node {
-    // Get all ancestors of a
-    var a_ancestors = std.ArrayList(*Node).init(std.heap.page_allocator);
-    defer a_ancestors.deinit();
-
-    var current = a;
+    // Simple algorithm: for each ancestor of a, check if it's also ancestor of b
+    var a_ancestor = a;
     while (true) {
-        a_ancestors.append(current) catch return null;
-        if (current.parent_node) |parent| {
-            current = parent;
-        } else {
-            break;
+        // Check if a_ancestor is an ancestor of b
+        var b_ancestor = b;
+        while (true) {
+            if (a_ancestor == b_ancestor) return a_ancestor;
+            if (b_ancestor.parent_node) |parent| {
+                b_ancestor = parent;
+            } else {
+                break;
+            }
         }
-    }
 
-    // Walk up from b until we find a node in a's ancestor list
-    current = b;
-    while (true) {
-        for (a_ancestors.items) |ancestor| {
-            if (current == ancestor) return current;
-        }
-        if (current.parent_node) |parent| {
-            current = parent;
+        if (a_ancestor.parent_node) |parent| {
+            a_ancestor = parent;
         } else {
             break;
         }
@@ -340,12 +343,9 @@ fn getStringValue(allocator: std.mem.Allocator, node: *Node) ![]const u8 {
     switch (node.node_type) {
         Node.ELEMENT_NODE, Node.DOCUMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE => {
             // Concatenate all descendant text nodes
-            var result = std.ArrayList(u8).init(allocator);
-            defer result.deinit();
-
-            try collectTextContent(node, &result);
-
-            return try result.toOwnedSlice();
+            // For now, just return empty string until we have full text node access
+            // TODO: Implement full text content collection when CharacterData is available
+            return try allocator.dupe(u8, "");
         },
         Node.TEXT_NODE, Node.CDATA_SECTION_NODE, Node.COMMENT_NODE => {
             // For character data nodes, we need to access the data field
@@ -370,20 +370,21 @@ fn getStringValue(allocator: std.mem.Allocator, node: *Node) ![]const u8 {
     }
 }
 
-/// Helper to collect text content from all descendant text nodes
-fn collectTextContent(node: *Node, result: *std.ArrayList(u8)) !void {
-    // If this is a text node, add its content
-    if (node.node_type == Node.TEXT_NODE or node.node_type == Node.CDATA_SECTION_NODE) {
-        // TODO: Access actual text data when available
-        // For now, use node_name as placeholder
-        try result.appendSlice(node.node_name);
-    }
-
-    // Recursively collect from children
-    for (node.child_nodes.items) |child| {
-        try collectTextContent(child, result);
-    }
-}
+// TODO: Re-enable when we have proper text node access
+// /// Helper to collect text content from all descendant text nodes
+// fn collectTextContent(node: *Node, result: *std.ArrayList(u8)) !void {
+//     // If this is a text node, add its content
+//     if (node.node_type == Node.TEXT_NODE or node.node_type == Node.CDATA_SECTION_NODE) {
+//         // TODO: Access actual text data when available
+//         // For now, use node_name as placeholder
+//         try result.appendSlice(node.node_name);
+//     }
+//
+//     // Recursively collect from children
+//     for (node.child_nodes.items) |child| {
+//         try collectTextContent(child, result);
+//     }
+// }
 
 // ============================================================================
 // Tests
@@ -479,7 +480,7 @@ test "node-set - basic operations" {
     var node2: Node = undefined;
 
     var ns = NodeSet.init(allocator);
-    defer ns.deinit(allocator);
+    defer ns.deinit();
 
     try std.testing.expect(ns.isEmpty());
     try std.testing.expectEqual(@as(usize, 0), ns.size());
@@ -507,10 +508,10 @@ test "node-set - union" {
     var node3: Node = undefined;
 
     var ns1 = NodeSet.init(allocator);
-    defer ns1.deinit(allocator);
+    defer ns1.deinit();
 
     var ns2 = NodeSet.init(allocator);
-    defer ns2.deinit(allocator);
+    defer ns2.deinit();
 
     try ns1.add(&node1);
     try ns1.add(&node2);
