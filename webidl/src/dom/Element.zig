@@ -35,6 +35,9 @@ pub const Element = webidl.interface(struct {
     /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*ShadowRoot,
 
+    /// Cached DOMTokenList for classList ([SameObject])
+    cached_class_list: ?*@import("dom_token_list").DOMTokenList = null,
+
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
@@ -45,6 +48,7 @@ pub const Element = webidl.interface(struct {
             .local_name = tag_name,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
+            .cached_class_list = null,
         };
     }
 
@@ -60,6 +64,12 @@ pub const Element = webidl.interface(struct {
         // Free prefix if allocated
         if (self.prefix) |p| {
             self.allocator.free(p);
+        }
+
+        // Free cached classList
+        if (self.cached_class_list) |list| {
+            list.deinit();
+            self.allocator.destroy(list);
         }
     }
 
@@ -138,14 +148,18 @@ pub const Element = webidl.interface(struct {
     /// is this and whose associated attribute's local name is class.
     ///
     /// Returns a DOMTokenList representing the class attribute.
-    /// The DOMTokenList is [SameObject] - should return same instance on repeated calls.
-    /// TODO: Implement [SameObject] caching
-    pub fn get_classList(self: *const Element) !*DOMTokenList {
+    /// The DOMTokenList is [SameObject] - returns same instance on repeated calls.
+    pub fn get_classList(self: *Element) !*DOMTokenList {
+        // Return cached instance if available
+        if (self.cached_class_list) |list| {
+            return list;
+        }
+
         const TokenList = @import("dom_token_list").DOMTokenList;
 
         // Create DOMTokenList associated with this element's "class" attribute
         const token_list = try self.allocator.create(TokenList);
-        token_list.* = try TokenList.init(self.allocator, @constCast(self), "class");
+        token_list.* = try TokenList.init(self.allocator, self, "class");
 
         // Parse current class attribute value into tokens
         const class_value = self.call_getAttribute("class") orelse "";
@@ -159,6 +173,9 @@ pub const Element = webidl.interface(struct {
                 try token_list.tokens.append(token_copy);
             }
         }
+
+        // Cache the instance for [SameObject] semantics
+        self.cached_class_list = token_list;
 
         return token_list;
     }
