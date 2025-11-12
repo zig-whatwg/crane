@@ -590,11 +590,52 @@ pub const Document = struct {
     /// compareDocumentPosition(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Document, other: *const Document) u16 {
-        // TODO: Implement full algorithm from spec
-        // For now, return disconnected
-        _ = self;
-        _ = other;
-        return DOCUMENT_POSITION_DISCONNECTED;
+        const tree = @import("dom").tree;
+
+        // Step 1: If this is other, then return zero
+        if (self == other) {
+            return 0;
+        }
+
+        // Step 2: Let node1 be other and node2 be this
+        const node1 = other;
+        const node2 = self;
+
+        // Step 3: Let attr1 and attr2 be null
+        // Step 4-5: Handle attributes (not implemented yet - attributes don't participate in tree)
+        // For now, we skip attribute handling as Attr nodes are handled separately
+
+        // Step 6: If node1 or node2 is null, or node1's root is not node2's root
+        // Check if nodes are in the same tree by comparing roots
+        const root1 = tree.root(@constCast(node1));
+        const root2 = tree.root(@constCast(node2));
+
+        if (root1 != root2) {
+            // Return disconnected + implementation specific + preceding/following
+            // Use pointer comparison for consistent ordering
+            const ptr1 = @intFromPtr(node1);
+            const ptr2 = @intFromPtr(node2);
+            const ordering = if (ptr1 < ptr2) Document.DOCUMENT_POSITION_PRECEDING else Document.DOCUMENT_POSITION_FOLLOWING;
+            return Document.DOCUMENT_POSITION_DISCONNECTED | Document.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC | ordering;
+        }
+
+        // Step 7: If node1 is an ancestor of node2
+        if (tree.isAncestor(node1, node2)) {
+            return Document.DOCUMENT_POSITION_CONTAINS | Document.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 8: If node1 is a descendant of node2
+        if (tree.isDescendant(node1, node2)) {
+            return Document.DOCUMENT_POSITION_CONTAINED_BY | Document.DOCUMENT_POSITION_FOLLOWING;
+        }
+
+        // Step 9: If node1 is preceding node2
+        if (tree.isPreceding(node1, node2)) {
+            return Document.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 10: Return DOCUMENT_POSITION_FOLLOWING
+        return Document.DOCUMENT_POSITION_FOLLOWING;
     }
     /// isEqualNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
