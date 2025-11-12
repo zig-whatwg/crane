@@ -434,7 +434,18 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *Node) !NodeSet {
         },
         .attribute => {
             // Attributes of the node
-            // TODO: Implement when attribute support is added
+            // Only element nodes have attributes
+            if (node.node_type == Node.ELEMENT_NODE) {
+                // Access attributes from Element
+                // Note: We need to access the attributes list which is in Element interface
+                // For now, we'll check if child_nodes is actually an Element with attributes
+                // This is a simplification - proper implementation would use WebIDL codegen
+                // to access flattened Element fields
+
+                // TODO: Once WebIDL codegen is complete, we can properly access Element.attributes
+                // For now, attributes are not accessible from the Node pointer alone
+                // We would need: const elem = @fieldParentPtr(Element, "node", node);
+            }
         },
         .namespace => {
             // Namespace nodes

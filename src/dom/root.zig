@@ -58,6 +58,10 @@ pub const selectors = @import("selectors_mock.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 
+// Base types for interface inheritance (NodeBase pattern)
+pub const node_base = @import("node_base.zig");
+pub const NodeBase = node_base.NodeBase;
+
 // XPath 1.0 implementation
 pub const xpath = struct {
     pub const tokenizer = @import("xpath/tokenizer.zig");
