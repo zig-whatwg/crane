@@ -2,6 +2,7 @@
 // https://dom.spec.whatwg.org/#dispatching-events
 
 const std = @import("std");
+const webidl = @import("webidl");
 const Event = @import("../webidl/src/dom/Event.zig").Event;
 const EventTarget = @import("../webidl/src/dom/EventTarget.zig").EventTarget;
 const EventPathItem = Event.EventPathItem;
@@ -400,6 +401,37 @@ fn invoke(
     }
 }
 
+/// INTEGRATION POINT: Callback Invocation
+/// Stub function for invoking event listener callbacks.
+/// Replace this with actual JavaScript engine integration.
+///
+/// Expected behavior:
+/// - Call callback.handleEvent(event)
+/// - Bind "this" correctly (usually the event's currentTarget)
+/// - Catch and report exceptions
+/// - Set legacy_flag to true if exception is thrown
+/// - Return true if callback was invoked successfully
+fn invokeCallback(
+    callback: ?webidl.JSValue,
+    event: *Event,
+    legacy_flag: ?*bool,
+) bool {
+    _ = event;
+    _ = legacy_flag;
+
+    if (callback) |_| {
+        // TODO: Replace with actual callback invocation
+        // JavaScript engine should:
+        // 1. Resolve callback to actual function
+        // 2. Call function with event as parameter
+        // 3. Handle exceptions and report them
+        // 4. Set legacy_flag.* = true on exception
+        return true; // Placeholder: assume success
+    }
+
+    return false;
+}
+
 /// DOM §2.9 - inner invoke
 /// Inner invoke algorithm that actually calls the listeners
 fn innerInvoke(
@@ -447,17 +479,29 @@ fn innerInvoke(
         // TODO: Implement when Performance API is available
 
         // Step 2.11: Call the listener's callback
-        // TODO: Implement actual callback invocation
-        // For now, this is a placeholder - actual implementation requires:
-        // - JavaScript engine integration for callback invocation
-        // - Proper "this" binding
-        // - Exception handling and reporting
-        _ = listener.callback; // Would invoke callback.handleEvent(event) here
-
-        // If an exception is thrown:
-        // - Report exception
-        // - Set legacyOutputDidListenersThrowFlag if given
-        _ = legacy_output_did_listeners_throw_flag; // Would be set to true if exception thrown
+        // INTEGRATION POINT: Callback Invocation
+        //
+        // To integrate with a JavaScript engine or callback system:
+        // 1. Check if listener.callback is non-null
+        // 2. Call callback.handleEvent(event) with proper "this" binding
+        // 3. Catch any exceptions thrown by the callback
+        // 4. Report exceptions via reportException()
+        // 5. Set legacyOutputDidListenersThrowFlag to true if exception thrown
+        //
+        // Example integration:
+        // if (listener.callback) |callback| {
+        //     const result = callback.handleEvent(event);
+        //     if (result) |_| {
+        //         // Success
+        //     } else |err| {
+        //         reportException(err);
+        //         if (legacy_output_did_listeners_throw_flag) |flag| {
+        //             flag.* = true;
+        //         }
+        //     }
+        // }
+        const callback_invoked = invokeCallback(listener.callback, event, legacy_output_did_listeners_throw_flag);
+        _ = callback_invoked;
 
         // Step 2.12: Unset event's in passive listener flag
         event.in_passive_listener_flag = false;
