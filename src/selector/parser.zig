@@ -236,7 +236,7 @@ pub const Parser = struct {
     // ========================================================================
 
     /// Parse selector list (comma-separated complex selectors)
-    fn parseSelectorList(self: *Parser) ParserError!SelectorList {
+    pub fn parseSelectorList(self: *Parser) ParserError!SelectorList {
         var selectors = ArrayList(ComplexSelector){};
         errdefer {
             for (selectors.items) |*selector| {
@@ -263,6 +263,61 @@ pub const Parser = struct {
             .selectors = try selectors.toOwnedSlice(self.allocator),
             .allocator = self.allocator,
         };
+    }
+
+    /// Parse selector list with forgiving error handling
+    /// Invalid selectors are silently dropped instead of failing entire list
+    /// Used by :is(), :where(), :has() per Selectors Level 4 spec
+    fn parseForgivingSelectorList(self: *Parser) ParserError!SelectorList {
+        var selectors = ArrayList(ComplexSelector){};
+        errdefer {
+            for (selectors.items) |*selector| {
+                selector.deinit();
+            }
+            selectors.deinit(self.allocator);
+        }
+
+        // Parse first complex selector (with error recovery)
+        if (self.parseComplexSelector()) |selector| {
+            try selectors.append(self.allocator, selector);
+        } else |_| {
+            // First selector failed - skip to next comma or end
+            self.skipToCommaOrEnd();
+        }
+
+        // Parse additional selectors (comma-separated)
+        while (self.current_token) |token| {
+            if (token.tag == .comma) {
+                try self.advance();
+                self.skipWhitespace();
+
+                // Try to parse next selector, skip if invalid
+                if (self.parseComplexSelector()) |selector| {
+                    try selectors.append(self.allocator, selector);
+                } else |_| {
+                    // Invalid selector - skip to next comma or end
+                    self.skipToCommaOrEnd();
+                }
+            } else {
+                break;
+            }
+        }
+
+        // If all selectors were invalid, return empty list (matches nothing)
+        return SelectorList{
+            .selectors = try selectors.toOwnedSlice(self.allocator),
+            .allocator = self.allocator,
+        };
+    }
+
+    /// Skip tokens until comma or end (for error recovery)
+    fn skipToCommaOrEnd(self: *Parser) void {
+        while (self.current_token) |token| {
+            if (token.tag == .comma or token.tag == .rparen) {
+                break;
+            }
+            self.advance() catch break;
+        }
     }
 
     /// Parse complex selector (combinator chain)
@@ -575,15 +630,15 @@ pub const Parser = struct {
             kind = PseudoClassKind{ .Not = selector_list };
         } else if (std.mem.eql(u8, name, "is")) {
             const selector_list = try self.allocator.create(SelectorList);
-            selector_list.* = try self.parseSelectorList();
+            selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Is = selector_list };
         } else if (std.mem.eql(u8, name, "where")) {
             const selector_list = try self.allocator.create(SelectorList);
-            selector_list.* = try self.parseSelectorList();
+            selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Where = selector_list };
         } else if (std.mem.eql(u8, name, "has")) {
             const selector_list = try self.allocator.create(SelectorList);
-            selector_list.* = try self.parseSelectorList();
+            selector_list.* = try self.parseForgivingSelectorList();
             kind = PseudoClassKind{ .Has = selector_list };
         } else if (std.mem.eql(u8, name, "lang")) {
             const lang_code = try self.parseLanguageCode();

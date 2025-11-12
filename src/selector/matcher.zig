@@ -2047,105 +2047,105 @@ test "Matcher: :dir(ltr) default when no dir attribute" {
 
 test "Matcher: :has(> p) relative child selector" {
     const allocator = testing.allocator;
-    
+
     // Create: div > p
     var div = try createTestElement(allocator, "div");
     defer destroyTestElement(allocator, div);
-    
+
     var p_elem = try allocator.create(Element);
     defer {
         p_elem.deinit();
         allocator.destroy(p_elem);
     }
     p_elem.* = Element.init(allocator, "p");
-    
+
     // Link them
     p_elem.base.parent_node = &div.base;
     try div.base.child_nodes.append(&p_elem.base);
-    
+
     // Test div:has(> p)
     const input = "div:has(> p)";
     var tokenizer = Tokenizer.init(allocator, input);
     var sel_parser = try Parser.init(allocator, &tokenizer);
     defer sel_parser.deinit();
-    
+
     var selector_list = try sel_parser.parse();
     defer selector_list.deinit();
-    
+
     const matcher = Matcher.init(allocator);
     const result = try matcher.matches(div, &selector_list);
-    
+
     try testing.expect(result); // div has direct child p
 }
 
 test "Matcher: :has(+ span) relative next sibling selector" {
     const allocator = testing.allocator;
-    
+
     // Create parent with two children: div and span
     var parent = try createTestElement(allocator, "body");
     defer destroyTestElement(allocator, parent);
-    
+
     var div = try allocator.create(Element);
     defer {
         div.deinit();
         allocator.destroy(div);
     }
     div.* = Element.init(allocator, "div");
-    
+
     var span = try allocator.create(Element);
     defer {
         span.deinit();
         allocator.destroy(span);
     }
     span.* = Element.init(allocator, "span");
-    
+
     // Link them: parent > div + span
     div.base.parent_node = &parent.base;
     span.base.parent_node = &parent.base;
     try parent.base.child_nodes.append(&div.base);
     try parent.base.child_nodes.append(&span.base);
-    
+
     // Test div:has(+ span)
     const input = "div:has(+ span)";
     var tokenizer = Tokenizer.init(allocator, input);
     var sel_parser = try Parser.init(allocator, &tokenizer);
     defer sel_parser.deinit();
-    
+
     var selector_list = try sel_parser.parse();
     defer selector_list.deinit();
-    
+
     const matcher = Matcher.init(allocator);
     const result = try matcher.matches(div, &selector_list);
-    
+
     try testing.expect(result); // div has next sibling span
 }
 
 test "Matcher: :has(~ .error) relative subsequent sibling selector" {
     const allocator = testing.allocator;
-    
+
     // Create parent with children: div, p, span.error
     var parent = try createTestElement(allocator, "body");
     defer destroyTestElement(allocator, parent);
-    
+
     var div = try allocator.create(Element);
     defer {
         div.deinit();
         allocator.destroy(div);
     }
     div.* = Element.init(allocator, "div");
-    
+
     var p_elem = try allocator.create(Element);
     defer {
         p_elem.deinit();
         allocator.destroy(p_elem);
     }
     p_elem.* = Element.init(allocator, "p");
-    
+
     var span = try createTestElementWithAttrs(allocator, "span", &.{
         .{ .name = "class", .value = "error" },
     });
     defer destroyTestElement(allocator, span);
-    
+
     // Link them: parent > div ~ p ~ span.error
     div.base.parent_node = &parent.base;
     p_elem.base.parent_node = &parent.base;
@@ -2153,18 +2153,26 @@ test "Matcher: :has(~ .error) relative subsequent sibling selector" {
     try parent.base.child_nodes.append(&div.base);
     try parent.base.child_nodes.append(&p_elem.base);
     try parent.base.child_nodes.append(&span.base);
-    
+
     // Test div:has(~ .error)
     const input = "div:has(~ .error)";
     var tokenizer = Tokenizer.init(allocator, input);
     var sel_parser = try Parser.init(allocator, &tokenizer);
     defer sel_parser.deinit();
-    
-    var selector_list = try sel_parser.parse();
+
+    var selector_list = try sel_parser.parseSelectorList();
     defer selector_list.deinit();
-    
+
+    try std.testing.expect(selector_list.selectors.len == 1);
+
     const matcher = Matcher.init(allocator);
-    const result = try matcher.matches(div, &selector_list);
-    
-    try testing.expect(result); // div has subsequent sibling span.error
+
+    // div should match (has subsequent sibling span.error)
+    try std.testing.expect(try matcher.matches(div, &selector_list));
+
+    // p should NOT match (not a div element)
+    try std.testing.expect(!try matcher.matches(p_elem, &selector_list));
+
+    // span should NOT match (no subsequent sibling span.error - can't match itself)
+    try std.testing.expect(!try matcher.matches(span, &selector_list));
 }
