@@ -30,6 +30,13 @@ pub const TestMixin = struct {
 
 
 // Parent interface that includes the mixin
+/// Base struct for Parent hierarchy polymorphism.
+/// All Parent-derived types have `base: ParentBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const ParentBase = struct {
+    parent_field: u32 = 100,
+};
+
 const TestMixin = @import("test_mixin").TestMixin;
 pub const Parent = struct {
     // ========================================================================
@@ -142,6 +149,13 @@ pub const MixinB = struct {
         .secure_context = false,
         .cross_origin_isolated = false,
     };
+};
+
+/// Base struct for ParentMulti hierarchy polymorphism.
+/// All ParentMulti-derived types have `base: ParentMultiBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const ParentMultiBase = struct {
+    parent_multi_field: u32 = 300,
 };
 
 const MixinA = @import("mixin_a").MixinA;

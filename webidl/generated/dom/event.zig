@@ -28,6 +28,31 @@ pub const EventPathItem = struct {
     root_of_closed_tree: bool,
     slot_in_closed_tree: bool,
 };
+/// Base struct for Event hierarchy polymorphism.
+/// All Event-derived types have `base: EventBase` as their first field.
+/// This enables safe downcasting via @ptrCast.
+pub const EventBase = struct {
+    allocator: Allocator,
+    event_type: []const u8,
+    target: ?*EventTarget,
+    current_target: ?*EventTarget,
+    event_phase: u16,
+    bubbles: bool,
+    cancelable: bool,
+    composed: bool,
+    stop_propagation_flag: bool,
+    stop_immediate_propagation_flag: bool,
+    canceled_flag: bool,
+    in_passive_listener_flag: bool,
+    initialized_flag: bool,
+    dispatch_flag: bool,
+    is_trusted: bool,
+    time_stamp: f64,
+    path: std.ArrayList(EventPathItem),
+    related_target: ?*EventTarget,
+    touch_target_list: std.ArrayList(*EventTarget),
+};
+
 /// Event WebIDL interface
 pub const Event = struct {
     // ========================================================================

@@ -388,6 +388,7 @@ pub fn generateAllClasses(
                 file_path,
                 &registry,
                 config,
+                &base_types,
             );
             defer allocator.free(generated);
 
@@ -1696,6 +1697,7 @@ fn processSourceFileWithRegistry(
     file_path: []const u8,
     registry: *GlobalRegistry,
     config: ClassConfig,
+    base_types: *const std.StringHashMap(BaseTypeInfo),
 ) ![]const u8 {
     const file_info = registry.files.get(file_path) orelse return error.FileNotFound;
 
@@ -1817,7 +1819,7 @@ fn processSourceFileWithRegistry(
                 mutable.deinit();
             }
 
-            const enhanced = try generateEnhancedClassWithRegistry(allocator, parsed, config, file_path, registry);
+            const enhanced = try generateEnhancedClassWithRegistry(allocator, parsed, config, file_path, registry, base_types);
             defer allocator.free(enhanced);
 
             try output.appendSlice(allocator, enhanced);
@@ -3518,15 +3520,150 @@ fn generateSmartInit(
     return try result.toOwnedSlice(allocator);
 }
 
+/// Generate XxxBase struct for polymorphism support.
+/// This struct contains all fields from the base interface (including inherited fields).
+/// Derived classes will have `base: XxxBase` as their first field.
+fn generateBaseStruct(
+    allocator: std.mem.Allocator,
+    writer: anytype,
+    parsed: anytype,
+    registry: *GlobalRegistry,
+    current_file: []const u8,
+) !void {
+    // Generate doc comment
+    try writer.print(
+        \\/// Base struct for {s} hierarchy polymorphism.
+        \\/// All {s}-derived types have `base: {s}Base` as their first field.
+        \\/// This enables safe downcasting via @ptrCast.
+        \\pub const {s}Base = struct {{
+        \\
+    , .{ parsed.name, parsed.name, parsed.name, parsed.name });
+
+    // Check if class already has allocator field
+    const has_allocator_field = blk: {
+        for (parsed.fields) |field| {
+            if (std.mem.eql(u8, field.name, "allocator")) break :blk true;
+        }
+        break :blk false;
+    };
+
+    // Check if class needs an allocator
+    const needs_allocator = blk: {
+        for (parsed.fields) |field| {
+            if (std.mem.eql(u8, field.type_name, "[]const u8") or std.mem.eql(u8, field.type_name, "[]u8")) {
+                break :blk true;
+            }
+        }
+        for (parsed.properties) |prop| {
+            const is_string_type = std.mem.eql(u8, prop.type_name, "[]const u8") or std.mem.eql(u8, prop.type_name, "[]u8");
+            if (is_string_type and prop.access == .read_write) {
+                break :blk true;
+            }
+        }
+        break :blk false;
+    };
+
+    // Add allocator if needed
+    if (!has_allocator_field and needs_allocator) {
+        try writer.writeAll("    allocator: std.mem.Allocator,\n\n");
+    }
+
+    // Collect and write parent fields (if any)
+    if (parsed.parent_name) |parent_ref| {
+        var all_parent_fields: std.ArrayList(FieldDef) = .empty;
+        defer all_parent_fields.deinit(allocator);
+        var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
+        defer all_parent_properties.deinit(allocator);
+
+        var current_parent: ?[]const u8 = parent_ref;
+        var current_file_path = current_file;
+
+        while (current_parent) |parent| {
+            const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse break;
+
+            for (parent_info.fields) |field| {
+                try all_parent_fields.append(allocator, field);
+            }
+            for (parent_info.properties) |prop| {
+                try all_parent_properties.append(allocator, prop);
+            }
+
+            current_parent = parent_info.parent_name;
+            current_file_path = parent_info.file_path;
+        }
+
+        // Reverse to get correct order (grandparent first)
+        std.mem.reverse(FieldDef, all_parent_fields.items);
+        std.mem.reverse(PropertyDef, all_parent_properties.items);
+
+        // Write parent fields
+        for (all_parent_fields.items) |field| {
+            if (field.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            }
+        }
+        for (all_parent_properties.items) |prop| {
+            if (prop.default_value) |default| {
+                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+            } else {
+                try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            }
+        }
+
+        if (all_parent_fields.items.len > 0 or all_parent_properties.items.len > 0) {
+            try writer.writeAll("\n");
+        }
+    }
+
+    // Write own properties
+    for (parsed.properties) |prop| {
+        if (prop.doc_comment) |doc| {
+            var doc_lines = std.mem.splitScalar(u8, doc, '\n');
+            while (doc_lines.next()) |line| {
+                try writer.print("    /// {s}\n", .{line});
+            }
+        }
+        if (prop.default_value) |default| {
+            try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+        } else {
+            try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+        }
+    }
+
+    // Write own fields
+    for (parsed.fields) |field| {
+        if (field.doc_comment) |doc| {
+            var doc_lines = std.mem.splitScalar(u8, doc, '\n');
+            while (doc_lines.next()) |line| {
+                try writer.print("    /// {s}\n", .{line});
+            }
+        }
+        if (field.default_value) |default| {
+            try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+        } else {
+            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+        }
+    }
+
+    // Close the struct
+    try writer.writeAll("};\n\n");
+}
+
 fn generateEnhancedClassWithRegistry(
     allocator: std.mem.Allocator,
     parsed: anytype,
     config: ClassConfig,
     current_file: []const u8,
     registry: *GlobalRegistry,
+    base_types: *const std.StringHashMap(BaseTypeInfo),
 ) ![]const u8 {
     // Validate class name to prevent injection attacks
     if (!isValidTypeName(parsed.name)) return error.InvalidClassName;
+
+    // Check if this class is a base type (interface with no parent but has children)
+    const is_base_type = base_types.contains(parsed.name);
 
     // Resolve all mixins and detect conflicts early
     var mixin_infos: std.ArrayList(ClassInfo) = .empty;
@@ -3564,6 +3701,11 @@ fn generateEnhancedClassWithRegistry(
     defer code.deinit(allocator);
 
     const writer = code.writer(allocator);
+
+    // Generate XxxBase struct if this is a base type
+    if (is_base_type) {
+        try generateBaseStruct(allocator, writer, parsed, registry, current_file);
+    }
 
     // Emit class-level doc comment if present
     if (parsed.class_doc) |doc| {
