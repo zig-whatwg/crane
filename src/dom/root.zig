@@ -43,6 +43,11 @@ pub const MutationObserverInit = @import("mutation_observer_init").MutationObser
 pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
+// XPath interfaces
+pub const XPathResult = @import("xpath_result").XPathResult;
+pub const XPathExpression = @import("xpath_expression").XPathExpression;
+pub const XPathEvaluator = @import("xpath_evaluator").XPathEvaluator;
+
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");
 pub const tree_helpers = @import("tree_helpers.zig");
