@@ -61,6 +61,7 @@ pub const xpath = struct {
     pub const value = @import("xpath/value.zig");
     pub const context = @import("xpath/context.zig");
     pub const functions = @import("xpath/functions.zig");
+    pub const evaluator = @import("xpath/evaluator.zig");
 };
 
 test {
