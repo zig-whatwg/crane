@@ -24,7 +24,20 @@ pub const tokenizer = @import("tokenizer.zig");
 pub const Tokenizer = tokenizer.Tokenizer;
 pub const Token = tokenizer.Token;
 
-// Phase 2: parser (coming soon)
+pub const parser = @import("parser.zig");
+pub const Parser = parser.Parser;
+pub const SelectorList = parser.SelectorList;
+pub const ComplexSelector = parser.ComplexSelector;
+pub const CompoundSelector = parser.CompoundSelector;
+pub const SimpleSelector = parser.SimpleSelector;
+pub const Combinator = parser.Combinator;
+pub const AttributeSelector = parser.AttributeSelector;
+pub const AttributeMatcher = parser.AttributeMatcher;
+pub const PseudoClassSelector = parser.PseudoClassSelector;
+pub const PseudoClassKind = parser.PseudoClassKind;
+pub const NthPattern = parser.NthPattern;
+pub const PseudoElementSelector = parser.PseudoElementSelector;
+
 // Phase 3: matcher (coming soon)
 
 test {
