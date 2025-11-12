@@ -28,6 +28,8 @@ pub const Element = webidl.interface(struct {
     allocator: Allocator,
     tag_name: []const u8,
     namespace_uri: ?[]const u8,
+    prefix: ?[]const u8 = null,
+    local_name: []const u8,
     attributes: infra.List(Attr),
 
     /// Shadow root attached to this element (null if not a shadow host)
@@ -39,6 +41,8 @@ pub const Element = webidl.interface(struct {
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,
+            .prefix = null,
+            .local_name = tag_name,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
         };
@@ -51,6 +55,11 @@ pub const Element = webidl.interface(struct {
         // Free namespace_uri if allocated
         if (self.namespace_uri) |ns| {
             self.allocator.free(ns);
+        }
+
+        // Free prefix if allocated
+        if (self.prefix) |p| {
+            self.allocator.free(p);
         }
     }
 
@@ -166,12 +175,20 @@ pub const Element = webidl.interface(struct {
     }
 
     /// Getters
-    pub fn get_tagName(self: *const Element) []const u8 {
-        return self.tag_name;
-    }
-
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
         return self.namespace_uri;
+    }
+
+    pub fn get_prefix(self: *const Element) ?[]const u8 {
+        return self.prefix;
+    }
+
+    pub fn get_localName(self: *const Element) []const u8 {
+        return self.local_name;
+    }
+
+    pub fn get_tagName(self: *const Element) []const u8 {
+        return self.tag_name;
     }
 
     /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
