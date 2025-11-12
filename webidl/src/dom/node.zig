@@ -20,7 +20,13 @@ pub const Node = webidl.interface(struct {
     child_nodes: infra.List(*Node),
     owner_document: ?*Document,
 
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
+    registered_observers: std.ArrayList(RegisteredObserver),
+
     const Document = @import("document").Document;
+    const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+    const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
@@ -52,6 +58,7 @@ pub const Node = webidl.interface(struct {
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
+            .registered_observers = std.ArrayList(RegisteredObserver).init(allocator),
             // TODO: Initialize EventTarget parent fields (will be added by codegen)
         };
     }
@@ -59,6 +66,7 @@ pub const Node = webidl.interface(struct {
     pub fn deinit(self: *Node) void {
         // NOTE: EventTarget parent cleanup will be handled by codegen
         self.child_nodes.deinit();
+        self.registered_observers.deinit();
         // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
@@ -364,6 +372,41 @@ pub const Node = webidl.interface(struct {
         _ = self;
         _ = namespace_param;
         return false;
+    }
+
+    // ========================================================================
+    // Mutation Observer Support (DOM §7.1)
+    // ========================================================================
+
+    /// Get the list of registered observers for this node
+    pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
+        return &self.registered_observers;
+    }
+
+    /// Add a registered observer to this node's list
+    pub fn addRegisteredObserver(self: *Node, registered: RegisteredObserver) !void {
+        try self.registered_observers.append(registered);
+    }
+
+    /// Remove all registered observers for a specific MutationObserver
+    pub fn removeRegisteredObserver(self: *Node, observer: *const @import("mutation_observer").MutationObserver) void {
+        var i: usize = 0;
+        while (i < self.registered_observers.items.len) {
+            if (self.registered_observers.items[i].observer == observer) {
+                _ = self.registered_observers.orderedRemove(i);
+                // Don't increment i, we just shifted everything down
+            } else {
+                i += 1;
+            }
+        }
+    }
+
+    /// Remove all transient registered observers whose source matches the given registered observer
+    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) !void {
+        // TODO: Implement transient registered observers
+        // For now, this is a no-op since we haven't implemented transient observers yet
+        _ = self;
+        _ = source;
     }
 }, .{
     .exposed = &.{.Window},

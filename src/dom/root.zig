@@ -33,6 +33,10 @@ pub const NodeFilter = @import("node_filter").NodeFilter;
 pub const NodeIterator = @import("node_iterator").NodeIterator;
 pub const TreeWalker = @import("tree_walker").TreeWalker;
 pub const MutationRecord = @import("mutation_record").MutationRecord;
+pub const MutationObserver = @import("mutation_observer").MutationObserver;
+pub const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
+pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");
