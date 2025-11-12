@@ -106,14 +106,31 @@ pub const Text = webidl.interface(struct {
     ///
     /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const Text) ![]const u8 {
-        // Simplified implementation - just return this node's data
-        // Full implementation would need to:
-        // 1. Find all contiguous Text node siblings (previous and next)
-        // 2. Concatenate their data in tree order
-        //
-        // For now, without full tree implementation, just return own data
-        // TODO: Implement contiguous Text node traversal
-        return self.get_data();
+        const dom = @import("dom");
+        var result = std.ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+
+        // Collect all contiguous Text nodes in tree order
+        // Start from the first contiguous Text node (walk backward to find start)
+        var first = &self.base.base;
+        while (dom.tree_helpers.getPreviousSibling(first)) |prev| {
+            if (prev.node_type != Node.TEXT_NODE) break;
+            first = prev;
+        }
+
+        // Walk forward from first, collecting data
+        var current: ?*Node = first;
+        while (current) |node| {
+            if (node.node_type == Node.TEXT_NODE) {
+                const textNode = try Text.fromNode(node);
+                try result.appendSlice(textNode.base.get_data());
+                current = dom.tree_helpers.getNextSibling(node);
+            } else {
+                break;
+            }
+        }
+
+        return result.toOwnedSlice();
     }
 }, .{
     .exposed = &.{.Window},
