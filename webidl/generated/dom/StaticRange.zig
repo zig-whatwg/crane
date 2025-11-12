@@ -28,6 +28,7 @@ pub const StaticRangeInit = struct {
 /// A StaticRange is a range object that does not update when the node tree mutates.
 /// This makes it more efficient for one-time range operations.
 const AbstractRangeBase = @import("abstract_range").AbstractRangeBase;
+const Node = @import("node").Node;
 pub const StaticRange = struct {
     base: AbstractRangeBase,
 

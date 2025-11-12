@@ -21,6 +21,7 @@ const webidl = @import("webidl");
 pub const QueuingStrategyInit = struct {
     highWaterMark: f64,
 };
+const Allocator = std.mem.Allocator;
 pub const CountQueuingStrategy = struct {
     // ========================================================================
     // CountQueuingStrategy fields

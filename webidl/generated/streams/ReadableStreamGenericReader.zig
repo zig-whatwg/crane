@@ -35,6 +35,7 @@ pub const ReadableStream = @import("readable_stream").ReadableStream;
 /// This mixin defines the shared interface between ReadableStreamDefaultReader
 /// and ReadableStreamBYOBReader.
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const ReadableStreamGenericReader = struct {
     // ========================================================================
     // ReadableStreamGenericReader fields

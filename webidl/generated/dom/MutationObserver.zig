@@ -32,6 +32,8 @@ pub const TransientRegistered = TransientRegisteredObserver;
 /// 
 /// MutationObservers can be used to observe mutations to the tree of nodes.
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 pub const MutationObserver = struct {
     // ========================================================================
     // MutationObserver fields

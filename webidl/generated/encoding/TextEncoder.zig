@@ -210,6 +210,7 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
 /// Note: TextEncoder offers no stream option (no buffering needed).
 const TextEncoderCommon = @import("text_encoder_common").TextEncoderCommon;
 const Allocator = std.mem.Allocator;
+const Text = @import("text").Text;
 pub const TextEncoder = struct {
     // ========================================================================
     // Fields from TextEncoderCommon mixin

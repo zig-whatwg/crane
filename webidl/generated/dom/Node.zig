@@ -323,9 +323,12 @@ const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
 const callbackEquals = @import("event_target").callbackEquals;
 const Allocator = std.mem.Allocator;
-const Node = @import("node").Node;
 const infra = @import("infra");
 const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const Element = @import("element").Element;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 pub const Node = struct {
     base: EventTargetBase,
 

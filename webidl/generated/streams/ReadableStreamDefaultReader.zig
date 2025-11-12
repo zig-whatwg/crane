@@ -45,6 +45,8 @@ pub const ReadableStream = @import("readable_stream").ReadableStream;
 /// - readonly attribute Promise<undefined> closed;
 /// - Promise<undefined> cancel(optional any reason);
 const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
+const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const ReadableStreamDefaultReader = struct {
     // ========================================================================
     // Fields from ReadableStreamGenericReader mixin

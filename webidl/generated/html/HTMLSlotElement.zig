@@ -38,6 +38,7 @@ const webidl = @import("webidl");
 /// - assigned_nodes list (slottables assigned to this slot)
 /// - manually_assigned_nodes list (for manual slot assignment mode)
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
 pub const HTMLSlotElement = struct {
     const Self = @This();
 

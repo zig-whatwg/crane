@@ -242,6 +242,8 @@ pub const EventTargetBase = struct {
 
 /// EventTarget WebIDL interface
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
+const AbortSignal = @import("abort_signal").AbortSignal;
 pub const EventTarget = struct {
     // ========================================================================
     // EventTarget fields

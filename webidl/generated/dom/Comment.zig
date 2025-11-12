@@ -30,6 +30,7 @@ const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const CharacterData = @import("character_data").CharacterData;
 pub const Comment = struct {
     base: CharacterDataBase,
 

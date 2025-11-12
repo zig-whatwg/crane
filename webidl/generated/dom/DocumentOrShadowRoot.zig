@@ -16,6 +16,7 @@ const webidl = @import("webidl");
 /// 
 /// This mixin defines APIs shared between Document and ShadowRoot.
 /// It's expected to be used by other standards as well.
+const Element = @import("element").Element;
 pub const DocumentOrShadowRoot = struct {
     // ========================================================================
     // DocumentOrShadowRoot fields

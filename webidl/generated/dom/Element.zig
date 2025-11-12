@@ -38,6 +38,8 @@ const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const ParentNode = @import("parent_node").ParentNode;
 const Slottable = @import("slottable").Slottable;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 pub const Element = struct {
     base: NodeBase,
 

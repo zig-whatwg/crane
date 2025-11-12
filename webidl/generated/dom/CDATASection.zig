@@ -28,6 +28,8 @@ const Element = @import("element").Element;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 pub const CDATASection = struct {
     base: TextBase,
 

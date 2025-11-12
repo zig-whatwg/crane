@@ -22,6 +22,9 @@ pub const Text = @import("text").Text;
 /// Accessed via document.implementation getter.
 const Allocator = std.mem.Allocator;
 const Document = @import("document").Document;
+const Node = @import("node").Node;
+const Element = @import("element").Element;
+const Text = @import("text").Text;
 pub const DOMImplementation = struct {
     // ========================================================================
     // DOMImplementation fields

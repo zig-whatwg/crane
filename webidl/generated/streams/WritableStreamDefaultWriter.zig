@@ -22,6 +22,7 @@ pub const AsyncPromise = @import("async_promise").AsyncPromise;
 
 pub const WritableStream = @import("writable_stream").WritableStream;
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const WritableStreamDefaultWriter = struct {
     // ========================================================================
     // WritableStreamDefaultWriter fields

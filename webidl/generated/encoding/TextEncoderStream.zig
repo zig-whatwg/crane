@@ -39,6 +39,7 @@ pub const TransformStreamDefaultController = @import("transform_stream_default_c
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
 const Allocator = std.mem.Allocator;
+const Text = @import("text").Text;
 pub const TextEncoderStream = struct {
     // ========================================================================
     // TextEncoderStream fields

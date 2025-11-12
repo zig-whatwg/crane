@@ -137,6 +137,7 @@ pub const EventBase = struct {
 
 /// Event WebIDL interface
 const Allocator = std.mem.Allocator;
+const Element = @import("element").Element;
 pub const Event = struct {
     // ========================================================================
     // Event fields

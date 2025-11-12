@@ -4511,52 +4511,66 @@ fn generateEnhancedClassWithRegistry(
         }
     }
 
-    // Add common imports based on field usage
+    // Add common imports based on field and method usage
+    // Collect all type references from fields AND methods
+    var type_references: std.ArrayList([]const u8) = .empty;
+    defer type_references.deinit(allocator);
+
+    // Collect from fields
     for (parsed.fields) |field| {
-        // If any field uses Allocator type, add it
-        if (std.mem.eql(u8, field.name, "allocator")) {
+        try type_references.append(allocator, field.type_name);
+    }
+
+    // Collect from methods (source code contains parameter and return types)
+    for (parsed.methods) |method| {
+        // Method source contains type names - just add it to search
+        try type_references.append(allocator, method.source);
+    }
+
+    // Now analyze all collected type references
+    for (type_references.items) |type_code| {
+        // Check if Allocator is referenced
+        if (std.mem.indexOf(u8, type_code, "Allocator") != null) {
             try imports.addStdType("Allocator");
         }
-        // If any field uses infra.* types, add infra module
-        if (std.mem.indexOf(u8, field.type_name, "infra.")) |_| {
+        // If any type reference uses infra.* types, add infra module
+        if (std.mem.indexOf(u8, type_code, "infra.")) |_| {
             try imports.addModule("infra");
         }
 
         // Note: webidl is NOT added here because it's preserved from source
         // (webidl is used so universally that we let source files keep their import)
 
-        // Extract referenced types from field types (e.g., "*Element", "?*Node")
-        // Strip pointer/optional prefixes to get the actual type name
-        const type_name = blk: {
-            var name = field.type_name;
-            // Strip leading ?, *, [, and ]
-            while (name.len > 0 and (name[0] == '?' or name[0] == '*' or name[0] == '[' or name[0] == ']')) {
-                name = name[1..];
-            }
-            // If it contains a dot, it's a qualified name (module.Type) - skip it
-            if (std.mem.indexOf(u8, name, ".")) |_| break :blk "";
-            break :blk name;
-        };
+        // Extract all referenced type names from type code
+        // Handles simple types (*Node), qualified types (infra.List), and generic types (infra.List(*Node))
+        // Strategy: Search for known type names anywhere in the type string
 
-        // Add imports for common DOM types referenced in fields
-        if (type_name.len > 0) {
-            if (std.mem.eql(u8, type_name, "Element")) {
-                try imports.addPackageType("Element", "element");
-            } else if (std.mem.eql(u8, type_name, "Node")) {
-                try imports.addPackageType("Node", "node");
-            } else if (std.mem.eql(u8, type_name, "Document")) {
-                try imports.addPackageType("Document", "document");
-            } else if (std.mem.eql(u8, type_name, "Event")) {
-                try imports.addPackageType("Event", "event");
-            } else if (std.mem.eql(u8, type_name, "CharacterData")) {
-                try imports.addPackageType("CharacterData", "character_data");
-            } else if (std.mem.eql(u8, type_name, "Text")) {
-                try imports.addPackageType("Text", "text");
-            } else if (std.mem.eql(u8, type_name, "RegisteredObserver")) {
-                try imports.addPackageType("RegisteredObserver", "registered_observer");
-            } else if (std.mem.eql(u8, type_name, "AbortSignal")) {
-                try imports.addPackageType("AbortSignal", "abort_signal");
-            }
+        // Check for common DOM types (these can appear as base types or generic parameters)
+        if (std.mem.indexOf(u8, type_code, "Element") != null and !std.mem.startsWith(u8, parsed.name, "Element")) {
+            // Contains "Element" and this class is not Element itself
+            try imports.addPackageType("Element", "element");
+        }
+        if (std.mem.indexOf(u8, type_code, "Node") != null and !std.mem.eql(u8, parsed.name, "Node")) {
+            // Contains "Node" and this class is not Node itself
+            try imports.addPackageType("Node", "node");
+        }
+        if (std.mem.indexOf(u8, type_code, "Document") != null and !std.mem.eql(u8, parsed.name, "Document")) {
+            try imports.addPackageType("Document", "document");
+        }
+        if (std.mem.indexOf(u8, type_code, "Event") != null and !std.mem.eql(u8, parsed.name, "Event")) {
+            try imports.addPackageType("Event", "event");
+        }
+        if (std.mem.indexOf(u8, type_code, "CharacterData") != null and !std.mem.eql(u8, parsed.name, "CharacterData")) {
+            try imports.addPackageType("CharacterData", "character_data");
+        }
+        if (std.mem.indexOf(u8, type_code, "Text") != null and !std.mem.eql(u8, parsed.name, "Text")) {
+            try imports.addPackageType("Text", "text");
+        }
+        if (std.mem.indexOf(u8, type_code, "RegisteredObserver") != null) {
+            try imports.addPackageType("RegisteredObserver", "registered_observer");
+        }
+        if (std.mem.indexOf(u8, type_code, "AbortSignal") != null and !std.mem.eql(u8, parsed.name, "AbortSignal")) {
+            try imports.addPackageType("AbortSignal", "abort_signal");
         }
     }
 

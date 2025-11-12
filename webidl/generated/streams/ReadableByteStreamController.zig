@@ -48,6 +48,8 @@ const ByteStreamQueueEntry = struct {
     byteLength: u64,
 };
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
+const Element = @import("element").Element;
 pub const ReadableByteStreamController = struct {
     // ========================================================================
     // ReadableByteStreamController fields

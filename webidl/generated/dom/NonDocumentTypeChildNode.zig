@@ -26,6 +26,8 @@ const webidl = @import("../../root.zig");
 /// readonly attribute Element? nextElementSibling;
 /// };
 /// ```
+const Element = @import("element").Element;
+const Node = @import("node").Node;
 pub const NonDocumentTypeChildNode = struct {
     // ========================================================================
     // NonDocumentTypeChildNode methods

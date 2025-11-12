@@ -13,6 +13,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const Node = @import("node").Node;
 pub const NodeList = struct {
     // ========================================================================
     // NodeList fields

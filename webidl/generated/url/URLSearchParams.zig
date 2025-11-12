@@ -12,6 +12,7 @@ const webidl = @import("webidl");
 
 // Import internal implementation
 pub const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
+const Allocator = std.mem.Allocator;
 pub const URLSearchParams = struct {
     // ========================================================================
     // URLSearchParams fields

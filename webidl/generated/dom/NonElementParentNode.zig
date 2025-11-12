@@ -23,6 +23,9 @@ const webidl = @import("../../root.zig");
 /// Element? getElementById(DOMString elementId);
 /// };
 /// ```
+const Allocator = std.mem.Allocator;
+const Element = @import("element").Element;
+const Node = @import("node").Node;
 pub const NonElementParentNode = struct {
     // ========================================================================
     // NonElementParentNode methods

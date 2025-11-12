@@ -44,6 +44,7 @@ pub const Writer = union(enum) {
     default: *WritableStreamDefaultWriter,
 };
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const WritableStream = struct {
     // ========================================================================
     // WritableStream fields

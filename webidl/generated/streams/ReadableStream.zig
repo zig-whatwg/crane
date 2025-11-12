@@ -81,6 +81,7 @@ pub const TeeBranches = struct {
     branch2: *ReadableStream,
 };
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const ReadableStream = struct {
     // ========================================================================
     // ReadableStream fields

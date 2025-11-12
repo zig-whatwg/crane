@@ -127,6 +127,7 @@ const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONN
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;
+const CharacterData = @import("character_data").CharacterData;
 pub const Text = struct {
     base: CharacterDataBase,
 

@@ -40,6 +40,8 @@ const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONN
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 pub const Document = struct {
     base: NodeBase,
 

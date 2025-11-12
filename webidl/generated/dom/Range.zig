@@ -24,6 +24,10 @@ pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 /// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 const AbstractRangeBase = @import("abstract_range").AbstractRangeBase;
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
+const Document = @import("document").Document;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 pub const Range = struct {
     base: AbstractRangeBase,
 

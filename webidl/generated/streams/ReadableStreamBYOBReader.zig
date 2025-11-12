@@ -28,6 +28,8 @@ const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 pub const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 pub const DictionaryParsing = @import("dict_parsing");
 const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
+const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const ReadableStreamBYOBReader = struct {
     // ========================================================================
     // Fields from ReadableStreamGenericReader mixin

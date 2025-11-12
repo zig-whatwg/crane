@@ -39,6 +39,10 @@ pub const NodeList = @import("node_list").NodeList;
 /// [NewObject] NodeList querySelectorAll(DOMString selectors);
 /// };
 /// ```
+const Element = @import("element").Element;
+const Node = @import("node").Node;
+const Document = @import("document").Document;
+const Allocator = std.mem.Allocator;
 pub const ParentNode = struct {
     // ========================================================================
     // ParentNode methods

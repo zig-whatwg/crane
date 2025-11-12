@@ -25,6 +25,8 @@ pub const dom_types = @import("dom_types");
 /// [CEReactions, Unscopable] undefined remove();
 /// };
 /// ```
+const Node = @import("node").Node;
+const Document = @import("document").Document;
 pub const ChildNode = struct {
     // ========================================================================
     // ChildNode methods

@@ -45,6 +45,7 @@ pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader"
 /// };
 /// ```
 const Allocator = std.mem.Allocator;
+const Event = @import("event").Event;
 pub const ReadableStreamDefaultController = struct {
     // ========================================================================
     // ReadableStreamDefaultController fields
