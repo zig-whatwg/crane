@@ -159,6 +159,9 @@ pub const NodeSet = struct {
 
     /// Sort nodes in document order
     pub fn sortDocumentOrder(self: *NodeSet) !void {
+        // Only sort if we have multiple nodes
+        if (self.size() <= 1) return;
+
         // Use std.sort with a custom comparison function
         const Context = struct {
             fn lessThan(_: void, a: *Node, b: *Node) bool {
@@ -503,9 +506,39 @@ test "node-set - basic operations" {
 test "node-set - union" {
     const allocator = std.testing.allocator;
 
-    var node1: Node = undefined;
-    var node2: Node = undefined;
-    var node3: Node = undefined;
+    // Create properly initialized nodes with null parent (root nodes)
+    var node1 = Node{
+        .allocator = allocator,
+        .node_type = Node.ELEMENT_NODE,
+        .node_name = "div",
+        .parent_node = null,
+        .child_nodes = infra.List(*Node).init(allocator),
+        .owner_document = null,
+        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+    };
+    defer node1.child_nodes.deinit();
+
+    var node2 = Node{
+        .allocator = allocator,
+        .node_type = Node.ELEMENT_NODE,
+        .node_name = "span",
+        .parent_node = null,
+        .child_nodes = infra.List(*Node).init(allocator),
+        .owner_document = null,
+        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+    };
+    defer node2.child_nodes.deinit();
+
+    var node3 = Node{
+        .allocator = allocator,
+        .node_type = Node.ELEMENT_NODE,
+        .node_name = "p",
+        .parent_node = null,
+        .child_nodes = infra.List(*Node).init(allocator),
+        .owner_document = null,
+        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+    };
+    defer node3.child_nodes.deinit();
 
     var ns1 = NodeSet.init(allocator);
     defer ns1.deinit();
