@@ -16,12 +16,117 @@ const testing = std.testing;
 // ============================================================================
 
 test "ParentNode - children attribute returns HTMLCollection" {
-    // TODO: Implement test
+    const allocator = testing.allocator;
+    const Document = @import("document").Document;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
     // 1. Create parent element
+    const parent = try doc.call_createElement("div");
+    defer {
+        parent.deinit();
+        allocator.destroy(parent);
+    }
+
     // 2. Append multiple child elements and non-elements
+    const elem1 = try doc.call_createElement("span");
+    defer {
+        elem1.deinit();
+        allocator.destroy(elem1);
+    }
+
+    const text = try doc.call_createTextNode("text content");
+    defer {
+        text.deinit();
+        allocator.destroy(text);
+    }
+
+    const elem2 = try doc.call_createElement("p");
+    defer {
+        elem2.deinit();
+        allocator.destroy(elem2);
+    }
+
+    const comment = try doc.call_createComment("comment");
+    defer {
+        comment.deinit();
+        allocator.destroy(comment);
+    }
+
+    const elem3 = try doc.call_createElement("div");
+    defer {
+        elem3.deinit();
+        allocator.destroy(elem3);
+    }
+
+    const parent_node: *Node = @ptrCast(parent);
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(elem1)));
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(text)));
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(elem2)));
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(comment)));
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(elem3)));
+
     // 3. Call parent.children
+    const children = try parent.get_children();
+    defer {
+        children.deinit();
+        allocator.destroy(children);
+    }
+
     // 4. Verify HTMLCollection contains only element children
-    // 5. Verify non-elements (text, comment) not included
+    try testing.expectEqual(@as(u32, 3), children.get_length());
+
+    // 5. Verify elements are in correct order (elem1, elem2, elem3)
+    try testing.expectEqual(elem1, children.call_item(0).?);
+    try testing.expectEqual(elem2, children.call_item(1).?);
+    try testing.expectEqual(elem3, children.call_item(2).?);
+
+    // 6. Verify non-elements (text, comment) not included
+    // Already verified by length == 3 (not 5)
+}
+
+test "ParentNode - children returns empty HTMLCollection when no elements" {
+    const allocator = testing.allocator;
+    const Document = @import("document").Document;
+    const Node = @import("node").Node;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    const parent = try doc.call_createElement("div");
+    defer {
+        parent.deinit();
+        allocator.destroy(parent);
+    }
+
+    // Add only non-element children
+    const text = try doc.call_createTextNode("text");
+    defer {
+        text.deinit();
+        allocator.destroy(text);
+    }
+
+    const comment = try doc.call_createComment("comment");
+    defer {
+        comment.deinit();
+        allocator.destroy(comment);
+    }
+
+    const parent_node: *Node = @ptrCast(parent);
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(text)));
+    _ = try parent_node.call_appendChild(@as(*Node, @ptrCast(comment)));
+
+    // Get children
+    const children = try parent.get_children();
+    defer {
+        children.deinit();
+        allocator.destroy(children);
+    }
+
+    // Should be empty (no element children)
+    try testing.expectEqual(@as(u32, 0), children.get_length());
 }
 
 test "ParentNode - firstElementChild with element children" {
