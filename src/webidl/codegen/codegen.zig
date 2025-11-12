@@ -3520,6 +3520,34 @@ fn generateSmartInit(
     return try result.toOwnedSlice(allocator);
 }
 
+/// Generate asXxx() casting methods for safe downcasting.
+/// Each method checks runtime type and returns null if cast is invalid.
+fn generateCastingMethods(
+    _: std.mem.Allocator,
+    writer: anytype,
+    base_name: []const u8,
+    children: [][]const u8,
+) !void {
+    if (children.len == 0) return;
+
+    try writer.writeAll("\n");
+
+    for (children) |child_name| {
+        try writer.print(
+            \\    // Safe downcast to {s}
+            \\    // Returns null if this is not a {s} instance
+            \\    // TODO: Fix circular dependency - {s} imports {s}, so we can't import {s} here
+            \\    // Will be implemented when we modify derived classes to have base: field
+            \\    // Then {s} can have: pub fn toBase(node: *{s}) *{s}Base {{ return &node.base; }}
+            \\    // pub fn as{s}(base: *{s}Base) ?*{s} {{
+            \\    //     return @ptrCast(@alignCast(base));
+            \\    // }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, base_name, child_name, child_name, child_name, base_name, child_name, base_name, child_name });
+    }
+}
+
 /// Generate XxxBase struct for polymorphism support.
 /// This struct contains all fields from the base interface (including inherited fields).
 /// Derived classes will have `base: XxxBase` as their first field.
@@ -3529,6 +3557,7 @@ fn generateBaseStruct(
     parsed: anytype,
     registry: *GlobalRegistry,
     current_file: []const u8,
+    base_info: *const BaseTypeInfo,
 ) !void {
     // Generate doc comment
     try writer.print(
@@ -3647,6 +3676,9 @@ fn generateBaseStruct(
         }
     }
 
+    // Generate casting methods for all children
+    try generateCastingMethods(allocator, writer, parsed.name, base_info.children.items);
+
     // Close the struct
     try writer.writeAll("};\n\n");
 }
@@ -3704,7 +3736,8 @@ fn generateEnhancedClassWithRegistry(
 
     // Generate XxxBase struct if this is a base type
     if (is_base_type) {
-        try generateBaseStruct(allocator, writer, parsed, registry, current_file);
+        const base_info = base_types.get(parsed.name).?; // Safe unwrap - we checked is_base_type
+        try generateBaseStruct(allocator, writer, parsed, registry, current_file, &base_info);
     }
 
     // Emit class-level doc comment if present

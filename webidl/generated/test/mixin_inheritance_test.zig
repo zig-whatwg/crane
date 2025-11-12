@@ -35,6 +35,16 @@ pub const TestMixin = struct {
 /// This enables safe downcasting via @ptrCast.
 pub const ParentBase = struct {
     parent_field: u32 = 100,
+
+    // Safe downcast to Child
+    // Returns null if this is not a Child instance
+    // TODO: Fix circular dependency - Child imports Parent, so we can't import Child here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Child can have: pub fn toBase(node: *Child) *ParentBase { return &node.base; }
+    // pub fn asChild(base: *ParentBase) ?*Child {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
 };
 
 const TestMixin = @import("test_mixin").TestMixin;
@@ -156,6 +166,25 @@ pub const MixinB = struct {
 /// This enables safe downcasting via @ptrCast.
 pub const ParentMultiBase = struct {
     parent_multi_field: u32 = 300,
+
+    // Safe downcast to ChildMulti
+    // Returns null if this is not a ChildMulti instance
+    // TODO: Fix circular dependency - ChildMulti imports ParentMulti, so we can't import ChildMulti here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then ChildMulti can have: pub fn toBase(node: *ChildMulti) *ParentMultiBase { return &node.base; }
+    // pub fn asChildMulti(base: *ParentMultiBase) ?*ChildMulti {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to GrandChild
+    // Returns null if this is not a GrandChild instance
+    // TODO: Fix circular dependency - GrandChild imports ParentMulti, so we can't import GrandChild here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then GrandChild can have: pub fn toBase(node: *GrandChild) *ParentMultiBase { return &node.base; }
+    // pub fn asGrandChild(base: *ParentMultiBase) ?*GrandChild {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
 };
 
 const MixinA = @import("mixin_a").MixinA;

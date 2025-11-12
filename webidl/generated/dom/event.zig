@@ -51,6 +51,16 @@ pub const EventBase = struct {
     path: std.ArrayList(EventPathItem),
     related_target: ?*EventTarget,
     touch_target_list: std.ArrayList(*EventTarget),
+
+    // Safe downcast to CustomEvent
+    // Returns null if this is not a CustomEvent instance
+    // TODO: Fix circular dependency - CustomEvent imports Event, so we can't import CustomEvent here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then CustomEvent can have: pub fn toBase(node: *CustomEvent) *EventBase { return &node.base; }
+    // pub fn asCustomEvent(base: *EventBase) ?*CustomEvent {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
 };
 
 /// Event WebIDL interface

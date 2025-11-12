@@ -67,6 +67,25 @@ pub const EventTargetBase = struct {
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
+
+    // Safe downcast to Node
+    // Returns null if this is not a Node instance
+    // TODO: Fix circular dependency - Node imports EventTarget, so we can't import Node here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then Node can have: pub fn toBase(node: *Node) *EventTargetBase { return &node.base; }
+    // pub fn asNode(base: *EventTargetBase) ?*Node {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
+    // Safe downcast to AbortSignal
+    // Returns null if this is not a AbortSignal instance
+    // TODO: Fix circular dependency - AbortSignal imports EventTarget, so we can't import AbortSignal here
+    // Will be implemented when we modify derived classes to have base: field
+    // Then AbortSignal can have: pub fn toBase(node: *AbortSignal) *EventTargetBase { return &node.base; }
+    // pub fn asAbortSignal(base: *EventTargetBase) ?*AbortSignal {
+    //     return @ptrCast(@alignCast(base));
+    // }
+
 };
 
 /// EventTarget WebIDL interface
