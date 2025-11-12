@@ -16,10 +16,23 @@ pub const dom_types = @import("dom_types");
 const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+/// Runtime type tag for CharacterData hierarchy.
+/// Used for safe downcasting from CharacterDataBase to derived types.
+pub const CharacterDataTypeTag = enum {
+    CharacterData,
+    CDATASection,
+    Comment,
+    Text,
+    ProcessingInstruction,
+};
+
 /// Base struct for CharacterData hierarchy polymorphism.
 /// All CharacterData-derived types have `base: CharacterDataBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const CharacterDataBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: CharacterDataTypeTag,
+
     allocator: Allocator,
     /// The mutable string data associated with this node
     data: []u8,
@@ -71,7 +84,7 @@ pub const CharacterData = struct {
     pub fn init(allocator: Allocator) !CharacterData {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .CharacterData },
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
             // TODO: Initialize Node parent fields (will be added by codegen)

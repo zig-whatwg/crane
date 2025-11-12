@@ -28,10 +28,20 @@ pub const EventPathItem = struct {
     root_of_closed_tree: bool,
     slot_in_closed_tree: bool,
 };
+/// Runtime type tag for Event hierarchy.
+/// Used for safe downcasting from EventBase to derived types.
+pub const EventTypeTag = enum {
+    Event,
+    CustomEvent,
+};
+
 /// Base struct for Event hierarchy polymorphism.
 /// All Event-derived types have `base: EventBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const EventBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: EventTypeTag,
+
     allocator: Allocator,
     event_type: []const u8,
     target: ?*EventTarget,

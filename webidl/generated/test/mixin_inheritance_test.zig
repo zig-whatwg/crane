@@ -30,10 +30,20 @@ pub const TestMixin = struct {
 
 
 // Parent interface that includes the mixin
+/// Runtime type tag for Parent hierarchy.
+/// Used for safe downcasting from ParentBase to derived types.
+pub const ParentTypeTag = enum {
+    Parent,
+    Child,
+};
+
 /// Base struct for Parent hierarchy polymorphism.
 /// All Parent-derived types have `base: ParentBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const ParentBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: ParentTypeTag,
+
     parent_field: u32 = 100,
 
     // ========================================================================
@@ -174,10 +184,21 @@ pub const MixinB = struct {
     };
 };
 
+/// Runtime type tag for ParentMulti hierarchy.
+/// Used for safe downcasting from ParentMultiBase to derived types.
+pub const ParentMultiTypeTag = enum {
+    ParentMulti,
+    ChildMulti,
+    GrandChild,
+};
+
 /// Base struct for ParentMulti hierarchy polymorphism.
 /// All ParentMulti-derived types have `base: ParentMultiBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const ParentMultiBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: ParentMultiTypeTag,
+
     parent_multi_field: u32 = 300,
 
     // ========================================================================
@@ -247,10 +268,20 @@ pub const ParentMulti = struct {
 
 
 // Expected: ChildMulti gets field_a, field_b, parent_multi_field
+/// Runtime type tag for ChildMulti hierarchy.
+/// Used for safe downcasting from ChildMultiBase to derived types.
+pub const ChildMultiTypeTag = enum {
+    ChildMulti,
+    GrandChild,
+};
+
 /// Base struct for ChildMulti hierarchy polymorphism.
 /// All ChildMulti-derived types have `base: ChildMultiBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const ChildMultiBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: ChildMultiTypeTag,
+
     parent_multi_field: u32 = 300,
     field_b: u32 = 20,
     field_a: u32 = 10,

@@ -107,7 +107,7 @@ pub const ShadowRoot = struct {
         serializable: bool,
     ) !ShadowRoot {
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .ShadowRoot },
             .allocator = allocator,
             .host_element = host,
             .shadow_mode = mode,

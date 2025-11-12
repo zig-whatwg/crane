@@ -55,10 +55,25 @@ pub const AddEventListenerOptions = struct {
     once: bool = false,
     signal: ?*AbortSignal = null,
 };
+/// Runtime type tag for EventTarget hierarchy.
+/// Used for safe downcasting from EventTargetBase to derived types.
+pub const EventTargetTypeTag = enum {
+    EventTarget,
+    Element,
+    DocumentType,
+    Node,
+    Document,
+    AbortSignal,
+    Attr,
+};
+
 /// Base struct for EventTarget hierarchy polymorphism.
 /// All EventTarget-derived types have `base: EventTargetBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const EventTargetBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: EventTargetTypeTag,
+
     allocator: Allocator,
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.

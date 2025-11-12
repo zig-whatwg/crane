@@ -3594,8 +3594,8 @@ fn generateCastingMethods(
 }
 
 /// Inject base field initialization into init() method return statement.
-/// Finds `return .{` and adds `.base = undefined,` after it.
-fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8) ![]const u8 {
+/// Finds `return .{` and adds `.base = .{ .type_tag = .ClassName }` after it.
+fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, class_name: []const u8) ![]const u8 {
     // Find "return .{" in the method source
     const return_start = std.mem.indexOf(u8, method_source, "return .{") orelse {
         // No return .{ found - return unchanged
@@ -3604,12 +3604,16 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8) 
 
     const after_brace = return_start + "return .{".len;
 
-    // Build modified source: before + "return .{" + "\n            .base = undefined," + after
+    // Build base initialization with type tag
+    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = .{{ .type_tag = .{s} }},", .{class_name});
+    defer allocator.free(base_init);
+
+    // Build modified source: before + "return .{" + base_init + after
     var result: std.ArrayList(u8) = .empty;
     defer result.deinit(allocator);
 
     try result.appendSlice(allocator, method_source[0..after_brace]);
-    try result.appendSlice(allocator, "\n            .base = undefined,");
+    try result.appendSlice(allocator, base_init);
     try result.appendSlice(allocator, method_source[after_brace..]);
 
     return result.toOwnedSlice(allocator);
@@ -3750,6 +3754,22 @@ fn generateBaseStruct(
         }
     }
 
+    // Generate TypeTag enum for runtime type checking
+    try writer.print(
+        \\/// Runtime type tag for {s} hierarchy.
+        \\/// Used for safe downcasting from {s}Base to derived types.
+        \\pub const {s}TypeTag = enum {{
+        \\
+    , .{ parsed.name, parsed.name, parsed.name });
+
+    // Add enum values for base type and all children
+    try writer.print("    {s},\n", .{parsed.name});
+    for (base_info.children.items) |child_name| {
+        try writer.print("    {s},\n", .{child_name});
+    }
+
+    try writer.writeAll("};\n\n");
+
     // Generate doc comment
     try writer.print(
         \\/// Base struct for {s} hierarchy polymorphism.
@@ -3758,6 +3778,10 @@ fn generateBaseStruct(
         \\pub const {s}Base = struct {{
         \\
     , .{ parsed.name, parsed.name, parsed.name, parsed.name });
+
+    // Add runtime type tag as first field
+    try writer.print("    /// Runtime type tag for safe downcasting.\n", .{});
+    try writer.print("    type_tag: {s}TypeTag,\n\n", .{parsed.name});
 
     // Check if class already has allocator field
     const has_allocator_field = blk: {
@@ -4362,7 +4386,7 @@ fn generateEnhancedClassWithRegistry(
 
             // If this is init() and class has a base field, inject base initialization
             const final_source = if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null)
-                try injectBaseFieldInit(allocator, renamed_source)
+                try injectBaseFieldInit(allocator, renamed_source, parsed.name)
             else
                 renamed_source;
             defer if (std.mem.eql(u8, method.name, "init") and parent_base_type_name != null) allocator.free(final_source);

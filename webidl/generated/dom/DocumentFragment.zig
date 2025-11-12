@@ -18,10 +18,20 @@ pub const dom_types = @import("dom_types");
 const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+/// Runtime type tag for DocumentFragment hierarchy.
+/// Used for safe downcasting from DocumentFragmentBase to derived types.
+pub const DocumentFragmentTypeTag = enum {
+    DocumentFragment,
+    ShadowRoot,
+};
+
 /// Base struct for DocumentFragment hierarchy polymorphism.
 /// All DocumentFragment-derived types have `base: DocumentFragmentBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const DocumentFragmentBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: DocumentFragmentTypeTag,
+
     allocator: std.mem.Allocator,
 
     // ========================================================================
@@ -66,7 +76,7 @@ pub const DocumentFragment = struct {
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .DocumentFragment },
             .allocator = allocator,
             // TODO: Initialize Node parent fields (will be added by codegen)
         };

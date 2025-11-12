@@ -17,10 +17,20 @@ pub const dom_types = @import("dom_types");
 const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+/// Runtime type tag for Text hierarchy.
+/// Used for safe downcasting from TextBase to derived types.
+pub const TextTypeTag = enum {
+    Text,
+    CDATASection,
+};
+
 /// Base struct for Text hierarchy polymorphism.
 /// All Text-derived types have `base: TextBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const TextBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: TextTypeTag,
+
     data: []u8,
     allocator: Allocator,
 
@@ -84,7 +94,7 @@ pub const Text = struct {
 
     pub fn init(allocator: Allocator) !Text {
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .Text },
             .allocator = allocator,
             // TODO: Initialize CharacterData parent fields (will be added by codegen)
         };

@@ -35,7 +35,7 @@ pub const CDATASection = struct {
 
     pub fn init(allocator: std.mem.Allocator, data: []const u8) !CDATASection {
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .CDATASection },
             .allocator = allocator,
             .data = try allocator.dupe(u8, data),
             // TODO: Initialize Text/CharacterData/Node parent fields (will be added by codegen)

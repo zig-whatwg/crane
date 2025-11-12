@@ -16,10 +16,30 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 pub const EventTarget = @import("event_target").EventTarget;
+/// Runtime type tag for Node hierarchy.
+/// Used for safe downcasting from NodeBase to derived types.
+pub const NodeTypeTag = enum {
+    Node,
+    CDATASection,
+    ShadowRoot,
+    Element,
+    DocumentType,
+    CharacterData,
+    Comment,
+    Document,
+    DocumentFragment,
+    Text,
+    Attr,
+    ProcessingInstruction,
+};
+
 /// Base struct for Node hierarchy polymorphism.
 /// All Node-derived types have `base: NodeBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const NodeBase = struct {
+    /// Runtime type tag for safe downcasting.
+    type_tag: NodeTypeTag,
+
     event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
     allocator: Allocator,
 
@@ -111,7 +131,7 @@ pub const Node = struct {
         // NOTE: Parent EventTarget fields will be flattened by codegen
         // Don't manually initialize parent fields here
         return .{
-            .base = undefined,
+            .base = .{ .type_tag = .Node },
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,
