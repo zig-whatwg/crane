@@ -19,6 +19,11 @@ pub const EventTarget = @import("event_target").EventTarget;
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
 /// DOM Spec: interface AbortSignal : EventTarget
 const EventTargetBase = @import("event_target").EventTargetBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
 pub const AbortSignal = struct {
     base: EventTargetBase,
 

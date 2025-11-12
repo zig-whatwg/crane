@@ -19,6 +19,19 @@ pub const Element = @import("element").Element;
 /// Attr nodes represent attributes.
 /// Attributes have a namespace, namespace prefix, local name, value, and element.
 const NodeBase = @import("node").NodeBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 pub const Attr = struct {
     base: NodeBase,
 

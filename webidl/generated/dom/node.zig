@@ -16,24 +16,21 @@ const infra = @import("infra");
 
 const Allocator = std.mem.Allocator;
 pub const EventTarget = @import("event_target").EventTarget;
-const EventListener = @import("event_target").EventListener;
-const Document = @import("document").Document;
-const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 /// Base struct for Node hierarchy polymorphism.
 /// All Node-derived types have `base: NodeBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const NodeBase = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
+    event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
     allocator: Allocator,
 
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
     child_nodes: infra.List(*Node),
-    owner_document: ?*Document,
+    owner_document: ?*@import("document").Document,
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
-    registered_observers: std.ArrayList(RegisteredObserver),
+    registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
 
     // Safe downcast to CDATASection
     // Returns null if this is not a CDATASection instance
@@ -139,6 +136,11 @@ pub const NodeBase = struct {
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
 const EventTargetBase = @import("event_target").EventTargetBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
 pub const Node = struct {
     base: EventTargetBase,
 

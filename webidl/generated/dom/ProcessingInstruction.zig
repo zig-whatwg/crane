@@ -20,6 +20,19 @@ pub const Element = @import("element").Element;
 /// ProcessingInstruction nodes represent processing instructions.
 /// They extend CharacterData and have an associated target.
 const CharacterDataBase = @import("character_data").CharacterDataBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 pub const ProcessingInstruction = struct {
     allocator: std.mem.Allocator,
 

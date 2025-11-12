@@ -3593,6 +3593,64 @@ fn generateCastingMethods(
 }
 
 /// Generate XxxBase struct for polymorphism support.
+/// Helper to qualify type names to avoid conflicts with nested declarations.
+/// Replaces simple type names with fully qualified imports for known conflicting types.
+fn qualifyTypeForBaseStruct(allocator: std.mem.Allocator, type_name: []const u8) ![]const u8 {
+    // Map of type names to their module paths
+    const type_map = std.StaticStringMap([]const u8).initComptime(.{
+        .{ "Document", "@import(\"document\").Document" },
+        .{ "RegisteredObserver", "@import(\"registered_observer\").RegisteredObserver" },
+        .{ "EventListener", "@import(\"event_target\").EventListener" },
+        .{ "Event", "@import(\"event\").Event" },
+    });
+
+    // Check if this is a simple type name that needs qualification
+    if (type_map.get(type_name)) |qualified| {
+        return try allocator.dupe(u8, qualified);
+    }
+
+    // Check for pointer types like "?*Document" or "*Document"
+    var is_optional = false;
+    var is_pointer = false;
+    var base_type_start: usize = 0;
+
+    if (std.mem.startsWith(u8, type_name, "?*")) {
+        is_optional = true;
+        is_pointer = true;
+        base_type_start = 2;
+    } else if (std.mem.startsWith(u8, type_name, "*")) {
+        is_pointer = true;
+        base_type_start = 1;
+    }
+
+    if (is_pointer) {
+        const base_type = type_name[base_type_start..];
+        if (type_map.get(base_type)) |qualified| {
+            if (is_optional) {
+                return try std.fmt.allocPrint(allocator, "?*{s}", .{qualified});
+            } else {
+                return try std.fmt.allocPrint(allocator, "*{s}", .{qualified});
+            }
+        }
+    }
+
+    // Check for generic types like "std.ArrayList(RegisteredObserver)"
+    if (std.mem.indexOf(u8, type_name, "ArrayList(")) |start| {
+        const inner_start = start + "ArrayList(".len;
+        if (std.mem.indexOfScalar(u8, type_name[inner_start..], ')')) |inner_len| {
+            const inner_type = type_name[inner_start..][0..inner_len];
+            if (type_map.get(inner_type)) |qualified| {
+                const prefix = type_name[0..inner_start];
+                const suffix = type_name[inner_start + inner_len ..];
+                return try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ prefix, qualified, suffix });
+            }
+        }
+    }
+
+    // No qualification needed, return as-is
+    return try allocator.dupe(u8, type_name);
+}
+
 /// This struct contains all fields from the base interface (including inherited fields).
 /// Derived classes will have `base: XxxBase` as their first field.
 fn generateBaseStruct(
@@ -3606,35 +3664,9 @@ fn generateBaseStruct(
     // Debug: print what we're generating
     std.debug.print("Generating {s}Base (parent: {s})\n", .{ parsed.name, if (parsed.parent_name) |p| p else "none" });
 
-    // Import types from parent if needed and types needed by this base struct
-    // Use _ prefix to avoid conflicts with nested declarations in main struct
-    if (parsed.parent_name) |parent_ref| {
-        // Extract parent class name (handle "base.Type" format)
-        const parent_class_name = if (std.mem.indexOfScalar(u8, parent_ref, '.')) |dot_pos|
-            parent_ref[dot_pos + 1 ..]
-        else
-            parent_ref;
-
-        // Import common types from parent module that base structs typically need
-        const parent_module = try pascalToSnakeCase(allocator, parent_class_name);
-        defer allocator.free(parent_module);
-
-        // Import EventListener if parent is EventTarget (most base structs need this)
-        if (std.mem.eql(u8, parent_class_name, "EventTarget")) {
-            try writer.print("const _Base_EventListener = @import(\"{s}\").EventListener;\n", .{parent_module});
-        }
-    }
-
-    // Import types that this specific base struct needs (based on its own fields)
-    if (std.mem.eql(u8, parsed.name, "Node")) {
-        try writer.print("const _Base_Document = @import(\"document\").Document;\n", .{});
-        try writer.print("const _Base_RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
-    }
-
-    if (std.mem.eql(u8, parsed.name, "CharacterData")) {
-        try writer.print("const _Base_Document = @import(\"document\").Document;\n", .{});
-        try writer.print("const _Base_RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
-    }
+    // Note: We don't add file-level imports for base struct types anymore.
+    // Instead, we use fully qualified type paths in the base struct fields
+    // to avoid conflicts with nested type declarations in the main struct.
 
     // Generate doc comment
     try writer.print(
@@ -3756,19 +3788,25 @@ fn generateBaseStruct(
         std.mem.reverse(FieldDef, all_parent_fields.items);
         std.mem.reverse(PropertyDef, all_parent_properties.items);
 
-        // Write parent fields
+        // Write parent fields (with qualified type names to avoid conflicts)
         for (all_parent_fields.items) |field| {
+            const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name);
+            defer allocator.free(qualified_type);
+
             if (field.default_value) |default| {
-                try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+                try writer.print("    {s}: {s} = {s},\n", .{ field.name, qualified_type, default });
             } else {
-                try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+                try writer.print("    {s}: {s},\n", .{ field.name, qualified_type });
             }
         }
         for (all_parent_properties.items) |prop| {
+            const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name);
+            defer allocator.free(qualified_type);
+
             if (prop.default_value) |default| {
-                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+                try writer.print("    {s}: {s} = {s},\n", .{ prop.name, qualified_type, default });
             } else {
-                try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+                try writer.print("    {s}: {s},\n", .{ prop.name, qualified_type });
             }
         }
 
@@ -3783,7 +3821,7 @@ fn generateBaseStruct(
         try writer.writeAll("    allocator: std.mem.Allocator,\n\n");
     }
 
-    // Write own properties
+    // Write own properties (with qualified type names to avoid conflicts)
     for (parsed.properties) |prop| {
         if (prop.doc_comment) |doc| {
             var doc_lines = std.mem.splitScalar(u8, doc, '\n');
@@ -3791,14 +3829,18 @@ fn generateBaseStruct(
                 try writer.print("    /// {s}\n", .{line});
             }
         }
+
+        const qualified_type = try qualifyTypeForBaseStruct(allocator, prop.type_name);
+        defer allocator.free(qualified_type);
+
         if (prop.default_value) |default| {
-            try writer.print("    {s}: {s} = {s},\n", .{ prop.name, prop.type_name, default });
+            try writer.print("    {s}: {s} = {s},\n", .{ prop.name, qualified_type, default });
         } else {
-            try writer.print("    {s}: {s},\n", .{ prop.name, prop.type_name });
+            try writer.print("    {s}: {s},\n", .{ prop.name, qualified_type });
         }
     }
 
-    // Write own fields
+    // Write own fields (with qualified type names to avoid conflicts)
     for (parsed.fields) |field| {
         // Skip allocator if parent already has it
         if (has_parent_allocator and std.mem.eql(u8, field.name, "allocator")) {
@@ -3812,10 +3854,14 @@ fn generateBaseStruct(
                 try writer.print("    /// {s}\n", .{line});
             }
         }
+
+        const qualified_type = try qualifyTypeForBaseStruct(allocator, field.type_name);
+        defer allocator.free(qualified_type);
+
         if (field.default_value) |default| {
-            try writer.print("    {s}: {s} = {s},\n", .{ field.name, field.type_name, default });
+            try writer.print("    {s}: {s} = {s},\n", .{ field.name, qualified_type, default });
         } else {
-            try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
+            try writer.print("    {s}: {s},\n", .{ field.name, qualified_type });
         }
     }
 
@@ -3893,6 +3939,8 @@ fn generateEnhancedClassWithRegistry(
 
     // Emit base type import (if parent is a base type)
     var parent_base_type_name: ?[]const u8 = null;
+    var inherits_from_event_target = false;
+
     if (parsed.parent_name) |parent_ref| {
         // Extract parent class name (handle "base.Type" format)
         const parent_class_name = if (std.mem.indexOfScalar(u8, parent_ref, '.')) |dot_pos|
@@ -3908,6 +3956,93 @@ fn generateEnhancedClassWithRegistry(
             defer allocator.free(base_module);
             try writer.print("const {s}Base = @import(\"{s}\").{s}Base;\n", .{ parent_class_name, base_module, parent_class_name });
         }
+
+        // Check if this class inherits from EventTarget (directly or indirectly)
+        // Walk up the parent chain to check
+        var check_parent: ?[]const u8 = parent_ref;
+        var check_file = current_file;
+        while (check_parent) |p| {
+            const p_name = if (std.mem.indexOfScalar(u8, p, '.')) |dot_pos|
+                p[dot_pos + 1 ..]
+            else
+                p;
+
+            if (std.mem.eql(u8, p_name, "EventTarget")) {
+                inherits_from_event_target = true;
+                break;
+            }
+
+            // Try to resolve parent to check its parent
+            if (try registry.resolveParentReference(p, check_file)) |parent_info| {
+                check_parent = parent_info.parent_name;
+                check_file = parent_info.file_path;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // If this class inherits from EventTarget, import types needed by inherited methods
+    if (inherits_from_event_target) {
+        try writer.print("const EventListener = @import(\"event_target\").EventListener;\n", .{});
+        try writer.print("const Event = @import(\"event\").Event;\n", .{});
+        // Import helper functions from EventTarget
+        try writer.print("const flattenOptions = @import(\"event_target\").flattenOptions;\n", .{});
+        try writer.print("const flattenMoreOptions = @import(\"event_target\").flattenMoreOptions;\n", .{});
+        try writer.print("const defaultPassiveValue = @import(\"event_target\").defaultPassiveValue;\n", .{});
+    }
+
+    // Check if this class inherits from Node (directly or indirectly)
+    var inherits_from_node = false;
+    if (parsed.parent_name) |parent_ref| {
+        var check_parent: ?[]const u8 = parent_ref;
+        var check_file = current_file;
+        while (check_parent) |p| {
+            const p_name = if (std.mem.indexOfScalar(u8, p, '.')) |dot_pos|
+                p[dot_pos + 1 ..]
+            else
+                p;
+
+            if (std.mem.eql(u8, p_name, "Node")) {
+                inherits_from_node = true;
+                break;
+            }
+
+            if (try registry.resolveParentReference(p, check_file)) |parent_info| {
+                check_parent = parent_info.parent_name;
+                check_file = parent_info.file_path;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // If this class inherits from Node, import types needed by Node methods
+    if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node")) {
+        // Check which types are NOT already declared in the source
+        // to avoid duplicate declarations
+        const has_document = blk: {
+            for (parsed.constants) |constant| {
+                if (std.mem.indexOf(u8, constant, "Document") != null) break :blk true;
+            }
+            break :blk false;
+        };
+        const has_element = blk: {
+            for (parsed.constants) |constant| {
+                if (std.mem.indexOf(u8, constant, "Element") != null) break :blk true;
+            }
+            break :blk false;
+        };
+
+        if (!has_document) try writer.print("const Document = @import(\"document\").Document;\n", .{});
+        try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
+        try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
+        if (!has_element) try writer.print("const Element = @import(\"element\").Element;\n", .{});
+        try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
+        try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
+        try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});
+        // Node methods also use infra.List
+        try writer.print("const infra = @import(\"infra\");\n", .{});
     }
 
     // Emit mixin imports (if any)

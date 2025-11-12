@@ -21,9 +21,9 @@ const Allocator = std.mem.Allocator;
 /// All Text-derived types have `base: TextBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const TextBase = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
+    event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
+    registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
+    owner_document: ?*@import("document").Document,
     child_nodes: infra.List(*Node),
     parent_node: ?*Node,
     node_name: []const u8,
@@ -49,6 +49,18 @@ pub const TextBase = struct {
 /// CharacterData includes: ChildNode, NonDocumentTypeChildNode
 /// Text also includes: Slottable
 const CharacterDataBase = @import("character_data").CharacterDataBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;

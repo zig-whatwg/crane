@@ -18,6 +18,19 @@ pub const Text = @import("text").Text;
 /// CDATASection extends Text but adds no additional members.
 /// It's used to represent CDATA sections in XML documents.
 const TextBase = @import("text").TextBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 pub const CDATASection = struct {
     base: TextBase,
 

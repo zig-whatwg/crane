@@ -17,15 +17,13 @@ pub const dom_types = @import("dom_types");
 pub const Element = @import("element").Element;
 
 const Allocator = std.mem.Allocator;
-const Document = @import("document").Document;
-const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 /// Base struct for CharacterData hierarchy polymorphism.
 /// All CharacterData-derived types have `base: CharacterDataBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const CharacterDataBase = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
+    event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
+    registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
+    owner_document: ?*@import("document").Document,
     child_nodes: infra.List(*Node),
     parent_node: ?*Node,
     node_name: []const u8,
@@ -75,6 +73,18 @@ pub const CharacterDataBase = struct {
 
 /// DOM Spec: interface CharacterData : Node
 const NodeBase = @import("node").NodeBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Element = @import("element").Element;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const CharacterData = struct {

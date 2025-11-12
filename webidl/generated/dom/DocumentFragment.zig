@@ -21,9 +21,9 @@ pub const dom_types = @import("dom_types");
 /// All DocumentFragment-derived types have `base: DocumentFragmentBase` as their first field.
 /// This enables safe downcasting via @ptrCast.
 pub const DocumentFragmentBase = struct {
-    event_listener_list: ?*std.ArrayList(EventListener),
-    registered_observers: std.ArrayList(RegisteredObserver),
-    owner_document: ?*Document,
+    event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
+    registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
+    owner_document: ?*@import("document").Document,
     child_nodes: infra.List(*Node),
     parent_node: ?*Node,
     node_name: []const u8,
@@ -44,6 +44,18 @@ pub const DocumentFragmentBase = struct {
 
 /// DOM Spec: interface DocumentFragment : Node
 const NodeBase = @import("node").NodeBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Document = @import("document").Document;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const infra = @import("infra");
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 pub const DocumentFragment = struct {

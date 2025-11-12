@@ -66,7 +66,7 @@ pub const EventTargetBase = struct {
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
-    event_listener_list: ?*std.ArrayList(EventListener),
+    event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
 
     // Safe downcast to CDATASection
     // Returns null if this is not a CDATASection instance
