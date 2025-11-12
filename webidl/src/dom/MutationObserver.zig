@@ -62,7 +62,10 @@ pub const MutationObserver = webidl.interface(struct {
         self.node_list.deinit();
 
         // Clear record queue
-        // TODO: Should we call deinit on each record?
+        // Call deinit on each record for proper cleanup
+        for (self.record_queue.items) |*record| {
+            record.deinit();
+        }
         self.record_queue.deinit();
     }
 
