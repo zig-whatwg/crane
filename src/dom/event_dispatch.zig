@@ -314,14 +314,16 @@ fn invoke(
     // Clone to avoid issues with listeners added/removed during dispatch
     const current_target = event.current_target.?;
     const EventListener = @import("../webidl/generated/dom/EventTarget.zig").EventListener;
+    const EventTargetBase = @import("../webidl/generated/dom/EventTarget.zig").EventTargetBase;
 
     var listeners = std.ArrayList(EventListener).init(event.allocator);
     defer listeners.deinit();
 
     // Get the event_listener_list from EventTarget
-    // EventTarget stores listeners in its own structure or base
-    // For now, access via direct field (will need to handle Node, etc. properly)
-    if (current_target.event_listener_list) |list| {
+    // Must cast to EventTargetBase to access the event_listener_list field
+    // (All EventTargets have EventTargetBase as their first field or embedded via inheritance)
+    const target_base = @as(*EventTargetBase, @ptrCast(current_target));
+    if (target_base.event_listener_list) |list| {
         try listeners.appendSlice(list.items);
     }
 
