@@ -546,3 +546,54 @@ pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*
 
     return null;
 }
+
+// ============================================================================
+// Tree Traversal for Slot Algorithms
+// ============================================================================
+
+/// Get all inclusive descendants of a node in tree order (preorder, depth-first)
+/// Returns an ArrayList that the caller must deinit
+///
+/// Tree order is defined in DOM spec as preorder, depth-first traversal:
+/// 1. Visit node
+/// 2. Visit first child and its descendants
+/// 3. Visit next sibling and its descendants
+pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !std.ArrayList(*Node) {
+    var result = std.ArrayList(*Node).init(allocator);
+    errdefer result.deinit();
+
+    // Add root first (inclusive)
+    try result.append(@constCast(root));
+
+    // Recursively add all descendants
+    try collectDescendantsInTreeOrder(&result, root);
+
+    return result;
+}
+
+/// Helper function to recursively collect descendants
+fn collectDescendantsInTreeOrder(result: *std.ArrayList(*Node), node: *const Node) !void {
+    // Visit all children in order
+    // node.child_nodes is a List, not ArrayList, so iterate properly
+    var i: usize = 0;
+    while (i < node.child_nodes.len) : (i += 1) {
+        const child = node.child_nodes.get(i).?;
+        try result.append(child);
+        // Recursively visit child's descendants
+        try collectDescendantsInTreeOrder(result, child);
+    }
+}
+
+/// Get all descendants (not including root) in tree order
+pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !std.ArrayList(*Node) {
+    var result = std.ArrayList(*Node).init(allocator);
+    errdefer result.deinit();
+
+    // Don't add root, just its descendants
+    try collectDescendantsInTreeOrder(&result, root);
+
+    return result;
+}
+
+// Tree traversal functions are tested through integration tests in
+// tests/dom/slot_algorithms_test.zig since they require proper DOM tree setup

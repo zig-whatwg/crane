@@ -11,6 +11,7 @@ const Node = @import("node").Node;
 const Element = @import("element").Element;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
+const tree_helpers = @import("tree_helpers.zig");
 
 /// Check if a Node pointer is an Element
 pub fn isElement(node: *const anyopaque) bool {

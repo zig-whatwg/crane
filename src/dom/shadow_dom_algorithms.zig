@@ -19,6 +19,7 @@ const ShadowRootMode = @import("shadow_root").ShadowRootMode;
 const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
 const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
 const slot_helpers = @import("slot_helpers");
+const tree_helpers = @import("tree_helpers.zig");
 
 /// Valid shadow host names per DOM spec
 const VALID_SHADOW_HOST_NAMES = [_][]const u8{
@@ -172,18 +173,20 @@ pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
     // Step 6: Return first slot in tree order whose name matches slottable's name
     const slottable_name = slot_helpers.getSlottableName(slottable);
 
-    // Traverse shadow's descendants to find matching slot
-    // For now, use a simple traversal of immediate children
-    // TODO: Full tree order traversal for nested descendants
+    // Traverse shadow's descendants in tree order to find matching slot
     const shadow_node: *Node = @ptrCast(@alignCast(shadow));
-    const children = shadow_node.get_childNodes();
 
-    for (children.items) |child| {
-        if (slot_helpers.isSlot(child)) {
-            const slot_name = slot_helpers.getSlotName(child);
+    // Get all descendants in tree order
+    var descendants = tree_helpers.getDescendantsInTreeOrder(std.heap.page_allocator, shadow_node) catch return null;
+    defer descendants.deinit();
+
+    // Find first slot with matching name
+    for (descendants.items) |descendant| {
+        if (slot_helpers.isSlot(descendant)) {
+            const slot_name = slot_helpers.getSlotName(descendant);
             // Match names (both empty string means default slot)
             if (std.mem.eql(u8, slot_name, slottable_name)) {
-                return child;
+                return descendant;
             }
         }
     }
@@ -332,18 +335,18 @@ pub fn assignSlottables(allocator: Allocator, slot: *anyopaque) !void {
 pub fn assignSlottablesForTree(allocator: Allocator, root: *anyopaque) !void {
     // Run assign slottables for each slot of root's inclusive descendants, in tree order
 
-    // TODO: Implement tree traversal for inclusive descendants
-    // Need to:
-    // 1. Traverse root and all its descendants in tree order
-    // 2. For each node, check if it's a slot (HTMLSlotElement)
-    // 3. If it is, call assignSlottables on it
+    const root_node: *Node = @ptrCast(@alignCast(root));
 
-    // For now, just handle root if it's a slot
-    if (slot_helpers.isSlot(root)) {
-        try assignSlottables(allocator, root);
+    // Get all inclusive descendants in tree order
+    var descendants = try tree_helpers.getInclusiveDescendantsInTreeOrder(allocator, root_node);
+    defer descendants.deinit();
+
+    // For each node in tree order, if it's a slot, assign slottables
+    for (descendants.items) |descendant| {
+        if (slot_helpers.isSlot(descendant)) {
+            try assignSlottables(allocator, descendant);
+        }
     }
-
-    // TODO: Traverse descendants
 }
 
 /// DOM §4.8.2 - Assign a slot
