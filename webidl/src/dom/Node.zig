@@ -59,15 +59,14 @@ pub const Node = webidl.interface(struct {
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-            // TODO: Initialize EventTarget parent fields (will be added by codegen)
+            // NOTE: Parent EventTarget initialization is handled by codegen
         };
     }
 
     pub fn deinit(self: *Node) void {
-        // NOTE: EventTarget parent cleanup will be handled by codegen
+        // NOTE: EventTarget parent cleanup is handled by codegen
         self.child_nodes.deinit();
         self.registered_observers.deinit();
-        // TODO: Call parent EventTarget deinit (will be added by codegen)
     }
 
     /// insertBefore(node, child)

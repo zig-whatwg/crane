@@ -59,15 +59,14 @@ pub const DocumentType = struct {
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),
             .system_id = try allocator.dupe(u8, system_id),
-            // TODO: Initialize Node parent fields (will be added by codegen)
+            // NOTE: Parent Node initialization is handled by codegen
         };
     }
     pub fn deinit(self: *DocumentType) void {
         self.allocator.free(self.name);
         self.allocator.free(self.public_id);
         self.allocator.free(self.system_id);
-        // NOTE: Parent Node cleanup will be handled by codegen
-        // TODO: Call parent Node deinit (will be added by codegen)
+        // NOTE: Parent Node cleanup is handled by codegen
     
         
         // Clean up base fields

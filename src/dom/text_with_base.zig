@@ -8,7 +8,8 @@
 //! - Allows safe downcasting from NodeBase* to TextWithBase*
 //! - Enables XPath to extract text content from NodeBase* pointers
 //!
-//! TODO: Remove this file once webidl codegen generates NodeBase pattern automatically
+//! NOTE: Codegen now generates NodeBase, but this is still used by XPath.
+//! Can be migrated to generated types once XPath is updated to use webidl/generated/dom/Text.zig
 
 const std = @import("std");
 const node_base = @import("node_base.zig");

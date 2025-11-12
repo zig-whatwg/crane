@@ -65,7 +65,7 @@ pub const Attr = struct {
             .local_name = try allocator.dupe(u8, local_name),
             .value = try allocator.dupe(u8, value),
             .owner_element = null,
-            // TODO: Initialize Node parent fields (will be added by codegen)
+            // NOTE: Parent Node initialization is handled by codegen
         };
     }
     pub fn deinit(self: *Attr) void {
@@ -73,7 +73,7 @@ pub const Attr = struct {
         if (self.prefix) |p| self.allocator.free(p);
         self.allocator.free(self.local_name);
         self.allocator.free(self.value);
-        // NOTE: Parent Node cleanup will be handled by codegen
+        // NOTE: Parent Node cleanup is handled by codegen
     
         
         // Clean up base fields

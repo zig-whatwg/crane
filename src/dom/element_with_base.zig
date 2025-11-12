@@ -9,7 +9,8 @@
 //! - Allows safe downcasting from NodeBase* to ElementWithBase*
 //! - Enables XPath to access Element.attributes from NodeBase* pointers
 //!
-//! TODO: Remove this file once webidl codegen generates NodeBase pattern automatically
+//! NOTE: Codegen now generates NodeBase, but this is still used by XPath and selectors.
+//! Can be migrated to generated types once dependencies are updated to use webidl/generated/dom/Element.zig
 
 const std = @import("std");
 const infra = @import("infra");
