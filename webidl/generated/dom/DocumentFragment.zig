@@ -175,11 +175,12 @@ pub const DocumentFragment = struct {
     /// an element; otherwise null.
     /// (Included from ParentNode mixin)
     pub fn get_firstElementChild(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Iterate through children in tree order
         for (self.child_nodes.items) |child| {
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
         }
@@ -193,14 +194,15 @@ pub const DocumentFragment = struct {
     /// an element; otherwise null.
     /// (Included from ParentNode mixin)
     pub fn get_lastElementChild(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Iterate through children in reverse tree order
         var i: usize = self.child_nodes.items.len;
         while (i > 0) {
             i -= 1;
             const child = self.child_nodes.items[i];
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
         }
@@ -214,12 +216,13 @@ pub const DocumentFragment = struct {
     /// of this that are elements.
     /// (Included from ParentNode mixin)
     pub fn get_childElementCount(self: anytype) u32 {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Count children that are Elements
         var count: u32 = 0;
         for (self.child_nodes.items) |child| {
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 count += 1;
             }
         }
@@ -356,9 +359,39 @@ pub const DocumentFragment = struct {
     pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
         _ = allocator; // Not needed for traversal
 
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
+
+        // Inline recursive search to avoid private function copying issues with codegen
+        const SearchHelper = struct {
+            fn findById(nodes: anytype, target_id: []const u8) ?*Element {
+                for (nodes) |node| {
+                    // Check if this node is an element with matching ID
+                    if (node.node_type == NodeType.ELEMENT_NODE) {
+                        // Cast to Element to access ID
+                        const element: *Element = @ptrCast(node);
+
+                        // Check if id attribute matches
+                        // Per spec: element's ID is the value of its "id" attribute
+                        // For now, compare node_name as a placeholder until attributes are fully integrated
+                        // TODO: Once NamedNodeMap is fully integrated, use: element.attributes.getNamedItem("id")
+                        if (std.mem.eql(u8, element.node_name, target_id)) {
+                            return element;
+                        }
+                    }
+
+                    // Recursively search descendants
+                    if (findById(node.child_nodes.items, target_id)) |found| {
+                        return found;
+                    }
+                }
+
+                return null;
+            }
+        };
+
         // Traverse descendants in tree order (preorder depth-first)
-        return findElementById(Node, self.child_nodes.items, element_id);
+        return SearchHelper.findById(self.child_nodes.items, element_id);
     }
 
     // WebIDL extended attributes metadata

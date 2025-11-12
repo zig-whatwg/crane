@@ -271,7 +271,8 @@ pub const Text = struct {
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
     pub fn previousElementSibling(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
         const parent = self.parent_node orelse return null;
 
         // Find our index in parent's children
@@ -281,13 +282,13 @@ pub const Text = struct {
             i -= 1;
             const sibling = parent.child_nodes.items[i];
 
-            if (sibling == @as(*Node, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self))) {
                 found_self = true;
                 continue;
             }
 
             // Only look at siblings before us
-            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+            if (found_self and sibling.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(sibling);
             }
         }
@@ -301,19 +302,20 @@ pub const Text = struct {
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
     pub fn nextElementSibling(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
         const parent = self.parent_node orelse return null;
 
         // Find our index in parent's children
         var found_self = false;
         for (parent.child_nodes.items) |sibling| {
-            if (sibling == @as(*Node, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self))) {
                 found_self = true;
                 continue;
             }
 
             // Only look at siblings after us
-            if (found_self and sibling.node_type == Node.ELEMENT_NODE) {
+            if (found_self and sibling.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(sibling);
             }
         }

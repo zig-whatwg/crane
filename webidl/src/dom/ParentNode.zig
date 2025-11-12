@@ -54,11 +54,12 @@ pub const ParentNode = webidl.mixin(struct {
     /// The firstElementChild getter steps are to return the first child that is
     /// an element; otherwise null.
     pub fn get_firstElementChild(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Iterate through children in tree order
         for (self.child_nodes.items) |child| {
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
         }
@@ -72,14 +73,15 @@ pub const ParentNode = webidl.mixin(struct {
     /// The lastElementChild getter steps are to return the last child that is
     /// an element; otherwise null.
     pub fn get_lastElementChild(self: anytype) ?*Element {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Iterate through children in reverse tree order
         var i: usize = self.child_nodes.items.len;
         while (i > 0) {
             i -= 1;
             const child = self.child_nodes.items[i];
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
         }
@@ -93,12 +95,13 @@ pub const ParentNode = webidl.mixin(struct {
     /// The childElementCount getter steps are to return the number of children
     /// of this that are elements.
     pub fn get_childElementCount(self: anytype) u32 {
-        const Node = @import("node").Node;
+        // Node type will be available from module-level import in generated code
+        const NodeType = @import("node").Node;
 
         // Count children that are Elements
         var count: u32 = 0;
         for (self.child_nodes.items) |child| {
-            if (child.node_type == Node.ELEMENT_NODE) {
+            if (child.node_type == NodeType.ELEMENT_NODE) {
                 count += 1;
             }
         }
