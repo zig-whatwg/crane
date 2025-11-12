@@ -224,6 +224,7 @@ const ImportSet = struct {
             "flattenOptions",
             "flattenMoreOptions",
             "defaultPassiveValue",
+            "callbackEquals",
         };
         for (helpers) |helper| {
             try self.addPackageConst(helper, "event_target");
@@ -1846,6 +1847,7 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
                 "const flattenOptions = @import(\"event_target\").flattenOptions;",
                 "const flattenMoreOptions = @import(\"event_target\").flattenMoreOptions;",
                 "const defaultPassiveValue = @import(\"event_target\").defaultPassiveValue;",
+                "const callbackEquals = @import(\"event_target\").callbackEquals;",
             };
 
             for (imports_to_filter) |import_to_filter| {

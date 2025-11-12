@@ -321,6 +321,7 @@ const Event = @import("event").Event;
 const flattenOptions = @import("event_target").flattenOptions;
 const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const callbackEquals = @import("event_target").callbackEquals;
 const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 const infra = @import("infra");
