@@ -833,12 +833,72 @@ pub const Range = webidl.interface(struct {
     }
 
     /// DOM §5 - Range stringifier
-    /// Returns the text content of the range
+    /// Returns the text content of the range per spec §5.7
     pub fn toString(self: *Range, allocator: Allocator) ![]const u8 {
-        // TODO: Implement per spec §5.7
-        _ = self;
-        _ = allocator;
-        return error.NotImplemented;
+        const Text = @import("text").Text;
+        var result = std.ArrayList(u8).init(allocator);
+        errdefer result.deinit();
+
+        // Step 2: If start node == end node and it's a Text node
+        if (self.start_container == self.end_container and
+            self.start_container.node_type == Node.TEXT_NODE)
+        {
+            const textNode = try Text.fromNode(self.start_container);
+            const data = textNode.base.get_data();
+
+            // Return substring from start offset to end offset
+            if (self.end_offset >= self.start_offset and self.end_offset <= data.len) {
+                const substring = data[self.start_offset..self.end_offset];
+                try result.appendSlice(substring);
+                return result.toOwnedSlice();
+            }
+        }
+
+        // Step 3: If start node is a Text node, append from start offset to end
+        if (self.start_container.node_type == Node.TEXT_NODE) {
+            const textNode = try Text.fromNode(self.start_container);
+            const data = textNode.base.get_data();
+            if (self.start_offset <= data.len) {
+                const substring = data[self.start_offset..];
+                try result.appendSlice(substring);
+            }
+        }
+
+        // Step 4: Append concatenation of all contained Text nodes in tree order
+        const commonAncestor = self.get_commonAncestorContainer();
+        try self.appendContainedTextNodes(commonAncestor, &result);
+
+        // Step 5: If end node is a Text node, append from start to end offset
+        if (self.end_container.node_type == Node.TEXT_NODE and
+            self.end_container != self.start_container)
+        {
+            const textNode = try Text.fromNode(self.end_container);
+            const data = textNode.base.get_data();
+            if (self.end_offset <= data.len) {
+                const substring = data[0..self.end_offset];
+                try result.appendSlice(substring);
+            }
+        }
+
+        // Step 6: Return s
+        return result.toOwnedSlice();
+    }
+
+    /// Helper for toString: Recursively append contained Text node data
+    fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
+        // If this node is contained and is a Text node, append its data
+        if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
+            const Text = @import("text").Text;
+            const textNode = try Text.fromNode(node);
+            const data = textNode.base.get_data();
+            try result.appendSlice(data);
+            return;
+        }
+
+        // Recursively process children in tree order
+        for (node.child_nodes.items()) |child| {
+            try self.appendContainedTextNodes(child, result);
+        }
     }
 }, .{
     .exposed = &.{.Window},
