@@ -535,7 +535,7 @@ test "node-set - union" {
         .node_type = NodeBase.ELEMENT_NODE,
         .node_name = "div",
         .parent_node = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
+        .child_nodes = infra.List(*Node).init(allocator),
         .owner_document = null,
         .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
     };
@@ -546,7 +546,7 @@ test "node-set - union" {
         .node_type = NodeBase.ELEMENT_NODE,
         .node_name = "span",
         .parent_node = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
+        .child_nodes = infra.List(*Node).init(allocator),
         .owner_document = null,
         .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
     };
@@ -557,7 +557,7 @@ test "node-set - union" {
         .node_type = NodeBase.ELEMENT_NODE,
         .node_name = "p",
         .parent_node = null,
-        .child_nodes = infra.List(*NodeBase).init(allocator),
+        .child_nodes = infra.List(*Node).init(allocator),
         .owner_document = null,
         .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
     };
