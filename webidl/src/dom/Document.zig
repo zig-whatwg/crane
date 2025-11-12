@@ -172,16 +172,32 @@ pub const Document = webidl.interface(struct {
 
     /// createElementNS(namespace, qualifiedName)
     /// DOM §4.6.1 - Creates an element in the given namespace
-    /// TODO: Implement full namespace handling and qualified name parsing
+    ///
+    /// Spec: Internal createElementNS steps:
+    /// 1. Validate and extract namespace and qualifiedName
+    /// 2. Flatten element creation options (for custom elements)
+    /// 3. Create an element with namespace, prefix, localName
+    ///
+    /// Simplified implementation:
+    /// - Sets namespace_uri field on element
+    /// - Uses qualifiedName as-is (TODO: parse prefix:localName)
+    /// - Skips custom element handling (TODO: when custom elements implemented)
     pub fn call_createElementNS(
         self: *Document,
         namespace: ?[]const u8,
         qualified_name: []const u8,
     ) !*Element {
+        // Create element with qualified name
         const element = try self.allocator.create(Element);
         element.* = try Element.init(self.allocator, qualified_name);
-        // TODO: Set namespace_uri from namespace parameter
-        _ = namespace;
+
+        // Set namespace_uri if provided
+        if (namespace) |ns| {
+            // Duplicate the namespace string for element ownership
+            const ns_copy = try self.allocator.dupe(u8, ns);
+            element.namespace_uri = ns_copy;
+        }
+
         return element;
     }
 

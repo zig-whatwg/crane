@@ -330,3 +330,105 @@ test "Document: adoptNode with tree of descendants" {
     try testing.expectEqual(span_node, div_node.child_nodes.get(0));
     try testing.expectEqual(p_node, div_node.child_nodes.get(1));
 }
+
+// ============================================================================
+// Document.createElementNS() tests
+// ============================================================================
+
+test "Document: createElementNS with namespace sets namespace_uri" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Create element with SVG namespace
+    const svg_ns = "http://www.w3.org/2000/svg";
+    const elem = try doc.call_createElementNS(svg_ns, "circle");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+
+    // Verify namespace_uri is set
+    try testing.expect(elem.namespace_uri != null);
+    try testing.expectEqualStrings(svg_ns, elem.namespace_uri.?);
+
+    // Verify tag name is set
+    try testing.expectEqualStrings("circle", elem.get_tagName());
+}
+
+test "Document: createElementNS with null namespace" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Create element with null namespace
+    const elem = try doc.call_createElementNS(null, "div");
+    defer {
+        elem.deinit();
+        allocator.destroy(elem);
+    }
+
+    // Verify namespace_uri is null
+    try testing.expectEqual(@as(?[]const u8, null), elem.namespace_uri);
+
+    // Verify tag name is set
+    try testing.expectEqualStrings("div", elem.get_tagName());
+}
+
+test "Document: createElementNS with different namespaces" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    // Create HTML namespace element
+    const html_ns = "http://www.w3.org/1999/xhtml";
+    const html_elem = try doc.call_createElementNS(html_ns, "div");
+    defer {
+        html_elem.deinit();
+        allocator.destroy(html_elem);
+    }
+
+    // Create SVG namespace element
+    const svg_ns = "http://www.w3.org/2000/svg";
+    const svg_elem = try doc.call_createElementNS(svg_ns, "circle");
+    defer {
+        svg_elem.deinit();
+        allocator.destroy(svg_elem);
+    }
+
+    // Create MathML namespace element
+    const mathml_ns = "http://www.w3.org/1998/Math/MathML";
+    const math_elem = try doc.call_createElementNS(mathml_ns, "math");
+    defer {
+        math_elem.deinit();
+        allocator.destroy(math_elem);
+    }
+
+    // Verify each has correct namespace
+    try testing.expectEqualStrings(html_ns, html_elem.namespace_uri.?);
+    try testing.expectEqualStrings(svg_ns, svg_elem.namespace_uri.?);
+    try testing.expectEqualStrings(mathml_ns, math_elem.namespace_uri.?);
+}
+
+test "Document: createElementNS namespace memory management" {
+    const allocator = testing.allocator;
+
+    var doc = try Document.init(allocator);
+    defer doc.deinit();
+
+    const svg_ns = "http://www.w3.org/2000/svg";
+
+    // Create element
+    const elem = try doc.call_createElementNS(svg_ns, "rect");
+    defer {
+        elem.deinit(); // Should free namespace_uri
+        allocator.destroy(elem);
+    }
+
+    // Verify namespace is copied (not same pointer)
+    try testing.expect(elem.namespace_uri.?.ptr != svg_ns.ptr);
+    try testing.expectEqualStrings(svg_ns, elem.namespace_uri.?);
+}

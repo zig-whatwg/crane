@@ -4,6 +4,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const dom = @import("dom");
+const infra = @import("infra");
 
 const Node = @import("node").Node;
 const ChildNode = @import("child_node").ChildNode;
@@ -12,6 +13,7 @@ const ParentNode = @import("parent_node").ParentNode;
 const Slottable = @import("slottable").Slottable;
 const NodeList = @import("node_list").NodeList;
 const dom_types = @import("dom_types");
+const Allocator = std.mem.Allocator;
 
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
@@ -46,6 +48,11 @@ pub const Element = webidl.interface(struct {
     pub fn deinit(self: *Element) void {
         // NOTE: Parent Node cleanup is handled by codegen
         self.attributes.deinit();
+
+        // Free namespace_uri if allocated
+        if (self.namespace_uri) |ns| {
+            self.allocator.free(ns);
+        }
     }
 
     /// getAttribute(qualifiedName)
