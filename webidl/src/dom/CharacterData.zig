@@ -129,7 +129,20 @@ pub const CharacterData = webidl.interface(struct {
             count = length - offset;
         }
 
-        // TODO: Step 4 - Queue mutation record (requires mutation observers)
+        // Step 4: Queue mutation record
+        const mutation = @import("mutation");
+        const empty_nodes: []const *Node = &[_]*Node{};
+        try mutation.queueMutationRecord(
+            "characterData",
+            &self.base,
+            null,
+            null,
+            self.data, // oldValue
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
 
         // Steps 5-7: Build new data string
         const new_len = length - count + @as(u32, @intCast(data.len));

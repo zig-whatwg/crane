@@ -5,6 +5,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
+const Element = @import("element").Element;
 
 /// DOM §4.9 - Attr interface
 /// Attr nodes represent attributes.
@@ -135,17 +136,26 @@ pub const Attr = webidl.interface(struct {
         new_value: []const u8,
     ) !void {
         // Step 1: Queue a mutation record of "attributes"
-        // TODO: Implement mutation record queuing when mutation observer is ready
-        // queueMutationRecord("attributes", element, attribute.local_name, attribute.namespace_uri, old_value, ...)
-        _ = old_value;
-        _ = new_value;
+        const mutation = @import("mutation");
+        const empty_nodes: []const *@import("node").Node = &[_]*@import("node").Node{};
+        try mutation.queueMutationRecord(
+            "attributes",
+            &element.base,
+            attribute.local_name,
+            attribute.namespace_uri,
+            old_value,
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
 
         // Step 2: If element is custom, enqueue custom element callback reaction
         // TODO: Implement custom element callback when custom elements are supported
+        _ = new_value;
 
         // Step 3: Run the attribute change steps
         // TODO: Call extension point for attribute change steps (used by HTML, SVG, etc.)
-        _ = element;
         _ = attribute;
     }
 
