@@ -14,6 +14,26 @@ const webidl = @import("webidl");
 pub const Event = @import("event").Event;
 /// DOM Spec: interface CustomEvent : Event
 pub const CustomEvent = struct {
+    touch_target_list: std.ArrayList(*EventTarget),
+    related_target: ?*EventTarget,
+    path: std.ArrayList(EventPathItem),
+    time_stamp: f64,
+    is_trusted: bool,
+    dispatch_flag: bool,
+    initialized_flag: bool,
+    in_passive_listener_flag: bool,
+    canceled_flag: bool,
+    stop_immediate_propagation_flag: bool,
+    stop_propagation_flag: bool,
+    composed: bool,
+    cancelable: bool,
+    bubbles: bool,
+    event_phase: u16,
+    current_target: ?*EventTarget,
+    target: ?*EventTarget,
+    event_type: []const u8,
+    allocator: Allocator,
+
     // ========================================================================
     // CustomEvent fields
     // ========================================================================
@@ -42,6 +62,275 @@ pub const CustomEvent = struct {
 
     pub fn get_detail(self: *const CustomEvent) ?webidl.JSValue {
         return self.detail;
+    }
+    /// stopPropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
+    pub fn call_stopPropagation(self: *CustomEvent) void {
+        self.stop_propagation_flag = true;
+    }
+    /// stopImmediatePropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
+    pub fn call_stopImmediatePropagation(self: *CustomEvent) void {
+        self.stop_propagation_flag = true;
+        self.stop_immediate_propagation_flag = true;
+    }
+    /// DOM §2.3 - set the canceled flag
+    /// To set the canceled flag, given an event event, if event's cancelable
+    /// attribute value is true and event's in passive listener flag is unset,
+    /// then set event's canceled flag, and do nothing otherwise.
+    fn setCanceledFlag(self: *CustomEvent) void {
+        if (self.cancelable and !self.in_passive_listener_flag) {
+            self.canceled_flag = true;
+        }
+    }
+    /// preventDefault()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
+    /// The preventDefault() method steps are to set the canceled flag with this.
+    pub fn call_preventDefault(self: *CustomEvent) void {
+        self.setCanceledFlag();
+    }
+    /// composedPath()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
+    /// 
+    /// Returns the invocation target objects of event's path (objects on which
+    /// listeners will be invoked), except for any nodes in shadow trees of which
+    /// the shadow root's mode is "closed" that are not reachable from event's
+    /// currentTarget.
+    /// 
+    /// The composedPath() method steps are (DOM §2.3):
+    pub fn call_composedPath(self: *CustomEvent) !std.ArrayList(*EventTarget) {
+        // Step 1: Let composedPath be an empty list
+        var composed_path = std.ArrayList(*EventTarget).init(self.allocator);
+
+        // Step 2: Let path be this's path
+        const path = self.path.items;
+
+        // Step 3: If path is empty, then return composedPath
+        if (path.len == 0) {
+            return composed_path;
+        }
+
+        // Step 4: Let currentTarget be this's currentTarget attribute value
+        const current_target = self.current_target;
+
+        // Step 5: Assert: currentTarget is an EventTarget object
+        if (current_target == null) {
+            // Path is not empty but currentTarget is null - shouldn't happen during dispatch
+            return composed_path;
+        }
+
+        // Step 6: Append currentTarget to composedPath
+        try composed_path.append(current_target.?);
+
+        // Step 7: Let currentTargetIndex be 0
+        var current_target_index: usize = 0;
+
+        // Step 8: Let currentTargetHiddenSubtreeLevel be 0
+        var current_target_hidden_subtree_level: i32 = 0;
+
+        // Step 9: Let index be path's size − 1
+        var index: i32 = @as(i32, @intCast(path.len)) - 1;
+
+        // Step 10: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 10.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentTargetHiddenSubtreeLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_target_hidden_subtree_level += 1;
+            }
+
+            // Step 10.2: If path[index]'s invocation target is currentTarget,
+            // then set currentTargetIndex to index and break
+            if (path_item.invocation_target == current_target.?) {
+                current_target_index = @intCast(index);
+                break;
+            }
+
+            // Step 10.3: If path[index]'s slot-in-closed-tree is true,
+            // then decrease currentTargetHiddenSubtreeLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_target_hidden_subtree_level -= 1;
+            }
+        }
+
+        // Step 11: Let currentHiddenLevel and maxHiddenLevel be currentTargetHiddenSubtreeLevel
+        var current_hidden_level = current_target_hidden_subtree_level;
+        var max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 12: Set index to currentTargetIndex − 1
+        index = @as(i32, @intCast(current_target_index)) - 1;
+
+        // Step 13: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 13.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 13.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then prepend path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.insert(0, path_item.invocation_target);
+            }
+
+            // Step 13.3: If path[index]'s slot-in-closed-tree is true
+            if (path_item.slot_in_closed_tree) {
+                // Step 13.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 13.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 14: Set currentHiddenLevel and maxHiddenLevel to currentTargetHiddenSubtreeLevel
+        current_hidden_level = current_target_hidden_subtree_level;
+        max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 15: Set index to currentTargetIndex + 1
+        index = @as(i32, @intCast(current_target_index)) + 1;
+
+        // Step 16: While index is less than path's size
+        while (index < path.len) : (index += 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 16.1: If path[index]'s slot-in-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 16.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then append path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.append(path_item.invocation_target);
+            }
+
+            // Step 16.3: If path[index]'s root-of-closed-tree is true
+            if (path_item.root_of_closed_tree) {
+                // Step 16.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 16.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 17: Return composedPath
+        return composed_path;
+    }
+    /// DOM §2.3 - initialize an event
+    /// To initialize an event, with type, bubbles, and cancelable, run these steps:
+    fn initializeEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        // Step 1: Set event's initialized flag
+        self.initialized_flag = true;
+
+        // Step 2: Unset event's stop propagation flag, stop immediate propagation flag, and canceled flag
+        self.stop_propagation_flag = false;
+        self.stop_immediate_propagation_flag = false;
+        self.canceled_flag = false;
+
+        // Step 3: Set event's isTrusted attribute to false
+        self.is_trusted = false;
+
+        // Step 4: Set event's target to null
+        self.target = null;
+
+        // Step 5: Set event's type attribute to type
+        self.event_type = event_type;
+
+        // Step 6: Set event's bubbles attribute to bubbles
+        self.bubbles = bubbles;
+
+        // Step 7: Set event's cancelable attribute to cancelable
+        self.cancelable = cancelable;
+    }
+    /// initEvent(type, bubbles, cancelable)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
+    /// The initEvent(type, bubbles, cancelable) method steps are:
+    /// 1. If this's dispatch flag is set, then return.
+    /// 2. Initialize this with type, bubbles, and cancelable.
+    pub fn call_initEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        // Step 1: If dispatch flag is set, return
+        if (self.dispatch_flag) return;
+
+        // Step 2: Initialize this
+        self.initializeEvent(event_type, bubbles, cancelable);
+    }
+    /// Getters
+    pub fn get_type(self: *const CustomEvent) []const u8 {
+        return self.event_type;
+    }
+    pub fn get_target(self: *const CustomEvent) ?*EventTarget {
+        return self.target;
+    }
+    /// DOM §2.3 - srcElement getter (legacy)
+    /// The srcElement getter steps are to return this's target.
+    pub fn get_srcElement(self: *const CustomEvent) ?*EventTarget {
+        return self.target;
+    }
+    pub fn get_currentTarget(self: *const CustomEvent) ?*EventTarget {
+        return self.current_target;
+    }
+    pub fn get_eventPhase(self: *const CustomEvent) u16 {
+        return self.event_phase;
+    }
+    pub fn get_bubbles(self: *const CustomEvent) bool {
+        return self.bubbles;
+    }
+    pub fn get_cancelable(self: *const CustomEvent) bool {
+        return self.cancelable;
+    }
+    pub fn get_defaultPrevented(self: *const CustomEvent) bool {
+        return self.canceled_flag;
+    }
+    pub fn get_composed(self: *const CustomEvent) bool {
+        return self.composed;
+    }
+    pub fn get_isTrusted(self: *const CustomEvent) bool {
+        return self.is_trusted;
+    }
+    pub fn get_timeStamp(self: *const CustomEvent) f64 {
+        return self.time_stamp;
+    }
+    /// DOM §2.3 - cancelBubble getter (legacy)
+    /// The cancelBubble getter steps are to return true if this's stop propagation
+    /// flag is set; otherwise false.
+    pub fn get_cancelBubble(self: *const CustomEvent) bool {
+        return self.stop_propagation_flag;
+    }
+    /// DOM §2.3 - cancelBubble setter (legacy)
+    /// The cancelBubble setter steps are to set this's stop propagation flag if
+    /// the given value is true; otherwise do nothing.
+    pub fn set_cancelBubble(self: *CustomEvent, value: bool) void {
+        if (value) {
+            self.stop_propagation_flag = true;
+        }
+    }
+    /// DOM §2.3 - returnValue getter (legacy)
+    /// The returnValue getter steps are to return false if this's canceled flag
+    /// is set; otherwise true.
+    pub fn get_returnValue(self: *const CustomEvent) bool {
+        return !self.canceled_flag;
+    }
+    /// DOM §2.3 - returnValue setter (legacy)
+    /// The returnValue setter steps are to set the canceled flag with this if
+    /// the given value is false; otherwise do nothing.
+    pub fn set_returnValue(self: *CustomEvent, value: bool) void {
+        if (!value) {
+            self.setCanceledFlag();
+        }
     }
 
     // WebIDL extended attributes metadata

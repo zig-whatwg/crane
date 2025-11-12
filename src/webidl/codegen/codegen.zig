@@ -1066,7 +1066,49 @@ const GlobalRegistry = struct {
                 if (ref_dot_pos) |ref_pos| {
                     const file_path = ref[0..ref_pos];
                     const class_name = ref[ref_pos + 1 ..];
-                    return self.getClass(file_path, class_name);
+
+                    // Try exact match first
+                    if (self.getClass(file_path, class_name)) |class_info| {
+                        return class_info;
+                    }
+
+                    // Try with .zig extension (handles dom/event_target vs dom/EventTarget.zig)
+                    const with_ext = try std.fmt.allocPrint(self.allocator, "{s}.zig", .{file_path});
+                    defer self.allocator.free(with_ext);
+                    if (self.getClass(with_ext, class_name)) |class_info| {
+                        return class_info;
+                    }
+
+                    // Try PascalCase filename with .zig (event_target → EventTarget.zig)
+                    if (std.fs.path.dirname(file_path)) |dir| {
+                        const basename = std.fs.path.basename(file_path);
+                        // Convert snake_case to PascalCase
+                        var pascal_name: std.ArrayList(u8) = .empty;
+                        defer pascal_name.deinit(self.allocator);
+
+                        var capitalize_next = true;
+                        for (basename) |c| {
+                            if (c == '_') {
+                                capitalize_next = true;
+                            } else if (capitalize_next) {
+                                const upper = if (c >= 'a' and c <= 'z') c - 32 else c;
+                                try pascal_name.append(self.allocator, upper);
+                                capitalize_next = false;
+                            } else {
+                                try pascal_name.append(self.allocator, c);
+                            }
+                        }
+
+                        const pascal_path = try std.fs.path.join(self.allocator, &.{ dir, pascal_name.items });
+                        defer self.allocator.free(pascal_path);
+                        const pascal_with_ext = try std.fmt.allocPrint(self.allocator, "{s}.zig", .{pascal_path});
+                        defer self.allocator.free(pascal_with_ext);
+                        if (self.getClass(pascal_with_ext, class_name)) |class_info| {
+                            return class_info;
+                        }
+                    }
+
+                    return null;
                 } else {
                     return self.getClass(ref, parent_ref);
                 }
@@ -3561,6 +3603,9 @@ fn generateBaseStruct(
     current_file: []const u8,
     base_info: *const BaseTypeInfo,
 ) !void {
+    // Debug: print what we're generating
+    std.debug.print("Generating {s}Base (parent: {s})\n", .{ parsed.name, if (parsed.parent_name) |p| p else "none" });
+
     // Generate doc comment
     try writer.print(
         \\/// Base struct for {s} hierarchy polymorphism.
@@ -3610,7 +3655,42 @@ fn generateBaseStruct(
         var current_file_path = current_file;
 
         while (current_parent) |parent| {
-            const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse break;
+            std.debug.print("  {s}Base: resolving parent '{s}' from file '{s}'\n", .{ parsed.name, parent, current_file_path });
+
+            // Debug: Check what imports exist
+            if (registry.files.get(current_file_path)) |file_info| {
+                var import_it = file_info.imports.iterator();
+                var count: usize = 0;
+                while (import_it.next()) |entry| {
+                    std.debug.print("    Import: '{s}' -> '{s}'\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+                    count += 1;
+                }
+                if (count == 0) {
+                    std.debug.print("    No imports found in file info!\n", .{});
+                }
+            }
+
+            const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse {
+                std.debug.print("  {s}Base: WARNING - could not resolve parent '{s}'\n", .{ parsed.name, parent });
+
+                // Debug: Check specific expected paths
+                const expected_paths = [_][]const u8{
+                    "dom/event_target",
+                    "dom/event_target.zig",
+                    "dom/EventTarget.zig",
+                };
+                for (expected_paths) |path| {
+                    if (registry.files.contains(path)) {
+                        std.debug.print("    Found file: '{s}'\n", .{path});
+                    } else {
+                        std.debug.print("    Missing file: '{s}'\n", .{path});
+                    }
+                }
+                break;
+            };
+
+            // Debug: Print parent info
+            std.debug.print("  {s}Base: collecting from parent {s} ({d} fields, {d} props)\n", .{ parsed.name, parent_info.name, parent_info.fields.len, parent_info.properties.len });
 
             for (parent_info.fields) |field| {
                 try all_parent_fields.append(allocator, field);

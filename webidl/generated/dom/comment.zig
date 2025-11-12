@@ -21,6 +21,18 @@ pub const Element = @import("element").Element;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 pub const Comment = struct {
+    event_listener_list: ?*std.ArrayList(EventListener),
+    allocator: Allocator,
+    registered_observers: std.ArrayList(RegisteredObserver),
+    owner_document: ?*Document,
+    child_nodes: infra.List(*Node),
+    parent_node: ?*Node,
+    node_name: []const u8,
+    node_type: u16,
+    allocator: Allocator,
+    data: []u8,
+    allocator: Allocator,
+
     // ========================================================================
     // Comment fields
     // ========================================================================
@@ -167,6 +179,583 @@ pub const Comment = struct {
         //    - Move to next sibling
         // 3. Return null if no element sibling found
         @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
+    }
+    /// DOM §4.11 - data getter
+    /// Returns this's data.
+    pub fn get_data(self: *const Comment) []const u8 {
+        return self.data;
+    }
+    /// DOM §4.11 - data setter
+    /// Replace data with node this, offset 0, count this's length, and data new value.
+    pub fn set_data(self: *Comment, new_value: []const u8) !void {
+        try self.replaceData(0, @intCast(self.data.len), new_value);
+    }
+    /// DOM §4.11 - length getter
+    /// Returns this's length (number of code units).
+    pub fn get_length(self: *const Comment) u32 {
+        return @intCast(self.data.len);
+    }
+    /// DOM §4.11 - substringData(offset, count)
+    /// Returns a substring of this's data.
+    /// 
+    /// Steps:
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, then throw an "IndexSizeError" DOMException.
+    /// 3. If offset plus count is greater than length, return code units from offset to end.
+    /// 4. Return code units from offset to offset+count.
+    pub fn call_substringData(self: *const Comment, offset: u32, count: u32) ![]const u8 {
+        const length: u32 = @intCast(self.data.len);
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Handle overflow
+        if (offset + count > length) {
+            return self.data[offset..];
+        }
+
+        // Step 4: Return substring
+        return self.data[offset .. offset + count];
+    }
+    /// DOM §4.11 - appendData(data)
+    /// Appends data to this's data.
+    /// 
+    /// Steps: Replace data with node this, offset this's length, count 0, and data.
+    pub fn call_appendData(self: *Comment, data: []const u8) !void {
+        try self.replaceData(@intCast(self.data.len), 0, data);
+    }
+    /// DOM §4.11 - insertData(offset, data)
+    /// Inserts data at the given offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count 0, and data.
+    pub fn call_insertData(self: *Comment, offset: u32, data: []const u8) !void {
+        try self.replaceData(offset, 0, data);
+    }
+    /// DOM §4.11 - deleteData(offset, count)
+    /// Deletes count code units starting at offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count, and empty string.
+    pub fn call_deleteData(self: *Comment, offset: u32, count: u32) !void {
+        try self.replaceData(offset, count, "");
+    }
+    /// DOM §4.11 - replaceData(offset, count, data)
+    /// Replaces count code units at offset with data.
+    /// 
+    /// Steps (simplified - full spec includes range and mutation handling):
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, throw "IndexSizeError".
+    /// 3. If offset + count > length, set count to length - offset.
+    /// 4-12. [Mutation records, ranges, and parent notification skipped for now]
+    /// 5. Insert data into node's data after offset code units.
+    /// 6-7. Remove count code units starting from offset + data's length.
+    pub fn call_replaceData(self: *Comment, offset: u32, count: u32, data: []const u8) !void {
+        try self.replaceData(offset, count, data);
+    }
+    /// Internal replace data implementation
+    fn replaceData(self: *Comment, offset: u32, count_param: u32, data: []const u8) !void {
+        const length: u32 = @intCast(self.data.len);
+        var count = count_param;
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Clamp count
+        if (offset + count > length) {
+            count = length - offset;
+        }
+
+        // TODO: Step 4 - Queue mutation record (requires mutation observers)
+
+        // Steps 5-7: Build new data string
+        const new_len = length - count + @as(u32, @intCast(data.len));
+        const new_data = try self.allocator.alloc(u8, new_len);
+
+        // Copy before offset
+        @memcpy(new_data[0..offset], self.data[0..offset]);
+
+        // Copy new data
+        @memcpy(new_data[offset .. offset + data.len], data);
+
+        // Copy after deleted region
+        const after_start = offset + count;
+        if (after_start < length) {
+            @memcpy(new_data[offset + data.len ..], self.data[after_start..]);
+        }
+
+        // Replace old data
+        self.allocator.free(self.data);
+        self.data = new_data;
+
+        // TODO: Steps 8-11 - Update ranges (requires Range implementation)
+        // TODO: Step 12 - Run children changed steps for parent
+    }
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
+    pub fn call_insertBefore(self: *Comment, node: *Comment, child: ?*Comment) !*Comment {
+        // TODO: Use mutation.preInsert algorithm from src/dom/mutation.zig
+        // For now, basic implementation
+        _ = child;
+        try self.child_nodes.append(node);
+        node.parent_node = self;
+        return node;
+    }
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
+    pub fn call_appendChild(self: *Comment, node: *Comment) !*Comment {
+        // TODO: Use mutation.append algorithm from src/dom/mutation.zig
+        try self.child_nodes.append(node);
+        node.parent_node = self;
+        return node;
+    }
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
+    pub fn call_replaceChild(self: *Comment, node: *Comment, child: *Comment) !*Comment {
+        // TODO: Use mutation.replace algorithm from src/dom/mutation.zig
+        // For now, basic implementation
+        for (self.child_nodes.items, 0..) |existing, i| {
+            if (existing == child) {
+                self.child_nodes.items[i] = node;
+                child.parent_node = null;
+                node.parent_node = self;
+                return child;
+            }
+        }
+        return error.NotFoundError;
+    }
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
+    pub fn call_removeChild(self: *Comment, child: *Comment) !*Comment {
+        // TODO: Use mutation.preRemove algorithm from src/dom/mutation.zig
+        for (self.child_nodes.items, 0..) |node, i| {
+            if (node == child) {
+                _ = self.child_nodes.orderedRemove(i);
+                child.parent_node = null;
+                return child;
+            }
+        }
+        return error.NotFoundError;
+    }
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    pub fn call_getRootNode(self: *Comment, options: ?GetRootNodeOptions) *Comment {
+        // TODO: Support shadow-including root when options.composed is true
+        _ = options;
+        // For now, return regular root (from tree.zig)
+        var current = self;
+        while (current.parent_node) |parent| {
+            current = parent;
+        }
+        return current;
+    }
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
+    pub fn call_contains(self: *const Comment, other: ?*const Comment) bool {
+        if (other == null) return false;
+        // Check if other is an inclusive descendant of this
+        // TODO: Use tree.isInclusiveDescendant from src/dom/tree.zig
+        const other_node = other.?;
+        if (self == other_node) return true;
+
+        var current = other_node.parent_node;
+        while (current) |parent| {
+            if (parent == self) return true;
+            current = parent.parent_node;
+        }
+        return false;
+    }
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
+    pub fn call_compareDocumentPosition(self: *const Comment, other: *const Comment) u16 {
+        // TODO: Implement full algorithm from spec
+        // For now, return disconnected
+        _ = self;
+        _ = other;
+        return DOCUMENT_POSITION_DISCONNECTED;
+    }
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
+    pub fn call_isEqualNode(self: *const Comment, other_node: ?*const Comment) bool {
+        if (other_node == null) return false;
+        // TODO: Implement deep equality check per spec
+        const other = other_node.?;
+        if (self.node_type != other.node_type) return false;
+        if (!std.mem.eql(u8, self.node_name, other.node_name)) return false;
+        // TODO: Check children, attributes, etc.
+        return true;
+    }
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
+    pub fn call_isSameNode(self: *const Comment, other_node: ?*const Comment) bool {
+        // Legacy alias of === (pointer equality)
+        if (other_node == null) return false;
+        return self == other_node.?;
+    }
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
+    pub fn call_hasChildNodes(self: *const Comment) bool {
+        return self.child_nodes.len > 0;
+    }
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
+    pub fn call_cloneNode(self: *Comment, deep: bool) !*Comment {
+        // TODO: Implement full clone algorithm from DOM §4.2.4
+        // Steps:
+        // 1. Let document be node's node document
+        // 2. Let copy be result of cloning a single node (node, document, null)
+        // 3. Run cloning steps for node (pass node, copy, deep)
+        // 4. If deep is true, clone all descendants recursively
+        // 5. If node is shadow host and clonable, clone shadow root too
+        // 6. Return copy
+
+        // For now, shallow clone only
+        const copy = try Comment.init(self.allocator, self.node_type, self.node_name);
+
+        // If deep, should recursively clone children
+        if (deep) {
+            // TODO: Clone all children recursively
+            // for (self.child_nodes.items) |child| {
+            //     const child_copy = try child.call_cloneNode(true);
+            //     try copy.child_nodes.append(child_copy);
+            //     child_copy.parent_node = &copy;
+            // }
+        }
+
+        return copy;
+    }
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    pub fn call_normalize(self: *Comment) void {
+        _ = self;
+        // Normalize adjacent text nodes
+    }
+    /// Getters
+    pub fn get_nodeType(self: *const Comment) u16 {
+        return self.node_type;
+    }
+    pub fn get_nodeName(self: *const Comment) []const u8 {
+        return self.node_name;
+    }
+    pub fn get_parentNode(self: *const Comment) ?*Comment {
+        return self.parent_node;
+    }
+    pub fn get_parentElement(self: *const Comment) ?*Element {
+        // Returns parent if it's an Element, null otherwise
+        const parent = self.parent_node orelse return null;
+        if (parent.node_type == ELEMENT_NODE) {
+            // TODO: Proper type casting when Element type is integrated
+            return @ptrCast(parent);
+        }
+        return null;
+    }
+    pub fn get_childNodes(self: *const Comment) *const infra.List(*Comment) {
+        // Returns a NodeList rooted at this matching only children
+        // TODO: Return actual NodeList interface when implemented
+        return &self.child_nodes;
+    }
+    pub fn get_firstChild(self: *const Comment) ?*Comment {
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(0);
+        }
+        return null;
+    }
+    pub fn get_lastChild(self: *const Comment) ?*Comment {
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(self.child_nodes.len - 1);
+        }
+        return null;
+    }
+    pub fn get_ownerDocument(self: *const Comment) ?*Document {
+        return self.owner_document;
+    }
+    pub fn get_previousSibling(self: *const Comment) ?*Comment {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i == 0) return null;
+                return parent.child_nodes.items[i - 1];
+            }
+        }
+        return null;
+    }
+    pub fn get_nextSibling(self: *const Comment) ?*Comment {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i + 1 >= parent.child_nodes.items.len) return null;
+                return parent.child_nodes.items[i + 1];
+            }
+        }
+        return null;
+    }
+    pub fn get_isConnected(self: *const Comment) bool {
+        // A node is connected if its root is a document
+        // TODO: Use tree.root from src/dom/tree.zig
+        var current = self;
+        while (current.parent_node) |parent| {
+            current = parent;
+        }
+        // Check if root is a document (node_type == DOCUMENT_NODE)
+        return current.node_type == DOCUMENT_NODE;
+    }
+    pub fn get_baseURI(self: *const Comment) []const u8 {
+        // Returns node document's document base URL, serialized
+        // TODO: Implement once Document has base URL support
+        _ = self;
+        return "";
+    }
+    pub fn get_nodeValue(self: *const Comment) ?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // Returns value for Attr and CharacterData, null otherwise
+        // TODO: Implement for Attr and CharacterData nodes
+        _ = self;
+        return null;
+    }
+    pub fn set_nodeValue(self: *Comment, value: ?[]const u8) void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // If null, treat as empty string
+        // Set value for Attr, replace data for CharacterData
+        // TODO: Implement for Attr and CharacterData nodes
+        _ = self;
+        _ = value;
+    }
+    pub fn get_textContent(self: *const Comment) ?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // Returns text content based on node type
+        // TODO: Implement full algorithm:
+        // - DocumentFragment, Element: concatenated text of descendants
+        // - Attr, CharacterData: return their data
+        // - Document, DocumentType: null
+        _ = self;
+        return null;
+    }
+    pub fn set_textContent(self: *Comment, value: ?[]const u8) !void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // If null, treat as empty string
+        // For DocumentFragment/Element: string replace all
+        // TODO: Implement full algorithm using mutation.replaceAll
+        _ = self;
+        _ = value;
+    }
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
+    pub fn call_lookupPrefix(self: *const Comment, namespace_param: ?[]const u8) ?[]const u8 {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = namespace_param;
+        return null;
+    }
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
+    pub fn call_lookupNamespaceURI(self: *const Comment, prefix: ?[]const u8) ?[]const u8 {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = prefix;
+        return null;
+    }
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
+    pub fn call_isDefaultNamespace(self: *const Comment, namespace_param: ?[]const u8) bool {
+        // TODO: Implement full algorithm from spec
+        _ = self;
+        _ = namespace_param;
+        return false;
+    }
+    /// Get the list of registered observers for this node
+    pub fn getRegisteredObservers(self: *Comment) *std.ArrayList(RegisteredObserver) {
+        return &self.registered_observers;
+    }
+    /// Add a registered observer to this node's list
+    pub fn addRegisteredObserver(self: *Comment, registered: RegisteredObserver) !void {
+        try self.registered_observers.append(registered);
+    }
+    /// Remove all registered observers for a specific MutationObserver
+    pub fn removeRegisteredObserver(self: *Comment, observer: *const @import("mutation_observer").MutationObserver) void {
+        var i: usize = 0;
+        while (i < self.registered_observers.items.len) {
+            if (self.registered_observers.items[i].observer == observer) {
+                _ = self.registered_observers.orderedRemove(i);
+                // Don't increment i, we just shifted everything down
+            } else {
+                i += 1;
+            }
+        }
+    }
+    /// Remove all transient registered observers whose source matches the given registered observer
+    pub fn removeTransientObservers(self: *Comment, source: *const RegisteredObserver) !void {
+        // TODO: Implement transient registered observers
+        // For now, this is a no-op since we haven't implemented transient observers yet
+        _ = self;
+        _ = source;
+    }
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
+    fn ensureEventListenerList(self: *Comment) !*std.ArrayList(EventListener) {
+        if (self.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self.allocator);
+        self.event_listener_list = list;
+        return list;
+    }
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
+    fn getEventListenerList(self: *const Comment) []const EventListener {
+        if (self.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    }
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
+    fn addAnEventListener(self: *Comment, listener: EventListener) !void {
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            _ = signal;
+            // TODO: Check if signal is aborted
+            // if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture)
+            {
+                // TODO: Compare callbacks properly
+                // For now, assume same callback if type and capture match
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        if (listener.signal) |_| {
+            // TODO: Add abort steps to signal to remove listener
+        }
+    }
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
+    pub fn call_addEventListener(
+        self: *Comment,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) !void {
+        // Step 1: Flatten more options
+        const flattened = flattenMoreOptions(options);
+
+        // Step 2: Add an event listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = flattened.capture,
+            .passive = flattened.passive,
+            .once = flattened.once,
+            .signal = flattened.signal,
+        };
+
+        try self.addAnEventListener(listener);
+    }
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
+    fn removeAnEventListener(self: *Comment, listener: EventListener) void {
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture)
+            {
+                // TODO: Compare callbacks properly
+                // For now, assume match if type and capture match
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    }
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
+    pub fn call_removeEventListener(
+        self: *Comment,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) void {
+        // Step 1: Flatten options
+        const capture = flattenOptions(options);
+
+        // Step 2: Remove matching listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = capture,
+        };
+
+        self.removeAnEventListener(listener);
+    }
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
+    pub fn call_dispatchEvent(self: *Comment, event: *Event) !bool {
+        // Step 1: Check flags
+        if (event.dispatch_flag or !event.initialized_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Initialize isTrusted to false
+        event.is_trusted = false;
+
+        // Step 3: Dispatch event to this
+        // TODO: Implement dispatch algorithm (see whatwg-cbk)
+        _ = self;
+        @panic("dispatchEvent - dispatch algorithm not yet implemented (see whatwg-cbk)");
     }
 
     // WebIDL extended attributes metadata
