@@ -96,13 +96,19 @@ pub fn dispatch(
         try appendToEventPath(event, target, target_override, related_target, touch_targets, false);
 
         // Step 6.4: Let isActivationEvent be true if event is MouseEvent and type is "click"
-        // TODO: Check if event is MouseEvent with type "click"
-        const is_activation_event = false;
+        // Check if event type is "click" (MouseEvent check TODO: requires MouseEvent type)
+        const is_activation_event = std.mem.eql(u8, event.event_type, "click");
 
         // Step 6.5: If isActivationEvent and target has activation behavior, set activationTarget
-        if (is_activation_event) {
-            // TODO: Check if target has activation behavior
+        if (is_activation_event and hasActivationBehavior(target)) {
             activation_target = target;
+        }
+
+        // Step 6.12: If activationTarget is non-null and has legacy-pre-activation behavior, run it
+        if (activation_target) |act_target| {
+            if (hasLegacyPreActivationBehavior(act_target)) {
+                runLegacyPreActivationBehavior(act_target);
+            }
         }
 
         // Step 6.6: Let slottable be target, if target is a slottable and is assigned
@@ -200,8 +206,12 @@ pub fn dispatch(
             try invoke(event, path_struct, "bubbling", legacy_output_did_listeners_throw_flag);
         }
 
-        // Step 6.15: Activation target will be used in step 12 below
-        // (Not fully implemented yet - requires activation behavior support)
+        // Step 6.12: If activationTarget is non-null and has legacy-pre-activation behavior, run it
+        if (activation_target) |act_target| {
+            if (hasLegacyPreActivationBehavior(act_target)) {
+                runLegacyPreActivationBehavior(act_target);
+            }
+        }
 
         // clearTargets is used in step 11 below
     }
@@ -228,7 +238,16 @@ pub fn dispatch(
     }
 
     // Step 12: If activationTarget is non-null, run activation behavior
-    // TODO: Implement activation behavior
+    if (activation_target) |act_target| {
+        // Step 12.1: If event's canceled flag is unset, run activationTarget's activation behavior
+        if (!event.canceled_flag) {
+            runActivationBehavior(act_target, event);
+        }
+        // Step 12.2: Otherwise, if activationTarget has legacy-canceled-activation behavior, run it
+        else if (hasLegacyCanceledActivationBehavior(act_target)) {
+            runLegacyCanceledActivationBehavior(act_target);
+        }
+    }
 
     // Step 13: Return false if event's canceled flag is set; otherwise true
     return !event.canceled_flag;
@@ -524,4 +543,83 @@ fn getLegacyEventType(event_type: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, event_type, "animationstart")) return "webkitAnimationStart";
     if (std.mem.eql(u8, event_type, "transitionend")) return "webkitTransitionEnd";
     return null;
+}
+
+/// DOM §2.9 - Check if EventTarget has activation behavior
+/// Each EventTarget object can have an associated activation behavior algorithm.
+/// The activation behavior algorithm is passed an event, as indicated in the dispatch algorithm.
+///
+/// TODO: This is a stub implementation. Activation behavior is defined per EventTarget type.
+/// HTML elements like <a>, <button>, <input>, <label>, <summary> have activation behavior.
+/// For example:
+/// - <a> navigates to href
+/// - <button> submits form or fires synthetic click
+/// - <input type="checkbox"> toggles checked state
+///
+/// Integration required:
+/// - HTML element implementations must register activation behavior
+/// - Custom elements may define activation behavior
+/// - This function should check EventTarget's activation_behavior field (if added)
+fn hasActivationBehavior(target: *EventTarget) bool {
+    _ = target;
+    // TODO: Check if target has activation behavior
+    // For now, return false (no HTML elements implemented yet)
+    return false;
+}
+
+/// DOM §2.9 - Run activation behavior
+/// Run the activation behavior algorithm for the given EventTarget with the event.
+///
+/// TODO: This is a stub implementation. Replace with actual activation behavior execution.
+/// The activation behavior should be stored on the EventTarget and invoked here.
+fn runActivationBehavior(target: *EventTarget, event: *Event) void {
+    _ = target;
+    _ = event;
+    // TODO: Execute target's activation behavior algorithm
+    // Examples:
+    // - HTMLAnchorElement: navigate to href
+    // - HTMLButtonElement: submit form or fire synthetic click
+    // - HTMLInputElement: toggle checked state, etc.
+}
+
+/// DOM §2.9 - Check if EventTarget has legacy-pre-activation behavior
+/// Each EventTarget object that has activation behavior can additionally have both
+/// a legacy-pre-activation behavior algorithm and a legacy-canceled-activation behavior algorithm.
+///
+/// TODO: This is a stub implementation. Legacy pre-activation behavior is rare.
+/// Example: <input type="checkbox"> sets indeterminate to false before activation
+fn hasLegacyPreActivationBehavior(target: *EventTarget) bool {
+    _ = target;
+    // TODO: Check if target has legacy-pre-activation behavior
+    return false;
+}
+
+/// DOM §2.9 - Run legacy-pre-activation behavior
+/// Run the legacy-pre-activation behavior algorithm for the given EventTarget.
+///
+/// TODO: This is a stub implementation. Replace with actual legacy-pre-activation behavior.
+fn runLegacyPreActivationBehavior(target: *EventTarget) void {
+    _ = target;
+    // TODO: Execute target's legacy-pre-activation behavior algorithm
+}
+
+/// DOM §2.9 - Check if EventTarget has legacy-canceled-activation behavior
+/// Each EventTarget object that has activation behavior can additionally have both
+/// a legacy-pre-activation behavior algorithm and a legacy-canceled-activation behavior algorithm.
+///
+/// TODO: This is a stub implementation. Legacy canceled-activation behavior is rare.
+/// Example: <input type="checkbox"> reverts checked state if activation was canceled
+fn hasLegacyCanceledActivationBehavior(target: *EventTarget) bool {
+    _ = target;
+    // TODO: Check if target has legacy-canceled-activation behavior
+    return false;
+}
+
+/// DOM §2.9 - Run legacy-canceled-activation behavior
+/// Run the legacy-canceled-activation behavior algorithm for the given EventTarget.
+///
+/// TODO: This is a stub implementation. Replace with actual legacy-canceled-activation behavior.
+fn runLegacyCanceledActivationBehavior(target: *EventTarget) void {
+    _ = target;
+    // TODO: Execute target's legacy-canceled-activation behavior algorithm
 }
