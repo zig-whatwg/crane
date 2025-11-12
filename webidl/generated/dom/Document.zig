@@ -672,16 +672,9 @@ pub const Document = struct {
     pub fn call_contains(self: *const Document, other: ?*const Document) bool {
         if (other == null) return false;
         // Check if other is an inclusive descendant of this
-        // TODO: Use tree.isInclusiveDescendant from src/dom/tree.zig
+        const tree = @import("dom").tree;
         const other_node = other.?;
-        if (self == other_node) return true;
-
-        var current = other_node.parent_node;
-        while (current) |parent| {
-            if (parent == self) return true;
-            current = parent.parent_node;
-        }
-        return false;
+        return tree.isInclusiveDescendant(other_node, self);
     }
     /// compareDocumentPosition(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
