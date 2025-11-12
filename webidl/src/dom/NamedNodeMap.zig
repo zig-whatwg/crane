@@ -69,12 +69,9 @@ pub const NamedNodeMap = webidl.interface(struct {
         self: *const NamedNodeMap,
         namespace: ?[]const u8,
         local_name: []const u8,
-    ) !?*Attr {
-        _ = self;
-        _ = namespace;
-        _ = local_name;
-        // TODO: Implement namespace-aware attribute handling
-        return error.NotImplemented;
+    ) ?*Attr {
+        // Get an attribute given namespace, localName, and element
+        return getAttributeByNamespaceAndLocalName(namespace, local_name, self.element);
     }
 
     /// DOM §4.9 - setNamedItem(attr)
@@ -266,10 +263,13 @@ pub const NamedNodeMap = webidl.interface(struct {
     /// Remove an attribute by name - DOM Spec algorithm
     pub fn removeAttributeByName(qualified_name: []const u8, element: *Element) !?*Attr {
         // Step 1: Let attr be the result of getting an attribute
+        // Get an attribute given qualifiedName and element
         for (element.attributes.items, 0..) |*attr, i| {
-            // For now, compare qualified name to local name (simplified)
-            // TODO: Full qualified name handling with namespace prefix
-            if (std.mem.eql(u8, attr.local_name, qualified_name)) {
+            // Compare qualified name (prefix:localName or just localName)
+            const attr_qualified_name = try attr.get_name();
+            defer if (attr.prefix != null) element.allocator.free(attr_qualified_name);
+
+            if (std.mem.eql(u8, attr_qualified_name, qualified_name)) {
                 // Step 2: If attr is non-null, remove attr
                 const removed = element.attributes.orderedRemove(i);
                 removed.owner_element = null;
