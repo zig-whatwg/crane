@@ -414,8 +414,50 @@ pub const Node = webidl.interface(struct {
             }
         }
 
-        // Step 6: If node is an element and shadow host, clone shadow root (not implemented yet)
-        // TODO: Handle shadow root cloning when shadow DOM is fully implemented
+        // Step 6: If node is an element, node is shadow host, and shadow root is clonable, clone shadow
+        if (node.node_type == Node.ELEMENT_NODE) {
+            const elem: *const Element = @ptrCast(@alignCast(node));
+            if (elem.shadow_root) |shadow| {
+                // Check if shadow root is clonable
+                if (shadow.clonable_flag) {
+                    // Clone the shadow root per spec
+                    const ShadowRoot = @import("shadow_root").ShadowRoot;
+                    const copy_elem: *Element = @ptrCast(@alignCast(copy));
+
+                    // Assert: copy is not a shadow host (should be true since we just created it)
+                    std.debug.assert(copy_elem.shadow_root == null);
+
+                    // Step 6.2-6.4: Determine shadow root registry and attach shadow root
+                    // For now, we use a simplified version without full registry support
+                    // TODO: Implement full custom element registry handling
+
+                    // Attach shadow root to copy
+                    var copy_shadow = try ShadowRoot.init(
+                        copy.allocator,
+                        copy_elem,
+                        shadow.shadow_mode,
+                        shadow.delegates_focus_flag,
+                        shadow.slot_assignment_mode,
+                        shadow.clonable_flag,
+                        shadow.serializable_flag,
+                        shadow.available_to_element_internals,
+                        false, // declarative will be set next
+                    );
+
+                    // Step 6.5: Set copy's shadow root's declarative to node's shadow root's declarative
+                    copy_shadow.declarative_flag = shadow.declarative_flag;
+
+                    copy_elem.shadow_root = &copy_shadow;
+
+                    // Step 6.6: Clone shadow root children
+                    const shadow_node = shadow.asNode();
+                    for (shadow_node.child_nodes.items) |child| {
+                        const copy_shadow_node = copy_shadow.asNode();
+                        _ = try Node.cloneNodeInternal(child, document, subtree, copy_shadow_node, null);
+                    }
+                }
+            }
+        }
 
         // Step 7: Return copy
         return copy;
