@@ -238,12 +238,20 @@ pub const DocumentFragment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 prepend() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Pre-insert node before first child (from mutation.zig)
-        @panic("ParentNode.prepend() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Pre-insert node into this before this's first child
+        const first_child = this_node.get_firstChild();
+        _ = try mutation.preInsert(node, this_node, first_child);
     }
     /// DOM §4.3.2 - ParentNode.append()
     /// Inserts nodes after the last child, while replacing strings with Text nodes.
@@ -255,12 +263,19 @@ pub const DocumentFragment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 append() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Append node to this (from mutation.zig)
-        @panic("ParentNode.append() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Append node to this
+        _ = try mutation.append(node, this_node);
     }
     /// DOM §4.3.2 - ParentNode.replaceChildren()
     /// Replaces all children with nodes, while replacing strings with Text nodes.
@@ -273,13 +288,22 @@ pub const DocumentFragment = struct {
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 replaceChildren() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Ensure pre-insert validity (from mutation.zig)
-        // Step 3: Replace all (from mutation.zig)
-        @panic("ParentNode.replaceChildren() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Ensure pre-insert validity of node into this before null
+        try mutation.ensurePreInsertValidity(node, this_node, null);
+
+        // Step 3: Replace all with node within this
+        try mutation.replaceAll(node, this_node);
     }
     /// DOM §4.3.2 - ParentNode.moveBefore()
     /// Moves, without first removing, movedNode into this after child.

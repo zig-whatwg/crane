@@ -118,12 +118,20 @@ pub const ParentNode = webidl.mixin(struct {
     ///
     /// Throws HierarchyRequestError if constraints violated.
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 prepend() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Pre-insert node before first child (from mutation.zig)
-        @panic("ParentNode.prepend() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Pre-insert node into this before this's first child
+        const first_child = this_node.get_firstChild();
+        _ = try mutation.preInsert(node, this_node, first_child);
     }
 
     /// DOM §4.3.2 - ParentNode.append()
@@ -135,12 +143,19 @@ pub const ParentNode = webidl.mixin(struct {
     ///
     /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 append() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Append node to this (from mutation.zig)
-        @panic("ParentNode.append() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Append node to this
+        _ = try mutation.append(node, this_node);
     }
 
     /// DOM §4.3.2 - ParentNode.replaceChildren()
@@ -153,13 +168,22 @@ pub const ParentNode = webidl.mixin(struct {
     ///
     /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-        _ = self;
-        _ = nodes;
-        // TODO: Implement DOM §4.3.2 replaceChildren() algorithm
-        // Step 1: Convert nodes into a node (see convertNodesIntoNode helper)
-        // Step 2: Ensure pre-insert validity (from mutation.zig)
-        // Step 3: Replace all (from mutation.zig)
-        @panic("ParentNode.replaceChildren() not yet implemented");
+        const NodeType = @import("node").Node;
+        const mutation = @import("dom").mutation;
+        const ChildNodeMixin = @import("child_node").ChildNode;
+
+        // Cast self to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self));
+
+        // Step 1: Let node be the result of converting nodes into a node
+        const document = this_node.owner_document orelse return error.NoDocument;
+        const node = try ChildNodeMixin.convertNodesIntoNode(this_node.allocator, nodes, document);
+
+        // Step 2: Ensure pre-insert validity of node into this before null
+        try mutation.ensurePreInsertValidity(node, this_node, null);
+
+        // Step 3: Replace all with node within this
+        try mutation.replaceAll(node, this_node);
     }
 
     /// DOM §4.3.2 - ParentNode.moveBefore()
@@ -229,35 +253,7 @@ pub const ParentNode = webidl.mixin(struct {
 // Helper Algorithms (DOM §4.3.2)
 // ============================================================================
 
-/// DOM §4.3.2 - convert nodes into a node
-/// Given nodes and document, run these steps:
-///
-/// 1. Let node be null.
-/// 2. Replace each string in nodes with a new Text node whose data is the string
-///    and node document is document.
-/// 3. If nodes contains one node, then set node to nodes[0].
-/// 4. Otherwise, set node to a new DocumentFragment node whose node document is
-///    document, and then append each node in nodes, if any, to it.
-/// 5. Return node.
-///
-/// This helper is used by ParentNode (prepend, append, replaceChildren) and
-/// ChildNode (before, after, replaceWith) methods.
-pub fn convertNodesIntoNode(
-    allocator: std.mem.Allocator,
-    nodes: []const dom_types.NodeOrDOMString,
-    document: anytype,
-) !*anyopaque {
-    _ = allocator;
-    _ = nodes;
-    _ = document;
-    // TODO: Implement "convert nodes into a node" algorithm (DOM §4.3.2)
-    // Step 1: Let node be null
-    // Step 2: Replace strings with Text nodes
-    // Step 3: If single node, return it
-    // Step 4: If multiple, create DocumentFragment and append all
-    // Step 5: Return node
-    @panic("convertNodesIntoNode helper not yet implemented");
-}
+// NOTE: convertNodesIntoNode() is implemented in ChildNode.zig and shared by both mixins
 
 test "ParentNode mixin compiles" {
     // Just verify the mixin structure compiles
