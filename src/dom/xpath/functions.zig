@@ -39,34 +39,133 @@ pub fn fnCount(_: std.mem.Allocator, _: *const Context, args: []const Value) !Va
 }
 
 /// id(object) - Selects elements by unique ID
-pub fn fnId(allocator: std.mem.Allocator, _: *const Context, args: []const Value) !Value {
+pub fn fnId(allocator: std.mem.Allocator, ctx: *const Context, args: []const Value) !Value {
     if (args.len != 1) return error.InvalidArgumentCount;
-    // TODO: Implement ID lookup once we have attribute support
-    return Value{ .node_set = NodeSet.init(allocator) };
+
+    // Convert argument to string to get space-separated list of IDs
+    const id_string = try args[0].toString(allocator);
+    defer allocator.free(id_string);
+
+    var result = NodeSet.init(allocator);
+
+    // Split by whitespace to get individual IDs
+    var iter = std.mem.tokenizeAny(u8, id_string, " \t\r\n");
+    while (iter.next()) |id| {
+        // Find element with this ID
+        // We need to traverse the document from the root
+        const root = getRootNode(ctx.context_node);
+        try findElementById(allocator, root, id, &result);
+    }
+
+    return Value{ .node_set = result };
+}
+
+/// Get the root node (document)
+fn getRootNode(node: *@import("node").Node) *@import("node").Node {
+    var current = node;
+    while (current.parent_node) |parent| {
+        current = parent;
+    }
+    return current;
+}
+
+/// Find element by ID in tree
+fn findElementById(allocator: std.mem.Allocator, node: *@import("node").Node, id: []const u8, result: *NodeSet) !void {
+    const Node = @import("node").Node;
+
+    // Check if this is an element with matching ID
+    if (node.node_type == Node.ELEMENT_NODE) {
+        // Check if node name equals the id (simplified - normally we'd check id attribute)
+        // TODO: Properly check id attribute when attribute support is available
+        if (std.mem.eql(u8, node.node_name, id)) {
+            try result.add(node);
+            return; // IDs are unique, stop after finding first match
+        }
+    }
+
+    // Recursively search children
+    for (node.child_nodes.items) |child| {
+        try findElementById(allocator, child, id, result);
+    }
 }
 
 /// local-name(node-set?) - Returns local part of expanded-name
 pub fn fnLocalName(allocator: std.mem.Allocator, ctx: *const Context, args: []const Value) !Value {
     if (args.len > 1) return error.InvalidArgumentCount;
-    // TODO: Implement once we have node name support
-    _ = ctx;
-    return Value{ .string = try allocator.dupe(u8, "") };
+
+    const node = if (args.len == 0) blk: {
+        // Use context node
+        break :blk ctx.context_node;
+    } else blk: {
+        // Get first node from node-set
+        const node_set = switch (args[0]) {
+            .node_set => |ns| ns,
+            else => return error.InvalidArgumentType,
+        };
+        if (node_set.size() == 0) {
+            return Value{ .string = try allocator.dupe(u8, "") };
+        }
+        break :blk node_set.get(0).?;
+    };
+
+    // Extract local name from node_name (ignoring namespace prefix)
+    const name = node.node_name;
+    if (std.mem.indexOf(u8, name, ":")) |colon_pos| {
+        // Has namespace prefix, return local part
+        return Value{ .string = try allocator.dupe(u8, name[colon_pos + 1 ..]) };
+    }
+
+    // No prefix, return full name
+    return Value{ .string = try allocator.dupe(u8, name) };
 }
 
 /// namespace-uri(node-set?) - Returns namespace URI
 pub fn fnNamespaceUri(allocator: std.mem.Allocator, ctx: *const Context, args: []const Value) !Value {
     if (args.len > 1) return error.InvalidArgumentCount;
-    // TODO: Implement once we have namespace support
-    _ = ctx;
+
+    const node = if (args.len == 0) blk: {
+        // Use context node
+        break :blk ctx.context_node;
+    } else blk: {
+        // Get first node from node-set
+        const node_set = switch (args[0]) {
+            .node_set => |ns| ns,
+            else => return error.InvalidArgumentType,
+        };
+        if (node_set.size() == 0) {
+            return Value{ .string = try allocator.dupe(u8, "") };
+        }
+        break :blk node_set.get(0).?;
+    };
+
+    // For elements, check if we have namespace_uri field
+    // For now, return empty string as namespace support is not fully implemented
+    // TODO: Properly access Element.namespace_uri when Element type is available
+    _ = node;
     return Value{ .string = try allocator.dupe(u8, "") };
 }
 
 /// name(node-set?) - Returns QName
 pub fn fnName(allocator: std.mem.Allocator, ctx: *const Context, args: []const Value) !Value {
     if (args.len > 1) return error.InvalidArgumentCount;
-    // TODO: Implement once we have node name support
-    _ = ctx;
-    return Value{ .string = try allocator.dupe(u8, "") };
+
+    const node = if (args.len == 0) blk: {
+        // Use context node
+        break :blk ctx.context_node;
+    } else blk: {
+        // Get first node from node-set
+        const node_set = switch (args[0]) {
+            .node_set => |ns| ns,
+            else => return error.InvalidArgumentType,
+        };
+        if (node_set.size() == 0) {
+            return Value{ .string = try allocator.dupe(u8, "") };
+        }
+        break :blk node_set.get(0).?;
+    };
+
+    // Return the full qualified name
+    return Value{ .string = try allocator.dupe(u8, node.node_name) };
 }
 
 // ============================================================================
@@ -344,7 +443,7 @@ pub fn fnNumber(allocator: std.mem.Allocator, ctx: *const Context, args: []const
 }
 
 /// sum(node-set) - Sums numeric values of nodes
-pub fn fnSum(_: std.mem.Allocator, _: *const Context, args: []const Value) !Value {
+pub fn fnSum(allocator: std.mem.Allocator, _: *const Context, args: []const Value) !Value {
     if (args.len != 1) return error.InvalidArgumentCount;
 
     const node_set = switch (args[0]) {
@@ -352,11 +451,22 @@ pub fn fnSum(_: std.mem.Allocator, _: *const Context, args: []const Value) !Valu
         else => return error.InvalidArgumentType,
     };
 
-    const sum: f64 = 0.0;
+    var sum: f64 = 0.0;
     for (0..node_set.size()) |i| {
-        if (node_set.get(i)) |_| {
-            // TODO: Convert node to string, then to number
-            // For now, just skip
+        if (node_set.get(i)) |node| {
+            // Convert node to string, then to number
+            const node_val = Value{ .node_set = blk: {
+                var temp_ns = NodeSet.init(allocator);
+                try temp_ns.add(node);
+                break :blk temp_ns;
+            } };
+            defer {
+                var val = node_val;
+                val.deinit(allocator);
+            }
+
+            const num = try node_val.toNumber(allocator);
+            sum += num;
         }
     }
 

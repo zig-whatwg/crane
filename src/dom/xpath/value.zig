@@ -158,9 +158,15 @@ pub const NodeSet = struct {
     }
 
     /// Sort nodes in document order
-    pub fn sortDocumentOrder(_: *NodeSet) !void {
-        // TODO: Implement document order sorting
-        // For now, assume nodes are added in document order
+    pub fn sortDocumentOrder(self: *NodeSet) !void {
+        // Use std.sort with a custom comparison function
+        const Context = struct {
+            fn lessThan(_: void, a: *Node, b: *Node) bool {
+                return isBeforeInDocumentOrder(a, b);
+            }
+        };
+
+        std.mem.sort(*Node, self.nodes.items, {}, Context.lessThan);
     }
 
     /// Create union of two node-sets (§3.3 Union operator)
@@ -173,6 +179,95 @@ pub const NodeSet = struct {
         try self.sortDocumentOrder();
     }
 };
+
+// ============================================================================
+// Document Order Comparison
+// ============================================================================
+
+/// Check if node a comes before node b in document order
+/// Document order is defined as:
+/// 1. Root node comes first
+/// 2. Element comes before its children
+/// 3. Attributes and namespace nodes of an element come before children
+/// 4. Namespace nodes come before attributes
+/// 5. Children ordered by tree order
+fn isBeforeInDocumentOrder(a: *Node, b: *Node) bool {
+    // Same node
+    if (a == b) return false;
+
+    // Check if one is ancestor of the other
+    if (isAncestor(a, b)) return true;
+    if (isAncestor(b, a)) return false;
+
+    // Find common ancestor and compare positions
+    const common = findCommonAncestor(a, b) orelse return false;
+
+    // Find which child of common ancestor is on path to a and b
+    const a_child = findChildOnPath(common, a);
+    const b_child = findChildOnPath(common, b);
+
+    if (a_child == null or b_child == null) return false;
+
+    // Compare positions in parent's child list
+    for (common.child_nodes.items) |child| {
+        if (child == a_child) return true;
+        if (child == b_child) return false;
+    }
+
+    return false;
+}
+
+/// Check if a is an ancestor of b
+fn isAncestor(a: *Node, b: *Node) bool {
+    var current = b.parent_node;
+    while (current) |node| {
+        if (node == a) return true;
+        current = node.parent_node;
+    }
+    return false;
+}
+
+/// Find common ancestor of two nodes
+fn findCommonAncestor(a: *Node, b: *Node) ?*Node {
+    // Get all ancestors of a
+    var a_ancestors = std.ArrayList(*Node).init(std.heap.page_allocator);
+    defer a_ancestors.deinit();
+
+    var current = a;
+    while (true) {
+        a_ancestors.append(current) catch return null;
+        if (current.parent_node) |parent| {
+            current = parent;
+        } else {
+            break;
+        }
+    }
+
+    // Walk up from b until we find a node in a's ancestor list
+    current = b;
+    while (true) {
+        for (a_ancestors.items) |ancestor| {
+            if (current == ancestor) return current;
+        }
+        if (current.parent_node) |parent| {
+            current = parent;
+        } else {
+            break;
+        }
+    }
+
+    return null;
+}
+
+/// Find which child of ancestor is on the path to node
+fn findChildOnPath(ancestor: *Node, node: *Node) ?*Node {
+    var current = node;
+    while (current.parent_node) |parent| {
+        if (parent == ancestor) return current;
+        current = parent;
+    }
+    return null;
+}
 
 // ============================================================================
 // Helper Functions
@@ -241,10 +336,53 @@ fn formatNumber(allocator: std.mem.Allocator, n: f64) ![]const u8 {
 /// - Comment: content
 /// - PI: content after target
 /// - Namespace: namespace URI
-fn getStringValue(allocator: std.mem.Allocator, _: *Node) ![]const u8 {
-    // TODO: Implement per node type once we have full node type system
-    // For now, return empty string
-    return try allocator.dupe(u8, "");
+fn getStringValue(allocator: std.mem.Allocator, node: *Node) ![]const u8 {
+    switch (node.node_type) {
+        Node.ELEMENT_NODE, Node.DOCUMENT_NODE, Node.DOCUMENT_FRAGMENT_NODE => {
+            // Concatenate all descendant text nodes
+            var result = std.ArrayList(u8).init(allocator);
+            defer result.deinit();
+
+            try collectTextContent(node, &result);
+
+            return try result.toOwnedSlice();
+        },
+        Node.TEXT_NODE, Node.CDATA_SECTION_NODE, Node.COMMENT_NODE => {
+            // For character data nodes, we need to access the data field
+            // This requires casting to CharacterData, but we don't have that available
+            // in this module. For now, return the node_name as a placeholder.
+            // TODO: Properly access CharacterData.data field when available
+            return try allocator.dupe(u8, node.node_name);
+        },
+        Node.PROCESSING_INSTRUCTION_NODE => {
+            // PI content (excluding target)
+            // TODO: Properly extract PI data when available
+            return try allocator.dupe(u8, "");
+        },
+        Node.ATTRIBUTE_NODE => {
+            // Attribute value
+            // TODO: Properly access attribute value when available
+            return try allocator.dupe(u8, node.node_name);
+        },
+        else => {
+            return try allocator.dupe(u8, "");
+        },
+    }
+}
+
+/// Helper to collect text content from all descendant text nodes
+fn collectTextContent(node: *Node, result: *std.ArrayList(u8)) !void {
+    // If this is a text node, add its content
+    if (node.node_type == Node.TEXT_NODE or node.node_type == Node.CDATA_SECTION_NODE) {
+        // TODO: Access actual text data when available
+        // For now, use node_name as placeholder
+        try result.appendSlice(node.node_name);
+    }
+
+    // Recursively collect from children
+    for (node.child_nodes.items) |child| {
+        try collectTextContent(child, result);
+    }
 }
 
 // ============================================================================
