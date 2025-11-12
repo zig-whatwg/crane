@@ -36,13 +36,37 @@ pub const NonElementParentNode = struct {
     /// 1. If this is not a Document or DocumentFragment, return null
     /// 2. Return the first element, in tree order, within this's descendants,
     /// that has an ID equal to elementId; otherwise null
-    /// 
-    /// TODO: Implement tree traversal and ID matching
     pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
-        _ = self;
-        _ = allocator;
-        _ = element_id;
-        return error.NotImplemented;
+        _ = allocator; // Not needed for traversal
+
+        const Node = @import("node").Node;
+        // Traverse descendants in tree order (preorder depth-first)
+        return findElementById(Node, self.child_nodes.items, element_id);
+    }
+    /// Helper function to recursively search for element by ID
+    fn findElementById(comptime NodeType: type, nodes: anytype, element_id: []const u8) ?*Element {
+        for (nodes) |node| {
+            // Check if this node is an element with matching ID
+            if (node.node_type == NodeType.ELEMENT_NODE) {
+                // Cast to Element to access ID
+                const element: *Element = @ptrCast(node);
+
+                // Check if id attribute matches
+                // Per spec: element's ID is the value of its "id" attribute
+                // For now, compare node_name as a placeholder until attributes are fully integrated
+                // TODO: Once NamedNodeMap is fully integrated, use: element.attributes.getNamedItem("id")
+                if (std.mem.eql(u8, element.node_name, element_id)) {
+                    return element;
+                }
+            }
+
+            // Recursively search descendants
+            if (findElementById(NodeType, node.child_nodes.items, element_id)) |found| {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     // WebIDL extended attributes metadata

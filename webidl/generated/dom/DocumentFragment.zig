@@ -352,14 +352,13 @@ pub const DocumentFragment = struct {
     /// 1. If this is not a Document or DocumentFragment, return null
     /// 2. Return the first element, in tree order, within this's descendants,
     /// that has an ID equal to elementId; otherwise null
-    /// 
-    /// TODO: Implement tree traversal and ID matching
     /// (Included from NonElementParentNode mixin)
     pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
-        _ = self;
-        _ = allocator;
-        _ = element_id;
-        return error.NotImplemented;
+        _ = allocator; // Not needed for traversal
+
+        const Node = @import("node").Node;
+        // Traverse descendants in tree order (preorder depth-first)
+        return findElementById(Node, self.child_nodes.items, element_id);
     }
 
     // WebIDL extended attributes metadata
