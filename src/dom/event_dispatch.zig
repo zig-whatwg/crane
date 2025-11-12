@@ -278,7 +278,8 @@ fn invoke(
     event.related_target = path_struct.related_target;
 
     // Step 3: Set event's touch target list to struct's touch target list
-    // (Skip for now - touch events not implemented)
+    event.touch_target_list.clearRetainingCapacity();
+    try event.touch_target_list.appendSlice(path_struct.touch_target_list.items);
 
     // Step 4: If event's stop propagation flag is set, return
     if (event.stop_propagation_flag) return;
@@ -287,14 +288,134 @@ fn invoke(
     event.current_target = path_struct.invocation_target;
 
     // Step 6: Let listeners be a clone of event's currentTarget's event listener list
-    // Step 7-14: Inner invoke with listeners
-    // TODO: Implement listener invocation
-    // For now, this is a stub - full implementation requires:
-    // - EventTarget to have a listener list
-    // - Listener matching by type and phase
-    // - Callback invocation with proper this binding
-    // - Exception handling and reporting
+    // Clone to avoid issues with listeners added/removed during dispatch
+    const current_target = event.current_target.?;
+    const EventListener = @import("../webidl/generated/dom/EventTarget.zig").EventListener;
 
-    _ = phase;
-    _ = legacy_output_did_listeners_throw_flag;
+    var listeners = std.ArrayList(EventListener).init(event.allocator);
+    defer listeners.deinit();
+
+    // Get the event_listener_list from EventTarget
+    // EventTarget stores listeners in its own structure or base
+    // For now, access via direct field (will need to handle Node, etc. properly)
+    if (current_target.event_listener_list) |list| {
+        try listeners.appendSlice(list.items);
+    }
+
+    // Step 7: Let invocationTargetInShadowTree be struct's invocation-target-in-shadow-tree
+    const invocation_target_in_shadow_tree = path_struct.invocation_target_in_shadow_tree;
+
+    // Step 8: Let found be the result of running inner invoke
+    const found = try innerInvoke(
+        event,
+        listeners.items,
+        phase,
+        invocation_target_in_shadow_tree,
+        legacy_output_did_listeners_throw_flag,
+    );
+
+    // Step 9: If found is false and event's isTrusted attribute is true, handle legacy event types
+    if (!found and event.is_trusted) {
+        // Step 9.1: Let originalEventType be event's type attribute value
+        const original_event_type = event.event_type;
+
+        // Step 9.2: Check for legacy event type mappings
+        const legacy_type = getLegacyEventType(event.event_type);
+        if (legacy_type) |legacy| {
+            // Step 9.3: Inner invoke with legacy type
+            event.event_type = legacy;
+            _ = try innerInvoke(
+                event,
+                listeners.items,
+                phase,
+                invocation_target_in_shadow_tree,
+                legacy_output_did_listeners_throw_flag,
+            );
+
+            // Step 9.4: Set event's type back to originalEventType
+            event.event_type = original_event_type;
+        }
+    }
+}
+
+/// DOM §2.9 - inner invoke
+/// Inner invoke algorithm that actually calls the listeners
+fn innerInvoke(
+    event: *Event,
+    listeners: []const @import("../webidl/generated/dom/EventTarget.zig").EventListener,
+    phase: []const u8,
+    invocation_target_in_shadow_tree: bool,
+    legacy_output_did_listeners_throw_flag: ?*bool,
+) !bool {
+    // Step 1: Let found be false
+    var found = false;
+
+    // Step 2: For each listener of listeners, whose removed is false
+    for (listeners) |listener| {
+        if (listener.removed) continue;
+
+        // Step 2.1: If event's type attribute value is not listener's type, then continue
+        if (!std.mem.eql(u8, event.event_type, listener.type)) continue;
+
+        // Step 2.2: Set found to true
+        found = true;
+
+        // Step 2.3: If phase is "capturing" and listener's capture is false, then continue
+        if (std.mem.eql(u8, phase, "capturing") and !listener.capture) continue;
+
+        // Step 2.4: If phase is "bubbling" and listener's capture is true, then continue
+        if (std.mem.eql(u8, phase, "bubbling") and listener.capture) continue;
+
+        // Step 2.5: If listener's once is true, then remove the event listener
+        if (listener.once) {
+            // TODO: Implement removeEventListener
+            // For now, we can't remove during iteration - mark as removed
+        }
+
+        // Step 2.6-8: Handle global and currentEvent (Window-specific)
+        // TODO: Implement when Window object is available
+        _ = invocation_target_in_shadow_tree;
+
+        // Step 2.9: If listener's passive is true, set event's in passive listener flag
+        if (listener.passive orelse false) {
+            event.in_passive_listener_flag = true;
+        }
+
+        // Step 2.10: Record timing info (performance API integration)
+        // TODO: Implement when Performance API is available
+
+        // Step 2.11: Call the listener's callback
+        // TODO: Implement actual callback invocation
+        // For now, this is a placeholder - actual implementation requires:
+        // - JavaScript engine integration for callback invocation
+        // - Proper "this" binding
+        // - Exception handling and reporting
+        _ = listener.callback; // Would invoke callback.handleEvent(event) here
+
+        // If an exception is thrown:
+        // - Report exception
+        // - Set legacyOutputDidListenersThrowFlag if given
+        _ = legacy_output_did_listeners_throw_flag; // Would be set to true if exception thrown
+
+        // Step 2.12: Unset event's in passive listener flag
+        event.in_passive_listener_flag = false;
+
+        // Step 2.13: Reset currentEvent (Window-specific)
+        // TODO: Implement when Window object is available
+
+        // Step 2.14: If event's stop immediate propagation flag is set, then break
+        if (event.stop_immediate_propagation_flag) break;
+    }
+
+    // Step 3: Return found
+    return found;
+}
+
+/// Get legacy event type for compatibility
+fn getLegacyEventType(event_type: []const u8) ?[]const u8 {
+    if (std.mem.eql(u8, event_type, "animationend")) return "webkitAnimationEnd";
+    if (std.mem.eql(u8, event_type, "animationiteration")) return "webkitAnimationIteration";
+    if (std.mem.eql(u8, event_type, "animationstart")) return "webkitAnimationStart";
+    if (std.mem.eql(u8, event_type, "transitionend")) return "webkitTransitionEnd";
+    return null;
 }
