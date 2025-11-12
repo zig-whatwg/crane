@@ -36,14 +36,21 @@ pub const TestMixin = struct {
 pub const ParentBase = struct {
     parent_field: u32 = 100,
 
-    // Safe downcast to Child
-    // Returns null if this is not a Child instance
-    // TODO: Fix circular dependency - Child imports Parent, so we can't import Child here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Child can have: pub fn toBase(node: *Child) *ParentBase { return &node.base; }
-    // pub fn asChild(base: *ParentBase) ?*Child {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 1 derived type(s):
+    //   - Child (upcast: Child.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 
@@ -173,23 +180,22 @@ pub const MixinB = struct {
 pub const ParentMultiBase = struct {
     parent_multi_field: u32 = 300,
 
-    // Safe downcast to ChildMulti
-    // Returns null if this is not a ChildMulti instance
-    // TODO: Fix circular dependency - ChildMulti imports ParentMulti, so we can't import ChildMulti here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ChildMulti can have: pub fn toBase(node: *ChildMulti) *ParentMultiBase { return &node.base; }
-    // pub fn asChildMulti(base: *ParentMultiBase) ?*ChildMulti {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to GrandChild
-    // Returns null if this is not a GrandChild instance
-    // TODO: Fix circular dependency - GrandChild imports ParentMulti, so we can't import GrandChild here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then GrandChild can have: pub fn toBase(node: *GrandChild) *ParentMultiBase { return &node.base; }
-    // pub fn asGrandChild(base: *ParentMultiBase) ?*GrandChild {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 2 derived type(s):
+    //   - ChildMulti (upcast: ChildMulti.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - GrandChild (upcast: GrandChild.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 
@@ -251,14 +257,21 @@ pub const ChildMultiBase = struct {
 
     child_multi_field: u32 = 400,
 
-    // Safe downcast to GrandChild
-    // Returns null if this is not a GrandChild instance
-    // TODO: Fix circular dependency - GrandChild imports ChildMulti, so we can't import GrandChild here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then GrandChild can have: pub fn toBase(node: *GrandChild) *ChildMultiBase { return &node.base; }
-    // pub fn asGrandChild(base: *ChildMultiBase) ?*GrandChild {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 1 derived type(s):
+    //   - GrandChild (upcast: GrandChild.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

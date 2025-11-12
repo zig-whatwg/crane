@@ -24,41 +24,24 @@ pub const CharacterDataBase = struct {
     /// The mutable string data associated with this node
     data: []u8,
 
-    // Safe downcast to CDATASection
-    // Returns null if this is not a CDATASection instance
-    // TODO: Fix circular dependency - CDATASection imports CharacterData, so we can't import CDATASection here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CDATASection can have: pub fn toBase(node: *CDATASection) *CharacterDataBase { return &node.base; }
-    // pub fn asCDATASection(base: *CharacterDataBase) ?*CDATASection {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Comment
-    // Returns null if this is not a Comment instance
-    // TODO: Fix circular dependency - Comment imports CharacterData, so we can't import Comment here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Comment can have: pub fn toBase(node: *Comment) *CharacterDataBase { return &node.base; }
-    // pub fn asComment(base: *CharacterDataBase) ?*Comment {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Text
-    // Returns null if this is not a Text instance
-    // TODO: Fix circular dependency - Text imports CharacterData, so we can't import Text here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Text can have: pub fn toBase(node: *Text) *CharacterDataBase { return &node.base; }
-    // pub fn asText(base: *CharacterDataBase) ?*Text {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to ProcessingInstruction
-    // Returns null if this is not a ProcessingInstruction instance
-    // TODO: Fix circular dependency - ProcessingInstruction imports CharacterData, so we can't import ProcessingInstruction here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ProcessingInstruction can have: pub fn toBase(node: *ProcessingInstruction) *CharacterDataBase { return &node.base; }
-    // pub fn asProcessingInstruction(base: *CharacterDataBase) ?*ProcessingInstruction {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 4 derived type(s):
+    //   - CDATASection (upcast: CDATASection.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Comment (upcast: Comment.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Text (upcast: Text.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - ProcessingInstruction (upcast: ProcessingInstruction.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

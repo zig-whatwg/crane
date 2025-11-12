@@ -52,14 +52,21 @@ pub const EventBase = struct {
     related_target: ?*EventTarget,
     touch_target_list: std.ArrayList(*EventTarget),
 
-    // Safe downcast to CustomEvent
-    // Returns null if this is not a CustomEvent instance
-    // TODO: Fix circular dependency - CustomEvent imports Event, so we can't import CustomEvent here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CustomEvent can have: pub fn toBase(node: *CustomEvent) *EventBase { return &node.base; }
-    // pub fn asCustomEvent(base: *EventBase) ?*CustomEvent {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 1 derived type(s):
+    //   - CustomEvent (upcast: CustomEvent.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

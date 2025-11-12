@@ -68,59 +68,26 @@ pub const EventTargetBase = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
 
-    // Safe downcast to Element
-    // Returns null if this is not a Element instance
-    // TODO: Fix circular dependency - Element imports EventTarget, so we can't import Element here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Element can have: pub fn toBase(node: *Element) *EventTargetBase { return &node.base; }
-    // pub fn asElement(base: *EventTargetBase) ?*Element {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to DocumentType
-    // Returns null if this is not a DocumentType instance
-    // TODO: Fix circular dependency - DocumentType imports EventTarget, so we can't import DocumentType here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then DocumentType can have: pub fn toBase(node: *DocumentType) *EventTargetBase { return &node.base; }
-    // pub fn asDocumentType(base: *EventTargetBase) ?*DocumentType {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Node
-    // Returns null if this is not a Node instance
-    // TODO: Fix circular dependency - Node imports EventTarget, so we can't import Node here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Node can have: pub fn toBase(node: *Node) *EventTargetBase { return &node.base; }
-    // pub fn asNode(base: *EventTargetBase) ?*Node {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Document
-    // Returns null if this is not a Document instance
-    // TODO: Fix circular dependency - Document imports EventTarget, so we can't import Document here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Document can have: pub fn toBase(node: *Document) *EventTargetBase { return &node.base; }
-    // pub fn asDocument(base: *EventTargetBase) ?*Document {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to AbortSignal
-    // Returns null if this is not a AbortSignal instance
-    // TODO: Fix circular dependency - AbortSignal imports EventTarget, so we can't import AbortSignal here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then AbortSignal can have: pub fn toBase(node: *AbortSignal) *EventTargetBase { return &node.base; }
-    // pub fn asAbortSignal(base: *EventTargetBase) ?*AbortSignal {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Attr
-    // Returns null if this is not a Attr instance
-    // TODO: Fix circular dependency - Attr imports EventTarget, so we can't import Attr here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Attr can have: pub fn toBase(node: *Attr) *EventTargetBase { return &node.base; }
-    // pub fn asAttr(base: *EventTargetBase) ?*Attr {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 6 derived type(s):
+    //   - Element (upcast: Element.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - DocumentType (upcast: DocumentType.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Node (upcast: Node.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Document (upcast: Document.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - AbortSignal (upcast: AbortSignal.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Attr (upcast: Attr.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

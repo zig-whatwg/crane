@@ -3569,27 +3569,28 @@ fn generateSmartInit(
 fn generateCastingMethods(
     _: std.mem.Allocator,
     writer: anytype,
-    base_name: []const u8,
+    _: []const u8,
     children: [][]const u8,
 ) !void {
     if (children.len == 0) return;
 
-    try writer.writeAll("\n");
-
+    try writer.writeAll("\n    // ========================================================================\n");
+    try writer.writeAll("    // Polymorphic downcasting\n");
+    try writer.writeAll("    // ========================================================================\n");
+    try writer.writeAll("    // \n");
+    try writer.writeAll("    // Downcasting from base to derived type is done via @ptrCast:\n");
+    try writer.writeAll("    // \n");
+    try writer.writeAll("    //   const base: *NodeBase = element.toBase();\n");
+    try writer.writeAll("    //   const elem: *Element = @ptrCast(@alignCast(base));\n");
+    try writer.writeAll("    // \n");
+    try writer.writeAll("    // This is safe because all derived types have `base` as their first field.\n");
+    try writer.writeAll("    // For type-safe downcasting, add runtime type checking in your code.\n");
+    try writer.writeAll("    // \n");
+    try writer.print("    // This base type has {d} derived type(s):\n", .{children.len});
     for (children) |child_name| {
-        try writer.print(
-            \\    // Safe downcast to {s}
-            \\    // Returns null if this is not a {s} instance
-            \\    // TODO: Fix circular dependency - {s} imports {s}, so we can't import {s} here
-            \\    // Will be implemented when we modify derived classes to have base: field
-            \\    // Then {s} can have: pub fn toBase(node: *{s}) *{s}Base {{ return &node.base; }}
-            \\    // pub fn as{s}(base: *{s}Base) ?*{s} {{
-            \\    //     return @ptrCast(@alignCast(base));
-            \\    // }}
-            \\
-            \\
-        , .{ child_name, child_name, child_name, base_name, child_name, child_name, child_name, base_name, child_name, base_name, child_name });
+        try writer.print("    //   - {s} (upcast: {s}.toBase(), downcast: @ptrCast(@alignCast(base)))\n", .{ child_name, child_name });
     }
+    try writer.writeAll("    //\n\n");
 }
 
 /// Inject base field initialization into init() method return statement.

@@ -32,104 +32,31 @@ pub const NodeBase = struct {
     /// List of registered mutation observers watching this node
     registered_observers: std.ArrayList(@import("registered_observer").RegisteredObserver),
 
-    // Safe downcast to CDATASection
-    // Returns null if this is not a CDATASection instance
-    // TODO: Fix circular dependency - CDATASection imports Node, so we can't import CDATASection here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CDATASection can have: pub fn toBase(node: *CDATASection) *NodeBase { return &node.base; }
-    // pub fn asCDATASection(base: *NodeBase) ?*CDATASection {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to ShadowRoot
-    // Returns null if this is not a ShadowRoot instance
-    // TODO: Fix circular dependency - ShadowRoot imports Node, so we can't import ShadowRoot here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ShadowRoot can have: pub fn toBase(node: *ShadowRoot) *NodeBase { return &node.base; }
-    // pub fn asShadowRoot(base: *NodeBase) ?*ShadowRoot {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Element
-    // Returns null if this is not a Element instance
-    // TODO: Fix circular dependency - Element imports Node, so we can't import Element here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Element can have: pub fn toBase(node: *Element) *NodeBase { return &node.base; }
-    // pub fn asElement(base: *NodeBase) ?*Element {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to DocumentType
-    // Returns null if this is not a DocumentType instance
-    // TODO: Fix circular dependency - DocumentType imports Node, so we can't import DocumentType here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then DocumentType can have: pub fn toBase(node: *DocumentType) *NodeBase { return &node.base; }
-    // pub fn asDocumentType(base: *NodeBase) ?*DocumentType {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to CharacterData
-    // Returns null if this is not a CharacterData instance
-    // TODO: Fix circular dependency - CharacterData imports Node, so we can't import CharacterData here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CharacterData can have: pub fn toBase(node: *CharacterData) *NodeBase { return &node.base; }
-    // pub fn asCharacterData(base: *NodeBase) ?*CharacterData {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Comment
-    // Returns null if this is not a Comment instance
-    // TODO: Fix circular dependency - Comment imports Node, so we can't import Comment here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Comment can have: pub fn toBase(node: *Comment) *NodeBase { return &node.base; }
-    // pub fn asComment(base: *NodeBase) ?*Comment {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Document
-    // Returns null if this is not a Document instance
-    // TODO: Fix circular dependency - Document imports Node, so we can't import Document here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Document can have: pub fn toBase(node: *Document) *NodeBase { return &node.base; }
-    // pub fn asDocument(base: *NodeBase) ?*Document {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to DocumentFragment
-    // Returns null if this is not a DocumentFragment instance
-    // TODO: Fix circular dependency - DocumentFragment imports Node, so we can't import DocumentFragment here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then DocumentFragment can have: pub fn toBase(node: *DocumentFragment) *NodeBase { return &node.base; }
-    // pub fn asDocumentFragment(base: *NodeBase) ?*DocumentFragment {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Text
-    // Returns null if this is not a Text instance
-    // TODO: Fix circular dependency - Text imports Node, so we can't import Text here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Text can have: pub fn toBase(node: *Text) *NodeBase { return &node.base; }
-    // pub fn asText(base: *NodeBase) ?*Text {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Attr
-    // Returns null if this is not a Attr instance
-    // TODO: Fix circular dependency - Attr imports Node, so we can't import Attr here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Attr can have: pub fn toBase(node: *Attr) *NodeBase { return &node.base; }
-    // pub fn asAttr(base: *NodeBase) ?*Attr {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to ProcessingInstruction
-    // Returns null if this is not a ProcessingInstruction instance
-    // TODO: Fix circular dependency - ProcessingInstruction imports Node, so we can't import ProcessingInstruction here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ProcessingInstruction can have: pub fn toBase(node: *ProcessingInstruction) *NodeBase { return &node.base; }
-    // pub fn asProcessingInstruction(base: *NodeBase) ?*ProcessingInstruction {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 11 derived type(s):
+    //   - CDATASection (upcast: CDATASection.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - ShadowRoot (upcast: ShadowRoot.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Element (upcast: Element.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - DocumentType (upcast: DocumentType.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - CharacterData (upcast: CharacterData.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Comment (upcast: Comment.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Document (upcast: Document.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - DocumentFragment (upcast: DocumentFragment.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Text (upcast: Text.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - Attr (upcast: Attr.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //   - ProcessingInstruction (upcast: ProcessingInstruction.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

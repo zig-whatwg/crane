@@ -25,14 +25,21 @@ pub const TextBase = struct {
     allocator: Allocator,
 
 
-    // Safe downcast to CDATASection
-    // Returns null if this is not a CDATASection instance
-    // TODO: Fix circular dependency - CDATASection imports Text, so we can't import CDATASection here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CDATASection can have: pub fn toBase(node: *CDATASection) *TextBase { return &node.base; }
-    // pub fn asCDATASection(base: *TextBase) ?*CDATASection {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 1 derived type(s):
+    //   - CDATASection (upcast: CDATASection.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 

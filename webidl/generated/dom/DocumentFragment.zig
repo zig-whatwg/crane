@@ -24,14 +24,21 @@ const infra = @import("infra");
 pub const DocumentFragmentBase = struct {
     allocator: std.mem.Allocator,
 
-    // Safe downcast to ShadowRoot
-    // Returns null if this is not a ShadowRoot instance
-    // TODO: Fix circular dependency - ShadowRoot imports DocumentFragment, so we can't import ShadowRoot here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ShadowRoot can have: pub fn toBase(node: *ShadowRoot) *DocumentFragmentBase { return &node.base; }
-    // pub fn asShadowRoot(base: *DocumentFragmentBase) ?*ShadowRoot {
-    //     return @ptrCast(@alignCast(base));
-    // }
+    // ========================================================================
+    // Polymorphic downcasting
+    // ========================================================================
+    // 
+    // Downcasting from base to derived type is done via @ptrCast:
+    // 
+    //   const base: *NodeBase = element.toBase();
+    //   const elem: *Element = @ptrCast(@alignCast(base));
+    // 
+    // This is safe because all derived types have `base` as their first field.
+    // For type-safe downcasting, add runtime type checking in your code.
+    // 
+    // This base type has 1 derived type(s):
+    //   - ShadowRoot (upcast: ShadowRoot.toBase(), downcast: @ptrCast(@alignCast(base)))
+    //
 
 };
 
