@@ -54,12 +54,16 @@ pub const ParentNode = webidl.mixin(struct {
     /// The firstElementChild getter steps are to return the first child that is
     /// an element; otherwise null.
     pub fn get_firstElementChild(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 firstElementChild getter
-        // 1. Iterate through children (in tree order)
-        // 2. Return first child that is an Element
-        // 3. Return null if no element children
-        @panic("ParentNode.firstElementChild() not yet implemented");
+        const Node = @import("node").Node;
+
+        // Iterate through children in tree order
+        for (self.child_nodes.items) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(child);
+            }
+        }
+
+        return null;
     }
 
     /// DOM §4.3.2 - ParentNode.lastElementChild
@@ -68,12 +72,19 @@ pub const ParentNode = webidl.mixin(struct {
     /// The lastElementChild getter steps are to return the last child that is
     /// an element; otherwise null.
     pub fn get_lastElementChild(self: anytype) ?*Element {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 lastElementChild getter
-        // 1. Iterate through children (in reverse tree order)
-        // 2. Return last child that is an Element
-        // 3. Return null if no element children
-        @panic("ParentNode.lastElementChild() not yet implemented");
+        const Node = @import("node").Node;
+
+        // Iterate through children in reverse tree order
+        var i: usize = self.child_nodes.items.len;
+        while (i > 0) {
+            i -= 1;
+            const child = self.child_nodes.items[i];
+            if (child.node_type == Node.ELEMENT_NODE) {
+                return @ptrCast(child);
+            }
+        }
+
+        return null;
     }
 
     /// DOM §4.3.2 - ParentNode.childElementCount
@@ -82,11 +93,17 @@ pub const ParentNode = webidl.mixin(struct {
     /// The childElementCount getter steps are to return the number of children
     /// of this that are elements.
     pub fn get_childElementCount(self: anytype) u32 {
-        _ = self;
-        // TODO: Implement DOM §4.3.2 childElementCount getter
-        // 1. Count children that are Elements
-        // 2. Return count as unsigned long (u32)
-        @panic("ParentNode.childElementCount() not yet implemented");
+        const Node = @import("node").Node;
+
+        // Count children that are Elements
+        var count: u32 = 0;
+        for (self.child_nodes.items) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                count += 1;
+            }
+        }
+
+        return count;
     }
 
     /// DOM §4.3.2 - ParentNode.prepend()
