@@ -1,0 +1,390 @@
+//! XPath 1.0 Value Types
+//!
+//! This module implements the 4 basic data types for XPath 1.0 as specified in §3.1.
+//!
+//! ## W3C XPath 1.0 Specification
+//!
+//! - **XPath 1.0**: https://www.w3.org/TR/xpath-10/
+//! - **§3.1 Basics**: https://www.w3.org/TR/xpath-10/#section-Basics
+//! - **Data Types**: node-set, boolean, number, string
+//!
+//! ## XPath Data Types
+//!
+//! From XPath 1.0 spec §3.1:
+//! - **node-set**: An unordered collection of nodes without duplicates
+//! - **boolean**: true or false
+//! - **number**: A floating-point number (IEEE 754 double-precision)
+//! - **string**: A sequence of UCS characters
+
+const std = @import("std");
+const Node = @import("node").Node;
+const infra = @import("infra");
+
+/// XPath 1.0 Value (§3.1)
+///
+/// An expression evaluates to an object which is one of four basic types
+pub const Value = union(enum) {
+    node_set: NodeSet,
+    boolean: bool,
+    number: f64,
+    string: []const u8,
+
+    /// Convert value to boolean (§3.2 Boolean Functions)
+    ///
+    /// Rules from XPath 1.0 spec:
+    /// - number: true iff not positive/negative zero and not NaN
+    /// - node-set: true iff non-empty
+    /// - string: true iff length > 0
+    /// - boolean: identity
+    pub fn toBoolean(self: Value) bool {
+        return switch (self) {
+            .boolean => |b| b,
+            .number => |n| {
+                // Not zero and not NaN
+                return n != 0.0 and !std.math.isNan(n);
+            },
+            .node_set => |ns| !ns.isEmpty(),
+            .string => |s| s.len > 0,
+        };
+    }
+
+    /// Convert value to number (§3.4 Number Functions)
+    ///
+    /// Rules from XPath 1.0 spec:
+    /// - string: parse as number, NaN if invalid
+    /// - boolean: 1 for true, 0 for false
+    /// - node-set: convert to string first, then to number
+    /// - number: identity
+    pub fn toNumber(self: Value, allocator: std.mem.Allocator) !f64 {
+        return switch (self) {
+            .number => |n| n,
+            .boolean => |b| if (b) 1.0 else 0.0,
+            .string => |s| parseNumber(s),
+            .node_set => {
+                const str = try self.toString(allocator);
+                defer allocator.free(str);
+                return parseNumber(str);
+            },
+        };
+    }
+
+    /// Convert value to string (§3.2 String Functions)
+    ///
+    /// Rules from XPath 1.0 spec:
+    /// - node-set: string-value of first node in document order
+    /// - boolean: "true" or "false"
+    /// - number: formatted per spec rules
+    /// - string: identity
+    pub fn toString(self: Value, allocator: std.mem.Allocator) ![]const u8 {
+        return switch (self) {
+            .string => |s| try allocator.dupe(u8, s),
+            .boolean => |b| try allocator.dupe(u8, if (b) "true" else "false"),
+            .number => |n| try formatNumber(allocator, n),
+            .node_set => |ns| {
+                if (ns.isEmpty()) {
+                    return try allocator.dupe(u8, "");
+                }
+                // Get first node in document order
+                const first_node = ns.getFirst().?;
+                return try getStringValue(allocator, first_node);
+            },
+        };
+    }
+
+    /// Free owned resources
+    pub fn deinit(self: *Value, allocator: std.mem.Allocator) void {
+        switch (self.*) {
+            .node_set => |*ns| ns.deinit(),
+            .string => |s| allocator.free(s),
+            else => {},
+        }
+    }
+};
+
+/// Node-set type (§3.3)
+///
+/// An unordered collection of nodes without duplicates.
+/// Internally stored in document order for consistent iteration.
+pub const NodeSet = struct {
+    nodes: infra.List(*Node),
+
+    pub fn init(allocator: std.mem.Allocator) NodeSet {
+        return .{
+            .nodes = infra.List(*Node).init(allocator),
+        };
+    }
+
+    pub fn deinit(self: *NodeSet) void {
+        self.nodes.deinit();
+    }
+
+    /// Add node to set if not already present
+    pub fn add(self: *NodeSet, node: *Node) !void {
+        // Check for duplicates
+        if (self.contains(node)) {
+            return;
+        }
+        try self.nodes.append(node);
+    }
+
+    /// Check if node is in set
+    pub fn contains(self: *const NodeSet, node: *Node) bool {
+        for (0..self.nodes.size()) |i| {
+            if (self.nodes.get(i).? == node) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Get node at index (in document order)
+    pub fn get(self: *const NodeSet, index: usize) ?*Node {
+        return self.nodes.get(index);
+    }
+
+    /// Get first node in document order
+    pub fn getFirst(self: *const NodeSet) ?*Node {
+        return self.nodes.get(0);
+    }
+
+    /// Get size of node-set
+    pub fn size(self: *const NodeSet) usize {
+        return self.nodes.size();
+    }
+
+    /// Check if node-set is empty
+    pub fn isEmpty(self: *const NodeSet) bool {
+        return self.nodes.isEmpty();
+    }
+
+    /// Sort nodes in document order
+    pub fn sortDocumentOrder(_: *NodeSet) !void {
+        // TODO: Implement document order sorting
+        // For now, assume nodes are added in document order
+    }
+
+    /// Create union of two node-sets (§3.3 Union operator)
+    pub fn unionWith(self: *NodeSet, other: *const NodeSet) !void {
+        for (0..other.size()) |i| {
+            if (other.get(i)) |node| {
+                try self.add(node);
+            }
+        }
+        try self.sortDocumentOrder();
+    }
+};
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Parse number from string per XPath 1.0 spec (§3.4)
+///
+/// Rules:
+/// - Optional whitespace
+/// - Optional minus sign
+/// - Number (digits with optional decimal point)
+/// - Optional whitespace
+/// - Invalid format returns NaN
+fn parseNumber(s: []const u8) f64 {
+    // Trim whitespace
+    const trimmed = std.mem.trim(u8, s, " \t\r\n");
+    if (trimmed.len == 0) {
+        return std.math.nan(f64);
+    }
+
+    return std.fmt.parseFloat(f64, trimmed) catch std.math.nan(f64);
+}
+
+/// Format number to string per XPath 1.0 spec (§3.2)
+///
+/// Rules:
+/// - NaN → "NaN"
+/// - +0 → "0"
+/// - -0 → "0"
+/// - +Infinity → "Infinity"
+/// - -Infinity → "-Infinity"
+/// - Integer: no decimal point, no leading zeros
+/// - Non-integer: decimal form with minimal digits
+fn formatNumber(allocator: std.mem.Allocator, n: f64) ![]const u8 {
+    if (std.math.isNan(n)) {
+        return try allocator.dupe(u8, "NaN");
+    }
+
+    if (std.math.isPositiveInf(n)) {
+        return try allocator.dupe(u8, "Infinity");
+    }
+
+    if (std.math.isNegativeInf(n)) {
+        return try allocator.dupe(u8, "-Infinity");
+    }
+
+    if (n == 0.0) {
+        return try allocator.dupe(u8, "0");
+    }
+
+    // Check if integer
+    if (@floor(n) == n) {
+        return try std.fmt.allocPrint(allocator, "{d:.0}", .{n});
+    }
+
+    // Non-integer: use minimal representation
+    return try std.fmt.allocPrint(allocator, "{d}", .{n});
+}
+
+/// Get string-value of a node (§5 Data Model)
+///
+/// Rules vary by node type:
+/// - Element/Root: concatenation of all text node descendants
+/// - Attr: normalized attribute value
+/// - Text: character data
+/// - Comment: content
+/// - PI: content after target
+/// - Namespace: namespace URI
+fn getStringValue(allocator: std.mem.Allocator, _: *Node) ![]const u8 {
+    // TODO: Implement per node type once we have full node type system
+    // For now, return empty string
+    return try allocator.dupe(u8, "");
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "value - boolean conversion" {
+    // Boolean
+    const v1 = Value{ .boolean = true };
+    try std.testing.expect(v1.toBoolean());
+
+    const v2 = Value{ .boolean = false };
+    try std.testing.expect(!v2.toBoolean());
+
+    // Number
+    const v3 = Value{ .number = 0.0 };
+    try std.testing.expect(!v3.toBoolean());
+
+    const v4 = Value{ .number = 42.0 };
+    try std.testing.expect(v4.toBoolean());
+
+    const v5 = Value{ .number = std.math.nan(f64) };
+    try std.testing.expect(!v5.toBoolean());
+
+    // String
+    const v6 = Value{ .string = "" };
+    try std.testing.expect(!v6.toBoolean());
+
+    const v7 = Value{ .string = "hello" };
+    try std.testing.expect(v7.toBoolean());
+}
+
+test "value - number conversion" {
+    const allocator = std.testing.allocator;
+
+    // Number
+    const v1 = Value{ .number = 42.5 };
+    try std.testing.expectEqual(@as(f64, 42.5), try v1.toNumber(allocator));
+
+    // Boolean
+    const v2 = Value{ .boolean = true };
+    try std.testing.expectEqual(@as(f64, 1.0), try v2.toNumber(allocator));
+
+    const v3 = Value{ .boolean = false };
+    try std.testing.expectEqual(@as(f64, 0.0), try v3.toNumber(allocator));
+
+    // String (valid)
+    const v4 = Value{ .string = "123.45" };
+    try std.testing.expectEqual(@as(f64, 123.45), try v4.toNumber(allocator));
+
+    // String (invalid - becomes NaN)
+    const v5 = Value{ .string = "not a number" };
+    const result = try v5.toNumber(allocator);
+    try std.testing.expect(std.math.isNan(result));
+}
+
+test "value - string conversion" {
+    const allocator = std.testing.allocator;
+
+    // String
+    const v1 = Value{ .string = "hello" };
+    const s1 = try v1.toString(allocator);
+    defer allocator.free(s1);
+    try std.testing.expectEqualStrings("hello", s1);
+
+    // Boolean
+    const v2 = Value{ .boolean = true };
+    const s2 = try v2.toString(allocator);
+    defer allocator.free(s2);
+    try std.testing.expectEqualStrings("true", s2);
+
+    const v3 = Value{ .boolean = false };
+    const s3 = try v3.toString(allocator);
+    defer allocator.free(s3);
+    try std.testing.expectEqualStrings("false", s3);
+
+    // Number
+    const v4 = Value{ .number = 42.0 };
+    const s4 = try v4.toString(allocator);
+    defer allocator.free(s4);
+    try std.testing.expectEqualStrings("42", s4);
+
+    const v5 = Value{ .number = std.math.nan(f64) };
+    const s5 = try v5.toString(allocator);
+    defer allocator.free(s5);
+    try std.testing.expectEqualStrings("NaN", s5);
+}
+
+test "node-set - basic operations" {
+    const allocator = std.testing.allocator;
+
+    // Create mock nodes (just pointers for testing)
+    var node1: Node = undefined;
+    var node2: Node = undefined;
+
+    var ns = NodeSet.init(allocator);
+    defer ns.deinit(allocator);
+
+    try std.testing.expect(ns.isEmpty());
+    try std.testing.expectEqual(@as(usize, 0), ns.size());
+
+    // Add nodes
+    try ns.add(&node1);
+    try std.testing.expect(!ns.isEmpty());
+    try std.testing.expectEqual(@as(usize, 1), ns.size());
+    try std.testing.expect(ns.contains(&node1));
+
+    try ns.add(&node2);
+    try std.testing.expectEqual(@as(usize, 2), ns.size());
+    try std.testing.expect(ns.contains(&node2));
+
+    // Add duplicate (should not increase size)
+    try ns.add(&node1);
+    try std.testing.expectEqual(@as(usize, 2), ns.size());
+}
+
+test "node-set - union" {
+    const allocator = std.testing.allocator;
+
+    var node1: Node = undefined;
+    var node2: Node = undefined;
+    var node3: Node = undefined;
+
+    var ns1 = NodeSet.init(allocator);
+    defer ns1.deinit(allocator);
+
+    var ns2 = NodeSet.init(allocator);
+    defer ns2.deinit(allocator);
+
+    try ns1.add(&node1);
+    try ns1.add(&node2);
+
+    try ns2.add(&node2); // Duplicate
+    try ns2.add(&node3);
+
+    try ns1.unionWith(&ns2);
+
+    // Should have all three nodes
+    try std.testing.expectEqual(@as(usize, 3), ns1.size());
+    try std.testing.expect(ns1.contains(&node1));
+    try std.testing.expect(ns1.contains(&node2));
+    try std.testing.expect(ns1.contains(&node3));
+}
