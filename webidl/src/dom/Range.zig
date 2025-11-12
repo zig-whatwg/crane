@@ -482,8 +482,29 @@ pub const Range = webidl.interface(struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE))
         {
-            // TODO: Clone the node and set its data to substring
-            // For now, return fragment
+            // Step 4.1: Let clone be a clone of original start node
+            const clone = try self.start_container.call_cloneNode(false); // Shallow clone
+
+            // Step 4.2: Set the data of clone to substring
+            const CharacterData = @import("character_data").CharacterData;
+            const originalCharData = try CharacterData.fromNode(self.start_container);
+            const cloneCharData = try CharacterData.fromNode(clone);
+
+            // Substring from original start offset to original end offset
+            const count = self.end_offset - self.start_offset;
+            const originalData = originalCharData.get_data();
+            if (self.start_offset < originalData.len and self.end_offset <= originalData.len) {
+                const substring = originalData[self.start_offset..self.end_offset];
+                try cloneCharData.set_data(substring);
+            }
+
+            // Step 4.3: Append clone to fragment
+            _ = try fragment.call_appendChild(clone);
+
+            // Step 4.4: Replace data in original node (remove extracted text)
+            try originalCharData.call_deleteData(self.start_offset, count);
+
+            // Step 4.5: Return fragment
             return fragment;
         }
 
@@ -540,8 +561,25 @@ pub const Range = webidl.interface(struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE))
         {
-            // TODO: Clone the node and set its data to substring
-            // For now, return fragment
+            // Step 4.1: Let clone be a clone of start node
+            const clone = try self.start_container.call_cloneNode(false); // Shallow clone
+
+            // Step 4.2: Set the data of clone to substring
+            const CharacterData = @import("character_data").CharacterData;
+            const originalCharData = try CharacterData.fromNode(self.start_container);
+            const cloneCharData = try CharacterData.fromNode(clone);
+
+            // Substring from start offset to end offset
+            const originalData = originalCharData.get_data();
+            if (self.start_offset < originalData.len and self.end_offset <= originalData.len) {
+                const substring = originalData[self.start_offset..self.end_offset];
+                try cloneCharData.set_data(substring);
+            }
+
+            // Step 4.3: Append clone to fragment
+            _ = try fragment.call_appendChild(clone);
+
+            // Step 4.4: Return fragment (note: cloneContents doesn't modify original)
             return fragment;
         }
 
