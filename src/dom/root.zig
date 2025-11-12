@@ -68,6 +68,8 @@ pub const ElementWithBase = element_with_base.ElementWithBase;
 pub const text_with_base = @import("text_with_base.zig");
 pub const TextWithBase = text_with_base.TextWithBase;
 pub const CommentWithBase = text_with_base.CommentWithBase;
+pub const attr_with_base = @import("attr_with_base.zig");
+pub const AttrWithBase = attr_with_base.AttrWithBase;
 
 // XPath 1.0 implementation
 pub const xpath = struct {

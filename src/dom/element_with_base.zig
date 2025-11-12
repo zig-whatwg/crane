@@ -14,10 +14,11 @@
 const std = @import("std");
 const infra = @import("infra");
 const node_base = @import("node_base.zig");
+const attr_with_base = @import("attr_with_base.zig");
 const Allocator = std.mem.Allocator;
 
 pub const NodeBase = node_base.NodeBase;
-pub const Attr = @import("attr").Attr;
+pub const AttrWithBase = attr_with_base.AttrWithBase;
 
 /// Element with NodeBase integration
 /// This demonstrates the pattern that codegen should eventually generate
@@ -32,7 +33,7 @@ pub const ElementWithBase = struct {
     // ========================================================================
     tag_name: []const u8,
     namespace_uri: ?[]const u8,
-    attributes: infra.List(Attr),
+    attributes: infra.List(*AttrWithBase),
 
     /// Initialize a new Element
     pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
@@ -48,7 +49,7 @@ pub const ElementWithBase = struct {
             },
             .tag_name = tag_name,
             .namespace_uri = null,
-            .attributes = infra.List(Attr).init(allocator),
+            .attributes = infra.List(*AttrWithBase).init(allocator),
         };
     }
 
@@ -57,10 +58,11 @@ pub const ElementWithBase = struct {
         self.base.child_nodes.deinit();
         self.base.registered_observers.deinit();
 
-        // Clean up attributes
+        // Clean up attributes (they're heap-allocated)
         for (0..self.attributes.size()) |i| {
-            if (self.attributes.get(i)) |*attr| {
+            if (self.attributes.get(i)) |attr| {
                 attr.deinit();
+                self.base.allocator.destroy(attr);
             }
         }
         self.attributes.deinit();
@@ -92,24 +94,25 @@ pub const ElementWithBase = struct {
     pub fn setId(self: *ElementWithBase, value: []const u8) !void {
         // Find existing id attribute
         for (0..self.attributes.size()) |i| {
-            if (self.attributes.get(i)) |*attr| {
+            if (self.attributes.get(i)) |attr| {
                 if (std.mem.eql(u8, attr.local_name, "id")) {
-                    // TODO: Properly free old value if allocated
-                    attr.value = value;
+                    try attr.setValue(value);
                     return;
                 }
             }
         }
 
         // Add new id attribute
-        var attr = try Attr.init(
+        const attr = try self.base.allocator.create(AttrWithBase);
+        errdefer self.base.allocator.destroy(attr);
+
+        attr.* = try AttrWithBase.init(
             self.base.allocator,
-            null, // namespace_uri
-            null, // prefix
             "id", // local_name
             value, // value
+            null, // namespace_uri
+            null, // prefix
         );
-        attr.owner_element = null; // TODO: Set to self when we support Element* in Attr
         try self.attributes.append(attr);
     }
 
@@ -129,24 +132,25 @@ pub const ElementWithBase = struct {
     pub fn setAttribute(self: *ElementWithBase, name: []const u8, value: []const u8) !void {
         // Find existing attribute
         for (0..self.attributes.size()) |i| {
-            if (self.attributes.get(i)) |*attr| {
+            if (self.attributes.get(i)) |attr| {
                 if (std.mem.eql(u8, attr.local_name, name)) {
-                    // TODO: Properly free old value if allocated
-                    attr.value = value;
+                    try attr.setValue(value);
                     return;
                 }
             }
         }
 
         // Add new attribute
-        var attr = try Attr.init(
+        const attr = try self.base.allocator.create(AttrWithBase);
+        errdefer self.base.allocator.destroy(attr);
+
+        attr.* = try AttrWithBase.init(
             self.base.allocator,
-            null, // namespace_uri
-            null, // prefix
             name, // local_name
             value, // value
+            null, // namespace_uri
+            null, // prefix
         );
-        attr.owner_element = null; // TODO: Set to self when we support Element* in Attr
         try self.attributes.append(attr);
     }
 };

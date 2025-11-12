@@ -366,8 +366,11 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
             return try allocator.dupe(u8, "");
         },
         NodeBase.ATTRIBUTE_NODE => {
-            // Attribute value
-            // TODO: Properly access attribute value when available
+            // Attribute value (XPath 1.0 §5.2)
+            if (NodeBase.asAttrConst(node)) |attr| {
+                return try allocator.dupe(u8, attr.getValue());
+            }
+            // Fallback (should not happen)
             return try allocator.dupe(u8, node.node_name);
         },
         else => {

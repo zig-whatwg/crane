@@ -446,13 +446,10 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             // Only element nodes have attributes (XPath 1.0 §2.3)
             if (NodeBase.asElement(node)) |element| {
                 // Access attributes from Element using NodeBase downcasting
+                // Attributes are already AttrWithBase nodes with NodeBase
                 for (0..element.attributes.size()) |i| {
                     if (element.attributes.get(i)) |attr| {
-                        // TODO: Create attribute nodes and add to result
-                        // For now, we'll create pseudo attribute nodes
-                        // This is simplified until we have proper Attr with NodeBase
-                        _ = attr;
-                        // try result.add(&attr_as_node);
+                        try result.add(attr.asNode());
                     }
                 }
             }

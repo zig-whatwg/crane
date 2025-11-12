@@ -68,8 +68,7 @@ pub const NodeBase = struct {
     // Safe Downcasting Utilities
     // ========================================================================
 
-    /// Safely cast NodeBase to Element
-    /// Returns null if node is not an Element
+    /// Safely cast NodeBase to Element (using ElementWithBase temporarily)
     pub fn asElement(node: *NodeBase) ?*Element {
         if (node.node_type != ELEMENT_NODE) return null;
         // Safe: Element has NodeBase as first field, so addresses are identical
@@ -113,8 +112,14 @@ pub const NodeBase = struct {
         return @ptrCast(node);
     }
 
-    /// Safely cast NodeBase to Attr
-    pub fn asAttr(node: *NodeBase) ?*Attr {
+    /// Safely cast NodeBase to Attr (using AttrWithBase temporarily)
+    pub fn asAttr(node: *NodeBase) ?*AttrWithBase {
+        if (node.node_type != ATTRIBUTE_NODE) return null;
+        return @ptrCast(node);
+    }
+
+    /// Safely cast const NodeBase to const Attr
+    pub fn asAttrConst(node: *const NodeBase) ?*const AttrWithBase {
         if (node.node_type != ATTRIBUTE_NODE) return null;
         return @ptrCast(node);
     }
@@ -166,11 +171,11 @@ pub const NodeBase = struct {
 };
 
 // Forward declarations for concrete types we cast to
-// These are imported at file scope to avoid circular dependency issues
-const Element = @import("element").Element;
-const Text = @import("text").Text;
-const Comment = @import("comment").Comment;
-const Attr = @import("attr").Attr;
+// Using the WithBase variants until codegen is updated
+const Element = @import("element_with_base.zig").ElementWithBase;
+const Text = @import("text_with_base.zig").TextWithBase;
+const Comment = @import("text_with_base.zig").CommentWithBase;
+const AttrWithBase = @import("attr_with_base.zig").AttrWithBase;
 
 // CharacterData is a base class for Text, Comment, etc.
 // For now, we'll define a minimal stub until it's generated
