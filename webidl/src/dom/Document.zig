@@ -34,8 +34,13 @@ pub const Document = webidl.interface(struct {
     /// Provides memory savings (20-30%) and O(1) string comparison via pointer equality
     _string_pool: std.StringHashMap(void),
     /// Document base URL (fallback: empty string for about:blank)
-    /// TODO: Implement full URL parsing and document URL when URL spec is integrated
     base_uri: []const u8,
+    /// Document content type (e.g., "text/html", "application/xml")
+    content_type: []const u8,
+    /// Document type: html or xml
+    document_type: enum { html, xml },
+    /// Document origin (opaque for now)
+    origin: ?*anyopaque,
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -43,6 +48,9 @@ pub const Document = webidl.interface(struct {
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
+            .content_type = "application/xml",
+            .document_type = .xml,
+            .origin = null,
             .base_uri = "about:blank",
         };
     }

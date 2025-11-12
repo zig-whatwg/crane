@@ -92,7 +92,7 @@ pub const DOMImplementation = webidl.interface(struct {
         // Step 1: Create new XMLDocument
         const document = try self.allocator.create(Document);
         document.* = try Document.init(self.allocator);
-        // TODO: Mark as XMLDocument when we have document type distinction
+        document.document_type = .xml;
 
         const document_node: *Node = @ptrCast(document);
 
@@ -118,13 +118,19 @@ pub const DOMImplementation = webidl.interface(struct {
         }
 
         // Step 6: Set document's origin
-        // TODO: Set origin from self.document.origin when origin tracking is implemented
+        document.origin = self.document.origin;
 
         // Step 7: Set content type based on namespace
-        // TODO: Set contentType when Document has contentType field
-        // HTML namespace: "application/xhtml+xml"
-        // SVG namespace: "image/svg+xml"
-        // Other: "application/xml"
+        const Namespaces = @import("infra").Namespaces;
+        document.content_type = if (namespace) |ns| blk: {
+            if (std.mem.eql(u8, ns, Namespaces.HTML)) {
+                break :blk "application/xhtml+xml";
+            } else if (std.mem.eql(u8, ns, Namespaces.SVG)) {
+                break :blk "image/svg+xml";
+            } else {
+                break :blk "application/xml";
+            }
+        } else "application/xml";
 
         // Step 8: Return document
         return document;
@@ -155,12 +161,12 @@ pub const DOMImplementation = webidl.interface(struct {
         // Step 1: Create new HTML document
         const doc = try self.allocator.create(Document);
         doc.* = try Document.init(self.allocator);
-        // TODO: Mark as HTML document when we have document type distinction
+        doc.document_type = .html;
 
         const doc_node: *Node = @ptrCast(doc);
 
         // Step 2: Set content type to "text/html"
-        // TODO: Set contentType when Document has contentType field
+        doc.content_type = "text/html";
 
         // Step 3: Create and append doctype
         const doctype = try doc.call_createDocumentType("html", "", "");
@@ -195,7 +201,7 @@ pub const DOMImplementation = webidl.interface(struct {
         _ = try mutation.append(body_node, html_node);
 
         // Step 8: Set doc's origin
-        // TODO: Set origin from self.document.origin when origin tracking is implemented
+        doc.origin = self.document.origin;
 
         // Step 9: Return doc
         return doc;
