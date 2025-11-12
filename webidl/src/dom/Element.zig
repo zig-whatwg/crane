@@ -194,21 +194,71 @@ pub const Element = webidl.interface(struct {
 
     /// DOM §4.10.4 - Element.matches(selectors)
     /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
-    /// TODO: Implement using Selectors API (requires CSS selector parser)
-    pub fn call_matches(self: *const Element, selectors: []const u8) !bool {
-        _ = self;
-        _ = selectors;
-        return error.NotImplemented;
+    ///
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. If the result of match a selector against an element, using s, this,
+    ///    and :scope element this, returns success, then return true; otherwise, return false.
+    pub fn call_matches(self: *const Element, allocator: Allocator, selectors: []const u8) !bool {
+        // Use scopeMatchSelectorsString to parse and match
+        // This will throw SyntaxError if parsing fails
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // Check if self is in the matches list
+        for (matches.items) |match| {
+            if (match == self) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// DOM §4.10.4 - Element.closest(selectors)
     /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
     /// Returns null if no such element exists.
-    /// TODO: Implement using Selectors API (requires CSS selector parser)
-    pub fn call_closest(self: *const Element, selectors: []const u8) !?*Element {
-        _ = self;
-        _ = selectors;
-        return error.NotImplemented;
+    ///
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. Let elements be this's inclusive ancestors that are elements, in reverse tree order.
+    /// 4. For each element in elements, if the result of match a selector against an element,
+    ///    using s, element, and :scope element this, returns success, return element.
+    /// 5. Return null.
+    pub fn call_closest(self: *const Element, allocator: Allocator, selectors: []const u8) !?*Element {
+        const NodeType = @import("node").Node;
+
+        // Parse selectors (will throw SyntaxError if invalid)
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        defer matches.deinit();
+
+        // Step 3: Walk up the tree from this element
+        // Check this element and its ancestors
+        const self_node: *const NodeType = @ptrCast(self);
+        var current: ?*const NodeType = self_node;
+
+        while (current) |node| {
+            // Only check elements
+            if (node.node_type == NodeType.ELEMENT_NODE) {
+                const elem: *const Element = @ptrCast(node);
+
+                // Check if this element is in the matches
+                for (matches.items) |match| {
+                    if (match == elem) {
+                        // Cast away const - closest returns mutable pointer
+                        return @constCast(elem);
+                    }
+                }
+            }
+
+            // Move to parent
+            current = node.parent_node;
+        }
+
+        // Step 5: No match found
+        return null;
     }
 
     /// DOM §4.10.7 - insert adjacent algorithm
