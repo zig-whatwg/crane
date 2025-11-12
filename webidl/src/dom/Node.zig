@@ -610,22 +610,109 @@ pub const Node = webidl.interface(struct {
 
     pub fn get_textContent(self: *const Node) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
-        // Returns text content based on node type
-        // TODO: Implement full algorithm:
-        // - DocumentFragment, Element: concatenated text of descendants
-        // - Attr, CharacterData: return their data
-        // - Document, DocumentType: null
-        _ = self;
-        return null;
+        // Return the result of running get text content with this
+        return Node.getTextContent(self);
     }
 
     pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
-        // If null, treat as empty string
-        // For DocumentFragment/Element: string replace all
-        // TODO: Implement full algorithm using mutation.replaceAll
-        _ = self;
-        _ = value;
+        // If the given value is null, act as if it was the empty string instead
+        const str_value = value orelse "";
+        try Node.setTextContent(self, str_value);
+    }
+
+    /// Get text content - DOM Spec algorithm
+    /// Returns text content based on node type
+    pub fn getTextContent(node: *const Node) ?[]const u8 {
+        switch (node.node_type) {
+            Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
+                // Return descendant text content
+                return Node.getDescendantTextContent(node);
+            },
+            Node.ATTRIBUTE_NODE => {
+                // Return node's value
+                const Attr = @import("attr").Attr;
+                const attr: *const Attr = @ptrCast(@alignCast(node));
+                return attr.value;
+            },
+            Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE, Node.PROCESSING_INSTRUCTION_NODE => {
+                // Return node's data
+                const CharacterData = @import("character_data").CharacterData;
+                const cd: *const CharacterData = @ptrCast(@alignCast(node));
+                return cd.data;
+            },
+            else => {
+                // Document, DocumentType: return null
+                return null;
+            },
+        }
+    }
+
+    /// Get descendant text content - concatenate all Text node descendants
+    pub fn getDescendantTextContent(node: *const Node) ?[]const u8 {
+        // TODO: This needs allocation to concatenate strings
+        // For now, return null (incomplete implementation)
+        // A complete implementation would:
+        // 1. Walk all descendants in tree order
+        // 2. Collect data from Text nodes
+        // 3. Concatenate into allocated string
+        // 4. Return the result
+        _ = node;
+        return null;
+    }
+
+    /// Set text content - DOM Spec algorithm
+    /// Sets text content based on node type
+    pub fn setTextContent(node: *Node, value: []const u8) !void {
+        switch (node.node_type) {
+            Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
+                // String replace all with value within node
+                try Node.stringReplaceAll(node, value);
+            },
+            Node.ATTRIBUTE_NODE => {
+                // Set an existing attribute value
+                const Attr = @import("attr").Attr;
+                const attr: *Attr = @ptrCast(@alignCast(node));
+                // TODO: Use "set an existing attribute value" algorithm
+                // For now, just update the value
+                attr.value = value;
+            },
+            Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
+                // Replace data with node, offset 0, count node's length, and data value
+                const CharacterData = @import("character_data").CharacterData;
+                const cd: *CharacterData = @ptrCast(@alignCast(node));
+                const length = @as(u32, @intCast(cd.data.len));
+                try cd.replaceData(0, length, value);
+            },
+            else => {
+                // Document, DocumentType, etc: do nothing
+            },
+        }
+    }
+
+    /// String replace all - DOM Spec algorithm
+    /// Replace all children with a single text node containing string
+    pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
+        // Step 1: Let node be null
+        var node_opt: ?*Node = null;
+
+        // Step 2: If string is not the empty string, create a new Text node
+        if (string.len > 0) {
+            const Text = @import("text").Text;
+            var text_node = try Text.init(parent.allocator);
+
+            const CharacterData = @import("character_data").CharacterData;
+            const cd: *CharacterData = @ptrCast(@alignCast(&text_node));
+            cd.data = try parent.allocator.dupe(u8, string);
+
+            const new_node: *Node = @ptrCast(&text_node);
+            new_node.owner_document = parent.owner_document;
+            node_opt = new_node;
+        }
+
+        // Step 3: Replace all with node within parent
+        const mutation = @import("dom").mutation;
+        try mutation.replaceAll(node_opt, parent);
     }
 
     /// lookupPrefix(namespace)

@@ -410,21 +410,14 @@ pub const Attr = struct {
     }
     pub fn get_textContent(self: *const Attr) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
-        // Returns text content based on node type
-        // TODO: Implement full algorithm:
-        // - DocumentFragment, Element: concatenated text of descendants
-        // - Attr, CharacterData: return their data
-        // - Document, DocumentType: null
-        _ = self;
-        return null;
+        // Return the result of running get text content with this
+        return Attr.getTextContent(self);
     }
     pub fn set_textContent(self: *Attr, value: ?[]const u8) !void {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
-        // If null, treat as empty string
-        // For DocumentFragment/Element: string replace all
-        // TODO: Implement full algorithm using mutation.replaceAll
-        _ = self;
-        _ = value;
+        // If the given value is null, act as if it was the empty string instead
+        const str_value = value orelse "";
+        try Attr.setTextContent(self, str_value);
     }
     /// lookupPrefix(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
