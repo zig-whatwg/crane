@@ -4520,10 +4520,8 @@ fn generateEnhancedClassWithRegistry(
             try imports.addModule("infra");
         }
 
-        // If any field uses webidl.* types, add webidl module (usually already added, but be safe)
-        if (std.mem.indexOf(u8, field.type_name, "webidl.")) |_| {
-            try imports.addModule("webidl");
-        }
+        // Note: webidl is NOT added here because it's preserved from source
+        // (webidl is used so universally that we let source files keep their import)
 
         // Extract referenced types from field types (e.g., "*Element", "?*Node")
         // Strip pointer/optional prefixes to get the actual type name

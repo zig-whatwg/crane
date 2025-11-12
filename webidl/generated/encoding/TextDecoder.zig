@@ -224,7 +224,6 @@ pub const TextDecoderError = error{
 /// ```
 const TextDecoderCommon = @import("text_decoder_common").TextDecoderCommon;
 const Allocator = std.mem.Allocator;
-const webidl = @import("webidl");
 pub const TextDecoder = struct {
     // ========================================================================
     // Fields from TextDecoderCommon mixin

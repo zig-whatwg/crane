@@ -223,7 +223,6 @@ fn defaultPrinter(message: []const u8) void {
 /// - `labelPool`: Interned label strings for performance
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
-const webidl = @import("webidl");
 pub const console = struct {
     // ========================================================================
     // console fields
