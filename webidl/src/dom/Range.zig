@@ -450,9 +450,11 @@ pub const Range = webidl.interface(struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
-                // This is CharacterData - we would call deleteData if it existed
-                // For now, this is a simplified implementation
-                // TODO: Implement CharacterData deleteData method
+                // This is CharacterData - call deleteData to remove the range
+                const CharacterData = @import("character_data").CharacterData;
+                const charData = try CharacterData.fromNode(self.start_container);
+                const count = self.end_offset - self.start_offset;
+                try charData.call_deleteData(self.start_offset, count);
             }
         }
     }
