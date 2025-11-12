@@ -4021,23 +4021,11 @@ fn generateEnhancedClassWithRegistry(
     if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node")) {
         // Check which types are NOT already declared in the source
         // to avoid duplicate declarations
-        const has_document = blk: {
-            for (parsed.constants) |constant| {
-                if (std.mem.indexOf(u8, constant, "Document") != null) break :blk true;
-            }
-            break :blk false;
-        };
-        const has_element = blk: {
-            for (parsed.constants) |constant| {
-                if (std.mem.indexOf(u8, constant, "Element") != null) break :blk true;
-            }
-            break :blk false;
-        };
-
-        if (!has_document) try writer.print("const Document = @import(\"document\").Document;\n", .{});
+        // Import types that Node methods use
         try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
         try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
-        if (!has_element) try writer.print("const Element = @import(\"element\").Element;\n", .{});
+        try writer.print("const Document = @import(\"document\").Document;\n", .{});
+        try writer.print("const Element = @import(\"element\").Element;\n", .{});
         try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
         try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
         try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});

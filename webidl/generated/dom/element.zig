@@ -29,6 +29,7 @@ const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
+const Document = @import("document").Document;
 const Element = @import("element").Element;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
