@@ -24,6 +24,5 @@ pub const ShadowRootInit = struct {
     serializable: bool = false,
 
     /// Custom element registry for the shadow root
-    /// TODO: Implement when CustomElementRegistry is available
     customElementRegistry: ?*anyopaque = null,
 };

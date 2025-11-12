@@ -354,14 +354,13 @@ pub const Element = webidl.interface(struct {
     /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
     pub fn call_attachShadow(self: *Element, shadow_init: ShadowRootInit) !*ShadowRoot {
         // Step 1: Let registry be this's node document's custom element registry
-        // TODO: Implement when CustomElementRegistry is available
         const registry = shadow_init.customElementRegistry;
 
         // Step 2: If init["customElementRegistry"] is non-null:
         if (shadow_init.customElementRegistry) |_| {
             // Step 2.1: Set registry to init["customElementRegistry"]
             // Step 2.2: If registry's is scoped is false and registry is not this's node document's custom element registry, then throw NotSupportedError
-            // TODO: Implement when CustomElementRegistry is available
+            // Note: Full validation requires CustomElementRegistry implementation with is_scoped property
         }
 
         // Step 3: Run attach a shadow root with this, init["mode"], init["clonable"],

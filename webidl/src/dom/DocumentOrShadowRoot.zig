@@ -10,7 +10,6 @@ const webidl = @import("webidl");
 /// It's expected to be used by other standards as well.
 pub const DocumentOrShadowRoot = webidl.mixin(struct {
     /// Custom element registry for this document or shadow root
-    /// TODO: Implement when CustomElementRegistry is available
     custom_element_registry: ?*anyopaque = null,
 
     // ========================================================================

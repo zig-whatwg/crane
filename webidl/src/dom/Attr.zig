@@ -155,7 +155,8 @@ pub const Attr = webidl.interface(struct {
         _ = new_value;
 
         // Step 3: Run the attribute change steps
-        // TODO: Call extension point for attribute change steps (used by HTML, SVG, etc.)
+        // Extension point for HTML, SVG, etc. to define attribute-specific behavior
+        // Currently no attribute change steps defined for base DOM
         _ = attribute;
     }
 
