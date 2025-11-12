@@ -15,6 +15,7 @@ const ProcessingInstruction = @import("processing_instruction").ProcessingInstru
 const CDATASection = @import("cdata_section").CDATASection;
 const DocumentType = @import("document_type").DocumentType;
 const DOMImplementation = @import("dom_implementation").DOMImplementation;
+const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
@@ -218,12 +219,36 @@ pub const Document = webidl.interface(struct {
 
     /// adoptNode(node)
     /// DOM §4.6.1 - Moves node from another document to this document.
-    /// Removes node from its current document and changes its owner document to this.
-    /// TODO: Implement full adoption algorithm with parent removal
+    ///
+    /// Spec steps:
+    /// 1. If node is a document, throw "NotSupportedError".
+    /// 2. If node is a shadow root, throw "HierarchyRequestError".
+    /// 3. If node is a DocumentFragment whose host is non-null, return.
+    /// 4. Adopt node into this.
+    /// 5. Return node.
     pub fn call_adoptNode(self: *Document, node: *Node) !*Node {
-        _ = self;
-        _ = node;
-        return error.NotImplemented;
+        const mutation = @import("dom").mutation;
+
+        // Step 1: If node is a document, throw "NotSupportedError"
+        if (node.node_type == Node.DOCUMENT_NODE) {
+            return error.NotSupportedError;
+        }
+
+        // Step 2: If node is a shadow root, throw "HierarchyRequestError"
+        // TODO: Check for shadow root when shadow DOM is implemented
+        // For now, we don't have shadow roots, so skip this check
+
+        // Step 3: If node is a DocumentFragment whose host is non-null, return
+        if (node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+            // TODO: Check DocumentFragment.host when shadow DOM is implemented
+            // For now, DocumentFragment doesn't have host field, so skip
+        }
+
+        // Step 4: Adopt node into this
+        try mutation.adopt(node, self);
+
+        // Step 5: Return node
+        return node;
     }
 
     // Forward declarations
