@@ -150,6 +150,27 @@ pub fn isAncestor(node: *const Node, other: *const Node) bool {
     return isDescendant(other, node);
 }
 
+/// Get the inclusive ancestors of a node
+/// Returns a list of all ancestors including the node itself, from node up to root.
+/// The list is ordered from the node to the root (node is first, root is last).
+/// Caller owns the returned list and must call deinit().
+pub fn getInclusiveAncestors(allocator: Allocator, node: *const Node) !std.ArrayList(*Node) {
+    var ancestors = std.ArrayList(*Node).init(allocator);
+    errdefer ancestors.deinit();
+
+    // Add the node itself
+    try ancestors.append(@constCast(node));
+
+    // Walk up the tree adding each parent
+    var current = node.parent_node;
+    while (current) |parent| {
+        try ancestors.append(parent);
+        current = parent.parent_node;
+    }
+
+    return ancestors;
+}
+
 /// Check if two nodes are siblings (share the same parent)
 pub fn areSiblings(a: *const Node, b: *const Node) bool {
     if (a.parent_node == null or b.parent_node == null) return false;

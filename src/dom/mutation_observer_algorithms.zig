@@ -92,17 +92,9 @@ pub fn queueMutationRecord(
     defer interested_observers.deinit();
 
     // Step 2: Let nodes be the inclusive ancestors of target
-    // TODO: Use proper tree.getInclusiveAncestors when available
-    var nodes = std.ArrayList(*Node).init(allocator);
-    defer nodes.deinit(allocator);
-
-    // Collect inclusive ancestors (target and all parents up to root)
-    try nodes.append(target);
-    var current = target;
-    while (current.parent_node) |parent| {
-        try nodes.append(parent);
-        current = parent;
-    }
+    const tree_helpers = @import("tree_helpers.zig");
+    var nodes = try tree_helpers.getInclusiveAncestors(allocator, target);
+    defer nodes.deinit();
 
     // Step 3: For each node in nodes, and then for each registered of node's registered observer list
     for (nodes.items) |node| {
