@@ -152,6 +152,9 @@ pub const PseudoClassKind = union(enum) {
     ReadWrite,
     Checked,
 
+    // Language pseudo-class
+    Lang: []const u8,
+
     // Negation and matching
     Not: *SelectorList,
     Is: *SelectorList,
@@ -556,6 +559,9 @@ pub const Parser = struct {
             const selector_list = try self.allocator.create(SelectorList);
             selector_list.* = try self.parseSelectorList();
             kind = PseudoClassKind{ .Has = selector_list };
+        } else if (std.mem.eql(u8, name, "lang")) {
+            const lang_code = try self.parseLanguageCode();
+            kind = PseudoClassKind{ .Lang = lang_code };
         } else {
             return error.InvalidSelector;
         }
@@ -634,6 +640,20 @@ pub const Parser = struct {
         return NthPattern{ .a = a, .b = b };
     }
 
+    /// Parse language code for :lang() pseudo-class
+    fn parseLanguageCode(self: *Parser) ParserError![]const u8 {
+        const token = self.current_token orelse return error.UnexpectedEOF;
+
+        // Language code can be either an identifier or a string
+        const lang_code = switch (token.tag) {
+            .ident, .string => token.value,
+            else => return error.InvalidSelector,
+        };
+
+        try self.advance();
+        return lang_code;
+    }
+
     /// Parse pseudo-element selector
     fn parsePseudoElement(self: *Parser) ParserError!SimpleSelector {
         const name_token = self.current_token orelse return error.UnexpectedEOF;
@@ -709,7 +729,7 @@ test "Parser: simple type selector (div)" {
     try testing.expectEqual(@as(usize, 1), selector_list.selectors.len);
     const complex = selector_list.selectors[0];
     try testing.expectEqual(@as(usize, 1), complex.compound.simple_selectors.len);
-    
+
     const simple = complex.compound.simple_selectors[0];
     try testing.expect(simple == .Type);
     try testing.expectEqualStrings("div", simple.Type.tag_name);
@@ -797,4 +817,19 @@ test "Parser: pseudo-class (:first-child)" {
     const simple = selector_list.selectors[0].compound.simple_selectors[0];
     try testing.expect(simple == .PseudoClass);
     try testing.expect(simple.PseudoClass.kind == .FirstChild);
+}
+
+test "Parser: :lang(en) pseudo-class" {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, ":lang(en)");
+    var parser = try Parser.init(allocator, &tokenizer);
+    defer parser.deinit();
+
+    var selector_list = try parser.parse();
+    defer selector_list.deinit();
+
+    const simple = selector_list.selectors[0].compound.simple_selectors[0];
+    try testing.expect(simple == .PseudoClass);
+    try testing.expect(simple.PseudoClass.kind == .Lang);
+    try testing.expectEqualStrings("en", simple.PseudoClass.kind.Lang);
 }
