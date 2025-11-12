@@ -177,11 +177,35 @@ pub const Element = webidl.interface(struct {
     /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
     /// Returns an HTMLCollection of all descendant elements whose qualified name is qualifiedName.
     /// If qualifiedName is "*", returns all descendant elements.
-    /// TODO: Implement when HTMLCollection is available
-    pub fn call_getElementsByTagName(self: *const Element, qualified_name: []const u8) !*HTMLCollection {
-        _ = self;
-        _ = qualified_name;
-        return error.NotImplemented;
+    pub fn call_getElementsByTagName(self: *Element, qualified_name: []const u8) !*HTMLCollection {
+        const collection = try self.allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(self.allocator);
+
+        // Collect matching descendants
+        try self.collectByTagName(&self.base, qualified_name, collection);
+
+        return collection;
+    }
+
+    fn collectByTagName(self: *const Element, node: *Node, qualified_name: []const u8, collection: *HTMLCollection) !void {
+        for (node.child_nodes.items()) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                const elem: *Element = @ptrCast(child);
+
+                // Check if matches
+                const matches = if (std.mem.eql(u8, qualified_name, "*"))
+                    true
+                else
+                    std.mem.eql(u8, elem.node_name, qualified_name);
+
+                if (matches) {
+                    try collection.addElement(elem);
+                }
+
+                // Recurse
+                try self.collectByTagName(child, qualified_name, collection);
+            }
+        }
     }
 
     /// DOM §4.10.5 - Element.getElementsByTagNameNS(namespace, localName)
@@ -189,26 +213,87 @@ pub const Element = webidl.interface(struct {
     /// If namespace is "*", matches any namespace.
     /// If localName is "*", matches any local name.
     /// If both are "*", returns all descendant elements.
-    /// TODO: Implement when HTMLCollection is available
     pub fn call_getElementsByTagNameNS(
-        self: *const Element,
+        self: *Element,
         namespace: ?[]const u8,
         local_name: []const u8,
     ) !*HTMLCollection {
-        _ = self;
-        _ = namespace;
-        _ = local_name;
-        return error.NotImplemented;
+        const collection = try self.allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(self.allocator);
+
+        try self.collectByTagNameNS(&self.base, namespace, local_name, collection);
+
+        return collection;
+    }
+
+    fn collectByTagNameNS(self: *const Element, node: *Node, namespace: ?[]const u8, local_name: []const u8, collection: *HTMLCollection) !void {
+        for (node.child_nodes.items()) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                const elem: *Element = @ptrCast(child);
+
+                // Check namespace match
+                const ns_matches = if (namespace) |ns|
+                    std.mem.eql(u8, ns, "*") or (elem.namespace_uri != null and std.mem.eql(u8, elem.namespace_uri.?, ns))
+                else
+                    elem.namespace_uri == null;
+
+                // Check local name match
+                const name_matches = std.mem.eql(u8, local_name, "*") or std.mem.eql(u8, elem.local_name, local_name);
+
+                if (ns_matches and name_matches) {
+                    try collection.addElement(elem);
+                }
+
+                try self.collectByTagNameNS(child, namespace, local_name, collection);
+            }
+        }
     }
 
     /// DOM §4.10.5 - Element.getElementsByClassName(classNames)
     /// Returns an HTMLCollection of all descendant elements that have all the given class names.
     /// classNames is a space-separated list of class names.
-    /// TODO: Implement when HTMLCollection is available
-    pub fn call_getElementsByClassName(self: *const Element, class_names: []const u8) !*HTMLCollection {
-        _ = self;
-        _ = class_names;
-        return error.NotImplemented;
+    pub fn call_getElementsByClassName(self: *Element, class_names: []const u8) !*HTMLCollection {
+        const collection = try self.allocator.create(HTMLCollection);
+        collection.* = try HTMLCollection.init(self.allocator);
+
+        try self.collectByClassName(&self.base, class_names, collection);
+
+        return collection;
+    }
+
+    fn collectByClassName(self: *const Element, node: *Node, class_names: []const u8, collection: *HTMLCollection) !void {
+        for (node.child_nodes.items()) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                const elem: *Element = @ptrCast(child);
+
+                // Check if element has all required classes
+                const attributes = elem.get_attributes();
+                if (attributes.call_getNamedItem("class")) |class_attr| {
+                    var all_found = true;
+                    var required_iter = std.mem.tokenizeScalar(u8, class_names, ' ');
+                    while (required_iter.next()) |required_class| {
+                        var found = false;
+                        var elem_iter = std.mem.tokenizeScalar(u8, class_attr.value, ' ');
+                        while (elem_iter.next()) |elem_class| {
+                            if (std.mem.eql(u8, elem_class, required_class)) {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (!found) {
+                            all_found = false;
+                            break;
+                        }
+                    }
+
+                    if (all_found) {
+                        try collection.addElement(elem);
+                    }
+                }
+
+                try self.collectByClassName(child, class_names, collection);
+            }
+        }
     }
 
     /// DOM §4.10.4 - Element.matches(selectors)
