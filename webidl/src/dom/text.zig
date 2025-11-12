@@ -6,6 +6,7 @@ const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
 const Element = @import("element").Element;
 
@@ -19,8 +20,7 @@ const Allocator = std.mem.Allocator;
 pub const Text = webidl.interface(struct {
     pub const extends = CharacterData;
     // CRITICAL: Must explicitly include parent mixins - codegen doesn't inherit them!
-    pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
-    // TODO: Add Slottable when mixin is created
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode, Slottable }; // From parent CharacterData + Slottable
 
     allocator: Allocator,
 

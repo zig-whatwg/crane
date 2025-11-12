@@ -11,6 +11,7 @@ const Node = @import("node").Node;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const ParentNode = @import("parent_node").ParentNode;
+const Slottable = @import("slottable").Slottable;
 const NodeList = @import("node_list").NodeList;
 const dom_types = @import("dom_types");
 
@@ -18,7 +19,7 @@ const dom_types = @import("dom_types");
 /// DOM Spec: interface Element : Node
 pub const Element = webidl.interface(struct {
     pub const extends = Node;
-    pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode };
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode, ParentNode, Slottable };
 
     allocator: Allocator,
     tag_name: []const u8,

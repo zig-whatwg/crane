@@ -24,13 +24,27 @@ const Allocator = std.mem.Allocator;
 /// Text also includes: Slottable
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const Slottable = @import("slottable").Slottable;
 pub const Text = struct {
+    // ========================================================================
+    // Fields from Slottable mixin
+    // ========================================================================
+    /// Slottable name (from "slot" attribute)
+    slottable_name: []const u8 = "",
+    /// Currently assigned slot (null if not assigned)
+    /// TODO: Implement when HTMLSlotElement is available
+    assigned_slot: ?*anyopaque = null,
+    /// Manual slot assignment (for manual slot assignment mode)
+    /// TODO: Implement when HTMLSlotElement is available
+    /// Should use weak reference per spec
+    manual_slot_assignment: ?*anyopaque = null,
+
     // ========================================================================
     // Text fields
     // ========================================================================
     allocator: Allocator,
 
-    pub const includes = .{ ChildNode, NonDocumentTypeChildNode }; // From parent CharacterData
+    pub const includes = .{ ChildNode, NonDocumentTypeChildNode, Slottable }; // From parent CharacterData + Slottable
 
     pub fn init(allocator: Allocator) !Text {
         return .{
@@ -171,6 +185,57 @@ pub const Text = struct {
         //    - Move to next sibling
         // 3. Return null if no element sibling found
         @panic("NonDocumentTypeChildNode.nextElementSibling() not yet implemented");
+    }
+    // ========================================================================
+    // Methods from Slottable mixin
+    // ========================================================================
+
+    /// DOM §4.3.7 - Slottable.assignedSlot
+    /// 
+    /// Returns the slot element this slottable is assigned to, if any.
+    /// Returns null if not assigned or if the shadow root is closed.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
+    /// (Included from Slottable mixin)
+    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+        // The assignedSlot getter steps are to return the result of
+        // find a slot given this and true (open flag)
+
+        // TODO: Implement findSlot algorithm from shadow_dom_algorithms
+        // For now, return the assigned slot if it exists
+        // The "open" parameter means we only return slots in open shadow roots
+
+        _ = self;
+        return null; // TODO: Implement when slot algorithms are available
+    }
+
+    // ========================================================================
+    // Internal Methods
+    // ========================================================================
+
+    /// Get the slottable name
+    pub fn getSlottableName(self: *const @This()) []const u8 {
+        return self.slottable_name;
+    }
+    /// Set the slottable name
+    /// (Included from Slottable mixin)
+    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+        self.slottable_name = name;
+    }
+    /// Check if this slottable is assigned
+    /// (Included from Slottable mixin)
+    pub fn isAssigned(self: *const @This()) bool {
+        return self.assigned_slot != null;
+    }
+    /// Set the assigned slot
+    /// (Included from Slottable mixin)
+    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+        self.assigned_slot = slot;
+    }
+    /// Set the manual slot assignment
+    /// (Included from Slottable mixin)
+    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+        self.manual_slot_assignment = slot;
     }
     // ========================================================================
     // Text methods
