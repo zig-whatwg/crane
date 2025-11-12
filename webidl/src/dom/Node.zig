@@ -229,9 +229,18 @@ pub const Node = webidl.interface(struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                // TODO: Cast to DocumentType when implemented
-                // For now, just check node_name
-                if (!std.mem.eql(u8, a.node_name, b.node_name)) return false;
+                const DocumentType = @import("document_type").DocumentType;
+                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
+                const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
+
+                // Check name
+                if (!std.mem.eql(u8, doctype_a.name, doctype_b.name)) return false;
+
+                // Check public ID
+                if (!std.mem.eql(u8, doctype_a.public_id, doctype_b.public_id)) return false;
+
+                // Check system ID
+                if (!std.mem.eql(u8, doctype_a.system_id, doctype_b.system_id)) return false;
             },
             ELEMENT_NODE => {
                 // Element: check namespace, namespace prefix, local name, and attribute list size
