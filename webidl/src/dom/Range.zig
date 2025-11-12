@@ -656,8 +656,10 @@ pub const Range = webidl.interface(struct {
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            // TODO: Implement text splitting
-            // For now, skip this step
+            const Text = @import("text").Text;
+            const textNode = try Text.fromNode(self.start_container);
+            const newText = try textNode.call_splitText(self.start_offset);
+            referenceNode = &newText.base.base;
         }
 
         // Step 8: If node is referenceNode, use its next sibling
