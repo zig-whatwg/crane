@@ -136,17 +136,54 @@ pub const Attr = struct {
     /// Sets this's value.
     /// Steps: Set an existing attribute value with this and the given value.
     pub fn set_value(self: *Attr, new_value: []const u8) !void {
-        // If attribute's element is null, just set the value
-        if (self.owner_element == null) {
-            self.allocator.free(self.value);
-            self.value = try self.allocator.dupe(u8, new_value);
+        try Attr.setExistingAttributeValue(self, new_value);
+    }
+    /// Set an existing attribute value - DOM Spec algorithm
+    pub fn setExistingAttributeValue(attribute: *Attr, value: []const u8) !void {
+        // Step 1: If attribute's element is null, set attribute's value
+        if (attribute.owner_element == null) {
+            attribute.allocator.free(attribute.value);
+            attribute.value = try attribute.allocator.dupe(u8, value);
             return;
         }
 
-        // Otherwise, change attribute (requires mutation handling)
-        // TODO: Implement full "change attribute" algorithm with mutations
-        self.allocator.free(self.value);
-        self.value = try self.allocator.dupe(u8, new_value);
+        // Step 2: Otherwise, change attribute to value
+        try Attr.changeAttribute(attribute, value);
+    }
+    /// Change an attribute - DOM Spec algorithm
+    pub fn changeAttribute(attribute: *Attr, value: []const u8) !void {
+        // Step 1: Let oldValue be attribute's value
+        const old_value = attribute.value;
+
+        // Step 2: Set attribute's value to value
+        attribute.value = try attribute.allocator.dupe(u8, value);
+
+        // Free old value after duplication succeeds
+        attribute.allocator.free(old_value);
+
+        // Step 3: Handle attribute changes
+        try Attr.handleAttributeChanges(attribute, attribute.owner_element.?, old_value, value);
+    }
+    /// Handle attribute changes - DOM Spec algorithm
+    pub fn handleAttributeChanges(
+        attribute: *Attr,
+        element: *Element,
+        old_value: ?[]const u8,
+        new_value: []const u8,
+    ) !void {
+        // Step 1: Queue a mutation record of "attributes"
+        // TODO: Implement mutation record queuing when mutation observer is ready
+        // queueMutationRecord("attributes", element, attribute.local_name, attribute.namespace_uri, old_value, ...)
+        _ = old_value;
+        _ = new_value;
+
+        // Step 2: If element is custom, enqueue custom element callback reaction
+        // TODO: Implement custom element callback when custom elements are supported
+
+        // Step 3: Run the attribute change steps
+        // TODO: Call extension point for attribute change steps (used by HTML, SVG, etc.)
+        _ = element;
+        _ = attribute;
     }
     /// DOM §4.9 - ownerElement getter
     /// Returns this's element.
