@@ -14,7 +14,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
 pub const Node = @import("node").Node;
-pub const Element = @import("element").Element;
 pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
@@ -22,8 +21,6 @@ pub const ProcessingInstruction = @import("processing_instruction").ProcessingIn
 pub const CDATASection = @import("cdata_section").CDATASection;
 pub const DocumentType = @import("document_type").DocumentType;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
-
-const Allocator = std.mem.Allocator;
 /// DOM Spec: interface Document : Node
 const NodeBase = @import("node").NodeBase;
 const EventListener = @import("event_target").EventListener;
@@ -31,9 +28,9 @@ const Event = @import("event").Event;
 const flattenOptions = @import("event_target").flattenOptions;
 const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Allocator = std.mem.Allocator;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
-const Document = @import("document").Document;
 const Element = @import("element").Element;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;

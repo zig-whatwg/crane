@@ -5,7 +5,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
-const Element = @import("element").Element;
 
 /// DOM §4.9 - Attr interface
 /// Attr nodes represent attributes.

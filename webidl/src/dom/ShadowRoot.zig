@@ -3,10 +3,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
-const Allocator = std.mem.Allocator;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const Element = @import("element").Element;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 
 /// DOM §4.8.1 - ShadowRootMode enum

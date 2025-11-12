@@ -8,9 +8,7 @@ const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
-const Element = @import("element").Element;
 
-const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface Text : CharacterData
 /// Text extends CharacterData (fields/methods inherited)

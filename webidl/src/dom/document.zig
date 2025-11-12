@@ -5,7 +5,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 const dom = @import("dom");
 const Node = @import("node").Node;
-const Element = @import("element").Element;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
@@ -17,7 +16,6 @@ const CDATASection = @import("cdata_section").CDATASection;
 const DocumentType = @import("document_type").DocumentType;
 const DOMImplementation = @import("dom_implementation").DOMImplementation;
 
-const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {

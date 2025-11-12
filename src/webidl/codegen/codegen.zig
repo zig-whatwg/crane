@@ -3664,9 +3664,40 @@ fn generateBaseStruct(
     // Debug: print what we're generating
     std.debug.print("Generating {s}Base (parent: {s})\n", .{ parsed.name, if (parsed.parent_name) |p| p else "none" });
 
-    // Note: We don't add file-level imports for base struct types anymore.
-    // Instead, we use fully qualified type paths in the base struct fields
-    // to avoid conflicts with nested type declarations in the main struct.
+    // For base structs that inherit from Node, add necessary imports
+    // These are needed by fields like infra.List(*Node), owner_document: ?*Document, etc.
+    if (parsed.parent_name) |parent_ref| {
+        // Check if this inherits from Node
+        var check_parent: ?[]const u8 = parent_ref;
+        var check_file = current_file;
+        var inherits_from_node_for_base = false;
+
+        while (check_parent) |p| {
+            const p_name = if (std.mem.indexOfScalar(u8, p, '.')) |dot_pos|
+                p[dot_pos + 1 ..]
+            else
+                p;
+
+            if (std.mem.eql(u8, p_name, "Node")) {
+                inherits_from_node_for_base = true;
+                break;
+            }
+
+            if (try registry.resolveParentReference(p, check_file)) |parent_info| {
+                check_parent = parent_info.parent_name;
+                check_file = parent_info.file_path;
+            } else {
+                break;
+            }
+        }
+
+        // If this base struct inherits from Node, add necessary type aliases
+        if (inherits_from_node_for_base) {
+            try writer.print("const Node = @import(\"node\").Node;\n", .{});
+            try writer.print("const Allocator = std.mem.Allocator;\n", .{});
+            try writer.print("const infra = @import(\"infra\");\n", .{});
+        }
+    }
 
     // Generate doc comment
     try writer.print(
@@ -4018,14 +4049,19 @@ fn generateEnhancedClassWithRegistry(
     }
 
     // If this class inherits from Node, import types needed by Node methods
-    if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node")) {
-        // Check which types are NOT already declared in the source
-        // to avoid duplicate declarations
+    // Skip if this is a base type (base struct generation already added these)
+    if (inherits_from_node and !std.mem.eql(u8, parsed.name, "Node") and !is_base_type) {
         // Import types that Node methods use
+        try writer.print("const Allocator = std.mem.Allocator;\n", .{});
         try writer.print("const RegisteredObserver = @import(\"registered_observer\").RegisteredObserver;\n", .{});
         try writer.print("const GetRootNodeOptions = @import(\"node\").GetRootNodeOptions;\n", .{});
-        try writer.print("const Document = @import(\"document\").Document;\n", .{});
-        try writer.print("const Element = @import(\"element\").Element;\n", .{});
+        // Don't import Document/Element if this IS Document/Element (avoid recursive imports)
+        if (!std.mem.eql(u8, parsed.name, "Document")) {
+            try writer.print("const Document = @import(\"document\").Document;\n", .{});
+        }
+        if (!std.mem.eql(u8, parsed.name, "Element")) {
+            try writer.print("const Element = @import(\"element\").Element;\n", .{});
+        }
         try writer.print("const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;\n", .{});
         try writer.print("const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;\n", .{});
         try writer.print("const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;\n", .{});

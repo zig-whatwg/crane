@@ -3,10 +3,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const infra = @import("infra");
 const dom = @import("dom");
 
-const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;

@@ -20,6 +20,7 @@ const Event = @import("event").Event;
 const flattenOptions = @import("event_target").flattenOptions;
 const flattenMoreOptions = @import("event_target").flattenMoreOptions;
 const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const Allocator = std.mem.Allocator;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;

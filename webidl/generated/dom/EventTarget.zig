@@ -68,24 +68,6 @@ pub const EventTargetBase = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(@import("event_target").EventListener),
 
-    // Safe downcast to CDATASection
-    // Returns null if this is not a CDATASection instance
-    // TODO: Fix circular dependency - CDATASection imports EventTarget, so we can't import CDATASection here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CDATASection can have: pub fn toBase(node: *CDATASection) *EventTargetBase { return &node.base; }
-    // pub fn asCDATASection(base: *EventTargetBase) ?*CDATASection {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to ShadowRoot
-    // Returns null if this is not a ShadowRoot instance
-    // TODO: Fix circular dependency - ShadowRoot imports EventTarget, so we can't import ShadowRoot here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ShadowRoot can have: pub fn toBase(node: *ShadowRoot) *EventTargetBase { return &node.base; }
-    // pub fn asShadowRoot(base: *EventTargetBase) ?*ShadowRoot {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
     // Safe downcast to Element
     // Returns null if this is not a Element instance
     // TODO: Fix circular dependency - Element imports EventTarget, so we can't import Element here
@@ -104,30 +86,12 @@ pub const EventTargetBase = struct {
     //     return @ptrCast(@alignCast(base));
     // }
 
-    // Safe downcast to CharacterData
-    // Returns null if this is not a CharacterData instance
-    // TODO: Fix circular dependency - CharacterData imports EventTarget, so we can't import CharacterData here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then CharacterData can have: pub fn toBase(node: *CharacterData) *EventTargetBase { return &node.base; }
-    // pub fn asCharacterData(base: *EventTargetBase) ?*CharacterData {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
     // Safe downcast to Node
     // Returns null if this is not a Node instance
     // TODO: Fix circular dependency - Node imports EventTarget, so we can't import Node here
     // Will be implemented when we modify derived classes to have base: field
     // Then Node can have: pub fn toBase(node: *Node) *EventTargetBase { return &node.base; }
     // pub fn asNode(base: *EventTargetBase) ?*Node {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Comment
-    // Returns null if this is not a Comment instance
-    // TODO: Fix circular dependency - Comment imports EventTarget, so we can't import Comment here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Comment can have: pub fn toBase(node: *Comment) *EventTargetBase { return &node.base; }
-    // pub fn asComment(base: *EventTargetBase) ?*Comment {
     //     return @ptrCast(@alignCast(base));
     // }
 
@@ -149,39 +113,12 @@ pub const EventTargetBase = struct {
     //     return @ptrCast(@alignCast(base));
     // }
 
-    // Safe downcast to DocumentFragment
-    // Returns null if this is not a DocumentFragment instance
-    // TODO: Fix circular dependency - DocumentFragment imports EventTarget, so we can't import DocumentFragment here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then DocumentFragment can have: pub fn toBase(node: *DocumentFragment) *EventTargetBase { return &node.base; }
-    // pub fn asDocumentFragment(base: *EventTargetBase) ?*DocumentFragment {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to Text
-    // Returns null if this is not a Text instance
-    // TODO: Fix circular dependency - Text imports EventTarget, so we can't import Text here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then Text can have: pub fn toBase(node: *Text) *EventTargetBase { return &node.base; }
-    // pub fn asText(base: *EventTargetBase) ?*Text {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
     // Safe downcast to Attr
     // Returns null if this is not a Attr instance
     // TODO: Fix circular dependency - Attr imports EventTarget, so we can't import Attr here
     // Will be implemented when we modify derived classes to have base: field
     // Then Attr can have: pub fn toBase(node: *Attr) *EventTargetBase { return &node.base; }
     // pub fn asAttr(base: *EventTargetBase) ?*Attr {
-    //     return @ptrCast(@alignCast(base));
-    // }
-
-    // Safe downcast to ProcessingInstruction
-    // Returns null if this is not a ProcessingInstruction instance
-    // TODO: Fix circular dependency - ProcessingInstruction imports EventTarget, so we can't import ProcessingInstruction here
-    // Will be implemented when we modify derived classes to have base: field
-    // Then ProcessingInstruction can have: pub fn toBase(node: *ProcessingInstruction) *EventTargetBase { return &node.base; }
-    // pub fn asProcessingInstruction(base: *EventTargetBase) ?*ProcessingInstruction {
     //     return @ptrCast(@alignCast(base));
     // }
 

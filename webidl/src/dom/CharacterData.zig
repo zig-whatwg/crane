@@ -3,13 +3,10 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Node = @import("node").Node;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const dom_types = @import("dom_types");
-const Element = @import("element").Element;
 
-const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface CharacterData : Node
 pub const CharacterData = webidl.interface(struct {
