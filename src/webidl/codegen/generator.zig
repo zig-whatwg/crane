@@ -34,9 +34,15 @@ pub fn generateCode(
     // Module-level definitions (if this is the first class in the file)
     if (module_definitions) |defs| {
         if (defs.len > 0) {
-            try writer.writeAll("\n");
-            try writer.writeAll(defs);
-            try writer.writeAll("\n");
+            // Filter out type aliases that duplicate top-level imports
+            const filtered_defs = try filterModuleDefinitions(allocator, defs, enhanced.all_imports);
+            defer allocator.free(filtered_defs);
+
+            if (filtered_defs.len > 0) {
+                try writer.writeAll("\n");
+                try writer.writeAll(filtered_defs);
+                try writer.writeAll("\n");
+            }
         }
     }
 
@@ -365,4 +371,68 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
     }
 
     return result.toOwnedSlice(allocator);
+}
+
+/// Filter module definitions to remove type aliases that duplicate top-level imports
+/// Example: removes `const Allocator = std.mem.Allocator;` if Allocator is already imported
+fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imports: []ir.Import) ![]const u8 {
+    // Build set of imported names
+    var imported_names = std.StringHashMap(void).init(allocator);
+    defer imported_names.deinit();
+
+    for (top_level_imports) |import| {
+        try imported_names.put(import.name, {});
+    }
+
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    // Process line by line
+    var lines = std.mem.splitScalar(u8, defs, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+
+        // Check if this is a type alias that duplicates an import
+        // Pattern: const Name = SomeOtherType; (NOT const Name = struct/enum/union)
+        var should_skip = false;
+
+        if (std.mem.startsWith(u8, trimmed, "const ") or std.mem.startsWith(u8, trimmed, "pub const ")) {
+            const after_const = if (std.mem.startsWith(u8, trimmed, "pub const "))
+                trimmed["pub const ".len..]
+            else
+                trimmed["const ".len..];
+
+            // Extract the name (before =)
+            if (std.mem.indexOfScalar(u8, after_const, '=')) |eq_pos| {
+                const name = std.mem.trim(u8, after_const[0..eq_pos], " \t\r");
+
+                // Check if this name is already imported
+                if (imported_names.contains(name)) {
+                    // Check if the value is NOT a struct/enum/union definition
+                    const after_eq = std.mem.trim(u8, after_const[eq_pos + 1 ..], " \t\r");
+                    const is_type_def = std.mem.startsWith(u8, after_eq, "struct {") or
+                        std.mem.startsWith(u8, after_eq, "enum {") or
+                        std.mem.startsWith(u8, after_eq, "union(");
+
+                    if (!is_type_def) {
+                        // This is a type alias for an already-imported name, skip it
+                        should_skip = true;
+                    }
+                }
+            }
+        }
+
+        if (!should_skip) {
+            try result.appendSlice(allocator, line);
+            try result.append(allocator, '\n');
+        }
+    }
+
+    // Trim trailing whitespace
+    const full_result = try result.toOwnedSlice(allocator);
+    const trimmed_result = std.mem.trim(u8, full_result, " \t\r\n");
+    const final = try allocator.dupe(u8, trimmed_result);
+    allocator.free(full_result);
+
+    return final;
 }

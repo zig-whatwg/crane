@@ -211,37 +211,13 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
 
     const definitions_section = source[last_import_end..end_pos];
 
-    // Filter out import redefinitions line by line
-    // This is much simpler and avoids breaking doc comments
-    var lines = std.mem.splitScalar(u8, definitions_section, '\n');
-    var filtered: std.ArrayList(u8) = .empty;
-    errdefer filtered.deinit(allocator);
-
-    while (lines.next()) |line| {
-        const trimmed = std.mem.trim(u8, line, " \t\r");
-
-        // Skip import redefinitions
-        if (std.mem.startsWith(u8, trimmed, "const Allocator =") or
-            std.mem.startsWith(u8, trimmed, "const std =") or
-            std.mem.startsWith(u8, trimmed, "const webidl =") or
-            std.mem.startsWith(u8, trimmed, "pub const Allocator =") or
-            std.mem.startsWith(u8, trimmed, "pub const std =") or
-            std.mem.startsWith(u8, trimmed, "pub const webidl ="))
-        {
-            continue;
-        }
-
-        // Keep this line
-        try filtered.appendSlice(allocator, line);
-        try filtered.append(allocator, '\n');
-    }
-
-    const result = try filtered.toOwnedSlice(allocator);
-    const trimmed_result = std.mem.trim(u8, result, " \t\r\n");
-    const final = try allocator.dupe(u8, trimmed_result);
-    allocator.free(result);
-
-    return final;
+    // Return as-is for now - filtering causes issues with type aliases vs imports
+    // TODO: Implement smarter filtering that distinguishes between:
+    // - const X = @import(...) (should be filtered)
+    // - const X = Y.Z (type alias - may or may not need filtering depending on if Y is imported)
+    // - pub const X = struct/enum/union (should be kept)
+    const trimmed_section = std.mem.trim(u8, definitions_section, " \t\r\n");
+    return try allocator.dupe(u8, trimmed_section);
 }
 
 /// Parse a single import statement
