@@ -226,8 +226,59 @@ pub const Range = struct {
         offset: u32,
         otherNode: *Node,
         otherOffset: u32,
-    ) enum {
- before, equal, after 
+    ) enum { before, equal, after } {
+
+        // Step 1: Assert nodes have same root (caller's responsibility)
+
+        // Step 2: If node is otherNode, compare offsets
+        if (node == otherNode) {
+            if (offset == otherOffset) return .equal;
+            if (offset < otherOffset) return .before;
+            return .after;
+        }
+
+        const dom = @import("dom");
+
+        // Step 3: If otherNode is following node
+        if (dom.tree_helpers.isFollowing(otherNode, node)) {
+            // Recursively compare in reverse
+            const reversed = compareBoundaryPointsHelper(otherNode, otherOffset, node, offset);
+            return switch (reversed) {
+                .before => .after,
+                .after => .before,
+                .equal => .equal,
+            };
+        }
+
+        // Step 4 & 5: Determine child of otherNode to compare
+        var child: *Node = undefined;
+        if (dom.tree_helpers.isAncestor(otherNode, node)) {
+            // Step 4: otherNode is ancestor of node
+            child = node;
+        } else {
+            // Step 5: Find ancestor of node whose parent is otherNode
+            var current = node;
+            while (current.parent_node) |parent| {
+                if (parent == otherNode) {
+                    child = current;
+                    break;
+                }
+                current = parent;
+            } else {
+                // This shouldn't happen if nodes have same root
+                return .equal;
+            }
+        }
+
+        // Step 6: Compare child's index with otherOffset
+        const childIndex = dom.tree_helpers.getChildIndex(otherNode, child) orelse return .equal;
+        if (childIndex < otherOffset) {
+            return .after;
+        }
+
+        // Step 7: Return before
+        return .before;
+    
     }
 
     fn isNodeContained(self: *const Range, node: *Node) bool {
@@ -905,37 +956,6 @@ pub const Range = struct {
         for (node.child_nodes.items()) |child| {
             try self.appendContainedTextNodes(child, result);
         }
-    
-    }
-
-    pub fn get_startContainer(self: *const AbstractRange) *Node {
-
-        return self.start_container;
-    
-    }
-
-    pub fn get_startOffset(self: *const AbstractRange) u32 {
-
-        return self.start_offset;
-    
-    }
-
-    pub fn get_endContainer(self: *const AbstractRange) *Node {
-
-        return self.end_container;
-    
-    }
-
-    pub fn get_endOffset(self: *const AbstractRange) u32 {
-
-        return self.end_offset;
-    
-    }
-
-    pub fn get_collapsed(self: *const AbstractRange) bool {
-
-        return self.start_container == self.end_container and
-            self.start_offset == self.end_offset;
     
     }
 

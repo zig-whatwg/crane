@@ -167,7 +167,7 @@ fn collectAllMethods(
         }
     }
 
-    // Add inherited methods (skip if overridden)
+    // Add inherited methods (skip if overridden or if method requires child class type)
     if (class.parent) |parent_name| {
         if (registry.get(parent_name)) |parent| {
             const parent_methods = try collectAllMethods(allocator, parent, registry);
@@ -176,15 +176,46 @@ fn collectAllMethods(
                 allocator.free(parent_methods);
             }
             for (parent_methods) |method| {
-                if (!seen_methods.contains(method.name)) {
-                    try methods.append(try cloneMethod(allocator, method));
-                    try seen_methods.put(method.name, {});
-                }
+                // Skip if already defined in child class
+                if (seen_methods.contains(method.name)) continue;
+
+                // Skip methods that require the specific class type in self parameter
+                // These methods can't be inherited because they reference the parent type
+                if (shouldSkipInheritedMethod(method, parent.name, class.name)) continue;
+
+                try methods.append(try cloneMethod(allocator, method));
+                try seen_methods.put(method.name, {});
             }
         }
     }
 
     return methods.toOwnedSlice();
+}
+
+/// Check if a method should be skipped when inheriting
+/// Methods with self: *ParentType signatures can't be used in child class
+fn shouldSkipInheritedMethod(method: ir.Method, parent_name: []const u8, child_name: []const u8) bool {
+    _ = child_name; // Not needed yet, but might be useful later
+
+    // Check if the signature references the parent class type in self parameter
+    // Common patterns to check for:
+    // - (self: *ParentType)
+    // - (self: *const ParentType)
+
+    // Build a simple buffer for the patterns (max class name ~50 chars)
+    var buf1: [100]u8 = undefined;
+    var buf2: [100]u8 = undefined;
+
+    const self_pattern1 = std.fmt.bufPrint(&buf1, "self: *{s}", .{parent_name}) catch return false;
+    const self_pattern2 = std.fmt.bufPrint(&buf2, "self: *const {s}", .{parent_name}) catch return false;
+
+    if (std.mem.indexOf(u8, method.signature, self_pattern1) != null or
+        std.mem.indexOf(u8, method.signature, self_pattern2) != null)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 /// Collect all properties (own + inherited)

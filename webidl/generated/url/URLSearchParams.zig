@@ -9,7 +9,11 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const EntriesIterator = @import("entries_iterator").EntriesIterator;
+const Entry = @import("entry").Entry;
+const KeysIterator = @import("keys_iterator").KeysIterator;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
+const ValuesIterator = @import("values_iterator").ValuesIterator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -26,28 +30,6 @@ pub const URLSearchParams = struct {
     // Constants
     // ========================================================================
 
-    pub const Entry = struct {
-        name: []const u8,
-        value: []const u8,
-    };
-    pub const EntriesIterator = struct {
-        params: *const URLSearchParams,
-        index: usize,
-
-        pub fn next(self: *EntriesIterator) ?Entry {
-            if (self.index >= self.params.impl.list.items.len) return null;
-    pub const KeysIterator = struct {
-        params: *const URLSearchParams,
-        index: usize,
-
-        pub fn next(self: *KeysIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-    pub const ValuesIterator = struct {
-        params: *const URLSearchParams,
-        index: usize,
-
-        pub fn next(self: *ValuesIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
     pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
 
     // ========================================================================

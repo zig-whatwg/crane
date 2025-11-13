@@ -31,25 +31,6 @@ const webidl = @import("webidl");
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
 
-/// Compare two callbacks for equality (from EventTarget)
-pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
-    if (a == null and b == null) return true;
-    if (a == null or b == null) return false;
-    const a_val = a.?;
-    const b_val = b.?;
-    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
-        return false;
-    }
-    return switch (a_val) {
-        .undefined, .null => true,
-        .boolean => |a_bool| a_bool == b_val.boolean,
-        .number => |a_num| a_num == b_val.number,
-        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
-        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
-        else => false,
-    };
-}
-
 pub const Node = struct {
 
     // ========================================================================
@@ -1155,29 +1136,6 @@ pub const Node = struct {
     
     }
 
-    fn ensureEventListenerList(self: *EventTarget) !*std.ArrayList(EventListener) {
-
-        if (self.event_listener_list) |list| {
-            return list;
-        }
-
-        // First time adding a listener - allocate the list
-        const list = try self.allocator.create(std.ArrayList(EventListener));
-        list.* = std.ArrayList(EventListener).init(self.allocator);
-        self.event_listener_list = list;
-        return list;
-    
-    }
-
-    fn getEventListenerList(self: *const EventTarget) []const EventListener {
-
-        if (self.event_listener_list) |list| {
-            return list.items;
-        }
-        return &[_]EventListener{};
-    
-    }
-
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -1247,147 +1205,6 @@ pub const Node = struct {
         }
         // Step 2: Return false
         return false;
-    
-    }
-
-    fn addAnEventListener(self: *EventTarget, listener: EventListener) !void {
-
-        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
-
-        // Step 2: If listener's signal is not null and is aborted, then return
-        if (listener.signal) |signal| {
-            if (signal.aborted) return;
-        }
-
-        // Step 3: If listener's callback is null, then return
-        if (listener.callback == null) return;
-
-        // Step 4: If listener's passive is null, set it to default passive value
-        var updated_listener = listener;
-        if (updated_listener.passive == null) {
-            updated_listener.passive = defaultPassiveValue(listener.type, self);
-        }
-
-        // Step 5: If event listener list does not contain matching listener, append it
-        const list = try self.ensureEventListenerList();
-
-        const already_exists = for (list.items) |existing| {
-            if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture and
-                callbackEquals(existing.callback, listener.callback))
-            {
-                break true;
-            }
-        } else false;
-
-        if (!already_exists) {
-            try list.append(updated_listener);
-        }
-
-        // Step 6: If listener's signal is not null, add abort steps
-        // Spec: "If listener's signal is not null, then add the following abort steps to it:
-        // Remove an event listener with eventTarget and listener."
-        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
-        if (listener.signal) |signal| {
-            const AbortSignalType = @import("abort_signal").AbortSignal;
-            const removal_context = AbortSignalType.EventListenerRemovalContext{
-                .target = self,
-                .listener_type = updated_listener.type,
-                .listener_callback = updated_listener.callback,
-                .listener_capture = updated_listener.capture,
-            };
-            try signal.addEventListenerRemoval(removal_context);
-        }
-    
-    }
-
-    pub fn call_addEventListener(
-        self: *EventTarget,
-        event_type: []const u8,
-        callback: ?webidl.JSValue,
-        options: anytype,
-    ) !void {
-
-        // Step 1: Flatten more options
-        const flattened = flattenMoreOptions(options);
-
-        // Step 2: Add an event listener
-        const listener = EventListener{
-            .type = event_type,
-            .callback = callback,
-            .capture = flattened.capture,
-            .passive = flattened.passive,
-            .once = flattened.once,
-            .signal = flattened.signal,
-        };
-
-        try self.addAnEventListener(listener);
-    
-    }
-
-    fn removeAnEventListener(self: *EventTarget, listener: EventListener) void {
-
-        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
-
-        // Early exit if no listeners have been added yet
-        const list = self.event_listener_list orelse return;
-
-        // Step 2: Set listener's removed to true and remove listener from event listener list
-        var i: usize = 0;
-        while (i < list.items.len) {
-            const existing = &list.items[i];
-
-            // Match on type, callback, and capture
-            if (std.mem.eql(u8, existing.type, listener.type) and
-                existing.capture == listener.capture and
-                callbackEquals(existing.callback, listener.callback))
-            {
-                existing.removed = true;
-                _ = list.orderedRemove(i);
-                return;
-            }
-            i += 1;
-        }
-    
-    }
-
-    pub fn call_removeEventListener(
-        self: *EventTarget,
-        event_type: []const u8,
-        callback: ?webidl.JSValue,
-        options: anytype,
-    ) void {
-
-        // Step 1: Flatten options
-        const capture = flattenOptions(options);
-
-        // Step 2: Remove matching listener
-        const listener = EventListener{
-            .type = event_type,
-            .callback = callback,
-            .capture = capture,
-        };
-
-        self.removeAnEventListener(listener);
-    
-    }
-
-    pub fn call_dispatchEvent(self: *EventTarget, event: *Event) !bool {
-
-        // Step 1: Check flags
-        if (event.dispatch_flag or !event.initialized_flag) {
-            return error.InvalidStateError;
-        }
-
-        // Step 2: Initialize isTrusted to false
-        event.is_trusted = false;
-
-        // Step 3: Dispatch event to this using full dispatch algorithm
-        const event_dispatch = @import("dom").event_dispatch;
-        return event_dispatch.dispatch(event, self, false, null) catch |err| {
-            // Handle dispatch errors
-            return err;
-        };
     
     }
 

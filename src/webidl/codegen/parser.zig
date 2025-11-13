@@ -932,13 +932,17 @@ fn findMethodSignatureEnd(source: []const u8, start: usize) ?usize {
     if (paren_depth != 0) return null;
 
     // Now search for the opening brace of the method body
-    // Need to track braces to handle anonymous struct return types like: fn foo() struct { x: i32 } { body }
+    // Need to track braces to handle anonymous struct/enum return types like:
+    // - fn foo() struct { x: i32 } { body }
+    // - fn foo() enum { a, b, c } { body }
     var search = pos + 1;
 
-    // First, check if there's an anonymous struct return type by looking for "struct {" pattern
+    // Check if there's an anonymous struct or enum return type
     const text_between = source[pos + 1 .. @min(pos + 200, source.len)];
     const has_struct_keyword = std.mem.indexOf(u8, text_between, "struct");
+    const has_enum_keyword = std.mem.indexOf(u8, text_between, "enum");
 
+    // Check for struct keyword
     if (has_struct_keyword) |struct_pos| {
         // Find the opening brace of the struct
         const struct_brace = std.mem.indexOfScalarPos(u8, source, pos + 1 + struct_pos, '{');
@@ -948,6 +952,23 @@ fn findMethodSignatureEnd(source: []const u8, start: usize) ?usize {
             if (struct_close) |sc| {
                 // Now find the opening brace of the method body (after the struct)
                 const body_brace = std.mem.indexOfScalarPos(u8, source, sc + 1, '{');
+                if (body_brace) |bb| {
+                    return bb;
+                }
+            }
+        }
+    }
+
+    // Check for enum keyword
+    if (has_enum_keyword) |enum_pos| {
+        // Find the opening brace of the enum
+        const enum_brace = std.mem.indexOfScalarPos(u8, source, pos + 1 + enum_pos, '{');
+        if (enum_brace) |eb| {
+            // Find the matching closing brace of the enum
+            const enum_close = findMatchingBrace(source, eb);
+            if (enum_close) |ec| {
+                // Now find the opening brace of the method body (after the enum)
+                const body_brace = std.mem.indexOfScalarPos(u8, source, ec + 1, '{');
                 if (body_brace) |bb| {
                     return bb;
                 }
@@ -1269,6 +1290,15 @@ fn parseConstants(allocator: Allocator, struct_body: []const u8) ![]ir.Constant 
             };
 
             const value = std.mem.trim(u8, struct_body[eq_pos + 1 .. semicolon], " \t\r\n");
+
+            // Skip struct/enum/union definitions - these are type definitions, not constants
+            if (std.mem.startsWith(u8, value, "struct") or
+                std.mem.startsWith(u8, value, "enum") or
+                std.mem.startsWith(u8, value, "union"))
+            {
+                pos = semicolon + 1;
+                continue;
+            }
 
             var type_name: ?[]const u8 = null;
             if (colon_pos) |c| {
