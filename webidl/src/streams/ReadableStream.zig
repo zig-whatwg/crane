@@ -3,9 +3,6 @@
 //! Spec: https://streams.spec.whatwg.org/#rs-class
 //!
 //! Represents a source of streaming data that can be read incrementally.
-//!
-//! This implementation follows the reference implementation pattern from
-//! webidl/generated-back/streams/ but uses PascalCase naming for interfaces.
 
 const std = @import("std");
 const webidl = @import("webidl");

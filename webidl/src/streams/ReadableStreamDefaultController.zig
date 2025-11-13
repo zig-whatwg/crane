@@ -3,9 +3,6 @@
 //! Spec: https://streams.spec.whatwg.org/#rs-default-controller-class
 //!
 //! Controls a ReadableStream's state and internal queue.
-//!
-//! This implementation follows the reference implementation pattern from
-//! webidl/generated-back/streams/ but uses PascalCase naming for interfaces.
 
 const std = @import("std");
 const webidl = @import("webidl");
