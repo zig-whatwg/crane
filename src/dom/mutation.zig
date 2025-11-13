@@ -39,7 +39,7 @@ pub const ChildrenChangedCallback = *const fn (parent: *Node) void;
 
 /// Global registry for children changed steps callbacks
 /// This allows specifications (like HTML) to register their hooks
-var children_changed_callbacks : std.ArrayList(ChildrenChangedCallback) = .{};
+var children_changed_callbacks: std.ArrayList(ChildrenChangedCallback) = .{};
 var callbacks_initialized = false;
 
 /// Register a callback to be invoked when children change
@@ -96,13 +96,13 @@ pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) vo
 pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
 
 /// Global registry for insertion steps callbacks
-var insertion_steps_callbacks : std.ArrayList(InsertionStepsCallback) = .{};
+var insertion_steps_callbacks: std.ArrayList(InsertionStepsCallback) = .{};
 
 /// Global registry for removing steps callbacks
-var removing_steps_callbacks : std.ArrayList(RemovingStepsCallback) = .{};
+var removing_steps_callbacks: std.ArrayList(RemovingStepsCallback) = .{};
 
 /// Global registry for post-connection steps callbacks
-var post_connection_steps_callbacks : std.ArrayList(PostConnectionStepsCallback) = .{};
+var post_connection_steps_callbacks: std.ArrayList(PostConnectionStepsCallback) = .{};
 
 /// Register a callback for insertion steps
 pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
@@ -415,7 +415,7 @@ pub fn preInsert(
 ///
 /// This is the core insertion algorithm. It handles:
 /// - DocumentFragment unwrapping
-/// - Live range updates (TODO: when Range is fully implemented)
+/// - Live range updates
 /// - Node adoption
 /// - Shadow DOM slot assignment
 /// - Insertion steps callbacks
@@ -462,12 +462,11 @@ pub fn insert(
     if (child) |c| {
         const child_idx = getChildIndex(c) orelse 0;
 
-        // TODO: Update live ranges when Range is fully implemented
-        // For each live range whose start node is parent and start offset > child's index,
-        // increase its start offset by count
-        // For each live range whose end node is parent and end offset > child's index,
-        // increase its end offset by count
-        _ = child_idx;
+        // Update live ranges: For each live range whose start/end node is parent
+        // and offset > child's index, increase offset by count
+        if (parent.owner_document) |doc| {
+            updateRangesForInsertionWithCount(doc, parent, child_idx, count);
+        }
     }
 
     // Step 6: Let previousSibling be child's previous sibling or parent's last child if child is null
@@ -744,10 +743,10 @@ pub fn remove(
     };
 
     // Step 3: Run the live range pre-remove steps
-    // TODO: Implement when Range is fully implemented
+    runLiveRangePreRemoveSteps(node);
 
     // Step 4: For each NodeIterator, run pre-remove steps
-    // TODO: Implement when NodeIterator is fully implemented
+    runNodeIteratorPreRemoveSteps(node);
 
     // Step 5: Let oldPreviousSibling be node's previous sibling
     var oldPreviousSibling: ?*Node = null;
@@ -924,12 +923,10 @@ pub fn move(
         const child_index = getChildIndex(c) orelse 0;
 
         // Get the document for range tracking
-        if (new_parent.owner_document) |owner_doc_node| {
-            if (Document.fromNode(owner_doc_node)) |doc| {
-                // Step 17.1: For each live range whose start node is newParent and start offset
-                // is greater than child's index, increase its start offset by 1
-                updateRangesForInsertion(doc, new_parent, child_index);
-            } else |_| {}
+        if (new_parent.owner_document) |doc| {
+            // Step 17.1: For each live range whose start node is newParent and start offset
+            // is greater than child's index, increase its start offset by 1
+            updateRangesForInsertion(doc, new_parent, child_index);
         }
     }
 
@@ -992,39 +989,37 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
     const index = getChildIndex(node) orelse return;
 
     // Get the document for range tracking
-    if (parent.owner_document) |owner_doc_node| {
-        if (Document.fromNode(owner_doc_node)) |doc| {
-            doc.ranges_mutex.lock();
-            defer doc.ranges_mutex.unlock();
+    if (parent.owner_document) |doc| {
+        doc.ranges_mutex.lock();
+        defer doc.ranges_mutex.unlock();
 
-            for (doc.ranges.items) |range| {
-                // Step 4: For each live range whose start node is an inclusive descendant of node,
-                // set its start to (parent, index)
-                if (tree_helpers.isInclusiveDescendant(range.start_container, node)) {
-                    range.start_container = parent;
-                    range.start_offset = @intCast(index);
-                }
-
-                // Step 5: For each live range whose end node is an inclusive descendant of node,
-                // set its end to (parent, index)
-                if (tree_helpers.isInclusiveDescendant(range.end_container, node)) {
-                    range.end_container = parent;
-                    range.end_offset = @intCast(index);
-                }
-
-                // Step 6: For each live range whose start node is parent and start offset is greater than index,
-                // decrease its start offset by 1
-                if (range.start_container == parent and range.start_offset > index) {
-                    range.start_offset -= 1;
-                }
-
-                // Step 7: For each live range whose end node is parent and end offset is greater than index,
-                // decrease its end offset by 1
-                if (range.end_container == parent and range.end_offset > index) {
-                    range.end_offset -= 1;
-                }
+        for (doc.ranges.items) |range| {
+            // Step 4: For each live range whose start node is an inclusive descendant of node,
+            // set its start to (parent, index)
+            if (tree_helpers.isInclusiveDescendant(range.base.start_container, node)) {
+                range.base.start_container = parent;
+                range.base.start_offset = @intCast(index);
             }
-        } else |_| {}
+
+            // Step 5: For each live range whose end node is an inclusive descendant of node,
+            // set its end to (parent, index)
+            if (tree_helpers.isInclusiveDescendant(range.base.end_container, node)) {
+                range.base.end_container = parent;
+                range.base.end_offset = @intCast(index);
+            }
+
+            // Step 6: For each live range whose start node is parent and start offset is greater than index,
+            // decrease its start offset by 1
+            if (range.base.start_container == parent and range.base.start_offset > index) {
+                range.base.start_offset -= 1;
+            }
+
+            // Step 7: For each live range whose end node is parent and end offset is greater than index,
+            // decrease its end offset by 1
+            if (range.base.end_container == parent and range.base.end_offset > index) {
+                range.base.end_offset -= 1;
+            }
+        }
     }
 }
 
@@ -1041,20 +1036,27 @@ fn runNodeIteratorPreRemoveSteps(node: *Node) void {
 
 /// Helper: Update ranges when inserting before child
 fn updateRangesForInsertion(doc: *Document, parent: *Node, child_index: usize) void {
+    updateRangesForInsertionWithCount(doc, parent, child_index, 1);
+}
+
+/// Helper: Update ranges when inserting multiple nodes before child
+/// DOM spec: For each live range whose start/end node is parent and offset > child_index,
+/// increase offset by count
+fn updateRangesForInsertionWithCount(doc: *Document, parent: *Node, child_index: usize, count: usize) void {
     doc.ranges_mutex.lock();
     defer doc.ranges_mutex.unlock();
 
     for (doc.ranges.items) |range| {
-        // For each live range whose start node is newParent and start offset is greater than child's index,
-        // increase its start offset by 1
-        if (range.start_container == parent and range.start_offset > child_index) {
-            range.start_offset += 1;
+        // For each live range whose start node is parent and start offset is greater than child's index,
+        // increase its start offset by count
+        if (range.base.start_container == parent and range.base.start_offset > child_index) {
+            range.base.start_offset += @intCast(count);
         }
 
-        // For each live range whose end node is newParent and end offset is greater than child's index,
-        // increase its end offset by 1
-        if (range.end_container == parent and range.end_offset > child_index) {
-            range.end_offset += 1;
+        // For each live range whose end node is parent and end offset is greater than child's index,
+        // increase its end offset by count
+        if (range.base.end_container == parent and range.base.end_offset > child_index) {
+            range.base.end_offset += @intCast(count);
         }
     }
 }
@@ -1146,7 +1148,7 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
     runMovingSteps(node, old_parent);
 
     // Run moving steps for all descendants with null
-    var stack : std.ArrayList(*Node) = .{};
+    var stack: std.ArrayList(*Node) = .{};
     defer stack.deinit();
 
     for (node.child_nodes.items()) |child| {
@@ -1203,7 +1205,7 @@ pub fn adopt(
         node.owner_document = document;
 
         // Update all descendants
-        var stack : std.ArrayList(*Node) = .{};
+        var stack: std.ArrayList(*Node) = .{};
         defer stack.deinit();
 
         try stack.append(node);
