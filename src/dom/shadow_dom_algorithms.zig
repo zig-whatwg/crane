@@ -9,6 +9,7 @@
 //!
 
 const std = @import("std");
+const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 
 // Import DOM types
@@ -450,8 +451,8 @@ pub fn assignSlot(allocator: Allocator, slottable: *anyopaque) !void {
 /// Agent's signal slots set (per similar-origin window agent)
 /// TODO: This should be stored in the agent/event loop when that infrastructure exists
 /// For now, use a global as a placeholder
-var signal_slots_set: std.ArrayList(*anyopaque) = undefined;
-var signal_slots_initialized = false;
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var signal_slots_set: ?infra.List(*anyopaque) = null;
 
 /// DOM §4.8.2 - Signal a slot change
 ///

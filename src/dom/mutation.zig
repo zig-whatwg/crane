@@ -6,6 +6,7 @@
 //! All algorithms follow the WHATWG DOM specification precisely.
 
 const std = @import("std");
+const infra = @import("infra");
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const Document = @import("document").Document;
@@ -42,16 +43,16 @@ pub const ChildrenChangedCallback = *const fn (parent: *Node) void;
 
 /// Global registry for children changed steps callbacks
 /// This allows specifications (like HTML) to register their hooks
-var children_changed_callbacks: std.ArrayList(ChildrenChangedCallback) = .{};
-var callbacks_initialized = false;
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var children_changed_callbacks: ?infra.List(ChildrenChangedCallback) = null;
 
 /// Register a callback to be invoked when children change
 /// This should be called during initialization by specifications that need to hook into mutations
 pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void {
-    if (!callbacks_initialized) {
-        callbacks_initialized = true;
+    if (children_changed_callbacks == null) {
+        children_changed_callbacks = infra.List(ChildrenChangedCallback).init(std.heap.page_allocator);
     }
-    try children_changed_callbacks.append(callback);
+    try children_changed_callbacks.?.append(callback);
 }
 
 /// Run the children changed steps for a parent node
@@ -63,8 +64,10 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 /// - replace data in CharacterData (step 12)
 pub fn runChildrenChangedSteps(parent: *Node) void {
     // Call all registered callbacks
-    for (children_changed_callbacks.items) |callback| {
-        callback(parent);
+    if (children_changed_callbacks) |*callbacks| {
+        for (callbacks.items()) |callback| {
+            callback(parent);
+        }
     }
 
     // Note: If no callbacks are registered, this is a no-op
@@ -99,50 +102,68 @@ pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) vo
 pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
 
 /// Global registry for insertion steps callbacks
-var insertion_steps_callbacks: std.ArrayList(InsertionStepsCallback) = .{};
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var insertion_steps_callbacks: ?infra.List(InsertionStepsCallback) = null;
 
 /// Global registry for removing steps callbacks
-var removing_steps_callbacks: std.ArrayList(RemovingStepsCallback) = .{};
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var removing_steps_callbacks: ?infra.List(RemovingStepsCallback) = null;
 
 /// Global registry for post-connection steps callbacks
-var post_connection_steps_callbacks: std.ArrayList(PostConnectionStepsCallback) = .{};
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var post_connection_steps_callbacks: ?infra.List(PostConnectionStepsCallback) = null;
 
 /// Register a callback for insertion steps
 pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
-    try insertion_steps_callbacks.append(callback);
+    if (insertion_steps_callbacks == null) {
+        insertion_steps_callbacks = infra.List(InsertionStepsCallback).init(std.heap.page_allocator);
+    }
+    try insertion_steps_callbacks.?.append(callback);
 }
 
 /// Register a callback for removing steps
 pub fn registerRemovingStepsCallback(callback: RemovingStepsCallback) !void {
-    try removing_steps_callbacks.append(callback);
+    if (removing_steps_callbacks == null) {
+        removing_steps_callbacks = infra.List(RemovingStepsCallback).init(std.heap.page_allocator);
+    }
+    try removing_steps_callbacks.?.append(callback);
 }
 
 /// Register a callback for post-connection steps
 pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback) !void {
-    try post_connection_steps_callbacks.append(callback);
+    if (post_connection_steps_callbacks == null) {
+        post_connection_steps_callbacks = infra.List(PostConnectionStepsCallback).init(std.heap.page_allocator);
+    }
+    try post_connection_steps_callbacks.?.append(callback);
 }
 
 /// Run the insertion steps for a node
 /// Called during the insert algorithm for each shadow-including descendant
 fn runInsertionSteps(node: *Node) void {
-    for (insertion_steps_callbacks.items) |callback| {
-        callback(node);
+    if (insertion_steps_callbacks) |*callbacks| {
+        for (callbacks.items()) |callback| {
+            callback(node);
+        }
     }
 }
 
 /// Run the removing steps for a node
 /// Called during the remove algorithm
 fn runRemovingSteps(node: *Node, old_parent: ?*Node) void {
-    for (removing_steps_callbacks.items) |callback| {
-        callback(node, old_parent);
+    if (removing_steps_callbacks) |*callbacks| {
+        for (callbacks.items()) |callback| {
+            callback(node, old_parent);
+        }
     }
 }
 
 /// Run the post-connection steps for a node
 /// Called after a batch of insertions complete
 fn runPostConnectionSteps(node: *Node) void {
-    for (post_connection_steps_callbacks.items) |callback| {
-        callback(node);
+    if (post_connection_steps_callbacks) |*callbacks| {
+        for (callbacks.items()) |callback| {
+            callback(node);
+        }
     }
 }
 
