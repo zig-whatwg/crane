@@ -38,6 +38,7 @@ const webidl = @import("webidl");
 pub const Init = MutationObserverInit;
 pub const Registered = RegisteredObserver;
 pub const TransientRegistered = TransientRegisteredObserver;
+
 /// DOM §7.1 - MutationObserver interface
 ///
 /// MutationObservers can be used to observe mutations to the tree of nodes.

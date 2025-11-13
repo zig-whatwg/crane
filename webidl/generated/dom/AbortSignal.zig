@@ -28,8 +28,8 @@ pub const EventListenerRemovalContext = struct {
     listener_type: []const u8,
     listener_callback: ?webidl.JSValue,
     listener_capture: bool,
-}
-;
+};
+
 /// DOM Spec: interface AbortSignal : EventTarget
 
 /// Compare two callbacks for equality (from EventTarget)

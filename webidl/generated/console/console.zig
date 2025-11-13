@@ -26,6 +26,7 @@ const Group = types.Group;
 const LogLevel = types.LogLevel;
 const Message = types.Message;
 const CircularMessageBuffer = types.CircularMessageBuffer;
+
 /// Printer function signature for console output.
 ///
 /// Takes a pre-formatted message string and outputs it.
@@ -46,6 +47,7 @@ pub const PrintFn = *const fn (message: []const u8) void;
 fn defaultPrinter(message: []const u8) void {
     std.debug.print("{s}\n", .{message});
 }
+
 /// console namespace object per WHATWG console Standard
 ///
 /// WHATWG console Standard lines 8-39 (WebIDL):

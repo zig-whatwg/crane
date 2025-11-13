@@ -20,16 +20,19 @@ const webidl = @import("webidl");
 
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
+
 // ============================================================================
 // Helper Functions (Module-Level)
 // ============================================================================
+
 /// Check if byte slice is ASCII-only (fast path optimization)
 fn isAscii(bytes: []const u8) bool {
-for (bytes) |byte| {
-if (byte > 0x7F) return false;
+    for (bytes) |byte| {
+        if (byte > 0x7F) return false;
+    }
+    return true;
 }
-return true;
-}
+
 /// TextDecoder errors map to WebIDL simple exceptions per WHATWG Encoding Standard
 ///
 /// Error Mapping (for JavaScript bindings):
@@ -37,15 +40,16 @@ return true;
 /// - error.ReplacementEncoding → RangeError (replacement encoding not allowed)
 /// - error.DecodingError → TypeError (fatal mode encountered invalid sequence)
 pub const TextDecoderError = error{
-/// Invalid encoding label → WebIDL RangeError
-InvalidEncoding,
-/// Replacement encoding not supported → WebIDL RangeError
-ReplacementEncoding,
-/// Fatal decoding error → WebIDL TypeError
-DecodingError,
-/// Out of memory
-OutOfMemory,
+    /// Invalid encoding label → WebIDL RangeError
+    InvalidEncoding,
+    /// Replacement encoding not supported → WebIDL RangeError
+    ReplacementEncoding,
+    /// Fatal decoding error → WebIDL TypeError
+    DecodingError,
+    /// Out of memory
+    OutOfMemory,
 };
+
 /// TextDecoder - decodes bytes to strings using various character encodings
 ///
 /// WHATWG Encoding Standard § 5

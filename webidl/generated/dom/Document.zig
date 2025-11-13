@@ -44,9 +44,10 @@ const webidl = @import("webidl");
 
 /// Document format type enumeration
 pub const DocType = enum {
-html,
-xml,
+    html,
+    xml,
 };
+
 /// DOM Spec: interface Document : Node
 
 /// Compare two callbacks for equality (from EventTarget)

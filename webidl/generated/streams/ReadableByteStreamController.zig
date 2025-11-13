@@ -42,12 +42,12 @@ const webidl = @import("webidl");
 ///
 /// Represents a queued chunk in a byte stream with its buffer and byte range.
 const ByteStreamQueueEntry = struct {
-/// The ArrayBuffer containing the queued bytes
-buffer: *ArrayBuffer,
-/// Byte offset into the buffer where this chunk starts
-byteOffset: u64,
-/// Length in bytes of this chunk
-byteLength: u64,
+    /// The ArrayBuffer containing the queued bytes
+    buffer: *ArrayBuffer,
+    /// Byte offset into the buffer where this chunk starts
+    byteOffset: u64,
+    /// Length in bytes of this chunk
+    byteLength: u64,
 };
 
 pub const ReadableByteStreamController = struct {

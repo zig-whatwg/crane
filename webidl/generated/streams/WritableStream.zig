@@ -31,15 +31,16 @@ const webidl = @import("webidl");
 ///
 /// Spec: § 5.1 "Internal slots" - [[state]]
 pub const StreamState = enum {
-writable,
-closed,
-erroring,
-errored,
+    writable,
+    closed,
+    erroring,
+    errored,
 };
+
 /// Writer type for a writable stream (optional)
 pub const Writer = union(enum) {
-none: void,
-default: *WritableStreamDefaultWriter,
+    none: void,
+    default: *WritableStreamDefaultWriter,
 };
 
 pub const WritableStream = struct {

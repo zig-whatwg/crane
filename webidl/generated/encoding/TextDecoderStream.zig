@@ -23,6 +23,7 @@ const webidl = @import("webidl");
 
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
+
 /// TextDecoderStream - decodes a stream of bytes to a stream of strings
 ///
 /// WHATWG Encoding Standard § 6.3
