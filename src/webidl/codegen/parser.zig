@@ -685,7 +685,27 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         // Look for function declarations (both public and private)
         const pub_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub fn ");
         const pub_inline_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub inline fn ");
-        const priv_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "fn ");
+
+        // For private functions, need to skip "const fn" patterns (function pointer types)
+        var priv_fn_pos: ?usize = null;
+        var search_pos = pos;
+        while (search_pos < struct_body.len) {
+            const candidate = std.mem.indexOfPos(u8, struct_body, search_pos, "fn ") orelse break;
+
+            // Check if it's "const fn" (function pointer type)
+            if (candidate >= 6) {
+                const before = struct_body[candidate - 6 .. candidate];
+                if (std.mem.eql(u8, before, "const ")) {
+                    search_pos = candidate + 1;
+                    continue;
+                }
+            }
+
+            // Valid fn declaration
+            priv_fn_pos = candidate;
+            break;
+        }
+
         const priv_inline_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "inline fn ");
 
         // Find the earliest function declaration
@@ -710,10 +730,19 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         }
         if (priv_inline_fn_pos) |pos_val| {
             if (fn_pos == null or pos_val < fn_pos.?) {
-                // Check it's not inside a field type (would have : before it on same line)
-                const line_start = if (std.mem.lastIndexOfScalar(u8, struct_body[0..pos_val], '\n')) |nl| nl + 1 else 0;
-                const line_prefix = struct_body[line_start..pos_val];
-                if (std.mem.indexOfScalar(u8, line_prefix, ':') == null) {
+                // Check it's a real function declaration, not inside a type
+                // Function declarations have pattern: (whitespace|newline)inline fn name(
+                // Field types have pattern: name: type with fn(
+                if (pos_val > 0) {
+                    const char_before = struct_body[pos_val - 1];
+                    // Must be preceded by whitespace or newline
+                    if (char_before == '\n' or char_before == ' ' or char_before == '\t') {
+                        fn_pos = pos_val;
+                        is_public = false;
+                        is_inline = true;
+                        prefix_len = "inline fn ".len;
+                    }
+                } else {
                     fn_pos = pos_val;
                     is_public = false;
                     is_inline = true;
@@ -723,15 +752,10 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         }
         if (priv_fn_pos) |pos_val| {
             if (fn_pos == null or pos_val < fn_pos.?) {
-                // Check it's not inside a field type (would have : before it on same line)
-                const line_start = if (std.mem.lastIndexOfScalar(u8, struct_body[0..pos_val], '\n')) |nl| nl + 1 else 0;
-                const line_prefix = struct_body[line_start..pos_val];
-                if (std.mem.indexOfScalar(u8, line_prefix, ':') == null) {
-                    fn_pos = pos_val;
-                    is_public = false;
-                    is_inline = false;
-                    prefix_len = "fn ".len;
-                }
+                fn_pos = pos_val;
+                is_public = false;
+                is_inline = false;
+                prefix_len = "fn ".len;
             }
         }
 

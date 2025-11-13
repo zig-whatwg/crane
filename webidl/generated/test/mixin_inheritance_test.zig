@@ -39,6 +39,9 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Test Case 1: Single mixin with field
+
 pub const Parent = struct {
 
     // ========================================================================
@@ -62,6 +65,9 @@ pub const Parent = struct {
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
+
+
+// Test Case 1: Single mixin with field
 
 pub const Child = struct {
 
@@ -87,6 +93,9 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Test Case 1: Single mixin with field
+
 pub const MixinA = struct {
 
     // ========================================================================
@@ -111,6 +120,9 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Test Case 1: Single mixin with field
+
 pub const MixinB = struct {
 
     // ========================================================================
@@ -134,6 +146,9 @@ pub const MixinB = struct {
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
+
+
+// Test Case 1: Single mixin with field
 
 pub const ParentMulti = struct {
 
@@ -160,6 +175,9 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Test Case 1: Single mixin with field
+
 pub const ChildMulti = struct {
 
     // ========================================================================
@@ -184,6 +202,9 @@ pub const ChildMulti = struct {
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
+
+
+// Test Case 1: Single mixin with field
 
 pub const GrandChild = struct {
 

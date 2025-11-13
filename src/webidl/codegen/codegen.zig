@@ -465,17 +465,14 @@ pub fn generateAllClasses(
 
         const writer = output.writer(allocator);
 
-        // Write header (first class will write imports + module definitions)
-        var first_class = true;
-
         // Process each class in the file
         for (file_ir.classes) |*class| {
             var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry, file_ir.module_imports);
             defer enhanced.deinit(allocator);
 
-            const class_code = try generator.generateCode(allocator, enhanced, if (first_class) file_ir.module_definitions else null);
+            // All classes get module definitions (helper functions need to be accessible)
+            const class_code = try generator.generateCode(allocator, enhanced, file_ir.module_definitions);
             defer allocator.free(class_code);
-            first_class = false;
 
             try writer.writeAll(class_code);
             try writer.writeAll("\n\n");
