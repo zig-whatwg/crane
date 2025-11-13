@@ -51,7 +51,7 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
 fn parseModuleImports(allocator: Allocator, source: []const u8) ![]ir.Import {
     var imports = infra.List(ir.Import).init(allocator);
     errdefer {
-        for (imports.items) |*import| {
+        for (imports.toSliceMut()) |*import| {
             import.deinit(allocator);
         }
         imports.deinit();
@@ -157,7 +157,7 @@ fn parseImportStatement(
 fn parseClasses(allocator: Allocator, source: []const u8, file_path: []const u8) ![]ir.ClassDef {
     var classes = infra.List(ir.ClassDef).init(allocator);
     errdefer {
-        for (classes.items) |*class| {
+        for (classes.toSliceMut()) |*class| {
             class.deinit(allocator);
         }
         classes.deinit();
@@ -308,12 +308,12 @@ fn extractClassName(allocator: Allocator, source: []const u8, class_start: usize
                 const name_start = const_pos + "pub const ".len;
                 const eq_pos = std.mem.indexOfPos(u8, line, name_start, "=") orelse continue;
                 const name = std.mem.trim(u8, line[name_start..eq_pos], " \t\r");
-                return allocator.dupe(u8, name);
+                return try allocator.dupe(u8, name);
             } else if (std.mem.indexOf(u8, line, "const ")) |const_pos| {
                 const name_start = const_pos + "const ".len;
                 const eq_pos = std.mem.indexOfPos(u8, line, name_start, "=") orelse continue;
                 const name = std.mem.trim(u8, line[name_start..eq_pos], " \t\r");
-                return allocator.dupe(u8, name);
+                return try allocator.dupe(u8, name);
             }
         }
     }
@@ -334,10 +334,10 @@ fn extractParentClass(allocator: Allocator, struct_body: []const u8) !?[]const u
 
     // Handle "base.Type" format - extract just "Type"
     if (std.mem.indexOfScalar(u8, parent_name, '.')) |dot| {
-        return allocator.dupe(u8, parent_name[dot + 1 ..]);
+        return try allocator.dupe(u8, parent_name[dot + 1 ..]);
     }
 
-    return allocator.dupe(u8, parent_name);
+    return try allocator.dupe(u8, parent_name);
 }
 
 /// Extract mixin names from: pub const includes = .{ Mixin1, Mixin2 };
@@ -354,7 +354,7 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
 
     var mixins = infra.List([]const u8).init(allocator);
     errdefer {
-        for (mixins.items) |mixin| allocator.free(mixin);
+        for (mixins.toSliceMut()) |mixin| allocator.free(mixin);
         mixins.deinit();
     }
 
@@ -371,7 +371,7 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
 fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
     var fields = infra.List(ir.Field).init(allocator);
     errdefer {
-        for (fields.items) |*field| field.deinit(allocator);
+        for (fields.toSliceMut()) |*field| field.deinit(allocator);
         fields.deinit();
     }
 
@@ -425,7 +425,7 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
 fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
     var methods = infra.List(ir.Method).init(allocator);
     errdefer {
-        for (methods.items) |*method| method.deinit(allocator);
+        for (methods.toSliceMut()) |*method| method.deinit(allocator);
         methods.deinit();
     }
 
@@ -571,7 +571,7 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
     // Convert to array
     var result = infra.List([]const u8).init(allocator);
     errdefer {
-        for (result.items) |t| allocator.free(t);
+        for (result.toSliceMut()) |t| allocator.free(t);
         result.deinit();
     }
 
@@ -593,7 +593,7 @@ fn parseProperties(allocator: Allocator, struct_body: []const u8) ![]ir.Property
 fn parseConstants(allocator: Allocator, struct_body: []const u8) ![]ir.Constant {
     var constants = infra.List(ir.Constant).init(allocator);
     errdefer {
-        for (constants.items) |*constant| constant.deinit(allocator);
+        for (constants.toSliceMut()) |*constant| constant.deinit(allocator);
         constants.deinit();
     }
 
@@ -663,7 +663,7 @@ fn extractRequiredImports(
 ) ![]ir.Import {
     var imports = infra.List(ir.Import).init(allocator);
     errdefer {
-        for (imports.items) |*import| import.deinit(allocator);
+        for (imports.toSliceMut()) |*import| import.deinit(allocator);
         imports.deinit();
     }
 

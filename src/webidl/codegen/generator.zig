@@ -81,7 +81,23 @@ fn writeImports(writer: anytype, imports: []ir.Import) !void {
 
     // Write sorted imports
     for (sorted_imports.items) |import| {
-        try writer.print("{}", .{import});
+        const vis = if (import.visibility == .public) "pub " else "";
+        if (import.is_type) {
+            // Type import: const Foo = @import("foo").Foo;
+            try writer.print("{s}const {s} = @import(\"{s}\").{s};\n", .{
+                vis,
+                import.name,
+                import.module,
+                import.name,
+            });
+        } else {
+            // Module import: const std = @import("std");
+            try writer.print("{s}const {s} = @import(\"{s}\");\n", .{
+                vis,
+                import.name,
+                import.module,
+            });
+        }
     }
 
     try writer.writeAll("\n");

@@ -93,7 +93,7 @@ fn collectAllFields(
 ) ![]ir.Field {
     var fields = infra.List(ir.Field).init(allocator);
     errdefer {
-        for (fields.items) |*field| field.deinit(allocator);
+        for (fields.toSliceMut()) |*field| field.deinit(allocator);
         fields.deinit();
     }
 
@@ -136,7 +136,7 @@ fn collectAllMethods(
 ) ![]ir.Method {
     var methods = infra.List(ir.Method).init(allocator);
     errdefer {
-        for (methods.items) |*method| method.deinit(allocator);
+        for (methods.toSliceMut()) |*method| method.deinit(allocator);
         methods.deinit();
     }
 
@@ -189,7 +189,7 @@ fn collectAllProperties(
 ) ![]ir.Property {
     var properties = infra.List(ir.Property).init(allocator);
     errdefer {
-        for (properties.items) |*prop| prop.deinit(allocator);
+        for (properties.toSliceMut()) |*prop| prop.deinit(allocator);
         properties.deinit();
     }
 
@@ -265,7 +265,7 @@ fn resolveImports(
     // Convert to array
     var result = infra.List(ir.Import).init(allocator);
     errdefer {
-        for (result.items) |*import| import.deinit(allocator);
+        for (result.toSliceMut()) |*import| import.deinit(allocator);
         result.deinit();
     }
 

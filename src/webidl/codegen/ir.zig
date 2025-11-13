@@ -328,7 +328,8 @@ pub const EnhancedClassIR = struct {
     all_imports: []Import,
 
     pub fn deinit(self: *EnhancedClassIR, allocator: Allocator) void {
-        self.class.deinit(allocator);
+        // NOTE: Don't deinit self.class - it's just a copy of the original ClassDef
+        // which is owned by FileIR. Only deinit the enhanced slices we created.
 
         for (self.all_fields) |*field| {
             field.deinit(allocator);

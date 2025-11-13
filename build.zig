@@ -154,6 +154,12 @@ pub fn build(b: *std.Build) void {
     // declarations and generates enhanced code in webidl/generated/.
 
     // Build webidl-codegen executable
+    // Note: Codegen needs infra module for List type used in AST/IR pipeline
+    const codegen_infra_mod = b.addModule("infra", .{
+        .root_source_file = b.path("src/infra/root.zig"),
+        .target = target,
+    });
+
     const webidl_codegen_exe = b.addExecutable(.{
         .name = "webidl-codegen",
         .root_module = b.createModule(.{
@@ -162,6 +168,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
+    webidl_codegen_exe.root_module.addImport("infra", codegen_infra_mod);
     b.installArtifact(webidl_codegen_exe);
 
     // Run codegen: scan webidl/src/, output to webidl/generated/

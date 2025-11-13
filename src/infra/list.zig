@@ -230,6 +230,53 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             return self.len == 0;
         }
 
+        /// Get a const slice view of all items in the list.
+        /// This is a temporary slice that is valid until the list is modified.
+        /// Useful for iteration when you need to access items by index.
+        pub fn toSlice(self: *const Self) []const T {
+            if (self.heap_storage) |heap| {
+                return heap.items;
+            } else if (comptime inline_capacity > 0) {
+                return self.inline_storage[0..self.len];
+            } else {
+                return &.{};
+            }
+        }
+
+        /// Get a mutable slice view of all items in the list.
+        /// This is a temporary slice that is valid until the list is modified.
+        /// Use this when you need to modify items in place.
+        pub fn toSliceMut(self: *Self) []T {
+            if (self.heap_storage) |*heap| {
+                return heap.items;
+            } else if (comptime inline_capacity > 0) {
+                return self.inline_storage[0..self.len];
+            } else {
+                return &.{};
+            }
+        }
+
+        /// Transfer ownership of all items to the caller as a slice.
+        /// The list is cleared and all heap storage is freed.
+        /// The caller owns the returned slice and must free it with allocator.free().
+        pub fn toOwnedSlice(self: *Self) ![]T {
+            if (self.heap_storage) |*heap| {
+                const owned = try heap.toOwnedSlice(self.allocator);
+                self.len = 0;
+                return owned;
+            } else if (comptime inline_capacity > 0) {
+                if (self.len > 0) {
+                    const owned = try self.allocator.dupe(T, self.inline_storage[0..self.len]);
+                    self.len = 0;
+                    return owned;
+                } else {
+                    return &.{};
+                }
+            } else {
+                return &.{};
+            }
+        }
+
         /// Clear all items from the list.
         /// WHATWG Infra Standard §5.1 line 882: "To **empty** a list is to remove all of its items."
         pub fn clear(self: *Self) void {

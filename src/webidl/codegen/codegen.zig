@@ -59,6 +59,10 @@
 //! See IMPLEMENTATION.md for detailed architecture documentation.
 
 const std = @import("std");
+const parser = @import("parser.zig");
+const optimizer = @import("optimizer.zig");
+const generator = @import("generator.zig");
+const ir = @import("ir.zig");
 
 /// Maximum file size to prevent DoS attacks (5MB)
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -360,27 +364,31 @@ pub fn generateAllClasses(
     output_dir: []const u8,
     config: ClassConfig,
 ) !void {
+    _ = config; // TODO: Use config for property prefixes in generator
+
     // Create output directory
     std.fs.cwd().makePath(output_dir) catch |err| switch (err) {
         error.PathAlreadyExists => {},
         else => return err,
     };
 
-    // Initialize global registry
-    var registry = GlobalRegistry.init(allocator);
-    defer registry.deinit();
+    // Initialize AST/IR class registry
+    var ast_registry = optimizer.ClassRegistry.init(allocator);
+    defer ast_registry.deinit();
 
-    // Track which files need regeneration (always regenerate all)
-    var files_to_regenerate = std.StringHashMap(void).init(allocator);
+    // Track files with classes (path -> FileIR)
+    var file_irs = std.StringHashMap(ir.FileIR).init(allocator);
     defer {
-        var it = files_to_regenerate.keyIterator();
-        while (it.next()) |key| {
-            allocator.free(key.*);
+        var it = file_irs.iterator();
+        while (it.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+            var file_ir = entry.value_ptr.*;
+            file_ir.deinit(allocator);
         }
-        files_to_regenerate.deinit();
+        file_irs.deinit();
     }
 
-    // PASS 1: Scan all files and build global registry
+    // PASS 1: Scan all files and parse into IR
     var source_dir_handle = try std.fs.cwd().openDir(source_dir, .{ .iterate = true });
     defer source_dir_handle.close();
 
@@ -409,134 +417,41 @@ pub fn generateAllClasses(
             source_path,
             10 * 1024 * 1024,
         );
-        errdefer allocator.free(source_content);
+        defer allocator.free(source_content);
 
+        // Check if file contains WebIDL declarations
         if (std.mem.indexOf(u8, source_content, "webidl.interface(") != null or
             std.mem.indexOf(u8, source_content, "webidl.namespace(") != null or
-            std.mem.indexOf(u8, source_content, "webidl.mixin(") != null or
-            std.mem.indexOf(u8, source_content, "@import(\"zoop\")") != null)
+            std.mem.indexOf(u8, source_content, "webidl.mixin(") != null)
         {
-            const file_path_owned = try allocator.dupe(u8, entry.path);
-            errdefer allocator.free(file_path_owned);
+            // Parse file into IR
+            var file_ir = try parser.parseFile(allocator, source_content, entry.path);
+            errdefer file_ir.deinit(allocator);
 
-            var file_info = FileInfo{
-                .path = file_path_owned,
-                .imports = std.StringHashMap([]const u8).init(allocator),
-                .classes = std.ArrayList(ClassInfo){},
-                .source_content = source_content,
-            };
-            file_info.classes = .empty;
-
-            try parseImports(allocator, source_content, file_path_owned, &file_info.imports);
-            try scanFileForClasses(allocator, source_content, file_path_owned, &file_info.classes, &registry);
-
-            try registry.files.put(file_path_owned, file_info);
-
-            // Always regenerate all files (no caching)
-            try files_to_regenerate.put(try allocator.dupe(u8, entry.path), {});
-        } else {
-            allocator.free(source_content);
-        }
-    }
-
-    // PASS 1.5: Flatten mixins into ClassInfo.fields
-    // After all files are parsed, flatten mixin fields directly into each ClassInfo.
-    // This ensures that when children inherit from parents, they automatically get
-    // the parent's mixin fields through normal inheritance collection.
-    try flattenAllMixinsIntoRegistry(&registry);
-
-    // PASS 1.6: Detect base types for polymorphism support
-    // Find interfaces with no parent but have children (e.g., Node, EventTarget)
-    // These will generate XxxBase structs for safe downcasting
-    var base_types = try detectBaseTypes(&registry);
-    defer {
-        var base_it = base_types.iterator();
-        while (base_it.next()) |entry| {
-            entry.value_ptr.children.deinit(allocator);
-        }
-        base_types.deinit();
-    }
-
-    // Debug: Print detected base types
-    if (base_types.count() > 0) {
-        std.debug.print("\nDetected base types for polymorphism:\n", .{});
-        var base_it = base_types.iterator();
-        while (base_it.next()) |entry| {
-            std.debug.print("  {s} → children: {any}\n", .{ entry.key_ptr.*, entry.value_ptr.children.items });
-        }
-        std.debug.print("\n", .{});
-    }
-
-    // Check for circular inheritance across all files
-    var global_file_it = registry.files.iterator();
-    while (global_file_it.next()) |entry| {
-        const file_path = entry.key_ptr.*;
-        const file_info = entry.value_ptr.*;
-
-        for (file_info.classes.items) |class_info| {
-            var visited = std.StringHashMap(void).init(allocator);
-            defer visited.deinit();
-
-            try detectCircularInheritanceGlobal(
-                class_info.name,
-                class_info.parent_name,
-                file_path,
-                &registry,
-                &visited,
-            );
-        }
-    }
-
-    // Build descendant map to track dependencies
-    var descendant_map = try registry.buildDescendantMap();
-    defer {
-        var desc_it = descendant_map.iterator();
-        while (desc_it.next()) |desc_entry| {
-            desc_entry.value_ptr.deinit(allocator);
-        }
-        descendant_map.deinit();
-    }
-
-    // Add descendants of changed files to regeneration list
-    var files_to_check = std.ArrayList([]const u8){};
-    defer files_to_check.deinit(allocator);
-
-    var regen_it = files_to_regenerate.keyIterator();
-    while (regen_it.next()) |file_path| {
-        try files_to_check.append(allocator, file_path.*);
-    }
-
-    for (files_to_check.items) |file_path| {
-        // Get classes in this file
-        const file_info = registry.files.get(file_path) orelse continue;
-        for (file_info.classes.items) |class_info| {
-            // Find descendants of each class
-            const descendants = descendant_map.get(class_info.name) orelse continue;
-            for (descendants.items) |descendant_name| {
-                // Find which file contains this descendant
-                var find_it = registry.files.iterator();
-                while (find_it.next()) |find_entry| {
-                    for (find_entry.value_ptr.classes.items) |find_class| {
-                        if (std.mem.eql(u8, find_class.name, descendant_name)) {
-                            // Only dupe the key if not already in the map
-                            if (!files_to_regenerate.contains(find_entry.key_ptr.*)) {
-                                try files_to_regenerate.put(try allocator.dupe(u8, find_entry.key_ptr.*), {});
-                            }
-                            break;
-                        }
-                    }
-                }
+            // Skip files with no classes
+            if (file_ir.classes.len == 0) {
+                file_ir.deinit(allocator);
+                continue;
             }
+
+            // Register all classes in this file
+            for (file_ir.classes) |*class| {
+                try ast_registry.register(class);
+            }
+
+            // Store FileIR for Pass 2
+            const path_owned = try allocator.dupe(u8, entry.path);
+            try file_irs.put(path_owned, file_ir);
         }
     }
 
-    // PASS 2: Generate code for each file
+    // PASS 2: Enhance and generate code for each file
     var classes_generated: usize = 0;
-    var file_it = registry.files.iterator();
+    var file_it = file_irs.iterator();
 
     while (file_it.next()) |entry| {
         const file_path = entry.key_ptr.*;
-        const file_info = entry.value_ptr.*;
+        const file_ir = entry.value_ptr.*;
 
         // Validate path again before writing (defense in depth)
         if (!isPathSafe(file_path)) {
@@ -544,36 +459,42 @@ pub fn generateAllClasses(
             return error.UnsafePath;
         }
 
-        // Only generate if file needs regeneration
-        if (files_to_regenerate.contains(file_path)) {
-            const generated = try processSourceFileWithRegistry(
-                allocator,
-                file_info.source_content,
-                file_path,
-                &registry,
-                config,
-                &base_types,
-            );
-            defer allocator.free(generated);
+        // Generate code using AST/IR pipeline
+        var output: std.ArrayList(u8) = .empty;
+        defer output.deinit(allocator);
 
-            const output_path = try std.fs.path.join(allocator, &.{ output_dir, file_path });
-            defer allocator.free(output_path);
+        const writer = output.writer(allocator);
 
-            if (std.fs.path.dirname(output_path)) |parent_dir| {
-                std.fs.cwd().makePath(parent_dir) catch |err| switch (err) {
-                    error.PathAlreadyExists => {},
-                    else => return err,
-                };
-            }
+        // Process each class in the file
+        for (file_ir.classes) |*class| {
+            var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry);
+            defer enhanced.deinit(allocator);
 
-            const output_file = try std.fs.cwd().createFile(output_path, .{});
-            defer output_file.close();
+            const class_code = try generator.generateCode(allocator, enhanced);
+            defer allocator.free(class_code);
 
-            try output_file.writeAll(generated);
-
-            classes_generated += 1;
-            std.debug.print("  Generated: {s}\n", .{file_path});
+            try writer.writeAll(class_code);
+            try writer.writeAll("\n\n");
         }
+
+        // Write to output file
+        const output_path = try std.fs.path.join(allocator, &.{ output_dir, file_path });
+        defer allocator.free(output_path);
+
+        if (std.fs.path.dirname(output_path)) |parent_dir| {
+            std.fs.cwd().makePath(parent_dir) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => return err,
+            };
+        }
+
+        const output_file = try std.fs.cwd().createFile(output_path, .{});
+        defer output_file.close();
+
+        try output_file.writeAll(output.items);
+
+        classes_generated += 1;
+        std.debug.print("  Generated: {s}\n", .{file_path});
     }
 
     std.debug.print("\nProcessed {} files, generated {} class files\n", .{ files_processed, classes_generated });
