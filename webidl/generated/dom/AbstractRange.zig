@@ -29,6 +29,42 @@ pub const AbstractRange = struct {
     start_offset: u32,
     end_container: *Node,
     end_offset: u32,
+
+    // ========================================================================
+    // Methods
+    // ========================================================================
+
+    pub fn get_startContainer(self: *const AbstractRange) *Node {
+
+        return self.start_container;
+    
+    }
+
+    pub fn get_startOffset(self: *const AbstractRange) u32 {
+
+        return self.start_offset;
+    
+    }
+
+    pub fn get_endContainer(self: *const AbstractRange) *Node {
+
+        return self.end_container;
+    
+    }
+
+    pub fn get_endOffset(self: *const AbstractRange) u32 {
+
+        return self.end_offset;
+    
+    }
+
+    pub fn get_collapsed(self: *const AbstractRange) bool {
+
+        return self.start_container == self.end_container and
+            self.start_offset == self.end_offset;
+    
+    }
+
 };
 
 

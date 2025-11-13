@@ -77,32 +77,12 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     pub fn deinit(self: *ReadableStreamDefaultReader) void {
+
         // Note: readRequests promises are owned by callers, just clear the list
         self.readRequests.deinit(self.allocator);
+    
     }
 
-    // ============================================================================
-    // WebIDL Interface Methods (ReadableStreamDefaultReader)
-    // ============================================================================
-    // Note: closed() and cancel() methods are included from ReadableStreamGenericReader mixin
-
-    /// read() method (ASYNC VERSION)
-    ///
-    /// IDL: Promise<ReadableStreamReadResult> read();
-    ///
-    /// Spec: § 4.3.3 "The read() method steps are:"
-    // ============================================================================
-    // WebIDL Interface: Instance Methods
-    // ============================================================================
-
-    /// Promise<ReadableStreamReadResult> read()
-    /// IDL: Promise<ReadableStreamReadResult> read();
-    ///
-    /// Returns an AsyncPromise that will be fulfilled when data arrives
-    /// or rejected if the stream errors. The promise is PENDING if no
-    /// data is immediately available.
-    ///
-    /// **IMPORTANT**: Caller owns the returned promise and must call deinit()
     pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
@@ -211,6 +191,7 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+
         // Step 1: Let stream be reader.[[stream]].
         const stream = self.stream.?;
 
@@ -219,11 +200,9 @@ pub const ReadableStreamDefaultReader = struct {
 
         // Step 3: Return ! ReadableStreamCancel(stream, reason).
         return stream.cancelInternal(reason);
+    
     }
 
-    /// ReadableStreamReaderGenericRelease(reader)
-    ///
-    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
 
         // Step 1: Let stream be reader.[[stream]].

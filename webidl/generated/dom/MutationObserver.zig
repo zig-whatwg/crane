@@ -178,6 +178,7 @@ pub const MutationObserver = struct {
     }
 
     pub fn takeRecords(self: *MutationObserver) ![]MutationRecord {
+
         // Step 1: Let records be a clone of this's record queue.
         const allocator = self.allocator;
         const records = try allocator.alloc(MutationRecord, self.record_queue.items.len);
@@ -188,45 +189,33 @@ pub const MutationObserver = struct {
 
         // Step 3: Return records.
         return records;
+    
     }
 
-    // ========================================================================
-    // Internal methods (for mutation algorithms)
-    // ========================================================================
-
-    /// Enqueue a mutation record to this observer's record queue
-    ///
-    /// Called by mutation observation algorithms when mutations occur.
-    /// This is an internal method, not exposed in the WebIDL.
     pub fn enqueueRecord(self: *MutationObserver, record: MutationRecord) !void {
+
         try self.record_queue.append(self.allocator, record);
+    
     }
 
-    /// Get the callback for this observer
-    ///
-    /// Used by the notify mutation observers algorithm.
     pub fn getCallback(self: *const MutationObserver) MutationCallback {
+
         return self.callback;
+    
     }
 
-    /// Get the node list for this observer
-    ///
-    /// Used by the notify mutation observers algorithm.
     pub fn getNodeList(self: *MutationObserver) []const *Node {
+
         return self.node_list.items;
+    
     }
 
-    /// Get the record queue for this observer
-    ///
-    /// Used by the notify mutation observers algorithm.
     pub fn getRecordQueue(self: *const MutationObserver) []const MutationRecord {
+
         return self.record_queue.items;
+    
     }
 
-    /// Check if this observer is observing a specific node
-    ///
-    /// Useful for caller to verify observation state before node cleanup.
-    /// Returns true if the node is in this observer's node list.
     pub fn isObserving(self: *const MutationObserver, node: *const Node) bool {
 
         for (self.node_list.items) |observed_node| {
@@ -248,6 +237,12 @@ pub const MutationObserver = struct {
             }
             i += 1;
         }
+    
+    }
+
+    pub fn clearRecordQueue(self: *MutationObserver) void {
+
+        self.record_queue.clearRetainingCapacity();
     
     }
 

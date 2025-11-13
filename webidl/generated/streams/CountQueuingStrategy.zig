@@ -33,11 +33,26 @@ pub const CountQueuingStrategy = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) CountQueuingStrategy {
-
         _ = allocator; // Not needed for this simple structure
         return .{
             ._highWaterMark = initDict.highWaterMark,
         };
+    }
+
+    pub fn deinit(_: *CountQueuingStrategy) void {
+
+    }
+
+    pub fn get_highWaterMark(self: *const CountQueuingStrategy) f64 {
+
+        return self._highWaterMark;
+    
+    }
+
+    pub fn call_size(_: *const CountQueuingStrategy, _: webidl.JSValue) f64 {
+
+        // Always returns 1 for count-based strategy
+        return 1.0;
     
     }
 

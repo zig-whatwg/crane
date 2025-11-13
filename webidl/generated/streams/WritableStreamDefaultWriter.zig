@@ -59,14 +59,10 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
-    pub fn deinit(_: *WritableStreamDefaultWriter) void {}
+    pub fn deinit(_: *WritableStreamDefaultWriter) void {
 
-    // ============================================================================
-    // WebIDL Interface: Readonly Attributes
-    // ============================================================================
+    }
 
-    /// readonly attribute Promise<undefined> closed
-    /// Spec: https://streams.spec.whatwg.org/#default-writer-closed
     pub fn get_closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
@@ -171,8 +167,10 @@ pub const WritableStreamDefaultWriter = struct {
     }
 
     fn getDesiredSizeInternal(self: *const WritableStreamDefaultWriter) ?f64 {
+
         _ = self;
         return 1.0; // Placeholder
+    
     }
 
     fn abortInternal(self: *WritableStreamDefaultWriter, reason: ?common.JSValue) !*AsyncPromise(void) {

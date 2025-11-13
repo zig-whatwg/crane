@@ -8,7 +8,6 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -34,6 +33,12 @@ pub const CustomElementRegistry = struct {
             .is_scoped = is_scoped,
             .scoped_document_set = std.ArrayList(*anyopaque).init(allocator),
         };
+    
+    }
+
+    pub fn deinit(self: *CustomElementRegistry) void {
+
+        self.scoped_document_set.deinit();
     
     }
 

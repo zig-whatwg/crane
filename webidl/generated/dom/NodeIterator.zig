@@ -65,76 +65,61 @@ pub const NodeIterator = struct {
     }
 
     pub fn deinit(self: *NodeIterator) void {
+
         _ = self;
         // No cleanup needed - we don't own the nodes
+    
     }
 
-    // ========================================================================
-    // Attributes
-    // ========================================================================
-
-    /// DOM §6.2 - NodeIterator.root
-    /// Returns the root node
     pub fn get_root(self: *const NodeIterator) *Node {
+
         return self.root;
+    
     }
 
-    /// DOM §6.2 - NodeIterator.referenceNode
-    /// Returns the current reference node
     pub fn get_referenceNode(self: *const NodeIterator) *Node {
+
         return self.reference;
+    
     }
 
-    /// DOM §6.2 - NodeIterator.pointerBeforeReferenceNode
-    /// Returns true if pointer is before the reference node
     pub fn get_pointerBeforeReferenceNode(self: *const NodeIterator) bool {
+
         return self.pointer_before_reference;
+    
     }
 
-    /// DOM §6.2 - NodeIterator.whatToShow
-    /// Returns the whatToShow bitmask
     pub fn get_whatToShow(self: *const NodeIterator) u32 {
+
         return self.what_to_show;
+    
     }
 
-    /// DOM §6.2 - NodeIterator.filter
-    /// Returns the filter callback (may be null)
     pub fn get_filter(self: *const NodeIterator) NodeFilter.OptionalAcceptNodeFn {
+
         return self.filter;
+    
     }
 
-    // ========================================================================
-    // Navigation methods
-    // ========================================================================
-
-    /// DOM §6.2 - NodeIterator.nextNode()
-    /// Returns the next node in the iteration, or null if none
     pub fn nextNode(self: *NodeIterator) !?*Node {
+
         return try self.traverse(.next);
+    
     }
 
-    /// DOM §6.2 - NodeIterator.previousNode()
-    /// Returns the previous node in the iteration, or null if none
     pub fn previousNode(self: *NodeIterator) !?*Node {
+
         return try self.traverse(.previous);
+    
     }
 
-    /// DOM §6.2 - NodeIterator.detach()
-    /// Legacy method - does nothing (functionality removed, kept for compatibility)
     pub fn detach(self: *NodeIterator) void {
+
         _ = self;
         // Do nothing per spec
+    
     }
 
-    // ========================================================================
-    // Internal algorithms
-    // ========================================================================
-
-    /// Direction for traverse algorithm
-    pub const Direction = enum { next, previous };
-
-    /// DOM §6.2 - traverse algorithm
-    /// Given a direction, traverse the tree and return the next accepted node
     fn traverse(self: *NodeIterator, direction: Direction) !?*Node {
 
         const dom = @import("dom");

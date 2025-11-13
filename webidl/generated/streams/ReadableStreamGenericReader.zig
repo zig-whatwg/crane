@@ -76,6 +76,7 @@ pub const ReadableStreamGenericReader = struct {
     }
 
     fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+
         // Step 1: Let stream be reader.[[stream]].
         const stream = self.stream.?;
 
@@ -84,11 +85,9 @@ pub const ReadableStreamGenericReader = struct {
 
         // Step 3: Return ! ReadableStreamCancel(stream, reason).
         return stream.cancelInternal(reason);
+    
     }
 
-    /// ReadableStreamReaderGenericRelease(reader)
-    ///
-    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
 
         // Step 1: Let stream be reader.[[stream]].

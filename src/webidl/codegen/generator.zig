@@ -28,15 +28,36 @@ pub fn generateCode(
     // Header
     try writeHeader(writer);
 
-    // Imports (deduplicated, sorted)
-    try writeImports(writer, enhanced.all_imports);
+    // Imports (deduplicated, sorted, excluding class constants and module definitions)
+    const module_def_names = if (module_definitions) |defs|
+        try extractModuleDefinitionNames(allocator, defs)
+    else
+        &[_][]const u8{};
+    defer {
+        if (module_definitions != null) {
+            for (module_def_names) |name| allocator.free(name);
+            allocator.free(module_def_names);
+        }
+    }
+
+    try writeImports(writer, enhanced.all_imports, enhanced.class.own_constants, module_def_names);
 
     // Module-level definitions (if this is the first class in the file)
     if (module_definitions) |defs| {
         if (defs.len > 0) {
+            // Debug: Check if this is MutationObserver
+            const is_mutation_observer = std.mem.indexOf(u8, defs, "MutationObserver") != null;
+            if (is_mutation_observer) {
+                std.debug.print("\n=== MutationObserver Module Defs (BEFORE filter) ===\n{s}\n=== END ===\n", .{defs});
+            }
+
             // Filter out type aliases that duplicate top-level imports
             const filtered_defs = try filterModuleDefinitions(allocator, defs, enhanced.all_imports);
             defer allocator.free(filtered_defs);
+
+            if (is_mutation_observer) {
+                std.debug.print("\n=== MutationObserver Module Defs (AFTER filter) ===\n{s}\n=== END ===\n", .{filtered_defs});
+            }
 
             if (filtered_defs.len > 0) {
                 try writer.writeAll("\n");
@@ -135,13 +156,76 @@ fn writeHeader(writer: anytype) !void {
     );
 }
 
-/// Write all imports
-fn writeImports(writer: anytype, imports: []ir.Import) !void {
+/// Extract names of constants/types defined in module definitions
+fn extractModuleDefinitionNames(allocator: Allocator, defs: []const u8) ![][]const u8 {
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer names.deinit(allocator);
+
+    var lines = std.mem.splitScalar(u8, defs, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+
+        // Pattern: (pub) const Name = ...
+        const const_start = if (std.mem.startsWith(u8, trimmed, "pub const "))
+            @as(usize, "pub const ".len)
+        else if (std.mem.startsWith(u8, trimmed, "const "))
+            @as(usize, "const ".len)
+        else
+            continue;
+
+        const after_const = trimmed[const_start..];
+        if (std.mem.indexOfAny(u8, after_const, " =:")) |end_pos| {
+            const name = after_const[0..end_pos];
+            if (name.len > 0) {
+                try names.append(allocator, try allocator.dupe(u8, name));
+            }
+        }
+    }
+
+    return try names.toOwnedSlice(allocator);
+}
+
+/// Write all imports (filtered to exclude class constants and module-level definitions)
+fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant, module_def_names: []const []const u8) !void {
+    // Debug: Check if this is MutationObserver
+    const is_mutation_observer = blk: {
+        for (imports) |import| {
+            if (std.mem.eql(u8, import.name, "MutationObserver")) break :blk true;
+            if (std.mem.eql(u8, import.name, "MutationCallback")) break :blk true;
+        }
+        break :blk false;
+    };
+
+    if (is_mutation_observer) {
+        std.debug.print("\n=== MutationObserver Imports (BEFORE filter) ===\n", .{});
+        for (imports) |import| {
+            std.debug.print("  {s} from {s} (is_type: {any})\n", .{ import.name, import.module, import.is_type });
+        }
+        std.debug.print("=== END ===\n", .{});
+    }
+    // Build set of names to exclude from imports
+    var excluded_names = std.StringHashMap(void).init(std.heap.page_allocator);
+    defer excluded_names.deinit();
+
+    // Exclude class constant names
+    for (constants) |constant| {
+        try excluded_names.put(constant.name, {});
+    }
+
+    // Exclude module definition names
+    for (module_def_names) |name| {
+        try excluded_names.put(name, {});
+    }
+
     // Sort imports by name for consistent output
     var sorted_imports: std.ArrayList(ir.Import) = .empty;
     defer sorted_imports.deinit(std.heap.page_allocator);
 
     for (imports) |import| {
+        // Skip imports that match excluded names
+        if (excluded_names.contains(import.name)) {
+            continue;
+        }
         try sorted_imports.append(std.heap.page_allocator, import);
     }
 

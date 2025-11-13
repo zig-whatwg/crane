@@ -100,35 +100,33 @@ pub const Attr = struct {
     }
 
     pub fn deinit(self: *Attr) void {
+
         if (self.namespace_uri) |ns| self.allocator.free(ns);
         if (self.prefix) |p| self.allocator.free(p);
         self.allocator.free(self.local_name);
         self.allocator.free(self.value);
         // NOTE: Parent Node cleanup is handled by codegen
+    
     }
 
-    /// DOM §4.9 - namespaceURI getter
-    /// Returns this's namespace.
     pub fn get_namespaceURI(self: *const Attr) ?[]const u8 {
+
         return self.namespace_uri;
+    
     }
 
-    /// DOM §4.9 - prefix getter
-    /// Returns this's namespace prefix.
     pub fn get_prefix(self: *const Attr) ?[]const u8 {
+
         return self.prefix;
+    
     }
 
-    /// DOM §4.9 - localName getter
-    /// Returns this's local name.
     pub fn get_localName(self: *const Attr) []const u8 {
+
         return self.local_name;
+    
     }
 
-    /// DOM §4.9 - name getter
-    /// Returns this's qualified name.
-    /// The qualified name is local name if namespace prefix is null,
-    /// otherwise it's prefix + ":" + local name.
     pub fn get_name(self: *const Attr) ![]const u8 {
 
         if (self.prefix) |p| {
@@ -146,17 +144,17 @@ pub const Attr = struct {
     }
 
     pub fn get_value(self: *const Attr) []const u8 {
+
         return self.value;
+    
     }
 
-    /// DOM §4.9 - value setter
-    /// Sets this's value.
-    /// Steps: Set an existing attribute value with this and the given value.
     pub fn set_value(self: *Attr, new_value: []const u8) !void {
+
         try Attr.setExistingAttributeValue(self, new_value);
+    
     }
 
-    /// Set an existing attribute value - DOM Spec algorithm
     pub fn setExistingAttributeValue(attribute: *Attr, value: []const u8) !void {
 
         // Step 1: If attribute's element is null, set attribute's value
@@ -172,6 +170,7 @@ pub const Attr = struct {
     }
 
     pub fn changeAttribute(attribute: *Attr, value: []const u8) !void {
+
         // Step 1: Let oldValue be attribute's value
         const old_value = attribute.value;
 
@@ -183,9 +182,9 @@ pub const Attr = struct {
 
         // Step 3: Handle attribute changes
         try Attr.handleAttributeChanges(attribute, attribute.owner_element.?, old_value, value);
+    
     }
 
-    /// Handle attribute changes - DOM Spec algorithm
     pub fn handleAttributeChanges(
         attribute: *Attr,
         element: *Element,
@@ -216,6 +215,19 @@ pub const Attr = struct {
         // Extension point for HTML, SVG, etc. to define attribute-specific behavior
         // Currently no attribute change steps defined for base DOM
         // Note: attribute parameter is used above (lines 144-145), no discard needed
+    
+    }
+
+    pub fn get_ownerElement(self: *const Attr) ?*Element {
+
+        return self.owner_element;
+    
+    }
+
+    pub fn get_specified(self: *const Attr) bool {
+
+        _ = self;
+        return true;
     
     }
 
@@ -304,15 +316,15 @@ pub const Attr = struct {
     }
 
     pub fn call_contains(self: *const Node, other: ?*const Node) bool {
+
         if (other == null) return false;
         // Check if other is an inclusive descendant of this
         const tree = @import("dom").tree;
         const other_node = other.?;
         return tree.isInclusiveDescendant(other_node, self);
+    
     }
 
-    /// compareDocumentPosition(other)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Node, other: *const Node) u16 {
 
         const tree = @import("dom").tree;
@@ -365,18 +377,13 @@ pub const Attr = struct {
     }
 
     pub fn call_isEqualNode(self: *const Node, other_node: ?*const Node) bool {
+
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
         return Node.nodeEquals(self, other_node.?);
+    
     }
 
-    /// Node A equals node B - DOM Spec algorithm
-    /// A node A equals a node B if all of the following conditions are true:
-    /// - A and B implement the same interfaces
-    /// - Node-specific properties are equal
-    /// - If A is an element, each attribute in its list equals an attribute in B's list
-    /// - A and B have the same number of children
-    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -491,19 +498,19 @@ pub const Attr = struct {
     }
 
     pub fn call_isSameNode(self: *const Node, other_node: ?*const Node) bool {
+
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
         return self == other_node.?;
+    
     }
 
-    /// hasChildNodes()
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Node) bool {
+
         return self.child_nodes.len > 0;
+    
     }
 
-    /// cloneNode(deep)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
 
         // Step 1: If this is a shadow root, throw NotSupportedError
@@ -728,21 +735,28 @@ pub const Attr = struct {
     }
 
     pub fn call_normalize(self: *Node) void {
+
         _ = self;
         // Normalize adjacent text nodes
+    
     }
 
-    /// Getters
     pub fn get_nodeType(self: *const Node) u16 {
+
         return self.node_type;
+    
     }
 
     pub fn get_nodeName(self: *const Node) []const u8 {
+
         return self.node_name;
+    
     }
 
     pub fn get_parentNode(self: *const Node) ?*Node {
+
         return self.parent_node;
+    
     }
 
     pub fn get_parentElement(self: *const Node) ?*Element {
@@ -799,7 +813,9 @@ pub const Attr = struct {
     }
 
     pub fn get_ownerDocument(self: *const Node) ?*Document {
+
         return self.owner_document;
+    
     }
 
     pub fn get_previousSibling(self: *const Node) ?*Node {
@@ -829,6 +845,7 @@ pub const Attr = struct {
     }
 
     pub fn get_isConnected(self: *const Node) bool {
+
         // A node is connected if its root is a document
         const tree = @import("dom").tree;
         // tree.root requires mutable pointer but doesn't actually mutate
@@ -837,13 +854,9 @@ pub const Attr = struct {
         const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return root_node.node_type == DOCUMENT_NODE;
+    
     }
 
-    /// DOM §4.4 - Node.baseURI getter
-    /// Returns this's node document's document base URL, serialized.
-    ///
-    /// The baseURI getter steps are to return this's node document's
-    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Node) []const u8 {
 
         // Get owner document
@@ -916,22 +929,22 @@ pub const Attr = struct {
     }
 
     pub fn get_textContent(self: *const Node) !?[]const u8 {
+
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
         return Node.getTextContent(self, self.allocator);
+    
     }
 
     pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
+
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // If the given value is null, act as if it was the empty string instead
         const str_value = value orelse "";
         try Node.setTextContent(self, str_value);
+    
     }
 
-    /// Get text content - DOM Spec algorithm
-    /// Returns text content based on node type
-    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
-    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -958,15 +971,16 @@ pub const Attr = struct {
     }
 
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
+
         var result = std.ArrayList(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
+    
     }
 
-    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -1064,16 +1078,17 @@ pub const Attr = struct {
     }
 
     pub fn call_lookupNamespaceURI(self: *const Node, prefix_param: ?[]const u8) ?[]const u8 {
+
         // Spec step 1: If prefix is empty string, set to null
         const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
 
         // Spec step 2: Return result of locating a namespace
         return self.locateNamespace(prefix);
+    
     }
 
-    /// isDefaultNamespace(namespace)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Node, namespace_param: ?[]const u8) bool {
+
         // Spec step 1: If namespace is empty string, set to null
         const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
 
@@ -1084,10 +1099,9 @@ pub const Attr = struct {
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
+    
     }
 
-    /// Locate a namespace prefix for element (internal algorithm)
-    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
 
         if (self.node_type != ELEMENT_NODE) return null;
@@ -1212,15 +1226,17 @@ pub const Attr = struct {
     }
 
     pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
+
         return &self.registered_observers;
+    
     }
 
-    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *Node, registered: RegisteredObserver) !void {
+
         try self.registered_observers.append(registered);
+    
     }
 
-    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Node, observer: *const @import("mutation_observer").MutationObserver) void {
 
         var i: usize = 0;
@@ -1232,6 +1248,22 @@ pub const Attr = struct {
                 i += 1;
             }
         }
+    
+    }
+
+    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
+
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
+        _ = self;
+        _ = source;
     
     }
 

@@ -194,30 +194,29 @@ pub const Element = struct {
     }
 
     pub fn get_id(self: *const Element) []const u8 {
+
         return self.call_getAttribute("id") orelse "";
+    
     }
 
     pub fn set_id(self: *Element, value: []const u8) !void {
+
         try self.call_setAttribute("id", value);
+    
     }
 
-    /// DOM §4.10.1 - Element.className
-    /// The className getter steps are to return the value of this's class content attribute.
-    /// The className setter steps are to set the value of this's class content attribute to the given value.
     pub fn get_className(self: *const Element) []const u8 {
+
         return self.call_getAttribute("class") orelse "";
+    
     }
 
     pub fn set_className(self: *Element, value: []const u8) !void {
+
         try self.call_setAttribute("class", value);
+    
     }
 
-    /// DOM §4.10.1 - Element.classList
-    /// The classList getter steps are to return a DOMTokenList object whose associated element
-    /// is this and whose associated attribute's local name is class.
-    ///
-    /// Returns a DOMTokenList representing the class attribute.
-    /// The DOMTokenList is [SameObject] - returns same instance on repeated calls.
     pub fn get_classList(self: *Element) !*DOMTokenList {
 
         // Return cached instance if available
@@ -272,34 +271,43 @@ pub const Element = struct {
     }
 
     pub fn get_slot(self: *const Element) []const u8 {
+
         return self.call_getAttribute("slot") orelse "";
+    
     }
 
     pub fn set_slot(self: *Element, value: []const u8) !void {
+
         try self.call_setAttribute("slot", value);
+    
     }
 
-    /// Getters
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
+
         return self.namespace_uri;
+    
     }
 
     pub fn get_prefix(self: *const Element) ?[]const u8 {
+
         return self.prefix;
+    
     }
 
     pub fn get_localName(self: *const Element) []const u8 {
+
         return self.local_name;
+    
     }
 
     pub fn get_tagName(self: *const Element) []const u8 {
+
         return self.tag_name;
+    
     }
 
-    /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
-    /// Returns an HTMLCollection of all descendant elements whose qualified name is qualifiedName.
-    /// If qualifiedName is "*", returns all descendant elements.
     pub fn call_getElementsByTagName(self: *Element, qualified_name: []const u8) !*HTMLCollection {
+
         const collection = try self.allocator.create(HTMLCollection);
         collection.* = try HTMLCollection.init(self.allocator);
 
@@ -307,6 +315,7 @@ pub const Element = struct {
         try self.collectByTagName(&self.base, qualified_name, collection);
 
         return collection;
+    
     }
 
     fn collectByTagName(self: *const Element, node: *Node, qualified_name: []const u8, collection: *HTMLCollection) !void {
@@ -337,12 +346,14 @@ pub const Element = struct {
         namespace: ?[]const u8,
         local_name: []const u8,
     ) !*HTMLCollection {
+
         const collection = try self.allocator.create(HTMLCollection);
         collection.* = try HTMLCollection.init(self.allocator);
 
         try self.collectByTagNameNS(&self.base, namespace, local_name, collection);
 
         return collection;
+    
     }
 
     fn collectByTagNameNS(self: *const Element, node: *Node, namespace: ?[]const u8, local_name: []const u8, collection: *HTMLCollection) !void {
@@ -371,12 +382,14 @@ pub const Element = struct {
     }
 
     pub fn call_getElementsByClassName(self: *Element, class_names: []const u8) !*HTMLCollection {
+
         const collection = try self.allocator.create(HTMLCollection);
         collection.* = try HTMLCollection.init(self.allocator);
 
         try self.collectByClassName(&self.base, class_names, collection);
 
         return collection;
+    
     }
 
     fn collectByClassName(self: *const Element, node: *Node, class_names: []const u8, collection: *HTMLCollection) !void {
@@ -508,16 +521,14 @@ pub const Element = struct {
     }
 
     pub fn call_insertAdjacentElement(self: *Element, where: []const u8, element: *Element) !?*Element {
+
         const result = try insertAdjacent(self, where, @ptrCast(element));
         return if (result) |node| @ptrCast(@alignCast(node)) else null;
+    
     }
 
-    /// DOM §4.10.7 - Element.insertAdjacentText(where, data)
-    /// The insertAdjacentText(where, data) method steps are:
-    /// 1. Let text be a new Text node whose data is data and node document is this's node document.
-    /// 2. Run insert adjacent, given this, where, and text.
-    /// This method returns nothing because it existed before we had a chance to design it.
     pub fn call_insertAdjacentText(self: *Element, where: []const u8, data: []const u8) !void {
+
         // Step 1: Let text be a new Text node whose data is data and node document is this's node document
         const text = try self.allocator.create(Text);
         errdefer self.allocator.destroy(text);
@@ -527,17 +538,9 @@ pub const Element = struct {
 
         // Step 2: Run insert adjacent, given this, where, and text
         _ = try insertAdjacent(self, where, @ptrCast(text));
+    
     }
 
-    // ========================================================================
-    // Shadow DOM Methods (DOM §4.10.2)
-    // ========================================================================
-
-    /// DOM §4.10.2 - Element.attachShadow(init)
-    ///
-    /// Creates a shadow root for this element and returns it.
-    ///
-    /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
     pub fn call_attachShadow(self: *Element, shadow_init: ShadowRootInit) !*ShadowRoot {
 
         // Step 1: Let registry be this's node document's custom element registry
@@ -885,6 +888,7 @@ pub const Element = struct {
     }
 
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -899,17 +903,11 @@ pub const Element = struct {
         // Step 2: Pre-insert node into this before this's first child
         const first_child = this_node.get_firstChild();
         _ = try mutation.preInsert(node, this_node, first_child);
+    
     }
 
-    /// DOM §4.3.2 - ParentNode.append()
-    /// Inserts nodes after the last child, while replacing strings with Text nodes.
-    ///
-    /// Steps:
-    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
-    /// 2. Append node to this.
-    ///
-    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -923,18 +921,11 @@ pub const Element = struct {
 
         // Step 2: Append node to this
         _ = try mutation.append(node, this_node);
+    
     }
 
-    /// DOM §4.3.2 - ParentNode.replaceChildren()
-    /// Replaces all children with nodes, while replacing strings with Text nodes.
-    ///
-    /// Steps:
-    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
-    /// 2. Ensure pre-insert validity of node into this before null.
-    /// 3. Replace all with node within this.
-    ///
-    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -951,20 +942,9 @@ pub const Element = struct {
 
         // Step 3: Replace all with node within this
         try mutation.replaceAll(node, this_node);
+    
     }
 
-    /// DOM §4.3.2 - ParentNode.moveBefore()
-    /// Moves, without first removing, movedNode into this after child.
-    /// This method preserves state associated with movedNode.
-    ///
-    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-    ///
-    /// Steps:
-    /// 1. Let referenceChild be child.
-    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
-    /// 3. Move node into this before referenceChild.
-    ///
-    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
 
         const mutation = @import("dom").mutation;
@@ -1020,6 +1000,62 @@ pub const Element = struct {
         }
 
         return node_list;
+    
+    }
+
+    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+
+        // The assignedSlot getter steps are to return the result of
+        // find a slot given this and true (open flag)
+
+        // TODO: Implement findSlot algorithm from shadow_dom_algorithms
+        // For now, return the assigned slot if it exists
+        // The "open" parameter means we only return slots in open shadow roots
+
+        _ = self;
+        return null; // TODO: Implement when slot algorithms are available
+    
+    }
+
+    pub fn getSlottableName(self: *const @This()) []const u8 {
+
+        return self.slottable_name;
+    
+    }
+
+    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+
+        self.slottable_name = name;
+    
+    }
+
+    pub fn isAssigned(self: *const @This()) bool {
+
+        return self.assigned_slot != null;
+    
+    }
+
+    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
+
+        return self.assigned_slot;
+    
+    }
+
+    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+
+        self.assigned_slot = slot;
+    
+    }
+
+    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
+
+        return self.manual_slot_assignment;
+    
+    }
+
+    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+
+        self.manual_slot_assignment = slot;
     
     }
 
@@ -1108,15 +1144,15 @@ pub const Element = struct {
     }
 
     pub fn call_contains(self: *const Node, other: ?*const Node) bool {
+
         if (other == null) return false;
         // Check if other is an inclusive descendant of this
         const tree = @import("dom").tree;
         const other_node = other.?;
         return tree.isInclusiveDescendant(other_node, self);
+    
     }
 
-    /// compareDocumentPosition(other)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Node, other: *const Node) u16 {
 
         const tree = @import("dom").tree;
@@ -1169,18 +1205,13 @@ pub const Element = struct {
     }
 
     pub fn call_isEqualNode(self: *const Node, other_node: ?*const Node) bool {
+
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
         return Node.nodeEquals(self, other_node.?);
+    
     }
 
-    /// Node A equals node B - DOM Spec algorithm
-    /// A node A equals a node B if all of the following conditions are true:
-    /// - A and B implement the same interfaces
-    /// - Node-specific properties are equal
-    /// - If A is an element, each attribute in its list equals an attribute in B's list
-    /// - A and B have the same number of children
-    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -1295,19 +1326,19 @@ pub const Element = struct {
     }
 
     pub fn call_isSameNode(self: *const Node, other_node: ?*const Node) bool {
+
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
         return self == other_node.?;
+    
     }
 
-    /// hasChildNodes()
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Node) bool {
+
         return self.child_nodes.len > 0;
+    
     }
 
-    /// cloneNode(deep)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
 
         // Step 1: If this is a shadow root, throw NotSupportedError
@@ -1532,21 +1563,28 @@ pub const Element = struct {
     }
 
     pub fn call_normalize(self: *Node) void {
+
         _ = self;
         // Normalize adjacent text nodes
+    
     }
 
-    /// Getters
     pub fn get_nodeType(self: *const Node) u16 {
+
         return self.node_type;
+    
     }
 
     pub fn get_nodeName(self: *const Node) []const u8 {
+
         return self.node_name;
+    
     }
 
     pub fn get_parentNode(self: *const Node) ?*Node {
+
         return self.parent_node;
+    
     }
 
     pub fn get_parentElement(self: *const Node) ?*Element {
@@ -1603,7 +1641,9 @@ pub const Element = struct {
     }
 
     pub fn get_ownerDocument(self: *const Node) ?*Document {
+
         return self.owner_document;
+    
     }
 
     pub fn get_previousSibling(self: *const Node) ?*Node {
@@ -1633,6 +1673,7 @@ pub const Element = struct {
     }
 
     pub fn get_isConnected(self: *const Node) bool {
+
         // A node is connected if its root is a document
         const tree = @import("dom").tree;
         // tree.root requires mutable pointer but doesn't actually mutate
@@ -1641,13 +1682,9 @@ pub const Element = struct {
         const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return root_node.node_type == DOCUMENT_NODE;
+    
     }
 
-    /// DOM §4.4 - Node.baseURI getter
-    /// Returns this's node document's document base URL, serialized.
-    ///
-    /// The baseURI getter steps are to return this's node document's
-    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Node) []const u8 {
 
         // Get owner document
@@ -1720,22 +1757,22 @@ pub const Element = struct {
     }
 
     pub fn get_textContent(self: *const Node) !?[]const u8 {
+
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
         return Node.getTextContent(self, self.allocator);
+    
     }
 
     pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
+
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // If the given value is null, act as if it was the empty string instead
         const str_value = value orelse "";
         try Node.setTextContent(self, str_value);
+    
     }
 
-    /// Get text content - DOM Spec algorithm
-    /// Returns text content based on node type
-    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
-    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -1762,15 +1799,16 @@ pub const Element = struct {
     }
 
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
+
         var result = std.ArrayList(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
+    
     }
 
-    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -1868,16 +1906,17 @@ pub const Element = struct {
     }
 
     pub fn call_lookupNamespaceURI(self: *const Node, prefix_param: ?[]const u8) ?[]const u8 {
+
         // Spec step 1: If prefix is empty string, set to null
         const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
 
         // Spec step 2: Return result of locating a namespace
         return self.locateNamespace(prefix);
+    
     }
 
-    /// isDefaultNamespace(namespace)
-    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Node, namespace_param: ?[]const u8) bool {
+
         // Spec step 1: If namespace is empty string, set to null
         const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
 
@@ -1888,10 +1927,9 @@ pub const Element = struct {
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
+    
     }
 
-    /// Locate a namespace prefix for element (internal algorithm)
-    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
 
         if (self.node_type != ELEMENT_NODE) return null;
@@ -2016,15 +2054,17 @@ pub const Element = struct {
     }
 
     pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
+
         return &self.registered_observers;
+    
     }
 
-    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *Node, registered: RegisteredObserver) !void {
+
         try self.registered_observers.append(registered);
+    
     }
 
-    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Node, observer: *const @import("mutation_observer").MutationObserver) void {
 
         var i: usize = 0;
@@ -2036,6 +2076,22 @@ pub const Element = struct {
                 i += 1;
             }
         }
+    
+    }
+
+    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
+
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
+        _ = self;
+        _ = source;
     
     }
 

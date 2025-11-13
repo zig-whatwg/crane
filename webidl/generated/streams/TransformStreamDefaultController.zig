@@ -56,60 +56,47 @@ pub const TransformStreamDefaultController = struct {
     }
 
     pub fn deinit(self: *TransformStreamDefaultController) void {
+
         self.transformAlgorithm.deinit();
         self.flushAlgorithm.deinit();
         self.cancelAlgorithm.deinit();
+    
     }
 
-    // ============================================================================
-    // WebIDL Interface Methods
-    // ============================================================================
-
-    /// desiredSize getter
-    ///
-    /// Spec: § 6.2.3 "The desiredSize getter steps"
     pub fn get_desiredSize(self: *const TransformStreamDefaultController) ?f64 {
+
         // Spec step 1: Let readableController be this.[[stream]].[[readable]].[[controller]]
         const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
         const readable_controller = stream.readableStream.controller;
 
         // Spec step 2: Return ! ReadableStreamDefaultControllerGetDesiredSize(readableController)
         return readable_controller.getDesiredSize();
+    
     }
 
-    /// enqueue(chunk) method
-    ///
-    /// Spec: § 6.2.3 "The enqueue(chunk) method steps"
     pub fn call_enqueue(self: *TransformStreamDefaultController, chunk: ?webidl.JSValue) !void {
+
         const chunk_value = if (chunk) |c| common.JSValue.fromWebIDL(c) else common.JSValue.undefined_value();
         // Spec step 1: Perform ? TransformStreamDefaultControllerEnqueue(this, chunk)
         try self.enqueueInternal(chunk_value);
+    
     }
 
-    /// error(e) method
-    ///
-    /// Spec: § 6.2.3 "The error(e) method steps"
     pub fn call_error(self: *TransformStreamDefaultController, e: ?webidl.JSValue) !void {
+
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         // Spec step 1: Perform ? TransformStreamDefaultControllerError(this, e)
         self.errorInternal(error_value);
+    
     }
 
-    /// terminate() method
-    ///
-    /// Spec: § 6.2.3 "The terminate() method steps"
     pub fn call_terminate(self: *TransformStreamDefaultController) !void {
+
         // Spec step 1: Perform ? TransformStreamDefaultControllerTerminate(this)
         try self.terminateInternal();
+    
     }
 
-    // ============================================================================
-    // Internal Algorithms
-    // ============================================================================
-
-    /// TransformStreamDefaultControllerEnqueue(controller, chunk)
-    ///
-    /// Spec: § 6.3.2 "Enqueue chunk to readable side"
     pub fn enqueueInternal(self: *TransformStreamDefaultController, chunk: common.JSValue) !void {
 
         // Spec step 1: Let stream be controller.[[stream]]
@@ -146,14 +133,13 @@ pub const TransformStreamDefaultController = struct {
     }
 
     fn errorInternal(self: *TransformStreamDefaultController, error_value: common.JSValue) void {
+
         // Spec step 1: Perform ! TransformStreamError(controller.[[stream]], e)
         const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
         stream.errorStream(error_value);
+    
     }
 
-    /// TransformStreamDefaultControllerTerminate(controller)
-    ///
-    /// Spec: § 6.3.2 "Terminate the transform stream"
     fn terminateInternal(self: *TransformStreamDefaultController) !void {
 
         // Spec step 1: Let stream be controller.[[stream]]
@@ -174,6 +160,7 @@ pub const TransformStreamDefaultController = struct {
     }
 
     pub fn clearAlgorithms(self: *TransformStreamDefaultController) void {
+
         self.transformAlgorithm.deinit();
         self.flushAlgorithm.deinit();
         self.cancelAlgorithm.deinit();
@@ -182,11 +169,9 @@ pub const TransformStreamDefaultController = struct {
         self.transformAlgorithm = common.defaultTransformAlgorithm();
         self.flushAlgorithm = common.defaultFlushAlgorithm();
         self.cancelAlgorithm = common.defaultCancelAlgorithm();
+    
     }
 
-    /// TransformStreamDefaultControllerPerformTransform(controller, chunk)
-    ///
-    /// Spec: § 6.3.2 "Perform transform with error handling"
     pub fn performTransform(self: *TransformStreamDefaultController, chunk: common.JSValue) common.Promise(void) {
 
         // Spec step 1: Let transformPromise be the result of performing controller.[[transformAlgorithm]], passing chunk

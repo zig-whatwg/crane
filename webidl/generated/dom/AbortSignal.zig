@@ -79,19 +79,25 @@ pub const AbortSignal = struct {
     }
 
     pub fn deinit(self: *AbortSignal) void {
+
         self.abort_algorithms.deinit();
         self.event_listener_removals.deinit();
         self.source_signals.deinit();
         self.dependent_signals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
+    
     }
 
     pub fn get_aborted(self: *const AbortSignal) bool {
+
         return self.aborted;
+    
     }
 
     pub fn get_reason(self: *const AbortSignal) ?webidl.Exception {
+
         return self.reason;
+    
     }
 
     pub fn call_throwIfAborted(self: *const AbortSignal) !void {
@@ -103,21 +109,12 @@ pub const AbortSignal = struct {
     }
 
     pub fn call_any(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
+
         // This calls "create a dependent abort signal" algorithm
         return createDependentAbortSignal(allocator, signals);
+    
     }
 
-    /// Create a dependent abort signal
-    /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
-    ///
-    /// Steps:
-    /// 1. Let resultSignal be a new object implementing signalInterface using realm
-    /// 2. For each signal of signals:
-    ///    - If signal is aborted, then set resultSignal's abort reason to signal's abort reason
-    ///    - Otherwise:
-    ///      - Append signal to resultSignal's source signals
-    ///      - Append resultSignal to signal's dependent signals
-    /// 3. Return resultSignal
     fn createDependentAbortSignal(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
 
         // Step 1: Let resultSignal be a new object implementing AbortSignal
@@ -146,11 +143,11 @@ pub const AbortSignal = struct {
     }
 
     pub fn addAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) !void {
+
         try self.abort_algorithms.append(algorithm);
+    
     }
 
-    /// Remove an algorithm from abort algorithms
-    /// Spec: https://dom.spec.whatwg.org/#abortsignal-remove
     pub fn removeAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) void {
 
         var i: usize = 0;
@@ -202,11 +199,11 @@ pub const AbortSignal = struct {
     }
 
     pub fn addEventListenerRemoval(self: *AbortSignal, context: EventListenerRemovalContext) !void {
+
         try self.event_listener_removals.append(context);
+    
     }
 
-    /// Run the abort steps for an AbortSignal
-    /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
 
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm

@@ -94,35 +94,19 @@ pub const ReadableStreamDefaultController = struct {
     }
 
     pub fn deinit(self: *ReadableStreamDefaultController) void {
+
         self.abortController.deinit();
         self.queue.deinit();
+    
     }
 
-    // ============================================================================
-    // WebIDL Interface Methods
-    // ============================================================================
-    // WebIDL Interface: Readonly Attributes
-    // ============================================================================
-
-    /// readonly attribute unrestricted double? desiredSize
-    /// IDL: readonly attribute unrestricted double? desiredSize;
-    ///
-    /// Spec: § 4.6.3 "The desiredSize getter steps are:"
-    /// Returns the desired size to fill the stream's internal queue.
     pub fn get_desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+
         // Step 1: Return ! ReadableStreamDefaultControllerGetDesiredSize(this).
         return self.calculateDesiredSize();
+    
     }
 
-    // ============================================================================
-    // WebIDL Interface: Instance Methods
-    // ============================================================================
-
-    /// undefined close()
-    /// IDL: undefined close();
-    ///
-    /// Spec: § 4.6.3 "The close() method steps are:"
-    /// Closes the controlled readable stream.
     pub fn call_close(self: *ReadableStreamDefaultController) !void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false,
@@ -172,13 +156,12 @@ pub const ReadableStreamDefaultController = struct {
     }
 
     pub fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
+
         // Cannot close or enqueue if already close requested
         return !self.closeRequested;
+    
     }
 
-    /// ReadableStreamDefaultControllerClose(controller)
-    ///
-    /// Spec: § 4.6.4 "Close the controller"
     pub fn closeInternal(self: *ReadableStreamDefaultController) void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
@@ -297,14 +280,13 @@ pub const ReadableStreamDefaultController = struct {
     }
 
     fn clearAlgorithms(self: *ReadableStreamDefaultController) void {
+
         // In Zig, we don't need explicit clearing since algorithms use VTable pattern
         // The algorithms will be freed when the controller is deinitialized
         _ = self;
+    
     }
 
-    /// ReadableStreamDefaultControllerCallPullIfNeeded(controller)
-    ///
-    /// Spec: § 4.6.4 "Call pull algorithm if backpressure allows"
     fn callPullIfNeeded(self: *ReadableStreamDefaultController) void {
 
         // Step 1: Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller).
@@ -453,6 +435,30 @@ pub const ReadableStreamDefaultController = struct {
             promise.reject(result.error_value orelse webidl.errors.Exception.typeError(self.allocator, "Cancel failed") catch return promise);
         }
         return promise;
+    
+    }
+
+    pub fn releaseSteps(self: *ReadableStreamDefaultController) void {
+
+        // For default controller, release steps are a no-op
+        _ = self;
+    
+    }
+
+    pub fn hasBackpressure(self: *const ReadableStreamDefaultController) bool {
+
+        // Spec step 1: Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller)
+        const desired_size = self.calculateDesiredSize();
+
+        // Spec step 2: If desiredSize ≤ 0, return true
+        // Spec step 3: Return false
+        return if (desired_size) |size| size <= 0 else false;
+    
+    }
+
+    pub fn getDesiredSize(self: *const ReadableStreamDefaultController) ?f64 {
+
+        return self.calculateDesiredSize();
     
     }
 

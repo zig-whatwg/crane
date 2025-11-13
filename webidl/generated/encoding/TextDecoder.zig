@@ -134,139 +134,23 @@ pub const TextDecoder = struct {
     }
 
     pub inline fn get_encoding(self: *const TextDecoder) []const u8 {
+
         return self.encoding;
+    
     }
 
-    /// Get the fatal flag
-    ///
-    /// WHATWG Encoding Standard § 5.1.1
-    /// TextDecoderCommon.fatal getter
-    ///
-    /// IDL:
-    /// ```
-    /// readonly attribute boolean fatal;
-    /// ```
     pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
+
         return self.fatal;
+    
     }
 
-    /// Get the ignoreBOM flag
-    ///
-    /// WHATWG Encoding Standard § 5.1.1
-    /// TextDecoderCommon.ignoreBOM getter
-    ///
-    /// IDL:
-    /// ```
-    /// readonly attribute boolean ignoreBOM;
-    /// ```
     pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
+
         return self.ignoreBOM;
+    
     }
 
-    /// decode() - Decodes bytes to a string
-    ///
-    /// WHATWG Encoding Standard § 5.1.4
-    /// https://encoding.spec.whatwg.org/#dom-textdecoder-decode
-    ///
-    /// Decodes a byte sequence using the configured encoding and returns a UTF-8 string.
-    ///
-    /// ## Parameters
-    ///
-    /// - `input`: Byte sequence to decode
-    ///   - Empty slice is valid (useful for flushing in streaming mode)
-    ///   - For JavaScript bindings: extract bytes from AllowSharedBufferSource
-    /// - `options`: Decode options (see `TextDecodeOptions`)
-    ///   - `stream`: If true, additional data expected; if false, flush decoder (default: false)
-    ///
-    /// ## Returns
-    ///
-    /// Decoded string as UTF-8 bytes. **Caller owns the returned memory** and must free it.
-    ///
-    /// ## Errors
-    ///
-    /// - `error.DecodingError`: Fatal mode encountered invalid byte sequence (maps to WebIDL TypeError)
-    /// - `error.OutOfMemory`: Allocation failed
-    ///
-    /// ## Behavior
-    ///
-    /// ### Non-Streaming Mode (stream: false, default)
-    /// - Resets decoder state before processing
-    /// - Processes complete input
-    /// - Flushes any pending data
-    ///
-    /// ### Streaming Mode (stream: true)
-    /// - Preserves decoder state between calls
-    /// - Accumulates partial multi-byte sequences
-    /// - Final call with stream:false flushes remaining data
-    ///
-    /// ### BOM Handling
-    /// - By default (ignoreBOM: false): Strips BOM on first decode
-    /// - With ignoreBOM: true: Keeps BOM in output as U+FEFF
-    /// - BOM only stripped once per decoder instance
-    ///
-    /// ### Error Handling
-    /// - **Fatal mode** (fatal: true): Throws `error.DecodingError` on invalid sequences
-    /// - **Replacement mode** (fatal: false, default): Substitutes U+FFFD for invalid sequences
-    ///
-    /// ## Examples
-    ///
-    /// ### Basic Decode
-    /// ```zig
-    /// var decoder = try TextDecoder.init(allocator, "utf-8", .{});
-    /// defer decoder.deinit();
-    ///
-    /// const bytes = [_]u8{ 0x48, 0x65, 0x6C, 0x6C, 0x6F }; // "Hello"
-    /// const text = try decoder.decode(&bytes, .{});
-    /// defer allocator.free(text);
-    /// // text is "Hello"
-    /// ```
-    ///
-    /// ### Streaming Decode
-    /// ```zig
-    /// // Process fragmented input
-    /// const chunk1 = try decoder.decode(bytes1, .{ .stream = true });
-    /// defer allocator.free(chunk1);
-    ///
-    /// const chunk2 = try decoder.decode(bytes2, .{ .stream = true });
-    /// defer allocator.free(chunk2);
-    ///
-    /// // Flush remaining data
-    /// const final = try decoder.decode(&[_]u8{}, .{ .stream = false });
-    /// defer allocator.free(final);
-    /// ```
-    ///
-    /// ### Fatal Mode
-    /// ```zig
-    /// var decoder = try TextDecoder.init(allocator, "utf-8", .{ .fatal = true });
-    /// defer decoder.deinit();
-    ///
-    /// const invalid = [_]u8{ 0xFF, 0xFE }; // Invalid UTF-8
-    /// const result = decoder.decode(&invalid, .{});
-    /// // Returns error.DecodingError
-    /// ```
-    ///
-    /// ## Performance
-    ///
-    /// - **ASCII fast path**: Direct passthrough for ASCII-only input (~10x faster)
-    /// - **UTF-8 fast path**: Validation-only for UTF-8 encoding (~5x faster)
-    /// - **Buffer reuse**: Internal buffers reused for reduced allocations
-    ///
-    /// ## Spec Algorithm
-    ///
-    /// The decode(input, options) method steps are:
-    /// 1. If this's do not flush is false, reset decoder state
-    /// 2. Set this's do not flush to options["stream"]
-    /// 3. If input is given, push a copy to I/O queue
-    /// 4. Let output be the I/O queue of scalar values
-    /// 5. Process the queue with encoding's decoder
-    /// 6. Return serialized output
-    ///
-    /// ## Implementation Notes
-    ///
-    /// This implementation uses UTF-8 strings for I/O (Zig native format).
-    /// For JavaScript bindings:
-    /// - Convert AllowSharedBufferSource → []const u8 before calling
-    /// - Convert returned []const u8 → USVString (UTF-16) after calling
     pub fn call_decode(
         self: *TextDecoder,
         input: []const u8,

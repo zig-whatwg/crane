@@ -69,6 +69,7 @@ pub const WritableStream = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator) !WritableStream {
+
         const loop_ptr = try allocator.create(TestEventLoop);
         errdefer allocator.destroy(loop_ptr);
 
@@ -78,6 +79,7 @@ pub const WritableStream = struct {
         stream.eventLoop_storage = loop_ptr;
 
         return stream;
+    
     }
 
     pub fn deinit(self: *WritableStream) void {
@@ -171,15 +173,11 @@ pub const WritableStream = struct {
     }
 
     pub fn get_locked(self: *const WritableStream) bool {
+
         return self.writer != .none;
+    
     }
 
-    // ============================================================================
-    // WebIDL Interface: Instance Methods
-    // ============================================================================
-
-    /// Promise<undefined> abort(optional any reason)
-    /// Spec: https://streams.spec.whatwg.org/#ws-abort
     pub fn call_abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         if (self.get_locked()) {
@@ -230,23 +228,12 @@ pub const WritableStream = struct {
     }
 
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
+
         return self.acquireDefaultWriter(self.eventLoop);
+    
     }
 
-    // ============================================================================
-    // Transfer/Serialization Support
-    // ============================================================================
-
-    /// [[TransferSteps]](dataHolder)
-    ///
-    /// Spec: § 5.2.5 "Transfer"
-    /// https://streams.spec.whatwg.org/#ws-transfer
-    ///
-    /// Steps for transferring a WritableStream via postMessage().
-    /// Creates a MessagePort pair, sets up a readable that pipes to the writable,
-    /// and serializes the receiving port for transfer to another realm.
     pub fn transferSteps(self: *WritableStream) !*structured_clone.SerializedData {
-
         const cross_realm_transform = @import("cross_realm_transform");
         const message_port = @import("message_port");
         const ReadableStream = @import("readable_stream").ReadableStream;
@@ -281,13 +268,20 @@ pub const WritableStream = struct {
         const serialized = try structured_clone.structuredSerializeWithTransfer(self.allocator, port2);
 
         return serialized;
-    
     }
 
+    /// [[TransferReceivingSteps]](dataHolder)
+    ///
+    /// Spec: § 5.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#ws-transfer
+    ///
+    /// Steps for receiving a transferred WritableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that writes to it.
     pub fn transferReceivingSteps(
         self: *WritableStream,
         serialized: *structured_clone.SerializedData,
     ) !void {
+
         const cross_realm_transform = @import("cross_realm_transform");
 
         // Spec step 1: Let deserializedRecord = ! StructuredDeserializeWithTransfer(dataHolder.[[port]], current Realm)
@@ -298,15 +292,9 @@ pub const WritableStream = struct {
 
         // Spec step 3: Perform ! SetUpCrossRealmTransformWritable(value, port)
         try cross_realm_transform.setupCrossRealmTransformWritable(self.allocator, self, port);
+    
     }
 
-    // ============================================================================
-    // Internal Algorithms
-    // ============================================================================
-
-    /// WritableStreamAbort(stream, reason)
-    ///
-    /// Spec: § 5.3.3 "Abort the stream with given reason"
     fn abortInternal(self: *WritableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Spec step 1: If stream.[[state]] is "closed" or "errored", return fulfilled promise
@@ -424,8 +412,10 @@ pub const WritableStream = struct {
     }
 
     fn closeQueuedOrInFlight(self: *const WritableStream) bool {
+
         // Spec step 1-2: If closeRequest or inFlightCloseRequest is undefined, return false; else true
         return self.closeRequest != null or self.inFlightCloseRequest != null;
+    
     }
 
     pub fn acquireDefaultWriter(self: *WritableStream, loop: eventLoop.EventLoop) !*WritableStreamDefaultWriter {
@@ -451,13 +441,12 @@ pub const WritableStream = struct {
     }
 
     fn hasOperationMarkedInFlight(self: *const WritableStream) bool {
+
         // Spec step 1-2: If inFlightWriteRequest or inFlightCloseRequest is undefined, return false; else true
         return self.inFlightWriteRequest != null or self.inFlightCloseRequest != null;
+    
     }
 
-    /// WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
-    ///
-    /// Spec: § 5.3.7 "Reject close request and writer's closed promise"
     fn rejectCloseAndClosedPromiseIfNeeded(self: *WritableStream) void {
 
         // Spec step 1: Assert: stream.[[state]] is "errored"

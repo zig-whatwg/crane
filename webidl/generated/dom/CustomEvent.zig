@@ -63,28 +63,32 @@ pub const CustomEvent = struct {
     
     }
 
-    pub fn deinit(self: *Event) void {
-        self.path.deinit();
-        self.touch_target_list.deinit();
+    pub fn deinit(self: *CustomEvent) void {
+
+        _ = self;
+        // NOTE: Parent Event cleanup is handled by codegen
+    
     }
 
-    /// stopPropagation()
-    /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
+    pub fn get_detail(self: *const CustomEvent) ?webidl.JSValue {
+
+        return self.detail;
+    
+    }
+
     pub fn call_stopPropagation(self: *Event) void {
+
         self.stop_propagation_flag = true;
+    
     }
 
-    /// stopImmediatePropagation()
-    /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
     pub fn call_stopImmediatePropagation(self: *Event) void {
+
         self.stop_propagation_flag = true;
         self.stop_immediate_propagation_flag = true;
+    
     }
 
-    /// DOM §2.3 - set the canceled flag
-    /// To set the canceled flag, given an event event, if event's cancelable
-    /// attribute value is true and event's in passive listener flag is unset,
-    /// then set event's canceled flag, and do nothing otherwise.
     fn setCanceledFlag(self: *Event) void {
 
         if (self.cancelable and !self.in_passive_listener_flag) {
@@ -94,18 +98,11 @@ pub const CustomEvent = struct {
     }
 
     pub fn call_preventDefault(self: *Event) void {
+
         self.setCanceledFlag();
+    
     }
 
-    /// composedPath()
-    /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
-    ///
-    /// Returns the invocation target objects of event's path (objects on which
-    /// listeners will be invoked), except for any nodes in shadow trees of which
-    /// the shadow root's mode is "closed" that are not reachable from event's
-    /// currentTarget.
-    ///
-    /// The composedPath() method steps are (DOM §2.3):
     pub fn call_composedPath(self: *Event) !std.ArrayList(*EventTarget) {
 
         // Step 1: Let composedPath be an empty list
@@ -242,6 +239,7 @@ pub const CustomEvent = struct {
     }
 
     fn initializeEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+
         // Step 1: Set event's initialized flag
         self.initialized_flag = true;
 
@@ -264,78 +262,91 @@ pub const CustomEvent = struct {
 
         // Step 7: Set event's cancelable attribute to cancelable
         self.cancelable = cancelable;
+    
     }
 
-    /// initEvent(type, bubbles, cancelable)
-    /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
-    /// The initEvent(type, bubbles, cancelable) method steps are:
-    /// 1. If this's dispatch flag is set, then return.
-    /// 2. Initialize this with type, bubbles, and cancelable.
     pub fn call_initEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+
         // Step 1: If dispatch flag is set, return
         if (self.dispatch_flag) return;
 
         // Step 2: Initialize this
         self.initializeEvent(event_type, bubbles, cancelable);
+    
     }
 
-    /// Getters
     pub fn get_type(self: *const Event) []const u8 {
+
         return self.event_type;
+    
     }
 
     pub fn get_target(self: *const Event) ?*EventTarget {
+
         return self.target;
+    
     }
 
-    /// DOM §2.3 - srcElement getter (legacy)
-    /// The srcElement getter steps are to return this's target.
     pub fn get_srcElement(self: *const Event) ?*EventTarget {
+
         return self.target;
+    
     }
 
     pub fn get_currentTarget(self: *const Event) ?*EventTarget {
+
         return self.current_target;
+    
     }
 
     pub fn get_eventPhase(self: *const Event) u16 {
+
         return self.event_phase;
+    
     }
 
     pub fn get_bubbles(self: *const Event) bool {
+
         return self.bubbles;
+    
     }
 
     pub fn get_cancelable(self: *const Event) bool {
+
         return self.cancelable;
+    
     }
 
     pub fn get_defaultPrevented(self: *const Event) bool {
+
         return self.canceled_flag;
+    
     }
 
     pub fn get_composed(self: *const Event) bool {
+
         return self.composed;
+    
     }
 
     pub fn get_isTrusted(self: *const Event) bool {
+
         return self.is_trusted;
+    
     }
 
     pub fn get_timeStamp(self: *const Event) f64 {
+
         return self.time_stamp;
+    
     }
 
-    /// DOM §2.3 - cancelBubble getter (legacy)
-    /// The cancelBubble getter steps are to return true if this's stop propagation
-    /// flag is set; otherwise false.
     pub fn get_cancelBubble(self: *const Event) bool {
+
         return self.stop_propagation_flag;
+    
     }
 
-    /// DOM §2.3 - cancelBubble setter (legacy)
-    /// The cancelBubble setter steps are to set this's stop propagation flag if
-    /// the given value is true; otherwise do nothing.
     pub fn set_cancelBubble(self: *Event, value: bool) void {
 
         if (value) {
@@ -345,12 +356,11 @@ pub const CustomEvent = struct {
     }
 
     pub fn get_returnValue(self: *const Event) bool {
+
         return !self.canceled_flag;
+    
     }
 
-    /// DOM §2.3 - returnValue setter (legacy)
-    /// The returnValue setter steps are to set the canceled flag with this if
-    /// the given value is false; otherwise do nothing.
     pub fn set_returnValue(self: *Event, value: bool) void {
 
         if (!value) {

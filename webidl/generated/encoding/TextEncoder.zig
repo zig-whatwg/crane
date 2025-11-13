@@ -114,99 +114,18 @@ pub const TextEncoder = struct {
     }
 
     pub fn deinit(self: *TextEncoder) void {
+
         _ = self;
         // No resources to clean up (stateless)
+    
     }
 
-    /// Get the encoding name (always "utf-8")
-    ///
-    /// WHATWG Encoding Standard § 5.2.1
-    /// TextEncoderCommon.encoding getter
-    ///
-    /// IDL:
-    /// ```
-    /// readonly attribute DOMString encoding;
-    /// ```
-    ///
-    /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextEncoder) []const u8 {
+
         return self.encoding;
+    
     }
 
-    /// encode() - Encodes a string into UTF-8 bytes
-    ///
-    /// WHATWG Encoding Standard § 5.2.2
-    /// https://encoding.spec.whatwg.org/#dom-textencoder-encode
-    ///
-    /// Encodes the input string to UTF-8 and returns a newly allocated byte buffer.
-    ///
-    /// ## Parameters
-    ///
-    /// - `input`: String to encode (UTF-8)
-    ///   - For JavaScript bindings: convert USVString (UTF-16) → UTF-8 first
-    ///
-    /// ## Returns
-    ///
-    /// Newly allocated UTF-8 byte buffer. **Caller owns the returned memory** and must free it.
-    ///
-    /// ## Errors
-    ///
-    /// - `error.OutOfMemory`: Allocation failed
-    ///
-    /// Note: Per WHATWG spec, UTF-8 encoder cannot fail (invalid sequences replaced with U+FFFD).
-    ///
-    /// ## Behavior
-    ///
-    /// - **ASCII Fast Path**: For ASCII-only input, direct copy (~10x faster)
-    /// - **UTF-8 Validation**: Invalid sequences replaced with U+FFFD (shouldn't happen with valid input)
-    /// - **Allocation**: Always allocates new buffer (use `encodeInto()` for zero-copy)
-    ///
-    /// ## Examples
-    ///
-    /// ### Basic Encode
-    /// ```zig
-    /// var encoder = TextEncoder.init(allocator);
-    /// defer encoder.deinit();
-    ///
-    /// const bytes = try encoder.encode("Hello");
-    /// defer allocator.free(bytes);
-    /// // bytes is [_]u8{ 0x48, 0x65, 0x6C, 0x6C, 0x6F }
-    /// ```
-    ///
-    /// ### Multibyte Characters
-    /// ```zig
-    /// const bytes = try encoder.encode("世界");
-    /// defer allocator.free(bytes);
-    /// // bytes contains UTF-8 encoding of Chinese characters (6 bytes)
-    /// ```
-    ///
-    /// ### Empty String
-    /// ```zig
-    /// const bytes = try encoder.encode("");
-    /// defer allocator.free(bytes);
-    /// // bytes.len == 0
-    /// ```
-    ///
-    /// ## Performance
-    ///
-    /// - ASCII-only: O(n) copy
-    /// - Multibyte: O(n) with validation
-    /// - No reallocation (size known upfront)
-    ///
-    /// ## Spec Algorithm
-    ///
-    /// The encode(input) method steps are:
-    /// 1. Convert input to an I/O queue of scalar values
-    /// 2. Let output be the I/O queue of bytes
-    /// 3. Process with UTF-8 encoder
-    /// 4. Return Uint8Array
-    ///
-    /// ## Implementation Notes
-    ///
-    /// This implementation uses UTF-8 strings for I/O (Zig native).
-    /// For JavaScript bindings:
-    /// - Convert USVString (UTF-16) → UTF-8 before calling
-    /// - Wrap returned []const u8 in Uint8Array after calling
     pub fn call_encode(
         self: *TextEncoder,
         input: []const u8,

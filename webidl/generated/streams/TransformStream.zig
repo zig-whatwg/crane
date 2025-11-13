@@ -41,21 +41,22 @@ pub const TransformStream = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator) !TransformStream {
+
         return initWithTransformer(allocator, null, null, null);
+    
     }
 
     pub fn deinit(self: *TransformStream) void {
+
         self.readableStream.deinit();
         self.allocator.destroy(self.readableStream);
         self.writableStream.deinit();
         self.allocator.destroy(self.writableStream);
         self.controller.deinit();
         self.allocator.destroy(self.controller);
+    
     }
 
-    /// new TransformStream(transformer, writableStrategy, readableStrategy)
-    ///
-    /// Spec: § 6.1.3 "Constructor steps"
     pub fn initWithTransformer(
         allocator: std.mem.Allocator,
         transformer: ?webidl.JSValue,
@@ -168,32 +169,29 @@ pub const TransformStream = struct {
     }
 
     pub fn get_readable(self: *const TransformStream) *ReadableStream {
+
         return self.readableStream;
+    
     }
 
     pub fn get_writable(self: *const TransformStream) *WritableStream {
+
         return self.writableStream;
+    
     }
 
-    // ============================================================================
-    // Internal Helper Methods
-    // ============================================================================
-
-    /// TransformStreamError(stream, e)
-    ///
-    /// Spec: § 6.3.1 "Error both sides of the transform stream"
     pub fn errorStream(self: *TransformStream, e: common.JSValue) void {
+
         // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
         self.readableStream.controller.errorInternal(e.toWebIDL());
 
         // Spec step 2: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, e)
         self.errorWritableAndUnblockWrite(e);
+    
     }
 
-    /// TransformStreamErrorWritableAndUnblockWrite(stream, e)
-    ///
-    /// Spec: § 6.3.1 "Error writable side and unblock write"
     pub fn errorWritableAndUnblockWrite(self: *TransformStream, e: common.JSValue) void {
+
         // Spec step 1: Perform ! TransformStreamDefaultControllerClearAlgorithms(stream.[[controller]])
         self.controller.clearAlgorithms();
 
@@ -203,11 +201,9 @@ pub const TransformStream = struct {
 
         // Spec step 3: Perform ! TransformStreamUnblockWrite(stream)
         self.unblockWrite();
+    
     }
 
-    /// TransformStreamSetBackpressure(stream, backpressure)
-    ///
-    /// Spec: § 6.3.1 "Set backpressure signal"
     pub fn setBackpressure(self: *TransformStream, backpressure: bool) void {
 
         // Spec step 1: Assert: stream.[[backpressure]] is not backpressure

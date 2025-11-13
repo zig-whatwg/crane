@@ -63,6 +63,23 @@ pub const GenericTransformStream = struct {
     // ========================================================================
 
     transform: *TransformStream,
+
+    // ========================================================================
+    // Methods
+    // ========================================================================
+
+    pub fn get_readable(self: *const GenericTransformStream) *ReadableStream {
+
+        return self.transform.readableStream;
+    
+    }
+
+    pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
+
+        return self.transform.writableStream;
+    
+    }
+
 };
 
 

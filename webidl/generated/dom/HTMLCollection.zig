@@ -85,9 +85,11 @@ pub const HTMLCollection = struct {
     }
 
     fn rebuild(self: *HTMLCollection) !void {
+
         if (self.root == null or self.filter_fn == null) return;
         self.elements.clearRetainingCapacity();
         try self.collectElements(self.root.?);
+    
     }
 
     fn collectElements(self: *HTMLCollection, node: *Node) !void {
@@ -105,18 +107,17 @@ pub const HTMLCollection = struct {
     }
 
     pub fn deinit(self: *HTMLCollection) void {
+
         self.elements.deinit();
+    
     }
 
-    /// DOM §4.3.5 - HTMLCollection.length
-    /// Returns the number of elements in the collection.
     pub fn get_length(self: *const HTMLCollection) u32 {
+
         return @intCast(self.elements.items.len);
+    
     }
 
-    /// DOM §4.3.5 - HTMLCollection.item(index)
-    /// Returns the element at the given index, or null if out of bounds.
-    /// The elements are sorted in tree order.
     pub fn call_item(self: *const HTMLCollection, index: u32) ?*Element {
 
         if (index >= self.elements.items.len) {
@@ -143,6 +144,18 @@ pub const HTMLCollection = struct {
             }
         }
         return null;
+    
+    }
+
+    pub fn addElement(self: *HTMLCollection, element: *Element) !void {
+
+        try self.elements.append(element);
+    
+    }
+
+    pub fn clear(self: *HTMLCollection) void {
+
+        self.elements.clearRetainingCapacity();
     
     }
 

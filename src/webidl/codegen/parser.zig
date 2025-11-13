@@ -192,14 +192,50 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
     }
 
     // Find the last import statement
-    // Scan backwards from first_class_pos to find last line with @import
+    // Look for lines that start with: const NAME = @import(...) or pub const NAME = @import(...)
+    // NOT lines where @import appears in the middle (like in a type definition)
     var last_import_end: usize = 0;
     var pos: usize = 0;
+
     while (pos < end_pos) {
-        if (std.mem.startsWith(u8, source[pos..], "@import(")) {
-            // Found an import, find the end of this line
-            const line_end = std.mem.indexOfScalarPos(u8, source, pos, '\n') orelse end_pos;
-            last_import_end = line_end + 1;
+        // Check if this is start of a line (or start of file)
+        if (pos == 0 or source[pos - 1] == '\n') {
+            // Skip whitespace
+            var line_start = pos;
+            while (line_start < end_pos and (source[line_start] == ' ' or source[line_start] == '\t')) {
+                line_start += 1;
+            }
+
+            // Check if this line is an import: (pub) const NAME = @import
+            const rest = source[line_start..];
+            const is_const_import = blk: {
+                if (std.mem.startsWith(u8, rest, "const ")) {
+                    // Find the = sign
+                    if (std.mem.indexOfScalarPos(u8, rest, 6, '=')) |eq_pos| {
+                        // Check if what follows is @import(
+                        const after_eq = std.mem.trim(u8, rest[eq_pos + 1 ..], " \t");
+                        if (std.mem.startsWith(u8, after_eq, "@import(")) {
+                            break :blk true;
+                        }
+                    }
+                } else if (std.mem.startsWith(u8, rest, "pub const ")) {
+                    // Find the = sign
+                    if (std.mem.indexOfScalarPos(u8, rest, 10, '=')) |eq_pos| {
+                        // Check if what follows is @import(
+                        const after_eq = std.mem.trim(u8, rest[eq_pos + 1 ..], " \t");
+                        if (std.mem.startsWith(u8, after_eq, "@import(")) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+
+            if (is_const_import) {
+                // Found an import line, find the end
+                const line_end = std.mem.indexOfScalarPos(u8, source, pos, '\n') orelse end_pos;
+                last_import_end = line_end + 1;
+            }
         }
         pos += 1;
     }
@@ -570,11 +606,16 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
 
     var pos: usize = 0;
     var line_num: usize = 1;
+    const is_node_iterator = false; // Debug flag
 
     while (pos < struct_body.len) {
         // Look for function declarations (both public and private)
         const pub_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub fn ");
         const pub_inline_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub inline fn ");
+
+        if (is_node_iterator and pub_fn_pos != null) {
+            std.debug.print("\n  [Loop iteration] pos={d}, pub_fn_pos={d}\n", .{ pos, pub_fn_pos.? });
+        }
 
         // For private functions, need to skip "const fn" patterns (function pointer types)
         var priv_fn_pos: ?usize = null;
@@ -650,14 +691,23 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         }
 
         if (fn_pos) |fn_start| {
+            if (is_node_iterator) {
+                std.debug.print(">>> Found fn at position {d}\n", .{fn_start});
+                // Show 60 chars context
+                const ctx_start = if (fn_start >= 30) fn_start - 30 else 0;
+                const ctx_end = @min(fn_start + 60, struct_body.len);
+                std.debug.print("    Context: [{s}]\n", .{struct_body[ctx_start..ctx_end]});
+            }
             const name_start = fn_start + prefix_len;
 
             // Extract method name
             const paren_pos = std.mem.indexOfScalarPos(u8, struct_body, name_start, '(') orelse {
+                if (is_node_iterator) std.debug.print("  No paren found\n", .{});
                 pos = fn_start + 1;
                 continue;
             };
             const method_name = std.mem.trim(u8, struct_body[name_start..paren_pos], " \t\r\n");
+            if (is_node_iterator) std.debug.print("  Method name: {s}\n", .{method_name});
 
             // Find method signature (up to opening brace)
             const sig_end = findMethodSignatureEnd(struct_body, paren_pos) orelse {
@@ -666,26 +716,51 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
             };
             const signature = std.mem.trim(u8, struct_body[paren_pos..sig_end], " \t\r\n");
 
+            if (is_node_iterator) {
+                std.debug.print("  sig_end={d}, char at sig_end='{c}'\n", .{ sig_end, struct_body[sig_end] });
+            }
+
             // Find method body
             const body_start = std.mem.indexOfScalarPos(u8, struct_body, sig_end, '{') orelse {
                 pos = sig_end + 1;
                 continue;
             };
+
+            if (is_node_iterator) {
+                std.debug.print("  After search: body_start={d}\n", .{body_start});
+            }
             const body_end = findMatchingBrace(struct_body, body_start) orelse {
                 pos = body_start + 1;
                 continue;
             };
             const body = struct_body[body_start + 1 .. body_end];
 
+            if (is_node_iterator) {
+                std.debug.print("  body_start={d}, body_end={d}, body length={d}\n", .{ body_start, body_end, body.len });
+            }
+
             // Extract referenced types
             const referenced_types = try extractTypesFromCode(allocator, signature, body);
+
+            // Debug: Check if detach or traverse method
+            if (std.mem.eql(u8, method_name, "detach")) {
+                std.debug.print("\n=== DETACH METHOD ===\n", .{});
+                std.debug.print("Body length: {d}\n", .{body.len});
+                std.debug.print("Body:\n[{s}]\n", .{body});
+                std.debug.print("Body ends at position in struct_body: {d}\n", .{body_end});
+                // Check what comes after
+                const after_end = body_end + 1;
+                if (after_end + 200 < struct_body.len) {
+                    std.debug.print("200 chars after body_end:\n[{s}]\n", .{struct_body[after_end .. after_end + 200]});
+                }
+            }
 
             try methods.append(ir.Method{
                 .name = try allocator.dupe(u8, method_name),
                 .signature = try allocator.dupe(u8, signature),
                 .body = try allocator.dupe(u8, body),
                 .referenced_types = referenced_types,
-                .doc_comment = null,
+                .doc_comment = null, // TODO: extract doc comments
                 .source_line = line_num,
                 .modifiers = .{
                     .is_public = is_public,
@@ -694,6 +769,9 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
             });
 
             pos = body_end + 1;
+            if (is_node_iterator) {
+                std.debug.print("  Advancing pos to {d}\n", .{pos});
+            }
         } else {
             break;
         }
@@ -727,36 +805,33 @@ fn findMethodSignatureEnd(source: []const u8, start: usize) ?usize {
     if (paren_depth != 0) return null;
 
     // Now search for the opening brace of the method body
-    // Need to track braces to handle anonymous struct return types
+    // Need to track braces to handle anonymous struct return types like: fn foo() struct { x: i32 } { body }
     var search = pos + 1;
-    var brace_depth: i32 = 0;
 
-    while (search < source.len) : (search += 1) {
-        const c = source[search];
+    // First, check if there's an anonymous struct return type by looking for "struct {" pattern
+    const text_between = source[pos + 1 .. @min(pos + 200, source.len)];
+    const has_struct_keyword = std.mem.indexOf(u8, text_between, "struct");
 
-        if (c == '{') {
-            if (brace_depth == 0) {
-                // This is the method body opening brace (or first struct brace)
-                // Check if there's a matching closing brace before another opening brace
-                // to distinguish struct return type from method body
-                const next_open = std.mem.indexOfScalarPos(u8, source, search + 1, '{');
-                const next_close = std.mem.indexOfScalarPos(u8, source, search + 1, '}');
-
-                if (next_close) |close_pos| {
-                    if (next_open == null or close_pos < next_open.?) {
-                        // Found closing brace before next opening - this is a struct return type
-                        // Continue past it to find the real method body
-                        brace_depth += 1;
-                        continue;
-                    }
+    if (has_struct_keyword) |struct_pos| {
+        // Find the opening brace of the struct
+        const struct_brace = std.mem.indexOfScalarPos(u8, source, pos + 1 + struct_pos, '{');
+        if (struct_brace) |sb| {
+            // Find the matching closing brace of the struct
+            const struct_close = findMatchingBrace(source, sb);
+            if (struct_close) |sc| {
+                // Now find the opening brace of the method body (after the struct)
+                const body_brace = std.mem.indexOfScalarPos(u8, source, sc + 1, '{');
+                if (body_brace) |bb| {
+                    return bb;
                 }
-                // This is the method body
-                return search;
-            } else {
-                brace_depth += 1;
             }
-        } else if (c == '}') {
-            brace_depth -= 1;
+        }
+    }
+
+    // No struct return type - just find the first opening brace
+    while (search < source.len) : (search += 1) {
+        if (source[search] == '{') {
+            return search;
         }
     }
 

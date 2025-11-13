@@ -87,36 +87,19 @@ pub const URL = struct {
     }
 
     pub fn deinit(self: *URL) void {
+
         self.query_impl.deinit();
         self.allocator.destroy(self.query_impl);
         self.url_record.deinit();
+    
     }
 
-    // ========================================================================
-    // Static Methods
-    // ========================================================================
-
-    /// URL.parse(url, base) static method
-    /// Spec: https://url.spec.whatwg.org/#dom-url-parse (lines 1835-1845)
-    ///
-    /// Steps:
-    /// 1. Let parsedURL be the result of running the API URL parser on url with base, if given.
-    /// 2. If parsedURL is failure, then return null.
-    /// 3. Return the result of creating a new URL object, with parsedURL,
-    ///    in the current realm.
-    ///
-    /// Unlike the constructor, this returns null instead of throwing on parse failure.
     pub fn parse(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) ?URL {
+
         return init(allocator, url, base) catch null;
+    
     }
 
-    /// URL.canParse(url, base) static method
-    /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
-    ///
-    /// Steps:
-    /// 1. Let parsedURL be the result of running the API URL parser on url with base, if given.
-    /// 2. If parsedURL is failure, then return false.
-    /// 3. Return true.
     pub fn canParse(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) bool {
 
         // Parse base URL if provided
@@ -139,47 +122,42 @@ pub const URL = struct {
     }
 
     pub fn href(self: *const URL) ![]const u8 {
+
         return url_serializer.serialize(self.allocator, &self.url_record, false);
+    
     }
 
-    /// origin getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
-    /// Returns serialization of this's URL's origin
     pub fn origin(self: *const URL) ![]const u8 {
+
         const origin_module = @import("origin");
         const url_origin = try origin_module.getOrigin(self.allocator, &self.url_record);
         defer url_origin.deinit(self.allocator);
         return url_origin.serialize(self.allocator);
+    
     }
 
-    /// protocol getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
-    /// Returns scheme + ":"
     pub fn protocol(self: *const URL) ![]const u8 {
+
         const scheme = self.url_record.scheme();
         const result = try self.allocator.alloc(u8, scheme.len + 1);
         @memcpy(result[0..scheme.len], scheme);
         result[scheme.len] = ':';
         return result;
+    
     }
 
-    /// username getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-username (line 1877)
-    /// Returns this's URL's username
     pub fn username(self: *const URL) []const u8 {
+
         return self.url_record.username();
+    
     }
 
-    /// password getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-password (line 1885)
-    /// Returns this's URL's password
     pub fn password(self: *const URL) []const u8 {
+
         return self.url_record.password();
+    
     }
 
-    /// host getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1893-1901)
-    /// Returns serialized host with port if present
     pub fn host(self: *const URL) ![]const u8 {
 
         const host_serializer = @import("host_serializer");
@@ -204,6 +182,7 @@ pub const URL = struct {
     }
 
     pub fn hostname(self: *const URL) ![]const u8 {
+
         const host_serializer = @import("host_serializer");
 
         // Step 1: If url's host is null, return empty string
@@ -211,11 +190,9 @@ pub const URL = struct {
 
         // Step 2: Return serialized host
         return host_serializer.serializeHost(self.allocator, h);
+    
     }
 
-    /// port getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1923-1927)
-    /// Returns serialized port or empty string if null
     pub fn port(self: *const URL) ![]const u8 {
 
         // Step 1: If port is null, return empty string
@@ -227,13 +204,12 @@ pub const URL = struct {
     }
 
     pub fn pathname(self: *const URL) ![]const u8 {
+
         const path_serializer = @import("path_serializer");
         return path_serializer.serializePath(self.allocator, &self.url_record);
+    
     }
 
-    /// search getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1947-1951)
-    /// Returns "?" + query or empty string
     pub fn search(self: *const URL) ![]const u8 {
 
         const q = self.url_record.query();
@@ -249,12 +225,11 @@ pub const URL = struct {
     }
 
     pub fn searchParams(self: *const URL) *URLSearchParamsImpl {
+
         return self.query_impl;
+    
     }
 
-    /// hash getter
-    /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1969-1973)
-    /// Returns "#" + fragment or empty string
     pub fn hash(self: *const URL) ![]const u8 {
 
         const f = self.url_record.fragment();
@@ -657,6 +632,12 @@ pub const URL = struct {
             // Parsing failure is silently ignored
             return;
         };
+    
+    }
+
+    pub fn toJSON(self: *const URL) ![]const u8 {
+
+        return self.href();
     
     }
 
