@@ -234,7 +234,38 @@ fn resolveImports(
     registry: *ClassRegistry,
 ) ![]ir.Import {
     var imports = std.StringHashMap(ir.Import).init(allocator);
-    defer imports.deinit();
+    defer {
+        // Clean up all Import contents before freeing HashMap
+        var iter = imports.valueIterator();
+        while (iter.next()) |import| {
+            allocator.free(import.name);
+            allocator.free(import.module);
+        }
+        imports.deinit();
+    }
+
+    // Add default imports that all classes need
+    try imports.put("std", ir.Import{
+        .name = try allocator.dupe(u8, "std"),
+        .module = try allocator.dupe(u8, "std"),
+        .is_type = false,
+        .visibility = .private,
+        .source_line = 0,
+    });
+    try imports.put("Allocator", ir.Import{
+        .name = try allocator.dupe(u8, "Allocator"),
+        .module = try allocator.dupe(u8, "std.mem"),
+        .is_type = true,
+        .visibility = .private,
+        .source_line = 0,
+    });
+    try imports.put("webidl", ir.Import{
+        .name = try allocator.dupe(u8, "webidl"),
+        .module = try allocator.dupe(u8, "webidl"),
+        .is_type = false,
+        .visibility = .private,
+        .source_line = 0,
+    });
 
     // Collect type references from fields
     for (all_fields) |field| {
