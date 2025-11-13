@@ -843,27 +843,304 @@ pub const BufferSource = union(enum) {
 
 /// SharedArrayBuffer represents a shared memory buffer
 ///
-/// Note: This is a placeholder. Full SharedArrayBuffer support requires
-/// thread-safe memory access primitives and atomics.
-///
 /// Spec: https://tc39.es/ecma262/#sec-sharedarraybuffer-objects
+///
+/// SharedArrayBuffer provides shared memory that can be accessed by multiple agents
+/// (threads/workers) concurrently. All access must use atomic operations to ensure
+/// memory safety and proper synchronization.
+///
+/// Key properties:
+/// - Cannot be detached (unlike regular ArrayBuffer)
+/// - Fixed size after creation
+/// - Memory is shared between agents
+/// - Requires atomic operations for safe concurrent access
+///
+/// Example:
+/// ```zig
+/// var sab = try SharedArrayBuffer.init(allocator, 1024);
+/// defer sab.deinit(allocator);
+///
+/// // Atomic store
+/// try sab.atomicStore(i32, 0, 42, .SeqCst);
+///
+/// // Atomic load
+/// const value = try sab.atomicLoad(i32, 0, .SeqCst);
+/// ```
 pub const SharedArrayBuffer = struct {
     data: []u8,
-    // TODO: Add atomic operations support when implementing full SharedArrayBuffer
+    allocator: std.mem.Allocator,
 
+    /// Create a new SharedArrayBuffer with the specified byte length
+    ///
+    /// Spec: § 25.2.1.1 AllocateSharedArrayBuffer
+    ///
+    /// The memory is aligned to 16 bytes to support atomic operations on all types.
     pub fn init(allocator: std.mem.Allocator, size: usize) !SharedArrayBuffer {
-        const data = try allocator.alloc(u8, size);
+        // Allocate with 16-byte alignment for atomic operations
+        const data = try allocator.alignedAlloc(u8, @enumFromInt(4), size); // 2^4 = 16 bytes
+        @memset(data, 0);
+
         return SharedArrayBuffer{
             .data = data,
+            .allocator = allocator,
         };
     }
 
-    pub fn deinit(self: *SharedArrayBuffer, allocator: std.mem.Allocator) void {
-        allocator.free(self.data);
+    pub fn deinit(self: *SharedArrayBuffer) void {
+        // Must free with the same alignment we allocated with (16 bytes = 2^4)
+        self.allocator.rawFree(self.data, @enumFromInt(4), @returnAddress());
     }
 
+    /// Get the byte length of this SharedArrayBuffer
+    ///
+    /// Spec: § 25.2.5.1 get SharedArrayBuffer.prototype.byteLength
     pub fn byteLength(self: SharedArrayBuffer) usize {
         return self.data.len;
+    }
+
+    /// Validate that byte offset and size are within bounds and properly aligned
+    fn validateAccess(self: SharedArrayBuffer, comptime T: type, byte_offset: usize) !void {
+        const elem_size = @sizeOf(T);
+
+        // Check alignment
+        if (byte_offset % @alignOf(T) != 0) {
+            return error.InvalidAlignment;
+        }
+
+        // Check bounds
+        if (byte_offset + elem_size > self.data.len) {
+            return error.OutOfBounds;
+        }
+    }
+
+    /// Get a pointer to the element at the specified byte offset
+    fn getPtr(self: *const SharedArrayBuffer, comptime T: type, byte_offset: usize) *T {
+        return @ptrCast(@alignCast(&self.data[byte_offset]));
+    }
+
+    // ============================================================================
+    // Atomic Operations
+    // ============================================================================
+
+    /// Atomically load a value from the buffer
+    ///
+    /// Spec: § 25.4.3 Atomics.load ( typedArray, index )
+    ///
+    /// Supported types: i8, u8, i16, u16, i32, u32, i64, u64
+    ///
+    /// Memory ordering: Uses seq_cst by default (ECMAScript requirement)
+    pub fn atomicLoad(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        return atomic.load(ordering);
+    }
+
+    /// Atomically store a value to the buffer
+    ///
+    /// Spec: § 25.4.10 Atomics.store ( typedArray, index, value )
+    ///
+    /// Returns the stored value (ECMAScript requirement)
+    pub fn atomicStore(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        atomic.store(value, ordering);
+        ptr.* = atomic.raw;
+
+        return value;
+    }
+
+    /// Atomically add to a value in the buffer
+    ///
+    /// Spec: § 25.4.2 Atomics.add ( typedArray, index, value )
+    ///
+    /// Returns the old value before the addition
+    pub fn atomicAdd(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.fetchAdd(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically subtract from a value in the buffer
+    ///
+    /// Spec: § 25.4.11 Atomics.sub ( typedArray, index, value )
+    ///
+    /// Returns the old value before the subtraction
+    pub fn atomicSub(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.fetchSub(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically perform bitwise AND on a value in the buffer
+    ///
+    /// Spec: § 25.4.1 Atomics.and ( typedArray, index, value )
+    ///
+    /// Returns the old value before the operation
+    pub fn atomicAnd(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.fetchAnd(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically perform bitwise OR on a value in the buffer
+    ///
+    /// Spec: § 25.4.6 Atomics.or ( typedArray, index, value )
+    ///
+    /// Returns the old value before the operation
+    pub fn atomicOr(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.fetchOr(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically perform bitwise XOR on a value in the buffer
+    ///
+    /// Spec: § 25.4.14 Atomics.xor ( typedArray, index, value )
+    ///
+    /// Returns the old value before the operation
+    pub fn atomicXor(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.fetchXor(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically exchange a value in the buffer
+    ///
+    /// Spec: § 25.4.5 Atomics.exchange ( typedArray, index, value )
+    ///
+    /// Returns the old value before the exchange
+    pub fn atomicExchange(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        value: T,
+        comptime ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+        const old = atomic.swap(value, ordering);
+        ptr.* = atomic.raw;
+
+        return old;
+    }
+
+    /// Atomically compare and exchange a value in the buffer
+    ///
+    /// Spec: § 25.4.4 Atomics.compareExchange ( typedArray, index, expectedValue, replacementValue )
+    ///
+    /// If the value at byte_offset equals expected, it is replaced with replacement.
+    /// Returns the old value (before any exchange).
+    pub fn atomicCompareExchange(
+        self: *const SharedArrayBuffer,
+        comptime T: type,
+        byte_offset: usize,
+        expected: T,
+        replacement: T,
+        comptime success_ordering: std.builtin.AtomicOrder,
+        comptime failure_ordering: std.builtin.AtomicOrder,
+    ) !T {
+        try self.validateAccess(T, byte_offset);
+
+        const ptr = self.getPtr(T, byte_offset);
+        var atomic = std.atomic.Value(T).init(ptr.*);
+
+        const result = atomic.cmpxchgWeak(
+            expected,
+            replacement,
+            success_ordering,
+            failure_ordering,
+        );
+
+        ptr.* = atomic.raw;
+
+        // Return the old value (either expected if successful, or current if not)
+        return result orelse expected;
+    }
+
+    /// Check if atomic operations are lock-free for the given size
+    ///
+    /// Spec: § 25.4.7 Atomics.isLockFree ( size )
+    ///
+    /// Returns true if atomic operations on values of the given size are lock-free.
+    /// Lock-free operations are guaranteed to complete in a bounded number of steps.
+    pub fn isLockFree(size: usize) bool {
+        // Most architectures support lock-free atomics for 1, 2, 4, and 8 byte values
+        return switch (size) {
+            1, 2, 4, 8 => true,
+            else => false,
+        };
     }
 };
 
@@ -978,7 +1255,7 @@ test "BufferSource - detached buffer error" {
 
 test "SharedArrayBuffer - basic operations" {
     var shared = try SharedArrayBuffer.init(testing.allocator, 16);
-    defer shared.deinit(testing.allocator);
+    defer shared.deinit();
 
     try testing.expectEqual(@as(usize, 16), shared.byteLength());
 
@@ -1002,7 +1279,7 @@ test "AllowSharedBufferSource - array_buffer variant" {
 
 test "AllowSharedBufferSource - shared_array_buffer variant" {
     var shared = try SharedArrayBuffer.init(testing.allocator, 16);
-    defer shared.deinit(testing.allocator);
+    defer shared.deinit();
 
     shared.data[0] = 33;
     shared.data[1] = 44;
@@ -1396,4 +1673,269 @@ test "ArrayBufferView - all typed array variants work with accessors" {
         // All views should not be detached
         try testing.expect(!view.isDetached());
     }
+}
+
+// ============================================================================
+// SharedArrayBuffer Tests
+// ============================================================================
+
+test "SharedArrayBuffer - init and deinit" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 1024);
+    defer sab.deinit();
+
+    try testing.expectEqual(@as(usize, 1024), sab.byteLength());
+}
+
+test "SharedArrayBuffer - atomicLoad and atomicStore i32" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    // Store value
+    const stored = try sab.atomicStore(i32, 0, 42, .seq_cst);
+    try testing.expectEqual(@as(i32, 42), stored);
+
+    // Load value
+    const loaded = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 42), loaded);
+}
+
+test "SharedArrayBuffer - atomicLoad and atomicStore u32" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    const value: u32 = 0xDEADBEEF;
+    _ = try sab.atomicStore(u32, 0, value, .seq_cst);
+    const loaded = try sab.atomicLoad(u32, 0, .seq_cst);
+    try testing.expectEqual(value, loaded);
+}
+
+test "SharedArrayBuffer - atomicAdd" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    // Initial store
+    _ = try sab.atomicStore(i32, 0, 10, .seq_cst);
+
+    // Add 5, should return old value (10)
+    const old = try sab.atomicAdd(i32, 0, 5, .seq_cst);
+    try testing.expectEqual(@as(i32, 10), old);
+
+    // Load should return new value (15)
+    const new = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 15), new);
+}
+
+test "SharedArrayBuffer - atomicSub" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(i32, 0, 20, .seq_cst);
+
+    const old = try sab.atomicSub(i32, 0, 7, .seq_cst);
+    try testing.expectEqual(@as(i32, 20), old);
+
+    const new = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 13), new);
+}
+
+test "SharedArrayBuffer - atomicAnd" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(u32, 0, 0b1111, .seq_cst);
+
+    const old = try sab.atomicAnd(u32, 0, 0b1100, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b1111), old);
+
+    const new = try sab.atomicLoad(u32, 0, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b1100), new);
+}
+
+test "SharedArrayBuffer - atomicOr" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(u32, 0, 0b1100, .seq_cst);
+
+    const old = try sab.atomicOr(u32, 0, 0b0011, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b1100), old);
+
+    const new = try sab.atomicLoad(u32, 0, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b1111), new);
+}
+
+test "SharedArrayBuffer - atomicXor" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(u32, 0, 0b1010, .seq_cst);
+
+    const old = try sab.atomicXor(u32, 0, 0b1111, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b1010), old);
+
+    const new = try sab.atomicLoad(u32, 0, .seq_cst);
+    try testing.expectEqual(@as(u32, 0b0101), new);
+}
+
+test "SharedArrayBuffer - atomicExchange" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(i32, 0, 100, .seq_cst);
+
+    const old = try sab.atomicExchange(i32, 0, 200, .seq_cst);
+    try testing.expectEqual(@as(i32, 100), old);
+
+    const new = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 200), new);
+}
+
+test "SharedArrayBuffer - atomicCompareExchange success" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(i32, 0, 50, .seq_cst);
+
+    // Compare with 50 (matches), replace with 75
+    const old = try sab.atomicCompareExchange(i32, 0, 50, 75, .seq_cst, .seq_cst);
+    try testing.expectEqual(@as(i32, 50), old);
+
+    // Should now be 75
+    const new = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 75), new);
+}
+
+test "SharedArrayBuffer - atomicCompareExchange failure" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    _ = try sab.atomicStore(i32, 0, 50, .seq_cst);
+
+    // Compare with 100 (doesn't match), should not replace
+    const old = try sab.atomicCompareExchange(i32, 0, 100, 75, .seq_cst, .seq_cst);
+    try testing.expectEqual(@as(i32, 50), old);
+
+    // Should still be 50
+    const current = try sab.atomicLoad(i32, 0, .seq_cst);
+    try testing.expectEqual(@as(i32, 50), current);
+}
+
+test "SharedArrayBuffer - alignment validation" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    // i32 requires 4-byte alignment
+    // Offset 0 is aligned
+    _ = try sab.atomicStore(i32, 0, 42, .seq_cst);
+
+    // Offset 4 is aligned
+    _ = try sab.atomicStore(i32, 4, 43, .seq_cst);
+
+    // Offset 1 is NOT aligned for i32 (should error)
+    try testing.expectError(error.InvalidAlignment, sab.atomicStore(i32, 1, 44, .seq_cst));
+
+    // Offset 2 is NOT aligned for i32 (should error)
+    try testing.expectError(error.InvalidAlignment, sab.atomicStore(i32, 2, 45, .seq_cst));
+}
+
+test "SharedArrayBuffer - bounds validation" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 16);
+    defer sab.deinit();
+
+    // Offset 0 with i32 (4 bytes) is valid
+    _ = try sab.atomicStore(i32, 0, 1, .seq_cst);
+
+    // Offset 12 with i32 (4 bytes) is valid (12 + 4 = 16)
+    _ = try sab.atomicStore(i32, 12, 2, .seq_cst);
+
+    // Offset 13 with i32 would go to byte 17 (out of bounds), but hits alignment error first
+    try testing.expectError(error.InvalidAlignment, sab.atomicStore(i32, 13, 3, .seq_cst));
+
+    // Offset 16 is out of bounds (but aligned)
+    try testing.expectError(error.OutOfBounds, sab.atomicStore(i32, 16, 4, .seq_cst));
+
+    // Offset 20 is definitely out of bounds (and aligned)
+    try testing.expectError(error.OutOfBounds, sab.atomicStore(i32, 20, 5, .seq_cst));
+}
+
+test "SharedArrayBuffer - multiple types in same buffer" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    // Store different types at different offsets
+    _ = try sab.atomicStore(i8, 0, -42, .seq_cst);
+    _ = try sab.atomicStore(u16, 2, 1000, .seq_cst);
+    _ = try sab.atomicStore(i32, 4, -100000, .seq_cst);
+    _ = try sab.atomicStore(u64, 8, 0x123456789ABCDEF0, .seq_cst);
+
+    // Load and verify
+    try testing.expectEqual(@as(i8, -42), try sab.atomicLoad(i8, 0, .seq_cst));
+    try testing.expectEqual(@as(u16, 1000), try sab.atomicLoad(u16, 2, .seq_cst));
+    try testing.expectEqual(@as(i32, -100000), try sab.atomicLoad(i32, 4, .seq_cst));
+    try testing.expectEqual(@as(u64, 0x123456789ABCDEF0), try sab.atomicLoad(u64, 8, .seq_cst));
+}
+
+test "SharedArrayBuffer - isLockFree" {
+    // Standard sizes should be lock-free
+    try testing.expect(SharedArrayBuffer.isLockFree(1));
+    try testing.expect(SharedArrayBuffer.isLockFree(2));
+    try testing.expect(SharedArrayBuffer.isLockFree(4));
+    try testing.expect(SharedArrayBuffer.isLockFree(8));
+
+    // Non-standard sizes may not be lock-free
+    try testing.expect(!SharedArrayBuffer.isLockFree(3));
+    try testing.expect(!SharedArrayBuffer.isLockFree(5));
+    try testing.expect(!SharedArrayBuffer.isLockFree(16));
+}
+
+test "SharedArrayBuffer - different memory orderings" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 64);
+    defer sab.deinit();
+
+    // Test with different orderings
+    _ = try sab.atomicStore(i32, 0, 100, .monotonic);
+    try testing.expectEqual(@as(i32, 100), try sab.atomicLoad(i32, 0, .monotonic));
+
+    _ = try sab.atomicStore(i32, 4, 200, .release);
+    try testing.expectEqual(@as(i32, 200), try sab.atomicLoad(i32, 4, .acquire));
+
+    _ = try sab.atomicStore(i32, 8, 300, .seq_cst);
+    try testing.expectEqual(@as(i32, 300), try sab.atomicLoad(i32, 8, .seq_cst));
+}
+
+test "SharedArrayBuffer - all integer types" {
+    var sab = try SharedArrayBuffer.init(testing.allocator, 128);
+    defer sab.deinit();
+
+    // Test i8
+    _ = try sab.atomicStore(i8, 0, -128, .seq_cst);
+    try testing.expectEqual(@as(i8, -128), try sab.atomicLoad(i8, 0, .seq_cst));
+
+    // Test u8
+    _ = try sab.atomicStore(u8, 1, 255, .seq_cst);
+    try testing.expectEqual(@as(u8, 255), try sab.atomicLoad(u8, 1, .seq_cst));
+
+    // Test i16
+    _ = try sab.atomicStore(i16, 4, -32768, .seq_cst);
+    try testing.expectEqual(@as(i16, -32768), try sab.atomicLoad(i16, 4, .seq_cst));
+
+    // Test u16
+    _ = try sab.atomicStore(u16, 8, 65535, .seq_cst);
+    try testing.expectEqual(@as(u16, 65535), try sab.atomicLoad(u16, 8, .seq_cst));
+
+    // Test i32
+    _ = try sab.atomicStore(i32, 12, -2147483648, .seq_cst);
+    try testing.expectEqual(@as(i32, -2147483648), try sab.atomicLoad(i32, 12, .seq_cst));
+
+    // Test u32
+    _ = try sab.atomicStore(u32, 16, 4294967295, .seq_cst);
+    try testing.expectEqual(@as(u32, 4294967295), try sab.atomicLoad(u32, 16, .seq_cst));
+
+    // Test i64
+    _ = try sab.atomicStore(i64, 24, -9223372036854775808, .seq_cst);
+    try testing.expectEqual(@as(i64, -9223372036854775808), try sab.atomicLoad(i64, 24, .seq_cst));
+
+    // Test u64
+    _ = try sab.atomicStore(u64, 32, 18446744073709551615, .seq_cst);
+    try testing.expectEqual(@as(u64, 18446744073709551615), try sab.atomicLoad(u64, 32, .seq_cst));
 }
