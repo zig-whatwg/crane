@@ -12,7 +12,6 @@ const AbortController = @import("dom").AbortController;
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
 const WritableStream = @import("writable_stream").WritableStream;
 const anyopaque = @import("anyopaque").anyopaque;
 const common = @import("common").common;

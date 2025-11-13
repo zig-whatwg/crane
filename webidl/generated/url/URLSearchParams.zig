@@ -9,9 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const EntriesIterator = @import("entries_iterator").EntriesIterator;
-const Entry = @import("entry").Entry;
-const ForEachCallback = @import("for_each_callback").ForEachCallback;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 const std = @import("std");
 const webidl = @import("webidl");

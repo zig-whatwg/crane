@@ -26,7 +26,6 @@ const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
-const NodeType = @import("node_type").NodeType;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
 const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;

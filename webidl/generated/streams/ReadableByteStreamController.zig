@@ -18,7 +18,6 @@ const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const ReadIntoRequest = @import("read_into_request").ReadIntoRequest;
 const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
 const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
-const ReadableStreamModule = @import("readable_stream_module").ReadableStreamModule;
 const ViewConstruction = @import("view_construction").ViewConstruction;
 const anyopaque = @import("anyopaque").anyopaque;
 const common = @import("common").common;

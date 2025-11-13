@@ -9,7 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Direction = @import("direction").Direction;
 const Node = @import("node").Node;
 const NodeFilter = @import("node_filter").NodeFilter;
 const std = @import("std");

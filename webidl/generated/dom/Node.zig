@@ -19,7 +19,6 @@ const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const NodeList = @import("node_list").NodeList;
-const PI = @import("p_i").PI;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;

@@ -10,7 +10,6 @@
 
 const Allocator = @import("std.mem").Allocator;
 const Element = @import("element").Element;
-const NodeType = @import("node_type").NodeType;
 const std = @import("std");
 const webidl = @import("webidl");
 

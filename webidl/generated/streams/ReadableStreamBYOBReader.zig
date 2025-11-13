@@ -11,7 +11,6 @@
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const DictionaryParsing = @import("dict_parsing");
-const PromiseContext = @import("promise_context").PromiseContext;
 const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const ReadableStream = @import("readable_stream").ReadableStream;

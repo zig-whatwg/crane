@@ -899,6 +899,11 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
     var types = std.StringHashMap(void).init(allocator);
     defer types.deinit();
 
+    // Track local type aliases to avoid importing them
+    // Pattern: const TypeName = ...
+    var local_aliases = std.StringHashMap(void).init(allocator);
+    defer local_aliases.deinit();
+
     // Extract types from BOTH signature and body
     // Signature contains parameter types and return types
     // Body contains type usage in the implementation
@@ -911,6 +916,44 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
     @memcpy(combined[0..signature.len], signature);
     combined[signature.len] = ' ';
     @memcpy(combined[signature.len + 1 ..], body);
+
+    // First pass: identify local type aliases (const TypeName = ...)
+    var scan_pos: usize = 0;
+    while (scan_pos < combined.len) {
+        if (scan_pos + 6 < combined.len and std.mem.startsWith(u8, combined[scan_pos..], "const ")) {
+            scan_pos += 6; // Skip "const "
+            // Skip whitespace
+            while (scan_pos < combined.len and (combined[scan_pos] == ' ' or combined[scan_pos] == '\t')) {
+                scan_pos += 1;
+            }
+            // Check for uppercase identifier
+            if (scan_pos < combined.len and combined[scan_pos] >= 'A' and combined[scan_pos] <= 'Z') {
+                const alias_start = scan_pos;
+                while (scan_pos < combined.len) {
+                    const ch = combined[scan_pos];
+                    if ((ch >= 'a' and ch <= 'z') or
+                        (ch >= 'A' and ch <= 'Z') or
+                        (ch >= '0' and ch <= '9') or
+                        ch == '_')
+                    {
+                        scan_pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+                const alias_name = combined[alias_start..scan_pos];
+                // Skip whitespace
+                while (scan_pos < combined.len and (combined[scan_pos] == ' ' or combined[scan_pos] == '\t')) {
+                    scan_pos += 1;
+                }
+                // Check if followed by '='
+                if (scan_pos < combined.len and combined[scan_pos] == '=') {
+                    try local_aliases.put(alias_name, {});
+                }
+            }
+        }
+        scan_pos += 1;
+    }
 
     // Simple heuristic: look for patterns like "*TypeName" or "?TypeName" or ": TypeName"
     // These indicate actual type usage, not random capitalized words
@@ -971,8 +1014,8 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
 
                 const type_name = combined[start..pos];
 
-                // Filter out built-in types
-                if (!isBuiltinType(type_name)) {
+                // Filter out built-in types and local aliases
+                if (!isBuiltinType(type_name) and !local_aliases.contains(type_name)) {
                     try types.put(type_name, {});
                 }
             }
@@ -1034,7 +1077,7 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
                     }
 
                     const type_name = combined[start..paren_pos];
-                    if (!isBuiltinType(type_name)) {
+                    if (!isBuiltinType(type_name) and !local_aliases.contains(type_name)) {
                         try types.put(type_name, {});
                     }
                     pos = paren_pos;

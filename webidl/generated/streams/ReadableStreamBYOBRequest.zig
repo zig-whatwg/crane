@@ -9,7 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const anyopaque = @import("anyopaque").anyopaque;
 const std = @import("std");
 const webidl = @import("webidl");
