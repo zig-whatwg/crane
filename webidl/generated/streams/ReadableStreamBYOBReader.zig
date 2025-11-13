@@ -41,6 +41,15 @@ pub const ReadableStreamBYOBReader = struct {
     readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "ReadableStreamBYOBReader",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

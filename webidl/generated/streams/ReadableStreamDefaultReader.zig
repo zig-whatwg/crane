@@ -54,6 +54,15 @@ pub const ReadableStreamDefaultReader = struct {
     readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "ReadableStreamDefaultReader",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

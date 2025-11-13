@@ -26,6 +26,15 @@ const webidl = @import("webidl");
 /// ```zig
 
 pub const CompressionStream = struct {
+
+    // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "CompressionStream",
+        .kind = .interface,
+    };
 };
 
 
@@ -62,6 +71,15 @@ pub const GenericTransformStream = struct {
     // ========================================================================
 
     transform: *TransformStream,
+
+    // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "GenericTransformStream",
+        .kind = .mixin,
+    };
 
     // ========================================================================
     // Methods

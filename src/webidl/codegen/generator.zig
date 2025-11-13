@@ -357,6 +357,21 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         }
     }
 
+    // WebIDL Metadata
+    try writer.writeAll("\n    // ========================================================================\n");
+    try writer.writeAll("    // WebIDL Metadata\n");
+    try writer.writeAll("    // ========================================================================\n\n");
+    try writer.writeAll("    pub const __webidl__ = .{\n");
+    try writer.print("        .name = \"{s}\",\n", .{class.name});
+
+    const kind_str = switch (class.kind) {
+        .interface => "interface",
+        .namespace => "namespace",
+        .mixin => "mixin",
+    };
+    try writer.print("        .kind = .{s},\n", .{kind_str});
+    try writer.writeAll("    };\n");
+
     // Methods
     if (enhanced.all_methods.len > 0) {
         try writer.writeAll("\n    // ========================================================================\n");

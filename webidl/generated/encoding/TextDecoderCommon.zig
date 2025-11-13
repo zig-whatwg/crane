@@ -55,6 +55,15 @@ pub const TextDecoderCommon = struct {
     encoding: []const u8,
     fatal: webidl.boolean,
     ignoreBOM: webidl.boolean,
+
+    // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "TextDecoderCommon",
+        .kind = .mixin,
+    };
 };
 
 

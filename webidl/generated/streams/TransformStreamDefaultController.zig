@@ -33,6 +33,15 @@ pub const TransformStreamDefaultController = struct {
     finishPromise: ?common.Promise(void),
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "TransformStreamDefaultController",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

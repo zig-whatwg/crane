@@ -45,6 +45,15 @@ pub const NonDocumentTypeChildNode = struct {
     pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "NonDocumentTypeChildNode",
+        .kind = .mixin,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

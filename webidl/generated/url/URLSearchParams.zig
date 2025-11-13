@@ -68,6 +68,15 @@ pub const URLSearchParams = struct {
     pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "URLSearchParams",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

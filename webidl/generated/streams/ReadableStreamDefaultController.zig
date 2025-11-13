@@ -62,6 +62,15 @@ pub const ReadableStreamDefaultController = struct {
     eventLoop: eventLoop.EventLoop,
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "ReadableStreamDefaultController",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

@@ -42,6 +42,15 @@ pub const NonElementParentNode = struct {
     pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "NonElementParentNode",
+        .kind = .mixin,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 

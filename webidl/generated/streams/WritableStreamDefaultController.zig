@@ -42,6 +42,15 @@ pub const WritableStreamDefaultController = struct {
     transformController: ?*anyopaque,
 
     // ========================================================================
+    // WebIDL Metadata
+    // ========================================================================
+
+    pub const __webidl__ = .{
+        .name = "WritableStreamDefaultController",
+        .kind = .interface,
+    };
+
+    // ========================================================================
     // Methods
     // ========================================================================
 
