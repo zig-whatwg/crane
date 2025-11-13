@@ -7,6 +7,9 @@ const Event = @import("event").Event;
 const EventTarget = @import("event_target").EventTarget;
 const EventListener = @import("event_target").EventListener;
 const EventPathItem = Event.EventPathItem;
+const Node = @import("node").Node;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
+const ShadowRootMode = @import("shadow_root").ShadowRootMode;
 
 /// DOM §2.9.1 - append to an event path
 /// To append to an event path, given an event, invocationTarget, shadowAdjustedTarget,
@@ -22,17 +25,42 @@ pub fn appendToEventPath(
     // Step 1: Let invocationTargetInShadowTree be false
     // Step 2: If invocationTarget is a node and its root is a shadow root,
     // then set invocationTargetInShadowTree to true
-    // TODO: Check if invocationTarget is a node and its root is a shadow root
-    // For now, assume false (no shadow DOM support yet)
-    const invocation_target_in_shadow_tree = false;
+    var invocation_target_in_shadow_tree = false;
+
+    // Check if invocation_target is a Node by checking its type_tag
+    // Non-Node types: EventTarget, AbortSignal
+    // Node types: Everything else (Element, Document, Text, etc.)
+    if (invocation_target.type_tag != .EventTarget and
+        invocation_target.type_tag != .AbortSignal)
+    {
+        // It's a Node - cast to Node to get root
+        const node: *Node = @ptrCast(@alignCast(invocation_target));
+        const root_node = node.call_getRootNode(.{});
+
+        // Check if root is a ShadowRoot using NodeBase type_tag
+        const NodeTypeTag = @import("node").NodeTypeTag;
+        if (root_node.base.type_tag == NodeTypeTag.ShadowRoot) {
+            invocation_target_in_shadow_tree = true;
+        }
+    }
 
     // Step 3: Let root-of-closed-tree be false
-    const root_of_closed_tree = false;
-    // TODO: Check if invocationTarget is a shadow root whose mode is "closed"
-
     // Step 4: If invocationTarget is a shadow root whose mode is "closed",
     // then set root-of-closed-tree to true
-    // TODO: Check if invocationTarget is a closed shadow root
+    var root_of_closed_tree = false;
+
+    // Check if invocation_target is itself a ShadowRoot
+    const NodeTypeTag = @import("node").NodeTypeTag;
+    if (invocation_target.type_tag != .EventTarget and invocation_target.type_tag != .AbortSignal) {
+        const node: *Node = @ptrCast(@alignCast(invocation_target));
+        if (node.base.type_tag == NodeTypeTag.ShadowRoot) {
+            // It's a ShadowRoot - cast and check mode
+            const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
+            if (shadow.getMode() == ShadowRootMode.closed) {
+                root_of_closed_tree = true;
+            }
+        }
+    }
 
     // Step 5: Append a new struct to event's path
     const path_item = EventPathItem{
@@ -273,7 +301,6 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
 
     // Simplified version: Try to cast to Node and get parent
     // Full version would handle ShadowRoot, Document, and Window
-    const Node = @import("node").Node;
 
     // Try to cast EventTarget to Node
     // This works because Node extends EventTarget
