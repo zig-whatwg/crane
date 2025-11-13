@@ -769,7 +769,6 @@ test "parseStreamPipeOptions - null returns defaults" {
     try testing.expect(result.signal == null);
 }
 
-// TODO: Test crashes for unknown reason - investigate
 test "parseQueuingStrategyInit - number extracts high water mark" {
     const value = webidl.JSValue{ .number = 5.0 };
     const result = try parseQueuingStrategyInit(testing.allocator, value);
