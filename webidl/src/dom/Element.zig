@@ -38,6 +38,10 @@ pub const Element = webidl.interface(struct {
     /// Cached DOMTokenList for classList ([SameObject])
     cached_class_list: ?*@import("dom_token_list").DOMTokenList = null,
 
+    /// Cached NamedNodeMap for attributes ([SameObject])
+    /// Spec: https://dom.spec.whatwg.org/#ref-for-dom-element-attributes
+    cached_attributes: ?*@import("named_node_map").NamedNodeMap = null,
+
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
@@ -70,6 +74,12 @@ pub const Element = webidl.interface(struct {
         if (self.cached_class_list) |list| {
             list.deinit();
             self.allocator.destroy(list);
+        }
+
+        // Free cached attributes NamedNodeMap
+        if (self.cached_attributes) |attrs| {
+            attrs.deinit();
+            self.allocator.destroy(attrs);
         }
     }
 
@@ -178,6 +188,28 @@ pub const Element = webidl.interface(struct {
         self.cached_class_list = token_list;
 
         return token_list;
+    }
+
+    /// DOM §4.9 - Element.attributes
+    /// Returns the element's attribute list as a NamedNodeMap.
+    /// The NamedNodeMap is [SameObject] - returns same instance on repeated calls.
+    /// Spec: https://dom.spec.whatwg.org/#ref-for-dom-element-attributes
+    pub fn get_attributes(self: *Element) !*@import("named_node_map").NamedNodeMap {
+        // Return cached instance if available
+        if (self.cached_attributes) |attrs| {
+            return attrs;
+        }
+
+        const NamedNodeMap = @import("named_node_map").NamedNodeMap;
+
+        // Create NamedNodeMap associated with this element
+        const named_node_map = try self.allocator.create(NamedNodeMap);
+        named_node_map.* = NamedNodeMap.init(self);
+
+        // Cache the instance for [SameObject] semantics
+        self.cached_attributes = named_node_map;
+
+        return named_node_map;
     }
 
     /// DOM §4.10.1 - Element.slot
