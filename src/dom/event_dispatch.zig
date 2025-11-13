@@ -359,12 +359,59 @@ pub fn dispatch(
 }
 
 /// DOM §2.9 - retarget
-/// To retarget an object A against an object B, run these steps:
+///
+/// To retarget an object A against an object B, repeat these steps until they return an object:
+/// 1. If one of the following is true, return A:
+///    - A is not a node
+///    - A's root is not a shadow root
+///    - B is a node and A's root is a shadow-including inclusive ancestor of B
+/// 2. Set A to A's root's host
+///
+/// Spec: https://dom.spec.whatwg.org/#retarget
 fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
-    // Simplified: For now, just return a
-    // Full algorithm involves shadow tree traversal
-    _ = b;
-    return a;
+    var current_a = a;
+
+    while (current_a) |a_target| {
+        // Step 1: Check if we should return A
+
+        // Step 1.1: If A is not a node, return A
+        // Non-Node EventTargets: EventTarget, AbortSignal
+        if (a_target.type_tag == .EventTarget or a_target.type_tag == .AbortSignal) {
+            return a_target;
+        }
+
+        // A is a node - cast it
+        const a_node: *Node = @ptrCast(@alignCast(a_target));
+
+        // Step 1.2: If A's root is not a shadow root, return A
+        const a_root = a_node.call_getRootNode(.{});
+        const NodeTypeTag = @import("node").NodeTypeTag;
+        if (a_root.base.type_tag != NodeTypeTag.ShadowRoot) {
+            return a_target;
+        }
+
+        // A's root is a shadow root
+        const a_shadow_root: *ShadowRoot = @ptrCast(@alignCast(a_root));
+
+        // Step 1.3: If B is a node and A's root is a shadow-including inclusive ancestor of B
+        if (b.type_tag != .EventTarget and b.type_tag != .AbortSignal) {
+            const b_node: *Node = @ptrCast(@alignCast(b));
+            const a_root_node: *Node = @ptrCast(@alignCast(a_root));
+
+            // Check if A's root is shadow-including inclusive ancestor of B
+            const tree_helpers = @import("tree_helpers.zig");
+            if (tree_helpers.isShadowIncludingInclusiveAncestor(a_root_node, b_node)) {
+                return a_target;
+            }
+        }
+
+        // Step 2: Set A to A's root's host
+        const host_element = a_shadow_root.host_element;
+        current_a = @ptrCast(&host_element.base);
+    }
+
+    // If A becomes null, return null
+    return null;
 }
 
 /// Check if ancestor is a shadow-including inclusive ancestor of node
