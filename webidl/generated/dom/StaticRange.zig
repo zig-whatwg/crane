@@ -10,7 +10,7 @@
 
 const AbstractRange = @import("abstract_range").AbstractRange;
 const Allocator = std.mem.Allocator;
-const Container = @import("container").Container;
+pub const Container = @import("container").Container;
 const Node = @import("node").Node;
 const std = @import("std");
 const webidl = @import("webidl");

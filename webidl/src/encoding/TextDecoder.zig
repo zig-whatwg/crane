@@ -155,12 +155,12 @@ const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
-// Import dictionaries
-const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
-const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
+// Import dictionaries (pub so they can be re-exported by encoding/root.zig)
+pub const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+pub const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 
-// Import mixin (used in 'pub const includes' declaration)
-const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
+// Import mixin (used in 'pub const includes' declaration, pub for re-export)
+pub const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 
 // Import encoding infrastructure
 const encoding_mod = @import("encoding");

@@ -712,7 +712,9 @@ fn addImportForType(
             .name = try allocator.dupe(u8, base_type),
             .module = try allocator.dupe(u8, module),
             .is_type = is_type,
-            .visibility = .private,
+            // Public visibility for types so they can be re-exported by parent modules
+            // (e.g., encoding/root.zig re-exports TextDecoder.TextDecoderOptions)
+            .visibility = if (is_type) .public else .private,
             .source_line = 0,
         });
     }

@@ -10,16 +10,16 @@
 
 const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const IntoRequests = @import("into_requests").IntoRequests;
-const JSValue = @import("j_s_value").JSValue;
-const Loop = @import("loop").Loop;
-const Promise = @import("promise").Promise;
+pub const IntoRequests = @import("into_requests").IntoRequests;
+pub const JSValue = @import("j_s_value").JSValue;
+pub const Loop = @import("loop").Loop;
+pub const Promise = @import("promise").Promise;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
 const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
 const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
-const Requests = @import("requests").Requests;
-const State = @import("state").State;
+pub const Requests = @import("requests").Requests;
+pub const State = @import("state").State;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const WritableStream = @import("writable_stream").WritableStream;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;

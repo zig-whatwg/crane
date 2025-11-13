@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
-const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
+pub const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 pub const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
 const infra = @import("infra");
 const std = @import("std");

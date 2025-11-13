@@ -10,11 +10,11 @@
 
 const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const Controller = @import("controller").Controller;
-const JSValue = @import("j_s_value").JSValue;
-const Loop = @import("loop").Loop;
-const Promise = @import("promise").Promise;
-const Requests = @import("requests").Requests;
+pub const Controller = @import("controller").Controller;
+pub const JSValue = @import("j_s_value").JSValue;
+pub const Loop = @import("loop").Loop;
+pub const Promise = @import("promise").Promise;
+pub const Requests = @import("requests").Requests;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;

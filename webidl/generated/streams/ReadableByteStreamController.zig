@@ -9,24 +9,24 @@
 //   - Automatic import resolution
 
 const AbortController = @import("dom").AbortController;
-const Algorithm = @import("algorithm").Algorithm;
+pub const Algorithm = @import("algorithm").Algorithm;
 const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const Controller = @import("controller").Controller;
-const Descriptor = @import("descriptor").Descriptor;
-const Exception = @import("exception").Exception;
-const IntoDescriptor = @import("into_descriptor").IntoDescriptor;
-const JSValue = @import("j_s_value").JSValue;
-const Loop = @import("loop").Loop;
-const Offset = @import("offset").Offset;
+pub const Controller = @import("controller").Controller;
+pub const Descriptor = @import("descriptor").Descriptor;
+pub const Exception = @import("exception").Exception;
+pub const IntoDescriptor = @import("into_descriptor").IntoDescriptor;
+pub const JSValue = @import("j_s_value").JSValue;
+pub const Loop = @import("loop").Loop;
+pub const Offset = @import("offset").Offset;
 const PullIntoDescriptorModule = @import("pull_into_descriptor");
-const PullIntos = @import("pull_intos").PullIntos;
-const Queue = @import("queue").Queue;
+pub const PullIntos = @import("pull_intos").PullIntos;
+pub const Queue = @import("queue").Queue;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const ReadIntoRequestModule = @import("read_into_request");
-const ReadableStream = @import("readable_stream").ReadableStream;
+pub const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
-const Request = @import("request").Request;
+pub const Request = @import("request").Request;
 const ViewConstruction = @import("view_construction");
 const common = @import("common");
 const eventLoop = @import("event_loop");

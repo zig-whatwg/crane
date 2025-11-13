@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
-const Dict = @import("dict").Dict;
+pub const Dict = @import("dict").Dict;
 const std = @import("std");
 const webidl = @import("webidl");
 

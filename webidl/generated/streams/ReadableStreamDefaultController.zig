@@ -9,18 +9,18 @@
 //   - Automatic import resolution
 
 const AbortController = @import("dom").AbortController;
-const Algorithm = @import("algorithm").Algorithm;
+pub const Algorithm = @import("algorithm").Algorithm;
 const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const Controller = @import("controller").Controller;
-const Exception = @import("exception").Exception;
-const JSValue = @import("j_s_value").JSValue;
-const Loop = @import("loop").Loop;
+pub const Controller = @import("controller").Controller;
+pub const Exception = @import("exception").Exception;
+pub const JSValue = @import("j_s_value").JSValue;
+pub const Loop = @import("loop").Loop;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
-const Requests = @import("requests").Requests;
-const SizeAlgorithm = @import("size_algorithm").SizeAlgorithm;
+pub const Requests = @import("requests").Requests;
+pub const SizeAlgorithm = @import("size_algorithm").SizeAlgorithm;
 const Value = @import("queue_with_sizes").Value;
 const common = @import("common");
 const eventLoop = @import("event_loop");

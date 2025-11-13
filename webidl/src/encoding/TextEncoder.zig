@@ -124,8 +124,8 @@ const infra = @import("infra");
 // Import and re-export dictionary for external use
 pub const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
 
-// Import mixin
-const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
+// Import mixin (pub so it can be re-exported by encoding/root.zig)
+pub const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 
 // ============================================================================
 // Helper Functions (Module-Level)

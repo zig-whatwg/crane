@@ -401,6 +401,9 @@ pub fn build(b: *std.Build) void {
     shadow_root_mod.addImport("webidl", webidl_mod);
     shadow_root_mod.addImport("document_fragment", document_fragment_mod);
     shadow_root_mod.addImport("element", element_mod);
+    shadow_root_mod.addImport("event_target", event_target_mod);
+    shadow_root_mod.addImport("node", node_mod);
+    shadow_root_mod.addImport("document", document_mod);
 
     // Create ShadowRootInit module (plain dictionary, no codegen)
     const shadow_root_init_mod = b.createModule(.{
@@ -461,6 +464,8 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("node_list", node_list_mod);
     element_mod.addImport("dom_token_list", dom_token_list_mod);
     element_mod.addImport("named_node_map", named_node_map_mod);
+    element_mod.addImport("document", document_mod);
+    element_mod.addImport("registered_observer", registered_observer_mod);
     // Note: dom -> element circular dependency is OK in Zig if handled carefully
     character_data_mod.addImport("node", node_mod);
     character_data_mod.addImport("event_target", event_target_mod);
@@ -481,18 +486,32 @@ pub fn build(b: *std.Build) void {
     comment_mod.addImport("dom_types", dom_types_mod);
     comment_mod.addImport("element", element_mod);
     comment_mod.addImport("event_target", event_target_mod);
+    comment_mod.addImport("node", node_mod);
+    comment_mod.addImport("document", document_mod);
+    comment_mod.addImport("registered_observer", registered_observer_mod);
     processing_instruction_mod.addImport("character_data", character_data_mod);
     processing_instruction_mod.addImport("dom_types", dom_types_mod);
     processing_instruction_mod.addImport("element", element_mod);
     processing_instruction_mod.addImport("event_target", event_target_mod);
+    processing_instruction_mod.addImport("node", node_mod);
+    processing_instruction_mod.addImport("document", document_mod);
+    processing_instruction_mod.addImport("registered_observer", registered_observer_mod);
     cdata_section_mod.addImport("text", text_mod);
     cdata_section_mod.addImport("event_target", event_target_mod);
+    cdata_section_mod.addImport("node", node_mod);
+    cdata_section_mod.addImport("document", document_mod);
+    cdata_section_mod.addImport("registered_observer", registered_observer_mod);
     document_type_mod.addImport("node", node_mod);
     document_type_mod.addImport("dom_types", dom_types_mod);
     document_type_mod.addImport("event_target", event_target_mod);
+    document_type_mod.addImport("document", document_mod);
+    document_type_mod.addImport("registered_observer", registered_observer_mod);
+    document_type_mod.addImport("node_list", node_list_mod);
     document_fragment_mod.addImport("node", node_mod);
     document_fragment_mod.addImport("element", element_mod);
     document_fragment_mod.addImport("event_target", event_target_mod);
+    document_fragment_mod.addImport("document", document_mod);
+    document_fragment_mod.addImport("registered_observer", registered_observer_mod);
     document_fragment_mod.addImport("node_list", node_list_mod);
     document_fragment_mod.addImport("html_collection", html_collection_mod);
     document_fragment_mod.addImport("dom_types", dom_types_mod);
@@ -509,10 +528,17 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("comment", comment_mod);
     document_mod.addImport("document_fragment", document_fragment_mod);
     document_mod.addImport("range", range_mod);
+    document_mod.addImport("event_target", event_target_mod);
+    document_mod.addImport("registered_observer", registered_observer_mod);
     dom_token_list_mod.addImport("element", element_mod);
+    dom_token_list_mod.addImport("node", node_mod);
+    dom_token_list_mod.addImport("event_target", event_target_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
     attr_mod.addImport("event_target", event_target_mod);
+    attr_mod.addImport("document", document_mod);
+    attr_mod.addImport("registered_observer", registered_observer_mod);
+    attr_mod.addImport("node_list", node_list_mod);
     named_node_map_mod.addImport("attr", attr_mod);
     named_node_map_mod.addImport("element", element_mod);
     dom_implementation_mod.addImport("document", document_mod);
