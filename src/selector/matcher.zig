@@ -86,7 +86,6 @@
 //! ### Not Yet Implemented (Need HTML/Forms Integration)
 //! The following pseudo-classes require HTML element types and form semantics:
 //! - `:target` - Requires Document fragment identifier integration
-//! - `:scope` - Requires scoped query API changes
 //! - `:defined` - Requires Web Components / Custom Elements
 //! - `:placeholder-shown` - Requires HTMLInputElement
 //! - `:default` - Requires HTMLFormElement
@@ -130,9 +129,14 @@ pub const MatcherError = error{
 
 pub const Matcher = struct {
     allocator: Allocator,
+    scoping_root: ?*const Element = null,
 
     pub fn init(allocator: Allocator) Matcher {
         return .{ .allocator = allocator };
+    }
+
+    pub fn initWithScope(allocator: Allocator, scoping_root: *const Element) Matcher {
+        return .{ .allocator = allocator, .scoping_root = scoping_root };
     }
 
     /// Check if element matches selector list (OR semantics)
@@ -344,6 +348,7 @@ pub const Matcher = struct {
             .OnlyOfType => matchesOnlyOfType(element),
             .Empty => matchesEmpty(element),
             .Root => matchesRoot(element),
+            .Scope => self.matchesScope(element),
             .NthChild => |pattern| matchesNthChild(element, pattern),
             .NthLastChild => |pattern| matchesNthLastChild(element, pattern),
             .NthOfType => |pattern| matchesNthOfType(element, pattern),
@@ -359,6 +364,16 @@ pub const Matcher = struct {
             // Input pseudo-classes - not supported without HTML library
             .Enabled, .Disabled, .ReadOnly, .ReadWrite, .Checked => false,
         };
+    }
+
+    /// Match :scope pseudo-class
+    /// Matches when element is the scoping root
+    fn matchesScope(self: *const Matcher, element: *Element) bool {
+        if (self.scoping_root) |scope| {
+            return @as(*const Element, @ptrCast(scope)) == element;
+        }
+        // If no scoping root specified, :scope matches the root element
+        return matchesRoot(element);
     }
 
     /// Match :has() pseudo-class (element has descendant or relative matching selector)
@@ -2003,6 +2018,59 @@ test "Matcher: :dir(ltr) pseudo-class" {
     const result = try matcher.matches(elem, &selector_list);
 
     try testing.expect(result);
+}
+
+test "Matcher: :scope pseudo-class matches scoping root" {
+    const allocator = testing.allocator;
+
+    // Create scoping root
+    const scope_elem = try createTestElement(allocator, "div");
+    defer destroyTestElement(allocator, scope_elem);
+
+    // Create another element
+    const other_elem = try createTestElement(allocator, "p");
+    defer destroyTestElement(allocator, other_elem);
+
+    const input = ":scope";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    // Matcher with scoping root
+    const matcher = Matcher.initWithScope(allocator, scope_elem);
+    try testing.expect(try matcher.matches(scope_elem, &selector_list)); // Matches scope
+    try testing.expect(!try matcher.matches(other_elem, &selector_list)); // Doesn't match non-scope
+}
+
+test "Matcher: :scope without scoping root matches root element" {
+    const allocator = testing.allocator;
+
+    // Create root element (no parent)
+    const root = try createTestElement(allocator, "html");
+    defer destroyTestElement(allocator, root);
+
+    // Create child element
+    const child = try createTestElement(allocator, "body");
+    defer destroyTestElement(allocator, child);
+
+    child.base.parent_node = &root.base;
+    try root.base.child_nodes.append(&child.base);
+
+    const input = ":scope";
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    // Matcher without scoping root - :scope should match :root
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(root, &selector_list)); // Root matches :scope
+    try testing.expect(!try matcher.matches(child, &selector_list)); // Child doesn't match :scope
 }
 
 test "Matcher: :dir(rtl) pseudo-class" {

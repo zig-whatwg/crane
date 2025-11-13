@@ -91,12 +91,23 @@ fn matchSelectorAgainstTree(
     root: *NodeBase,
     scoping_root: anytype,
 ) !std.ArrayList(*ElementWithBase) {
-    _ = scoping_root; // TODO: Use for :scope pseudo-class
-
     var matches: std.ArrayList(*ElementWithBase) = .empty;
     errdefer matches.deinit(allocator);
 
-    const matcher = Matcher.init(allocator);
+    // Get scoping root as ElementWithBase if it's an element
+    const scoping_element: ?*const ElementWithBase = blk: {
+        const node_base = getNodeBase(scoping_root);
+        if (node_base.node_type == NodeBase.ELEMENT_NODE) {
+            break :blk @ptrCast(node_base);
+        }
+        break :blk null;
+    };
+
+    // Create matcher with scoping root
+    const matcher = if (scoping_element) |scope|
+        Matcher.initWithScope(allocator, scope)
+    else
+        Matcher.init(allocator);
 
     // Traverse tree in depth-first order
     try traverseAndMatch(allocator, &matcher, selector_list, root, &matches);
@@ -182,4 +193,85 @@ test "selectors: scopeMatchSelectorsString with syntax error" {
     // Invalid selector should return SyntaxError
     const result = scopeMatchSelectorsString(allocator, ">>", &root);
     try testing.expectError(error.SyntaxError, result);
+}
+
+test "selectors: :scope pseudo-class matches scoping root" {
+    const allocator = testing.allocator;
+
+    // Create tree: div#root > span > p
+    var root = ElementWithBase.init(allocator, "div");
+    defer root.deinit();
+    try root.setId("root");
+
+    var span = try allocator.create(ElementWithBase);
+    defer {
+        span.deinit();
+        allocator.destroy(span);
+    }
+    span.* = ElementWithBase.init(allocator, "span");
+
+    var p = try allocator.create(ElementWithBase);
+    defer {
+        p.deinit();
+        allocator.destroy(p);
+    }
+    p.* = ElementWithBase.init(allocator, "p");
+
+    // Link: div > span > p
+    span.base.parent_node = &root.base;
+    try root.base.child_nodes.append(&span.base);
+    p.base.parent_node = &span.base;
+    try span.base.child_nodes.append(&p.base);
+
+    // Query for ":scope" - should match the scoping root (div)
+    var matches = try scopeMatchSelectorsString(allocator, ":scope", &root);
+    defer matches.deinit(allocator);
+
+    try testing.expectEqual(@as(usize, 1), matches.items.len);
+    try testing.expect(matches.items[0] == &root);
+}
+
+test "selectors: :scope > p matches direct children" {
+    const allocator = testing.allocator;
+
+    // Create tree: div#scope > p, span > p
+    var root = ElementWithBase.init(allocator, "div");
+    defer root.deinit();
+    try root.setId("scope");
+
+    var p1 = try allocator.create(ElementWithBase);
+    defer {
+        p1.deinit();
+        allocator.destroy(p1);
+    }
+    p1.* = ElementWithBase.init(allocator, "p");
+
+    var span = try allocator.create(ElementWithBase);
+    defer {
+        span.deinit();
+        allocator.destroy(span);
+    }
+    span.* = ElementWithBase.init(allocator, "span");
+
+    var p2 = try allocator.create(ElementWithBase);
+    defer {
+        p2.deinit();
+        allocator.destroy(p2);
+    }
+    p2.* = ElementWithBase.init(allocator, "p");
+
+    // Link: div > p1, div > span > p2
+    p1.base.parent_node = &root.base;
+    try root.base.child_nodes.append(&p1.base);
+    span.base.parent_node = &root.base;
+    try root.base.child_nodes.append(&span.base);
+    p2.base.parent_node = &span.base;
+    try span.base.child_nodes.append(&p2.base);
+
+    // Query for ":scope > p" from root - should match only direct p child
+    var matches = try scopeMatchSelectorsString(allocator, ":scope > p", &root);
+    defer matches.deinit(allocator);
+
+    try testing.expectEqual(@as(usize, 1), matches.items.len);
+    try testing.expect(matches.items[0] == p1);
 }
