@@ -1975,28 +1975,6 @@ test "Matcher: nested :not(:is()) combination" {
     try testing.expect(try matcher.matches(div, &selector_list)); // div is not (p or span)
     try testing.expect(!try matcher.matches(p, &selector_list)); // p is (p or span)
 }
-//
-// TODO: Enable when ArrayList.init bug in element_with_base.zig is fixed
-// test "Matcher: :lang(en) matches en-US variant" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElement(allocator, "div");
-//     defer destroyTestElement(allocator, elem);
-//
-//     try elem.setAttribute("lang", "en-US");
-//
-//     const input = "div:lang(en)";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = try Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     var selector_list = try p.parse();
-//     defer selector_list.deinit();
-//
-//     const matcher = Matcher.init(allocator);
-//     const result = try matcher.matches(elem, &selector_list);
-//
-//     try testing.expect(result); // en-US should match :lang(en)
-// }
 
 test "Matcher: :dir(ltr) pseudo-class" {
     const allocator = testing.allocator;
