@@ -710,32 +710,28 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         }
         if (priv_inline_fn_pos) |pos_val| {
             if (fn_pos == null or pos_val < fn_pos.?) {
-                fn_pos = pos_val;
-                is_public = false;
-                is_inline = true;
-                prefix_len = "inline fn ".len;
+                // Check it's not inside a field type (would have : before it on same line)
+                const line_start = if (std.mem.lastIndexOfScalar(u8, struct_body[0..pos_val], '\n')) |nl| nl + 1 else 0;
+                const line_prefix = struct_body[line_start..pos_val];
+                if (std.mem.indexOfScalar(u8, line_prefix, ':') == null) {
+                    fn_pos = pos_val;
+                    is_public = false;
+                    is_inline = true;
+                    prefix_len = "inline fn ".len;
+                }
             }
         }
         if (priv_fn_pos) |pos_val| {
             if (fn_pos == null or pos_val < fn_pos.?) {
-                // Make sure this isn't part of "pub fn" or "inline fn"
-                if (pos_val >= 4) {
-                    const before = struct_body[pos_val - 4 .. pos_val];
-                    if (std.mem.eql(u8, before, "pub ") or std.mem.eql(u8, before, "line")) {
-                        pos += 1;
-                        continue;
-                    }
-                } else if (pos_val >= 7) {
-                    const before = struct_body[pos_val - 7 .. pos_val];
-                    if (std.mem.eql(u8, before, "inline ")) {
-                        pos += 1;
-                        continue;
-                    }
+                // Check it's not inside a field type (would have : before it on same line)
+                const line_start = if (std.mem.lastIndexOfScalar(u8, struct_body[0..pos_val], '\n')) |nl| nl + 1 else 0;
+                const line_prefix = struct_body[line_start..pos_val];
+                if (std.mem.indexOfScalar(u8, line_prefix, ':') == null) {
+                    fn_pos = pos_val;
+                    is_public = false;
+                    is_inline = false;
+                    prefix_len = "fn ".len;
                 }
-                fn_pos = pos_val;
-                is_public = false;
-                is_inline = false;
-                prefix_len = "fn ".len;
             }
         }
 
