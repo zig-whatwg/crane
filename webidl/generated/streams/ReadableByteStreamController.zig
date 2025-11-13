@@ -12,7 +12,6 @@ const AbortController = @import("dom").AbortController;
 const Allocator = @import("std.mem").Allocator;
 const ArrayBuffer = @import("array_buffer").ArrayBuffer;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const ByteStreamQueueEntry = @import("byte_stream_queue_entry").ByteStreamQueueEntry;
 const PullIntoDescriptor = @import("pull_into_descriptor").PullIntoDescriptor;
 const PullIntoDescriptorModule = @import("pull_into_descriptor").PullIntoDescriptorModule;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;

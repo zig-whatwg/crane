@@ -10,7 +10,6 @@
 
 const Allocator = @import("std.mem").Allocator;
 const Element = @import("element").Element;
-const FilterFn = @import("filter_fn").FilterFn;
 const Node = @import("node").Node;
 const anyopaque = @import("anyopaque").anyopaque;
 const infra = @import("infra").infra;

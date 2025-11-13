@@ -8,11 +8,9 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const AbortAlgorithm = @import("abort_algorithm").AbortAlgorithm;
 const Allocator = @import("std.mem").Allocator;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
-const EventListenerRemovalContext = @import("event_listener_removal_context").EventListenerRemovalContext;
 const EventTarget = @import("event_target").EventTarget;
 const infra = @import("infra").infra;
 const std = @import("std");

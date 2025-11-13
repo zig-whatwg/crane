@@ -43,6 +43,7 @@ pub fn enhanceClass(
     class: *ir.ClassDef,
     registry: *ClassRegistry,
     module_imports: []const ir.Import,
+    module_definitions: []const u8,
 ) !ir.EnhancedClassIR {
     var enhanced = ir.EnhancedClassIR{
         .class = class.*,
@@ -81,6 +82,7 @@ pub fn enhanceClass(
         enhanced.all_methods,
         enhanced.all_properties,
         module_imports,
+        module_definitions,
         registry,
     );
 
@@ -234,6 +236,7 @@ fn resolveImports(
     all_methods: []ir.Method,
     all_properties: []ir.Property,
     module_imports: []const ir.Import,
+    module_definitions: []const u8,
     registry: *ClassRegistry,
 ) ![]ir.Import {
     var imports = std.StringHashMap(ir.Import).init(allocator);
@@ -287,19 +290,19 @@ fn resolveImports(
 
     // Collect type references from fields
     for (all_fields) |field| {
-        try addImportForType(allocator, &imports, field.type_name, class.name);
+        try addImportForType(allocator, &imports, field.type_name, class.name, module_definitions);
     }
 
     // Collect type references from methods
     for (all_methods) |method| {
         for (method.referenced_types) |type_name| {
-            try addImportForType(allocator, &imports, type_name, class.name);
+            try addImportForType(allocator, &imports, type_name, class.name, module_definitions);
         }
     }
 
     // Collect type references from properties
     for (all_properties) |prop| {
-        try addImportForType(allocator, &imports, prop.type_name, class.name);
+        try addImportForType(allocator, &imports, prop.type_name, class.name, module_definitions);
     }
 
     // Note: No hardcoded inheritance-based imports
@@ -327,6 +330,7 @@ fn addImportForType(
     imports: *std.StringHashMap(ir.Import),
     type_name: []const u8,
     current_class: []const u8,
+    module_definitions: []const u8,
 ) !void {
     // Extract base type name
     var base_type = type_name;
@@ -339,6 +343,17 @@ fn addImportForType(
     // Strip "const "
     if (std.mem.startsWith(u8, base_type, "const ")) {
         base_type = base_type["const ".len..];
+    }
+
+    // Skip if type is locally defined in module_definitions
+    // e.g., "const Group = types.Group;" means Group is already available
+    // Simple heuristic: check if "const TypeName =" appears in the definitions
+    if (module_definitions.len > 0) {
+        var search_pattern: [256]u8 = undefined;
+        const pattern = try std.fmt.bufPrint(&search_pattern, "const {s} =", .{base_type});
+        if (std.mem.indexOf(u8, module_definitions, pattern) != null) {
+            return; // Type is locally defined, don't import
+        }
     }
 
     // If contains '(' (generic like std.ArrayList(EventListener)), extract inner types
@@ -355,7 +370,7 @@ fn addImportForType(
                 if (depth == 0 and start_idx != null) {
                     const inner = base_type[start_idx.? .. paren_idx + i];
                     // Recursively extract types from inner content
-                    try addImportForType(allocator, imports, inner, current_class);
+                    try addImportForType(allocator, imports, inner, current_class, module_definitions);
                     break;
                 }
             }

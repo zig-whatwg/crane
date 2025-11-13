@@ -467,7 +467,7 @@ pub fn generateAllClasses(
 
         // Process each class in the file
         for (file_ir.classes) |*class| {
-            var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry, file_ir.module_imports);
+            var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry, file_ir.module_imports, file_ir.module_definitions);
             defer enhanced.deinit(allocator);
 
             // All classes get module definitions (helper functions need to be accessible)
