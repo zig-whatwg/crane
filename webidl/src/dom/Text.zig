@@ -9,6 +9,7 @@ const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocu
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
 const Node = @import("node").Node;
+const Document = @import("document").Document;
 const Allocator = std.mem.Allocator;
 
 /// DOM Spec: interface Text : CharacterData
@@ -89,7 +90,6 @@ pub const Text = webidl.interface(struct {
 
             // Steps 6.2-6.5: Update live ranges
             if (self_node.owner_document) |owner_doc| {
-                const Document = @import("document").Document;
                 const doc = try Document.fromNode(owner_doc);
                 const range_tracking = @import("range_tracking");
                 range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);

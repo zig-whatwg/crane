@@ -19,6 +19,16 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Text = @import("text").Text;
 
+/// Custom element state per HTML spec
+/// Spec: https://html.spec.whatwg.org/#custom-element-state
+pub const CustomElementState = enum {
+    undefined,
+    failed,
+    uncustomized,
+    precustomized,
+    custom,
+};
+
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
 pub const Element = webidl.interface(struct {
@@ -34,6 +44,14 @@ pub const Element = webidl.interface(struct {
 
     /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*ShadowRoot,
+
+    /// Custom element state per HTML spec
+    /// Spec: https://html.spec.whatwg.org/#custom-element-state
+    custom_element_state: CustomElementState = .undefined,
+
+    /// "is" value for customized built-in elements
+    /// Spec: https://html.spec.whatwg.org/#concept-element-is-value
+    is_value: ?[]const u8 = null,
 
     /// Cached DOMTokenList for classList ([SameObject])
     cached_class_list: ?*@import("dom_token_list").DOMTokenList = null,

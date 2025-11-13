@@ -30,28 +30,28 @@ pub const StaticRange = webidl.interface(struct {
     ///    then throw an "InvalidNodeTypeError" DOMException.
     /// 2. Set this's start to (init["startContainer"], init["startOffset"])
     ///    and end to (init["endContainer"], init["endOffset"]).
-    pub fn init(init: StaticRangeInit) !StaticRange {
+    pub fn init(options: StaticRangeInit) !StaticRange {
         const NodeType = @import("node").Node;
 
         // Step 1: Check for invalid node types
-        if (init.startContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            init.startContainer.node_type == NodeType.ATTRIBUTE_NODE)
+        if (options.startContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
+            options.startContainer.node_type == NodeType.ATTRIBUTE_NODE)
         {
             return error.InvalidNodeTypeError;
         }
 
-        if (init.endContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            init.endContainer.node_type == NodeType.ATTRIBUTE_NODE)
+        if (options.endContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
+            options.endContainer.node_type == NodeType.ATTRIBUTE_NODE)
         {
             return error.InvalidNodeTypeError;
         }
 
         // Step 2: Set start and end boundary points
         return .{
-            .start_container = init.startContainer,
-            .start_offset = init.startOffset,
-            .end_container = init.endContainer,
-            .end_offset = init.endOffset,
+            .start_container = options.startContainer,
+            .start_offset = options.startOffset,
+            .end_container = options.endContainer,
+            .end_offset = options.endOffset,
         };
     }
 

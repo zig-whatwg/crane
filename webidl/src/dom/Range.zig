@@ -10,6 +10,8 @@ const AbstractRange = @import("abstract_range").AbstractRange;
 const Node = @import("node").Node;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Document = @import("document").Document;
+const CharacterData = @import("character_data").CharacterData;
+const Text = @import("text").Text;
 
 /// DOM Spec: interface Range : AbstractRange
 ///
@@ -100,7 +102,6 @@ pub const Range = webidl.interface(struct {
             Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
             Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
                 // CharacterData nodes - get data length
-                const CharacterData = @import("character_data").CharacterData;
                 const charData = CharacterData.fromNode(node) catch return 0;
                 return charData.get_length();
             },
@@ -472,7 +473,6 @@ pub const Range = webidl.interface(struct {
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
                 // This is CharacterData - call deleteData to remove the range
-                const CharacterData = @import("character_data").CharacterData;
                 const charData = try CharacterData.fromNode(self.start_container);
                 const count = self.end_offset - self.start_offset;
                 try charData.call_deleteData(self.start_offset, count);
@@ -507,7 +507,6 @@ pub const Range = webidl.interface(struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const CharacterData = @import("character_data").CharacterData;
             const originalCharData = try CharacterData.fromNode(self.start_container);
             const cloneCharData = try CharacterData.fromNode(clone);
 
@@ -586,7 +585,6 @@ pub const Range = webidl.interface(struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const CharacterData = @import("character_data").CharacterData;
             const originalCharData = try CharacterData.fromNode(self.start_container);
             const cloneCharData = try CharacterData.fromNode(clone);
 
@@ -669,7 +667,6 @@ pub const Range = webidl.interface(struct {
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            const Text = @import("text").Text;
             const textNode = try Text.fromNode(self.start_container);
             const newText = try textNode.call_splitText(self.start_offset);
             referenceNode = &newText.base.base;
@@ -891,7 +888,6 @@ pub const Range = webidl.interface(struct {
     /// DOM §5 - Range stringifier
     /// Returns the text content of the range per spec §5.7
     pub fn toString(self: *Range, allocator: Allocator) ![]const u8 {
-        const Text = @import("text").Text;
         var result = std.ArrayList(u8).init(allocator);
         errdefer result.deinit();
 
@@ -944,7 +940,6 @@ pub const Range = webidl.interface(struct {
     fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
         // If this node is contained and is a Text node, append its data
         if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
-            const Text = @import("text").Text;
             const textNode = try Text.fromNode(node);
             const data = textNode.base.get_data();
             try result.appendSlice(data);
