@@ -562,3 +562,116 @@ test "tree_helpers - findCommonAncestor self" {
     try expect(tree_helpers.findCommonAncestor(tree.root, tree.root) == tree.root);
     try expect(tree_helpers.findCommonAncestor(tree.a, tree.a) == tree.a);
 }
+
+// ============================================================================
+// Shadow-Including Tree Traversal Tests (DOM §4.10.3)
+// ============================================================================
+
+test "tree_helpers - getShadowIncludingRoot without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Without shadow roots, shadow-including root == regular root
+    try expect(tree_helpers.getShadowIncludingRoot(tree.root) == tree.root);
+    try expect(tree_helpers.getShadowIncludingRoot(tree.a) == tree.root);
+    try expect(tree_helpers.getShadowIncludingRoot(tree.d) == tree.root);
+    try expect(tree_helpers.getShadowIncludingRoot(tree.f) == tree.root);
+}
+
+test "tree_helpers - isShadowIncludingDescendant without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Without shadow roots, shadow-including descendant == regular descendant
+    try expect(tree_helpers.isShadowIncludingDescendant(tree.d, tree.root));
+    try expect(tree_helpers.isShadowIncludingDescendant(tree.d, tree.a));
+    try expect(!tree_helpers.isShadowIncludingDescendant(tree.root, tree.d));
+    try expect(!tree_helpers.isShadowIncludingDescendant(tree.d, tree.e));
+}
+
+test "tree_helpers - isShadowIncludingInclusiveDescendant without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Self is inclusive descendant
+    try expect(tree_helpers.isShadowIncludingInclusiveDescendant(tree.root, tree.root));
+    try expect(tree_helpers.isShadowIncludingInclusiveDescendant(tree.a, tree.a));
+
+    // Regular descendants
+    try expect(tree_helpers.isShadowIncludingInclusiveDescendant(tree.d, tree.root));
+    try expect(tree_helpers.isShadowIncludingInclusiveDescendant(tree.d, tree.a));
+    try expect(!tree_helpers.isShadowIncludingInclusiveDescendant(tree.root, tree.d));
+}
+
+test "tree_helpers - isShadowIncludingAncestor without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Without shadow roots, shadow-including ancestor == regular ancestor
+    try expect(tree_helpers.isShadowIncludingAncestor(tree.root, tree.d));
+    try expect(tree_helpers.isShadowIncludingAncestor(tree.a, tree.d));
+    try expect(!tree_helpers.isShadowIncludingAncestor(tree.d, tree.root));
+    try expect(!tree_helpers.isShadowIncludingAncestor(tree.d, tree.a));
+}
+
+test "tree_helpers - isShadowIncludingInclusiveAncestor without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Self is inclusive ancestor
+    try expect(tree_helpers.isShadowIncludingInclusiveAncestor(tree.root, tree.root));
+    try expect(tree_helpers.isShadowIncludingInclusiveAncestor(tree.a, tree.a));
+
+    // Regular ancestors
+    try expect(tree_helpers.isShadowIncludingInclusiveAncestor(tree.root, tree.d));
+    try expect(tree_helpers.isShadowIncludingInclusiveAncestor(tree.a, tree.d));
+    try expect(!tree_helpers.isShadowIncludingInclusiveAncestor(tree.d, tree.root));
+}
+
+test "tree_helpers - getShadowIncludingInclusiveDescendants without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Get all inclusive descendants in tree order
+    var descendants = try tree_helpers.getShadowIncludingInclusiveDescendants(allocator, tree.root);
+    defer descendants.deinit();
+
+    // Should be: root, a, d, e, b, c, f (preorder traversal)
+    try expectEqual(@as(usize, 7), descendants.items.len);
+    try expect(descendants.items[0] == tree.root);
+    try expect(descendants.items[1] == tree.a);
+    try expect(descendants.items[2] == tree.d);
+    try expect(descendants.items[3] == tree.e);
+    try expect(descendants.items[4] == tree.b);
+    try expect(descendants.items[5] == tree.c);
+    try expect(descendants.items[6] == tree.f);
+}
+
+test "tree_helpers - getShadowIncludingDescendants without shadow" {
+    const allocator = std.testing.allocator;
+    const tree = try createTestTree(allocator);
+    defer destroyTestTree(tree);
+
+    // Get all descendants (not including root) in tree order
+    var descendants = try tree_helpers.getShadowIncludingDescendants(allocator, tree.root);
+    defer descendants.deinit();
+
+    // Should be: a, d, e, b, c, f (not including root)
+    try expectEqual(@as(usize, 6), descendants.items.len);
+    try expect(descendants.items[0] == tree.a);
+    try expect(descendants.items[1] == tree.d);
+    try expect(descendants.items[2] == tree.e);
+    try expect(descendants.items[3] == tree.b);
+    try expect(descendants.items[4] == tree.c);
+    try expect(descendants.items[5] == tree.f);
+}
+
+// TODO: Add tests with actual shadow roots
+// These will require Element and ShadowRoot setup
+// For now, the above tests verify the functions work correctly without shadow DOM

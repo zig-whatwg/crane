@@ -15,6 +15,8 @@ const infra = @import("infra");
 // Import DOM types from the dom root module
 // This works because tree_helpers.zig is part of src/dom/root.zig
 pub const Node = @import("node").Node;
+pub const Element = @import("element").Element;
+pub const ShadowRoot = @import("shadow_root").ShadowRoot;
 
 // ============================================================================
 // Tree Navigation Adapters
@@ -619,3 +621,171 @@ pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra
 
 // Tree traversal functions are tested through integration tests in
 // tests/dom/slot_algorithms_test.zig since they require proper DOM tree setup
+
+// ============================================================================
+// Shadow-Including Tree Traversal (DOM §4.10.3)
+// ============================================================================
+// Shadow-including algorithms traverse into shadow roots to handle Shadow DOM
+
+/// Get the shadow-including root of a node
+///
+/// Per DOM spec §4.10.3:
+/// The shadow-including root of an object is its root's host's shadow-including root,
+/// if the object's root is a shadow root; otherwise its root.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-root
+pub fn getShadowIncludingRoot(node: *const Node) *Node {
+    // Get the regular root
+    var current = node;
+    while (current.parent_node) |parent| {
+        current = parent;
+    }
+
+    // If the root is a shadow root, recursively get its host's shadow-including root
+    // A ShadowRoot has node_type == DOCUMENT_FRAGMENT_NODE (11)
+    if (current.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+        // Try to cast to ShadowRoot
+        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(current)));
+
+        // Get the host element and recursively get its shadow-including root
+        const host = shadow_root.getHost();
+        const host_node: *const Node = @ptrCast(@alignCast(host));
+        return getShadowIncludingRoot(host_node);
+    }
+
+    return @constCast(current);
+}
+
+/// Check if node A is a shadow-including descendant of node B
+///
+/// Per DOM spec §4.10.3:
+/// An object A is a shadow-including descendant of an object B, if:
+/// - A is a descendant of B, OR
+/// - A's root is a shadow root AND A's root's host is a shadow-including inclusive descendant of B
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-descendant
+pub fn isShadowIncludingDescendant(nodeA: *const Node, nodeB: *const Node) bool {
+    // First check: Is A a descendant of B?
+    if (isDescendant(nodeB, nodeA)) {
+        return true;
+    }
+
+    // Second check: Is A's root a shadow root AND is A's root's host
+    // a shadow-including inclusive descendant of B?
+    var rootA = nodeA;
+    while (rootA.parent_node) |parent| {
+        rootA = parent;
+    }
+
+    // Check if rootA is a shadow root (DocumentFragment)
+    if (rootA.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+        // Cast to ShadowRoot to access host
+        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(rootA)));
+        const host = shadow_root.getHost();
+        const host_node: *const Node = @ptrCast(@alignCast(host));
+
+        // Check if host is a shadow-including inclusive descendant of B
+        return isShadowIncludingInclusiveDescendant(host_node, nodeB);
+    }
+
+    return false;
+}
+
+/// Check if node A is a shadow-including inclusive descendant of node B
+///
+/// Per DOM spec §4.10.3:
+/// A shadow-including inclusive descendant is an object or one of its shadow-including descendants.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
+pub fn isShadowIncludingInclusiveDescendant(nodeA: *const Node, nodeB: *const Node) bool {
+    if (nodeA == nodeB) return true;
+    return isShadowIncludingDescendant(nodeA, nodeB);
+}
+
+/// Check if node A is a shadow-including ancestor of node B
+///
+/// Per DOM spec §4.10.3:
+/// An object A is a shadow-including ancestor of an object B,
+/// if and only if B is a shadow-including descendant of A.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-ancestor
+pub fn isShadowIncludingAncestor(nodeA: *const Node, nodeB: *const Node) bool {
+    return isShadowIncludingDescendant(nodeB, nodeA);
+}
+
+/// Check if node A is a shadow-including inclusive ancestor of node B
+///
+/// Per DOM spec §4.10.3:
+/// A shadow-including inclusive ancestor is an object or one of its shadow-including ancestors.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
+pub fn isShadowIncludingInclusiveAncestor(nodeA: *const Node, nodeB: *const Node) bool {
+    if (nodeA == nodeB) return true;
+    return isShadowIncludingAncestor(nodeA, nodeB);
+}
+
+/// Get all shadow-including inclusive descendants in shadow-including tree order
+///
+/// Per DOM spec §4.10.3:
+/// Shadow-including tree order is shadow-including preorder, depth-first traversal.
+/// For each shadow host encountered, traverse that element's shadow root's node tree
+/// just after the element is encountered.
+///
+/// Returns a list that the caller must deinit.
+///
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-tree-order
+pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+    var result = infra.List(*Node).init(allocator);
+    errdefer result.deinit();
+
+    // Add root first (inclusive)
+    try result.append(@constCast(root));
+
+    // Recursively collect shadow-including descendants
+    try collectShadowIncludingDescendants(&result, root);
+
+    return result;
+}
+
+/// Helper: Recursively collect shadow-including descendants in tree order
+fn collectShadowIncludingDescendants(result: *infra.List(*Node), node: *const Node) !void {
+    // Visit each child in order
+    var i: usize = 0;
+    while (i < node.child_nodes.len) : (i += 1) {
+        const child = node.child_nodes.get(i).?;
+
+        // Add the child
+        try result.append(child);
+
+        // Per spec: If child is a shadow host, traverse its shadow tree immediately
+        // after adding the child, before traversing the child's own children
+        // Check if child is an Element (node_type == 1) with a shadow root
+        if (child.node_type == Node.ELEMENT_NODE) {
+            const element = @as(*Element, @ptrCast(@alignCast(child)));
+            if (element.shadow_root) |shadow| {
+                // Traverse the shadow tree
+                const shadow_node: *const Node = @ptrCast(@alignCast(shadow));
+
+                // Add shadow root itself
+                try result.append(@constCast(shadow_node));
+
+                // Recursively traverse shadow root's descendants
+                try collectShadowIncludingDescendants(result, shadow_node);
+            }
+        }
+
+        // After shadow tree (if any), recursively traverse child's light DOM descendants
+        try collectShadowIncludingDescendants(result, child);
+    }
+}
+
+/// Get all shadow-including descendants (not including root) in shadow-including tree order
+pub fn getShadowIncludingDescendants(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+    var result = infra.List(*Node).init(allocator);
+    errdefer result.deinit();
+
+    // Don't add root, just collect its shadow-including descendants
+    try collectShadowIncludingDescendants(&result, root);
+
+    return result;
+}
