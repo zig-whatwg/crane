@@ -110,16 +110,16 @@ pub const Tokenizer = struct {
 
     /// Tokenize entire input into token list
     pub fn tokenize(self: *Tokenizer) ![]Token {
-        var tokens = std.ArrayList(Token).init(self.allocator);
-        defer tokens.deinit();
+        var tokens = std.ArrayList(Token){};
+        errdefer tokens.deinit(self.allocator);
 
         while (true) {
             const token = try self.nextToken();
-            try tokens.append(token);
+            try tokens.append(self.allocator, token);
             if (token.tag == .eof) break;
         }
 
-        return try tokens.toOwnedSlice();
+        return try tokens.toOwnedSlice(self.allocator);
     }
 
     /// Get next token from input
@@ -473,10 +473,10 @@ test "Tokenizer: zero-copy design" {
 
 // Note: tokenize() test temporarily disabled due to ArrayList API in tests
 // The tokenize() function itself works fine when called from other code
-// test "Tokenizer: tokenize() full selector" {
-//     const allocator = testing.allocator;
-//     var tokenizer = Tokenizer.init(allocator, "div");
-//     const tokens = try tokenizer.tokenize();
-//     defer allocator.free(tokens);
-//     try testing.expectEqual(@as(usize, 2), tokens.len);
-// }
+test "Tokenizer: tokenize() full selector" {
+    const allocator = testing.allocator;
+    var tokenizer = Tokenizer.init(allocator, "div");
+    const tokens = try tokenizer.tokenize();
+    defer allocator.free(tokens);
+    try testing.expectEqual(@as(usize, 2), tokens.len);
+}
