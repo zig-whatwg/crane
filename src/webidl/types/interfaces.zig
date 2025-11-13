@@ -114,16 +114,16 @@ pub fn unwrapInterface(comptime T: type, value: primitives.JSValue) !*T {
 
     const wrapper = value.interface_ptr;
 
-    // Runtime type check (in debug mode)
-    if (std.debug.runtime_safety) {
-        const expected_name = @typeName(T);
-        if (!std.mem.eql(u8, wrapper.type_name, expected_name)) {
+    // Runtime type check (always enforced for safety)
+    const expected_name = @typeName(T);
+    if (!std.mem.eql(u8, wrapper.type_name, expected_name)) {
+        if (std.debug.runtime_safety) {
             std.debug.print(
                 "Type mismatch: expected {s}, got {s}\n",
                 .{ expected_name, wrapper.type_name },
             );
-            return error.TypeError;
         }
+        return error.TypeError;
     }
 
     return @ptrCast(@alignCast(wrapper.ptr));
