@@ -19,8 +19,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 
 
-const Allocator = std.mem.Allocator;
-
 /// DOM Spec: interface DOMImplementation
 ///
 /// Factory interface for creating documents and document types.

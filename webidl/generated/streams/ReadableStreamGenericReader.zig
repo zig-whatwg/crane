@@ -72,6 +72,19 @@ pub const ReadableStreamGenericReader = struct {
     
     }
 
+    fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream is not undefined.
+        // (Assertion is implicit - .? will panic if stream is null)
+
+        // Step 3: Return ! ReadableStreamCancel(stream, reason).
+        return stream.cancelInternal(reason);
+    
+    }
+
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
 
         // Step 1: Let stream be reader.[[stream]].

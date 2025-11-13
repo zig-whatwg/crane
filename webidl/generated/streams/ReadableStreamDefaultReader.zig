@@ -115,6 +115,42 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    fn readInternal(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
+
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream.[[reader]] is reader.
+        std.debug.assert(stream.reader == .default);
+
+        // Step 3: Set stream.[[disturbed]] to true.
+        stream.disturbed = true;
+
+        // Step 4: If stream.[[state]] is "closed", return a promise fulfilled with {value: undefined, done: true}.
+        if (stream.state == .closed) {
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+            promise.fulfill(common.ReadResult{ .value = null, .done = true });
+            return promise;
+        }
+
+        // Step 5: If stream.[[state]] is "errored", return a promise rejected with stream.[[storedError]].
+        if (stream.state == .errored) {
+            const stored_err = stream.storedError orelse common.JSValue.undefined_value();
+            const exception = try stored_err.toException(self.allocator);
+            const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
+            promise.reject(exception);
+            return promise;
+        }
+
+        // Step 6: Assert: stream.[[state]] is "readable".
+        std.debug.assert(stream.state == .readable);
+
+        // Step 7: Return ! stream.[[controller]].[[PullSteps]]().
+        // This delegates to the controller to actually pull data
+        return stream.controller.pullSteps(self);
+    
+    }
+
     pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
@@ -147,6 +183,19 @@ pub const ReadableStreamDefaultReader = struct {
 
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
         return self.genericCancel(reason_value);
+    
+    }
+
+    fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream is not undefined.
+        // (Assertion is implicit - .? will panic if stream is null)
+
+        // Step 3: Return ! ReadableStreamCancel(stream, reason).
+        return stream.cancelInternal(reason);
     
     }
 

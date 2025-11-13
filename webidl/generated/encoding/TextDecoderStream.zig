@@ -21,7 +21,6 @@ const webidl = @import("webidl");
 
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
-
 /// TextDecoderStream - decodes a stream of bytes to a stream of strings
 ///
 /// WHATWG Encoding Standard § 6.3
@@ -99,6 +98,29 @@ pub const TextDecoderStream = struct {
         self.allocator.destroy(self.decoder);
         self.transform.deinit();
         self.allocator.destroy(self.transform);
+    
+    }
+
+    fn transformAlgorithm(chunk: []const u8, controller: *TransformStream.Controller) !void {
+
+        // TODO: Implement decode and enqueue algorithm
+        // This requires:
+        // 1. Run decoder on chunk (streaming mode)
+        // 2. Enqueue decoded string to readable side
+        // 3. Handle fatal errors
+        _ = chunk;
+        _ = controller;
+    
+    }
+
+    fn flushAlgorithm(controller: *TransformStream.Controller) !void {
+
+        // TODO: Implement flush and enqueue algorithm
+        // This requires:
+        // 1. Flush decoder (finalize any pending bytes)
+        // 2. Enqueue final decoded string (if any)
+        // 3. Handle fatal errors
+        _ = controller;
     
     }
 

@@ -83,6 +83,31 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
+
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Assert: stream.[[state]] is "writable"
+        std.debug.assert(stream_ptr.state == .writable);
+
+        // Spec step 3: Perform ! WritableStreamDefaultControllerClearAlgorithms(controller)
+        self.clearAlgorithms();
+
+        // Spec step 4: Perform ! WritableStreamStartErroring(stream, error)
+        stream_ptr.startErroring(error_value);
+    
+    }
+
+    fn clearAlgorithms(self: *WritableStreamDefaultController) void {
+
+        self.abortAlgorithm = common.defaultAbortAlgorithm();
+        self.closeAlgorithm = common.defaultCloseAlgorithm();
+        self.writeAlgorithm = common.defaultWriteAlgorithm();
+        self.strategySizeAlgorithm = common.defaultSizeAlgorithm();
+    
+    }
+
     pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) common.Promise(void) {
 
         // Spec step 1: Let result be the result of performing this.[[abortAlgorithm]], passing reason
@@ -123,6 +148,17 @@ pub const WritableStreamDefaultController = struct {
         if (stream_ptr.state == .writable) {
             self.errorInternal(error_value);
         }
+    
+    }
+
+    fn advanceQueueIfNeeded(self: *WritableStreamDefaultController) void {
+
+        // Simplified implementation - in full version, this would:
+        // 1. Check if controller is not started or queue is empty
+        // 2. Check if there's an in-flight write
+        // 3. Dequeue next chunk and process it
+        // For now, this is a no-op placeholder
+        _ = self;
     
     }
 

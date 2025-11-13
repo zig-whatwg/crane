@@ -8,6 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
@@ -346,6 +347,127 @@ pub const Comment = struct {
     pub fn call_replaceData(self: *CharacterData, offset: u32, count: u32, data: []const u8) !void {
 
         try self.replaceData(offset, count, data);
+    
+    }
+
+    fn replaceData(self: *CharacterData, offset: u32, count_param: u32, data: []const u8) !void {
+
+        const length: u32 = @intCast(self.data.len);
+        var count = count_param;
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Clamp count
+        if (offset + count > length) {
+            count = length - offset;
+        }
+
+        // Step 4: Queue mutation record
+        const mutation = @import("mutation");
+        const empty_nodes: []const *Node = &[_]*Node{};
+        try mutation.queueMutationRecord(
+            "characterData",
+            &self.base,
+            null,
+            null,
+            self.data, // oldValue
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
+
+        // Steps 5-7: Build new data string
+        const new_len = length - count + @as(u32, @intCast(data.len));
+        const new_data = try self.allocator.alloc(u8, new_len);
+
+        // Copy before offset
+        @memcpy(new_data[0..offset], self.data[0..offset]);
+
+        // Copy new data
+        @memcpy(new_data[offset .. offset + data.len], data);
+
+        // Copy after deleted region
+        const after_start = offset + count;
+        if (after_start < length) {
+            @memcpy(new_data[offset + data.len ..], self.data[after_start..]);
+        }
+
+        // Replace old data
+        self.allocator.free(self.data);
+        self.data = new_data;
+
+        // Steps 8-11 - Update ranges
+        if (self.base.owner_document) |doc| {
+            // owner_document is already *Document, no conversion needed
+            const range_tracking = @import("range_tracking");
+            const new_length = @as(u32, @intCast(data.len));
+            range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+        }
+
+        // Step 12 - Run children changed steps for parent
+        // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
+        // Spec: https://dom.spec.whatwg.org/#concept-node-replace
+        //
+        // Children changed steps are extension points for other specifications (e.g., HTML)
+        // to define custom behavior when children change. Examples:
+        // - Shadow DOM slot assignment algorithm
+        // - Form-associated element connections
+        // - Custom element reactions
+        if (self.base.parent_node) |parent| {
+            // Call the mutation module's children changed callback system
+            // This will invoke any registered callbacks from other specifications
+            @import("mutation").runChildrenChangedSteps(parent);
+        }
+    
+    }
+
+    fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
+
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
+    cached_child_nodes: ?*@import("node_list").NodeList = null,
+
+    pub const ELEMENT_NODE: u16 = 1;
+    pub const ATTRIBUTE_NODE: u16 = 2;
+    pub const TEXT_NODE: u16 = 3;
+    pub const CDATA_SECTION_NODE: u16 = 4;
+    pub const ENTITY_REFERENCE_NODE: u16 = 5;
+    pub const ENTITY_NODE: u16 = 6;
+    pub const PROCESSING_INSTRUCTION_NODE: u16 = 7;
+    pub const COMMENT_NODE: u16 = 8;
+    pub const DOCUMENT_NODE: u16 = 9;
+    pub const DOCUMENT_TYPE_NODE: u16 = 10;
+    pub const DOCUMENT_FRAGMENT_NODE: u16 = 11;
+    pub const NOTATION_NODE: u16 = 12;
+
+    pub const DOCUMENT_POSITION_DISCONNECTED: u16 = 0x01;
+    pub const DOCUMENT_POSITION_PRECEDING: u16 = 0x02;
+    pub const DOCUMENT_POSITION_FOLLOWING: u16 = 0x04;
+    pub const DOCUMENT_POSITION_CONTAINS: u16 = 0x08;
+    pub const DOCUMENT_POSITION_CONTAINED_BY: u16 = 0x10;
+    pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
+
+    pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
+
+        // NOTE: Parent EventTarget fields will be flattened by codegen
+        // Don't manually initialize parent fields here
+        return .{
+            .allocator = allocator,
+            .node_type = node_type,
+            .node_name = node_name,
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // NOTE: Parent EventTarget initialization is handled by codegen
+        };
     
     }
 
@@ -1099,6 +1221,23 @@ pub const Comment = struct {
     
     }
 
+    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+
+        // If this is a Text node, collect its data
+        if (node.node_type == Node.TEXT_NODE) {
+            const cd: *const CharacterData = @ptrCast(@alignCast(node));
+            try result.appendSlice(cd.data);
+        }
+
+        // Recursively process all children
+        for (0..node.child_nodes.len) |i| {
+            if (node.child_nodes.get(i)) |child| {
+                try collectDescendantText(child, result);
+            }
+        }
+    
+    }
+
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1203,6 +1342,129 @@ pub const Comment = struct {
     
     }
 
+    fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
+
+        if (self.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        for (elem.attributes.items) |attr| {
+            if (attr.prefix) |attr_prefix| {
+                if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
+                    return attr.local_name;
+                }
+            }
+        }
+
+        // Step 3: If parent element exists, recurse
+        if (self.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    
+    }
+
+    fn locateNamespace(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // If it has an attribute whose namespace is XMLNS namespace, prefix is "xmlns",
+                // and local name is prefix, return its value if not empty string, else null.
+                // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
+                // prefix is null, and local name is "xmlns", return its value if not empty, else null.
+                for (elem.attributes.items) |attr| {
+                    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+                    if (attr.namespace_uri) |attr_ns| {
+                        if (std.mem.eql(u8, attr_ns, xmlns_ns)) {
+                            // Check if this matches our prefix
+                            if (prefix) |p| {
+                                // Looking for xmlns:prefix attribute
+                                if (attr.prefix) |attr_prefix| {
+                                    if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.local_name, p)) {
+                                        return if (attr.value.len > 0) attr.value else null;
+                                    }
+                                }
+                            } else {
+                                // Looking for xmlns attribute (default namespace)
+                                if (attr.prefix == null and std.mem.eql(u8, attr.local_name, "xmlns")) {
+                                    return if (attr.value.len > 0) attr.value else null;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step 5: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self));
+                const element = attr.owner_element orelse return null;
+
+                // Step 2: Return result of locating namespace on element
+                return element.base.locateNamespace(prefix);
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
+    
+    }
+
     pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
 
         return &self.registered_observers;
@@ -1245,6 +1507,122 @@ pub const Comment = struct {
     
     }
 
+    fn ensureEventListenerList(self: *EventTarget) !*std.ArrayList(EventListener) {
+
+        if (self.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self.allocator);
+        self.event_listener_list = list;
+        return list;
+    
+    }
+
+    fn getEventListenerList(self: *const EventTarget) []const EventListener {
+
+        if (self.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    
+    }
+
+    fn flattenOptions(options: anytype) bool {
+
+        const OptionsType = @TypeOf(options);
+
+        // Step 1: If options is a boolean, return it
+        if (OptionsType == bool) {
+            return options;
+        }
+
+        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
+        if (@hasField(OptionsType, "capture")) {
+            return options.capture;
+        }
+
+        // Default: return false
+        return false;
+    
+    }
+
+    fn flattenMoreOptions(options: anytype) struct {
+ capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal 
+    }
+
+    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+
+        _ = event_target;
+        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
+        // AND eventTarget is Window or specific node conditions
+        // For now, simplified: return true for touch/wheel events
+        if (std.mem.eql(u8, event_type, "touchstart") or
+            std.mem.eql(u8, event_type, "touchmove") or
+            std.mem.eql(u8, event_type, "wheel") or
+            std.mem.eql(u8, event_type, "mousewheel"))
+        {
+            // TODO: Check eventTarget conditions per spec
+            return true;
+        }
+        // Step 2: Return false
+        return false;
+    
+    }
+
+    fn addAnEventListener(self: *EventTarget, listener: EventListener) !void {
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
+        }
+    
+    }
+
     pub fn call_addEventListener(
         self: *EventTarget,
         event_type: []const u8,
@@ -1266,6 +1644,32 @@ pub const Comment = struct {
         };
 
         try self.addAnEventListener(listener);
+    
+    }
+
+    fn removeAnEventListener(self: *EventTarget, listener: EventListener) void {
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     
     }
 

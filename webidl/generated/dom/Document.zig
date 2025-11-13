@@ -8,6 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CDATASection = @import("cdata_section").CDATASection;
@@ -41,7 +42,6 @@ pub const DocType = enum {
     html,
     xml,
 };
-
 /// DOM Spec: interface Document : Node
 
 pub const Document = struct {
@@ -290,6 +290,133 @@ pub const Document = struct {
 
         // Step 2: Clone the node
         return self.cloneNode(node, deep, null);
+    
+    }
+
+    fn cloneNode(self: *Document, node: *Node, subtree: bool, parent: ?*Node) !*Node {
+
+        // Clone the single node first
+        const copy = try self.cloneSingleNode(node);
+        errdefer self.destroyNode(copy);
+
+        // If parent is provided, append copy to parent
+        if (parent) |p| {
+            // Append to parent's children
+            try p.child_nodes.append(copy);
+            copy.parent_node = p;
+        }
+
+        // If subtree is true, clone all children recursively
+        if (subtree) {
+            for (0..node.child_nodes.size()) |i| {
+                if (node.child_nodes.get(i)) |child| {
+                    _ = try self.cloneNode(child, true, copy);
+                }
+            }
+        }
+
+        return copy;
+    
+    }
+
+    fn cloneSingleNode(self: *Document, node: *Node) !*Node {
+
+        switch (node.node_type) {
+            Node.ELEMENT_NODE => {
+                const elem: *Element = @ptrCast(node);
+
+                // Create new element with same tag name
+                const copy_elem = try self.call_createElement(elem.tag_name);
+
+                // Clone all attributes
+                for (elem.attributes.items) |attr| {
+                    const copy_attr = try self.allocator.create(Attr);
+                    errdefer self.allocator.destroy(copy_attr);
+
+                    copy_attr.* = try Attr.init(
+                        self.allocator,
+                        attr.name,
+                        attr.value,
+                        attr.namespace_uri,
+                        attr.prefix,
+                    );
+
+                    try copy_elem.attributes.append(copy_attr);
+                }
+
+                return @ptrCast(copy_elem);
+            },
+
+            Node.TEXT_NODE => {
+                const text: *Text = @ptrCast(node);
+                const copy_text = try self.call_createTextNode(text.data);
+                return @ptrCast(copy_text);
+            },
+
+            Node.COMMENT_NODE => {
+                const comment: *Comment = @ptrCast(node);
+                const copy_comment = try self.call_createComment(comment.data);
+                return @ptrCast(copy_comment);
+            },
+
+            Node.PROCESSING_INSTRUCTION_NODE => {
+                const pi: *ProcessingInstruction = @ptrCast(node);
+                const copy_pi = try self.call_createProcessingInstruction(pi.target, pi.data);
+                return @ptrCast(copy_pi);
+            },
+
+            Node.DOCUMENT_FRAGMENT_NODE => {
+                const copy_fragment = try self.call_createDocumentFragment();
+                return @ptrCast(copy_fragment);
+            },
+
+            Node.DOCUMENT_TYPE_NODE => {
+                // Per spec: DocumentType cannot be cloned via importNode
+                return error.NotSupportedError;
+            },
+
+            Node.CDATA_SECTION_NODE => {
+                // TODO: Implement when CDATASection is fully supported
+                return error.NotImplemented;
+            },
+
+            else => {
+                return error.NotSupportedError;
+            },
+        }
+    
+    }
+
+    fn destroyNode(self: *Document, node: *Node) void {
+
+        switch (node.node_type) {
+            Node.ELEMENT_NODE => {
+                const elem: *Element = @ptrCast(node);
+                elem.deinit();
+                self.allocator.destroy(elem);
+            },
+            Node.TEXT_NODE => {
+                const text: *Text = @ptrCast(node);
+                text.deinit();
+                self.allocator.destroy(text);
+            },
+            Node.COMMENT_NODE => {
+                const comment: *Comment = @ptrCast(node);
+                comment.deinit();
+                self.allocator.destroy(comment);
+            },
+            Node.PROCESSING_INSTRUCTION_NODE => {
+                const pi: *ProcessingInstruction = @ptrCast(node);
+                pi.deinit();
+                self.allocator.destroy(pi);
+            },
+            Node.DOCUMENT_FRAGMENT_NODE => {
+                const fragment: *DocumentFragment = @ptrCast(node);
+                fragment.deinit();
+                self.allocator.destroy(fragment);
+            },
+            else => {},
+        }
     
     }
 
@@ -570,6 +697,52 @@ pub const Document = struct {
     pub fn setCustomElementRegistry(self: *@This(), registry: ?*anyopaque) void {
 
         self.custom_element_registry = registry;
+    
+    }
+
+    fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
+
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
+    cached_child_nodes: ?*@import("node_list").NodeList = null,
+
+    pub const ELEMENT_NODE: u16 = 1;
+    pub const ATTRIBUTE_NODE: u16 = 2;
+    pub const TEXT_NODE: u16 = 3;
+    pub const CDATA_SECTION_NODE: u16 = 4;
+    pub const ENTITY_REFERENCE_NODE: u16 = 5;
+    pub const ENTITY_NODE: u16 = 6;
+    pub const PROCESSING_INSTRUCTION_NODE: u16 = 7;
+    pub const COMMENT_NODE: u16 = 8;
+    pub const DOCUMENT_NODE: u16 = 9;
+    pub const DOCUMENT_TYPE_NODE: u16 = 10;
+    pub const DOCUMENT_FRAGMENT_NODE: u16 = 11;
+    pub const NOTATION_NODE: u16 = 12;
+
+    pub const DOCUMENT_POSITION_DISCONNECTED: u16 = 0x01;
+    pub const DOCUMENT_POSITION_PRECEDING: u16 = 0x02;
+    pub const DOCUMENT_POSITION_FOLLOWING: u16 = 0x04;
+    pub const DOCUMENT_POSITION_CONTAINS: u16 = 0x08;
+    pub const DOCUMENT_POSITION_CONTAINED_BY: u16 = 0x10;
+    pub const DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: u16 = 0x20;
+
+    pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
+
+        // NOTE: Parent EventTarget fields will be flattened by codegen
+        // Don't manually initialize parent fields here
+        return .{
+            .allocator = allocator,
+            .node_type = node_type,
+            .node_name = node_name,
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // NOTE: Parent EventTarget initialization is handled by codegen
+        };
     
     }
 
@@ -972,110 +1145,6 @@ pub const Document = struct {
     
     }
 
-    pub fn cloneSingleNode(
-        node: *Node,
-        document: ?*Document,
-        fallback_registry: ?*anyopaque,
-    ) !*Node {
-
-        _ = fallback_registry; // Not used yet - for custom elements
-
-        // Step 2-3: Handle different node types
-        switch (node.node_type) {
-            Node.ELEMENT_NODE => {
-                // Clone element with attributes
-                const elem: *Element = @ptrCast(@alignCast(node));
-
-                // Create new element
-                var copy_elem = try Element.init(elem.allocator, elem.tag_name);
-                copy_elem.namespace_uri = elem.namespace_uri;
-
-                // Clone attributes
-                for (elem.attributes.items) |attr| {
-                    const copy_attr = Attr{
-                        .allocator = elem.allocator,
-                        .namespace_uri = attr.namespace_uri,
-                        .prefix = attr.prefix,
-                        .local_name = attr.local_name,
-                        .value = attr.value,
-                        .owner_element = &copy_elem,
-                    };
-                    try copy_elem.attributes.append(copy_attr);
-                }
-
-                const copy_node = @as(*Node, @ptrCast(&copy_elem));
-                copy_node.owner_document = document;
-                return copy_node;
-            },
-            Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
-                // Clone CharacterData (Text, Comment, CDATASection)
-                const cd: *CharacterData = @ptrCast(@alignCast(node));
-
-                var copy_cd = try CharacterData.init(cd.allocator);
-                copy_cd.data = try cd.allocator.dupe(u8, cd.data);
-
-                const copy_node = @as(*Node, @ptrCast(&copy_cd));
-                copy_node.node_type = node.node_type;
-                copy_node.node_name = node.node_name;
-                copy_node.owner_document = document;
-                return copy_node;
-            },
-            Node.PROCESSING_INSTRUCTION_NODE => {
-                // Clone ProcessingInstruction
-                const PI = @import("processing_instruction").ProcessingInstruction;
-                const pi: *PI = @ptrCast(@alignCast(node));
-
-                var copy_pi = try PI.init(pi.allocator, pi.target, pi.data);
-
-                const copy_node = @as(*Node, @ptrCast(&copy_pi));
-                copy_node.owner_document = document;
-                return copy_node;
-            },
-            Node.ATTRIBUTE_NODE => {
-                // Clone Attr
-                const attr: *Attr = @ptrCast(@alignCast(node));
-
-                var copy_attr = try Attr.init(
-                    attr.allocator,
-                    attr.namespace_uri,
-                    attr.prefix,
-                    attr.local_name,
-                    attr.value,
-                );
-
-                const copy_node = @as(*Node, @ptrCast(&copy_attr));
-                copy_node.owner_document = document;
-                return copy_node;
-            },
-            Node.DOCUMENT_TYPE_NODE => {
-                // Clone DocumentType (simplified - full implementation needs public ID, system ID)
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
-                copy.owner_document = document;
-                return copy;
-            },
-            Node.DOCUMENT_FRAGMENT_NODE => {
-                // Clone DocumentFragment
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
-                copy.owner_document = document;
-                return copy;
-            },
-            Node.DOCUMENT_NODE => {
-                // Cloning Document is complex and not fully supported yet
-                // For now, just create a basic copy
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
-                copy.owner_document = document;
-                return copy;
-            },
-            else => {
-                // Default: create basic node copy
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
-                copy.owner_document = document;
-                return copy;
-            },
-        }
-    
-    }
-
     pub fn call_normalize(self: *Node) void {
 
         _ = self;
@@ -1323,6 +1392,23 @@ pub const Document = struct {
     
     }
 
+    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+
+        // If this is a Text node, collect its data
+        if (node.node_type == Node.TEXT_NODE) {
+            const cd: *const CharacterData = @ptrCast(@alignCast(node));
+            try result.appendSlice(cd.data);
+        }
+
+        // Recursively process all children
+        for (0..node.child_nodes.len) |i| {
+            if (node.child_nodes.get(i)) |child| {
+                try collectDescendantText(child, result);
+            }
+        }
+    
+    }
+
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1427,6 +1513,129 @@ pub const Document = struct {
     
     }
 
+    fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
+
+        if (self.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        for (elem.attributes.items) |attr| {
+            if (attr.prefix) |attr_prefix| {
+                if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
+                    return attr.local_name;
+                }
+            }
+        }
+
+        // Step 3: If parent element exists, recurse
+        if (self.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    
+    }
+
+    fn locateNamespace(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // If it has an attribute whose namespace is XMLNS namespace, prefix is "xmlns",
+                // and local name is prefix, return its value if not empty string, else null.
+                // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
+                // prefix is null, and local name is "xmlns", return its value if not empty, else null.
+                for (elem.attributes.items) |attr| {
+                    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+                    if (attr.namespace_uri) |attr_ns| {
+                        if (std.mem.eql(u8, attr_ns, xmlns_ns)) {
+                            // Check if this matches our prefix
+                            if (prefix) |p| {
+                                // Looking for xmlns:prefix attribute
+                                if (attr.prefix) |attr_prefix| {
+                                    if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.local_name, p)) {
+                                        return if (attr.value.len > 0) attr.value else null;
+                                    }
+                                }
+                            } else {
+                                // Looking for xmlns attribute (default namespace)
+                                if (attr.prefix == null and std.mem.eql(u8, attr.local_name, "xmlns")) {
+                                    return if (attr.value.len > 0) attr.value else null;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step 5: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self));
+                const element = attr.owner_element orelse return null;
+
+                // Step 2: Return result of locating namespace on element
+                return element.base.locateNamespace(prefix);
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
+    
+    }
+
     pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
 
         return &self.registered_observers;
@@ -1469,6 +1678,122 @@ pub const Document = struct {
     
     }
 
+    fn ensureEventListenerList(self: *EventTarget) !*std.ArrayList(EventListener) {
+
+        if (self.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self.allocator);
+        self.event_listener_list = list;
+        return list;
+    
+    }
+
+    fn getEventListenerList(self: *const EventTarget) []const EventListener {
+
+        if (self.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    
+    }
+
+    fn flattenOptions(options: anytype) bool {
+
+        const OptionsType = @TypeOf(options);
+
+        // Step 1: If options is a boolean, return it
+        if (OptionsType == bool) {
+            return options;
+        }
+
+        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
+        if (@hasField(OptionsType, "capture")) {
+            return options.capture;
+        }
+
+        // Default: return false
+        return false;
+    
+    }
+
+    fn flattenMoreOptions(options: anytype) struct {
+ capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal 
+    }
+
+    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+
+        _ = event_target;
+        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
+        // AND eventTarget is Window or specific node conditions
+        // For now, simplified: return true for touch/wheel events
+        if (std.mem.eql(u8, event_type, "touchstart") or
+            std.mem.eql(u8, event_type, "touchmove") or
+            std.mem.eql(u8, event_type, "wheel") or
+            std.mem.eql(u8, event_type, "mousewheel"))
+        {
+            // TODO: Check eventTarget conditions per spec
+            return true;
+        }
+        // Step 2: Return false
+        return false;
+    
+    }
+
+    fn addAnEventListener(self: *EventTarget, listener: EventListener) !void {
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
+        }
+    
+    }
+
     pub fn call_addEventListener(
         self: *EventTarget,
         event_type: []const u8,
@@ -1490,6 +1815,32 @@ pub const Document = struct {
         };
 
         try self.addAnEventListener(listener);
+    
+    }
+
+    fn removeAnEventListener(self: *EventTarget, listener: EventListener) void {
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     
     }
 

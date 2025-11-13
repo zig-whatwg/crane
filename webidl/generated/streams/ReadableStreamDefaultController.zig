@@ -273,6 +273,87 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    fn clearAlgorithms(self: *ReadableStreamDefaultController) void {
+
+        // In Zig, we don't need explicit clearing since algorithms use VTable pattern
+        // The algorithms will be freed when the controller is deinitialized
+        _ = self;
+    
+    }
+
+    fn callPullIfNeeded(self: *ReadableStreamDefaultController) void {
+
+        // Step 1: Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller).
+        if (!self.shouldCallPull()) {
+            return;
+        }
+
+        // Step 2: If controller.[[pulling]] is true,
+        if (self.pulling) {
+            // Step 2.1: Set controller.[[pullAgain]] to true.
+            self.pullAgain = true;
+            return;
+        }
+
+        // Step 3: Assert: controller.[[pullAgain]] is false.
+        std.debug.assert(!self.pullAgain);
+
+        // Step 4: Set controller.[[pulling]] to true.
+        self.pulling = true;
+
+        // Step 5: Let pullPromise be the result of performing controller.[[pullAlgorithm]].
+        const pullPromise = self.pullAlgorithm.call();
+
+        // TODO: Implement promise handling when pull completes
+        // For now, we just mark pulling as complete
+        _ = pullPromise;
+        self.pulling = false;
+
+        // Check if we need to pull again
+        if (self.pullAgain) {
+            self.pullAgain = false;
+            self.callPullIfNeeded();
+        }
+    
+    }
+
+    fn shouldCallPull(self: *ReadableStreamDefaultController) bool {
+
+        // Step 1: Let stream be controller.[[stream]].
+        if (self.stream) |stream_ptr| {
+            const stream: *ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+            // Step 2: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return false.
+            if (!self.canCloseOrEnqueue()) {
+                return false;
+            }
+
+            // Step 3: If controller.[[started]] is false, return false.
+            if (!self.started) {
+                return false;
+            }
+
+            // Step 4: If ! IsReadableStreamLocked(stream) is true and
+            //         ! ReadableStreamGetNumReadRequests(stream) > 0, return true.
+            if (stream.get_locked() and stream.getNumReadRequests() > 0) {
+                return true;
+            }
+
+            // Step 5: Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller).
+            const desired_size = self.calculateDesiredSize();
+
+            // Step 6: Assert: desiredSize is not null.
+            // Step 7: If desiredSize > 0, return true.
+            if (desired_size) |size| {
+                return size > 0;
+            }
+        }
+
+        // Step 8: Return false.
+        return false;
+    
+    }
+
     pub fn pullSteps(self: *ReadableStreamDefaultController, reader: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
 
         // Step 1: Let stream be controller.[[stream]].

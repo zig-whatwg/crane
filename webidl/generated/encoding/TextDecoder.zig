@@ -21,11 +21,9 @@ const webidl = @import("webidl");
 
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
-
 // ============================================================================
 // Helper Functions (Module-Level)
 // ============================================================================
-
 /// Check if byte slice is ASCII-only (fast path optimization)
 fn isAscii(bytes: []const u8) bool {
     for (bytes) |byte| {
@@ -33,7 +31,6 @@ fn isAscii(bytes: []const u8) bool {
     }
     return true;
 }
-
 /// TextDecoder errors map to WebIDL simple exceptions per WHATWG Encoding Standard
 ///
 /// Error Mapping (for JavaScript bindings):
@@ -50,7 +47,6 @@ pub const TextDecoderError = error{
     /// Out of memory
     OutOfMemory,
 };
-
 /// TextDecoder - decodes bytes to strings using various character encodings
 ///
 /// WHATWG Encoding Standard § 5
@@ -131,6 +127,24 @@ pub const TextDecoder = struct {
         if (self.reusableUtf8Buffer) |buf| {
             self.allocator.free(buf);
         }
+    
+    }
+
+    pub inline fn get_encoding(self: *const TextDecoder) []const u8 {
+
+        return self.encoding;
+    
+    }
+
+    pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
+
+        return self.fatal;
+    
+    }
+
+    pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
+
+        return self.ignoreBOM;
     
     }
 

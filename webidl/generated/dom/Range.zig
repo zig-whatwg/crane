@@ -13,6 +13,7 @@ const Allocator = @import("std.mem").Allocator;
 const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
+const Element = @import("element").Element;
 const Node = @import("node").Node;
 const Text = @import("text").Text;
 const infra = @import("infra").infra;
@@ -108,6 +109,23 @@ pub const Range = struct {
     
     }
 
+    fn getNodeLength(node: *Node) u32 {
+
+        switch (node.node_type) {
+            Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
+            Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
+                // CharacterData nodes - get data length
+                const charData = node.asCharacterData() orelse return 0;
+                return charData.get_length();
+            },
+            else => {
+                // Element, Document, DocumentFragment, etc. - return number of children
+                return @intCast(node.child_nodes.size());
+            },
+        }
+    
+    }
+
     pub fn call_setStart(self: *Range, node: *Node, offset: u32) !void {
 
         // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -169,6 +187,64 @@ pub const Range = struct {
         // Step 5.2: Set range's end to bp
         self.end_container = node;
         self.end_offset = offset;
+    
+    }
+
+    fn isAfter(self: *const Range, nodeA: *Node, offsetA: u32, nodeB: *Node, offsetB: u32) bool {
+
+        _ = self;
+
+        // Same node: compare offsets
+        if (nodeA == nodeB) {
+            return offsetA > offsetB;
+        }
+
+        // Different nodes: use tree order
+        const dom = @import("dom");
+        return dom.tree_helpers.isFollowing(nodeA, nodeB);
+    
+    }
+
+    fn compareBoundaryPointsHelper(
+        node: *Node,
+        offset: u32,
+        otherNode: *Node,
+        otherOffset: u32,
+    ) enum {
+ before, equal, after 
+    }
+
+    fn isNodeContained(self: *const Range, node: *Node) bool {
+
+        const dom = @import("dom");
+
+        // Check same root
+        const nodeRoot = dom.tree.getRoot(node);
+        const rangeRoot = dom.tree.getRoot(self.start_container);
+        if (nodeRoot != rangeRoot) return false;
+
+        // Check (node, 0) is after start
+        const afterStart = compareBoundaryPointsHelper(node, 0, self.start_container, self.start_offset);
+        if (afterStart != .after) return false;
+
+        // Check (node, node's length) is before end
+        const nodeLength = node.child_nodes.size();
+        const beforeEnd = compareBoundaryPointsHelper(node, @intCast(nodeLength), self.end_container, self.end_offset);
+        if (beforeEnd != .before) return false;
+
+        return true;
+    
+    }
+
+    fn isNodePartiallyContained(self: *const Range, node: *Node) bool {
+
+        const dom = @import("dom");
+
+        const isAncestorOfStart = dom.tree_helpers.isInclusiveAncestor(node, self.start_container);
+        const isAncestorOfEnd = dom.tree_helpers.isInclusiveAncestor(node, self.end_container);
+
+        // Partially contained if ancestor of one but not both
+        return (isAncestorOfStart and !isAncestorOfEnd) or (!isAncestorOfStart and isAncestorOfEnd);
     
     }
 
@@ -796,6 +872,23 @@ pub const Range = struct {
 
         // Step 6: Return s
         return result.toOwnedSlice();
+    
+    }
+
+    fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
+
+        // If this node is contained and is a Text node, append its data
+        if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
+            const textNode = node.asText() orelse return error.InvalidNodeTypeError;
+            const data = textNode.base.get_data();
+            try result.appendSlice(data);
+            return;
+        }
+
+        // Recursively process children in tree order
+        for (node.child_nodes.items()) |child| {
+            try self.appendContainedTextNodes(child, result);
+        }
     
     }
 

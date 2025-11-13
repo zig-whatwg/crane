@@ -35,7 +35,6 @@ pub const StreamState = enum {
     closed,
     errored,
 };
-
 /// Reader union type
 ///
 /// Spec: § 4.1 [[reader]] slot can be ReadableStreamDefaultReader, ReadableStreamBYOBReader, or undefined
@@ -44,7 +43,6 @@ pub const Reader = union(enum) {
     default: *ReadableStreamDefaultReader,
     byob: *ReadableStreamBYOBReader,
 };
-
 /// Pipe options for pipeTo() method
 ///
 /// Spec: § 4.1.5 StreamPipeOptions dictionary
@@ -54,7 +52,6 @@ pub const PipeOptions = struct {
     preventCancel: bool = false,
     signal: ?*anyopaque = null,
 };
-
 /// Transform pair for pipeThrough() method
 ///
 /// Spec: § 4.1.6 ReadableWritablePair dictionary
@@ -62,7 +59,6 @@ pub const TransformPair = struct {
     readable: *ReadableStream,
     writable: *WritableStream,
 };
-
 /// Return type for tee() method
 ///
 /// Spec: § 4.1.7 tee() returns two branches
@@ -393,6 +389,90 @@ pub const ReadableStream = struct {
     
     }
 
+    fn extractAsyncIterator(allocator: std.mem.Allocator, value: webidl.JSValue) !common.AsyncIterator {
+
+        // For testing/development, we support passing MockAsyncIterator as pointer in JSValue
+        // In production, this would:
+        // 1. Call GetIterator(value, async) to get Symbol.asyncIterator
+        // 2. Get the next method
+        // 3. Create IteratorRecord
+        // 4. Wrap in common.AsyncIterator
+
+        // Check if value contains a pointer to MockAsyncIterator
+        switch (value) {
+            .object => {
+                // For now, we expect caller to embed iterator pointer
+                // This is a temporary solution until full Symbol support
+                // Callers can use: JSValue{ .object = @ptrCast(mockIterator) }
+                return error.NotImplemented; // Still needs proper implementation
+            },
+            else => return error.TypeError,
+        }
+
+        // TODO: Full implementation with Symbol.asyncIterator lookup
+        _ = allocator;
+    
+    }
+
+    fn readableStreamFromIterable(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        iterator: common.AsyncIterator,
+    ) !*ReadableStream {
+
+        // Spec step 1: Let stream be undefined (we'll create it at the end)
+
+        // Spec step 2: Let iteratorRecord be ? GetIterator(asyncIterable, async)
+        // (we already have the iterator)
+
+        // Create state object to hold iterator and stream reference
+        const state = try allocator.create(FromIterableState);
+        errdefer allocator.destroy(state);
+
+        state.* = .{
+            .allocator = allocator,
+            .iterator = iterator,
+            .stream = undefined, // Will be set after stream creation
+        };
+
+        // Spec step 3: Let startAlgorithm be an algorithm that returns undefined
+        // (no-op, controller starts immediately)
+
+        // Spec step 4: Let pullAlgorithm be the following steps:
+        const pullAlgorithm = common.PullAlgorithm{
+            .ptr = state,
+            .vtable = &.{
+                .call = FromIterableState.pullAlgorithmCall,
+                .deinit = FromIterableState.deinitVTable,
+            },
+        };
+
+        // Spec step 5: Let cancelAlgorithm be the following steps, given reason:
+        const cancelAlgorithm = common.CancelAlgorithm{
+            .ptr = state,
+            .vtable = &.{
+                .call = FromIterableState.cancelAlgorithmCall,
+                .deinit = null, // Already handled by pullAlgorithm deinit
+            },
+        };
+
+        // Spec step 6: Set stream to ! CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm, 0)
+        const stream = try createReadableStream(
+            allocator,
+            loop,
+            pullAlgorithm,
+            cancelAlgorithm,
+            0, // highWaterMark
+        );
+
+        // Link state to stream
+        state.stream = stream;
+
+        // Spec step 7: Return stream
+        return stream;
+    
+    }
+
     pub fn fromMockIterator(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -425,6 +505,63 @@ pub const ReadableStream = struct {
         };
 
         return readableStreamFromIterable(allocator, loop, iterator);
+    
+    }
+
+    fn createReadableStream(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        pullAlgorithm: common.PullAlgorithm,
+        cancelAlgorithm: common.CancelAlgorithm,
+        highWaterMark: f64,
+    ) !*ReadableStream {
+
+        // Spec step 1: If highWaterMark was not passed, set it to 1
+        const hwm = if (highWaterMark == 0) 1.0 else highWaterMark;
+
+        // Spec step 2: If sizeAlgorithm was not passed, set it to an algorithm that returns 1
+        const sizeAlgorithm = common.defaultSizeAlgorithm();
+
+        // Spec step 3: Assert: ! IsNonNegativeNumber(highWaterMark) is true
+        std.debug.assert(hwm >= 0);
+
+        // Spec step 4: Let stream be a new ReadableStream
+        const stream_ptr = try allocator.create(ReadableStream);
+        errdefer allocator.destroy(stream_ptr);
+
+        // Spec step 5: Perform ! InitializeReadableStream(stream)
+        // Spec step 6: Let controller be a new ReadableStreamDefaultController
+        const controller = try allocator.create(ReadableStreamDefaultController);
+        errdefer allocator.destroy(controller);
+
+        // Spec step 7: Perform ? SetUpReadableStreamDefaultController(...)
+        controller.* = try ReadableStreamDefaultController.init(
+            allocator,
+            cancelAlgorithm,
+            pullAlgorithm,
+            hwm,
+            sizeAlgorithm,
+            loop,
+        );
+
+        stream_ptr.* = .{
+            .allocator = allocator,
+            .controller = controller,
+            .detached = false,
+            .disturbed = false,
+            .reader = .none,
+            .state = .readable, // InitializeReadableStream sets state to "readable"
+            .storedError = null,
+            .eventLoop = loop,
+            .eventLoop_storage = null, // Borrowed event loop
+            .teeState = null,
+        };
+
+        // Mark controller as started
+        stream_ptr.controller.started = true;
+
+        // Spec step 8: Return stream
+        return stream_ptr;
     
     }
 
@@ -538,6 +675,49 @@ pub const ReadableStream = struct {
     
     }
 
+    fn acquireDefaultReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamDefaultReader {
+
+        // Create reader on heap
+        const reader = try self.allocator.create(ReadableStreamDefaultReader);
+        errdefer self.allocator.destroy(reader);
+
+        // Initialize reader
+        reader.* = try ReadableStreamDefaultReader.init(self.allocator, self, loop);
+
+        // Lock stream to reader
+        self.reader = .{ .default = reader };
+
+        return reader;
+    
+    }
+
+    fn acquireBYOBReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamBYOBReader {
+
+        // Step 1: If stream is locked, throw TypeError
+        if (self.get_locked()) {
+            return error.TypeError;
+        }
+
+        // Step 2: If controller is not ReadableByteStreamController, throw TypeError
+        switch (self.controller) {
+            .byte => {},
+            else => return error.TypeError,
+        }
+
+        // Create reader on heap
+        const reader = try self.allocator.create(ReadableStreamBYOBReader);
+        errdefer self.allocator.destroy(reader);
+
+        // Initialize reader (this performs ReadableStreamReaderGenericInitialize + sets readIntoRequests)
+        reader.* = try ReadableStreamBYOBReader.init(self.allocator, self, loop);
+
+        // Lock stream to reader
+        self.reader = .{ .byob = reader };
+
+        return reader;
+    
+    }
+
     pub fn createByteStream(
         allocator: std.mem.Allocator,
         startAlgorithm: common.StartAlgorithm,
@@ -590,6 +770,115 @@ pub const ReadableStream = struct {
         controller_ptr.started = true;
 
         // Step 5: Return stream
+        return stream;
+    
+    }
+
+    fn ReadableStreamFromIterable(
+        allocator: std.mem.Allocator,
+        loop: eventLoop.EventLoop,
+        asyncIterable: common.JSValue,
+    ) !*ReadableStream {
+
+        // Mark as unused until full implementation
+        _ = asyncIterable;
+
+        // Spec step 1: Let stream be undefined (will be set in step 6)
+
+        // Spec step 2: Let iteratorRecord be ? GetIterator(asyncIterable, async)
+        // For Zig implementation, we expect the JSValue to provide iterator protocol
+        // This would normally involve calling GetIterator from ECMA-262
+        // For now, we'll create a simple wrapper that handles common cases
+
+        // Spec step 3: Let startAlgorithm be an algorithm that returns undefined
+        // (No-op start - stream starts immediately)
+
+        // Spec step 4: Let pullAlgorithm be the following steps:
+        // (Implemented as a closure that captures iteratorRecord and stream)
+        //
+        // The pull algorithm:
+        // 1. Call IteratorNext on the iterator
+        // 2. If it throws, reject promise with the error
+        // 3. Otherwise, wait for the promise to resolve
+        // 4. If done=true, close the controller
+        // 5. If done=false, enqueue the value to the controller
+
+        // Spec step 5: Let cancelAlgorithm be the following steps, given reason:
+        // (Implemented as a closure that captures iteratorRecord)
+        //
+        // The cancel algorithm:
+        // 1. Get the iterator's return method
+        // 2. If it doesn't exist, resolve immediately
+        // 3. Otherwise, call the return method with reason
+        // 4. Return a promise that resolves when cleanup is done
+
+        // For the Zig implementation, we create a simpler approach:
+        // - Store the iterable JSValue in the controller's context
+        // - The pull algorithm calls next() on the iterable
+        // - The cancel algorithm calls return() if available
+
+        // Since we don't have full JS runtime integration yet, we'll create
+        // a simplified version that works with Zig-native iterables
+
+        // TODO: Full implementation requires:
+        // 1. GetIterator(asyncIterable, async) from ECMA-262
+        // 2. IteratorNext, IteratorComplete, IteratorValue
+        // 3. GetMethod and Call from ECMA-262
+        // 4. Proper promise chaining with .then()
+        //
+        // For now, we create a basic version that handles simple cases
+
+        // Create algorithms that handle the iterable
+        // NOTE: This is a simplified implementation pending full JS runtime integration
+        const pullAlgorithm = common.defaultPullAlgorithm();
+        const cancelAlgorithm = common.defaultCancelAlgorithm();
+
+        // Spec step 6: Set stream to ! CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm, 0)
+        // Use highWaterMark of 0 per spec
+        const stream = try allocator.create(ReadableStream);
+        errdefer allocator.destroy(stream);
+
+        // Create controller
+        const controller = try allocator.create(ReadableStreamDefaultController);
+        errdefer allocator.destroy(controller);
+
+        controller.* = try ReadableStreamDefaultController.init(
+            allocator,
+            cancelAlgorithm,
+            pullAlgorithm,
+            0.0, // highWaterMark = 0 per spec
+            common.defaultSizeAlgorithm(),
+            loop,
+        );
+
+        // Initialize stream
+        stream.* = ReadableStream{
+            .allocator = allocator,
+            .controller = controller,
+            .detached = false,
+            .disturbed = false,
+            .reader = .none,
+            .state = .readable,
+            .storedError = null,
+            .eventLoop = loop,
+            .eventLoop_storage = null,
+            .teeState = null,
+        };
+
+        controller.stream = stream;
+        controller.started = true;
+
+        // TODO: Implement full iterator protocol handling
+        // For now, this creates an empty stream
+        // Full implementation requires:
+        // 1. Capture iteratorRecord in pull/cancel algorithms
+        // 2. Call IteratorNext in pull algorithm
+        // 3. Call return method in cancel algorithm
+        // 4. Handle async iteration with proper promise chaining
+        //
+        // The structure is in place for when JS runtime integration is available
+
+        // Spec step 7: Return stream
         return stream;
     
     }
@@ -781,6 +1070,179 @@ pub const ReadableStream = struct {
                 }
             },
         }
+    
+    }
+
+    fn readableByteStreamTee(self: *ReadableStream) !TeeBranches {
+
+        // Step 1-2: Asserts
+        if (self.controller != .byte) {
+            return error.TypeError;
+        }
+
+        // Step 3: Acquire default reader
+        const reader = try self.acquireDefaultReader(self.eventLoop);
+
+        // Step 4-13: Initialize ByteTeeState
+        const teeState = try ByteTeeState.init(
+            self.allocator,
+            self,
+            reader,
+            self.eventLoop,
+        );
+        errdefer teeState.deinit();
+
+        // Step 14: forwardReaderError will be set up when reader errors occur
+        // (Implemented in ByteTeeState.forwardReaderError)
+
+        // Step 15-16: pullWithDefaultReader and pullWithBYOBReader are ByteTeeState methods
+
+        // Step 17-18: pull1Algorithm and pull2Algorithm
+        const Pull1Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                self_ctx.state.pull1Algorithm() catch {};
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const pull1_ctx = try self.allocator.create(Pull1Context);
+        pull1_ctx.* = .{ .state = teeState };
+
+        const Pull2Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                self_ctx.state.pull2Algorithm() catch {};
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const pull2_ctx = try self.allocator.create(Pull2Context);
+        pull2_ctx.* = .{ .state = teeState };
+
+        // Step 19-20: cancel1Algorithm and cancel2Algorithm
+        const Cancel1Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                _ = self_ctx.state.cancel1Algorithm(reason) catch return common.Promise(void).fulfilled({});
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const cancel1_ctx = try self.allocator.create(Cancel1Context);
+        cancel1_ctx.* = .{ .state = teeState };
+
+        const Cancel2Context = struct {
+            state: *ByteTeeState,
+
+            fn call(ctx: *anyopaque, reason: ?common.JSValue) common.Promise(void) {
+                const self_ctx: *@This() = @ptrCast(@alignCast(ctx));
+                _ = self_ctx.state.cancel2Algorithm(reason) catch return common.Promise(void).fulfilled({});
+                return common.Promise(void).fulfilled({});
+            }
+        };
+
+        const cancel2_ctx = try self.allocator.create(Cancel2Context);
+        cancel2_ctx.* = .{ .state = teeState };
+
+        // Step 21: startAlgorithm (no-op)
+
+        // Step 22-23: Create branch streams with createByteStream
+        const branch1 = try createByteStream(
+            self.allocator,
+            null, // no start algorithm
+            common.PullAlgorithm{
+                .ptr = pull1_ctx,
+                .vtable = &.{ .call = Pull1Context.call, .deinit = null },
+            },
+            common.CancelAlgorithm{
+                .ptr = cancel1_ctx,
+                .vtable = &.{ .call = Cancel1Context.call, .deinit = null },
+            },
+            self.eventLoop,
+        );
+
+        const branch2 = try createByteStream(
+            self.allocator,
+            null, // no start algorithm
+            common.PullAlgorithm{
+                .ptr = pull2_ctx,
+                .vtable = &.{ .call = Pull2Context.call, .deinit = null },
+            },
+            common.CancelAlgorithm{
+                .ptr = cancel2_ctx,
+                .vtable = &.{ .call = Cancel2Context.call, .deinit = null },
+            },
+            self.eventLoop,
+        );
+
+        // Link branches to tee state
+        teeState.branch1 = branch1;
+        teeState.branch2 = branch2;
+
+        // Step 24: Forward reader errors
+        teeState.forwardReaderError(teeState.reader);
+
+        // Step 25: Return branches
+        return .{ .branch1 = branch1, .branch2 = branch2 };
+    
+    }
+
+    fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !TeeBranches {
+
+        // TODO: Route to byte stream tee if controller is a byte controller
+        // Currently controller is typed as *ReadableStreamDefaultController
+        // This needs to be a union type to support both controller types
+        // if (self.controller == .byte) {
+        //     return self.readableByteStreamTee();
+        // }
+
+        // Spec step 1-2: Asserts (checked by type system)
+
+        // Spec step 3: Acquire reader
+        const reader = try self.acquireDefaultReader(self.eventLoop);
+
+        // Spec step 4-12: Initialize state variables (now in TeeState)
+        const teeState = try TeeState.init(
+            self.allocator,
+            self,
+            reader,
+            self.eventLoop,
+            cloneForBranch2,
+        );
+        errdefer teeState.deinit();
+
+        // Spec step 16-18: Create branch streams with custom pull/cancel algorithms
+        // We create two streams that share the TeeState for coordination
+
+        const branch1 = try self.allocator.create(ReadableStream);
+        errdefer self.allocator.destroy(branch1);
+
+        const branch2 = try self.allocator.create(ReadableStream);
+        errdefer self.allocator.destroy(branch2);
+
+        // Initialize branch streams
+        branch1.* = try initWithSource(self.allocator, self.eventLoop, null, null);
+        branch2.* = try initWithSource(self.allocator, self.eventLoop, null, null);
+
+        // Link branches to tee state
+        teeState.branch1 = branch1;
+        teeState.branch2 = branch2;
+        branch1.teeState = teeState;
+        branch2.teeState = teeState;
+
+        // Spec step 19: Forward reader errors to both branches
+        // (Would be implemented with reader.closedPromise reaction)
+        // TODO: Implement error forwarding when reader's closedPromise rejects
+
+        // Spec step 20: Return the two branches
+        return .{ .branch1 = branch1, .branch2 = branch2 };
     
     }
 

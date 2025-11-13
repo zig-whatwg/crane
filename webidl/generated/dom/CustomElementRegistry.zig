@@ -13,9 +13,6 @@ const Element = @import("element").Element;
 const std = @import("std");
 const webidl = @import("webidl");
 
-
-const Allocator = std.mem.Allocator;
-
 pub const CustomElementRegistry = struct {
 
     // ========================================================================

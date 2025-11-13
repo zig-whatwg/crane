@@ -237,6 +237,30 @@ pub const NamedNodeMap = struct {
     
     }
 
+    fn getAttributeByNamespaceAndLocalName(
+        namespace: ?[]const u8,
+        local_name: []const u8,
+        element: *Element,
+    ) ?*Attr {
+
+        for (element.attributes.items) |*attr| {
+            // Check namespace match
+            const ns_match = if (namespace == null and attr.namespace_uri == null)
+                true
+            else if (namespace != null and attr.namespace_uri != null)
+                std.mem.eql(u8, namespace.?, attr.namespace_uri.?)
+            else
+                false;
+
+            // Check local name match
+            if (ns_match and std.mem.eql(u8, attr.local_name, local_name)) {
+                return attr;
+            }
+        }
+        return null;
+    
+    }
+
     pub fn removeAttributeByName(qualified_name: []const u8, element: *Element) !?*Attr {
 
         // Step 1: Let attr be the result of getting an attribute

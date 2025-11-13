@@ -86,6 +86,14 @@ pub const CustomEvent = struct {
     
     }
 
+    fn setCanceledFlag(self: *Event) void {
+
+        if (self.cancelable and !self.in_passive_listener_flag) {
+            self.canceled_flag = true;
+        }
+    
+    }
+
     pub fn call_preventDefault(self: *Event) void {
 
         self.setCanceledFlag();
@@ -224,6 +232,33 @@ pub const CustomEvent = struct {
 
         // Step 17: Return composedPath
         return composed_path;
+    
+    }
+
+    fn initializeEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+
+        // Step 1: Set event's initialized flag
+        self.initialized_flag = true;
+
+        // Step 2: Unset event's stop propagation flag, stop immediate propagation flag, and canceled flag
+        self.stop_propagation_flag = false;
+        self.stop_immediate_propagation_flag = false;
+        self.canceled_flag = false;
+
+        // Step 3: Set event's isTrusted attribute to false
+        self.is_trusted = false;
+
+        // Step 4: Set event's target to null
+        self.target = null;
+
+        // Step 5: Set event's type attribute to type
+        self.event_type = event_type;
+
+        // Step 6: Set event's bubbles attribute to bubbles
+        self.bubbles = bubbles;
+
+        // Step 7: Set event's cancelable attribute to cancelable
+        self.cancelable = cancelable;
     
     }
 

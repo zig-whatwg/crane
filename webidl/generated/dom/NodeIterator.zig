@@ -120,6 +120,100 @@ pub const NodeIterator = struct {
     
     }
 
+    fn traverse(self: *NodeIterator, direction: Direction) !?*Node {
+
+        const dom = @import("dom");
+
+        // Step 1: Let node be iterator's reference
+        var node = self.reference;
+
+        // Step 2: Let beforeNode be iterator's pointer before reference
+        var before_node = self.pointer_before_reference;
+
+        // Step 3: While true
+        while (true) {
+            // Step 3.1: Branch on direction
+            switch (direction) {
+                .next => {
+                    if (!before_node) {
+                        // Find first node following node in iterator collection
+                        const next_node = dom.tree_helpers.getNextNodeInTree(node, self.root);
+                        if (next_node == null) return null;
+                        node = next_node.?;
+                    } else {
+                        // Set beforeNode to false
+                        before_node = false;
+                    }
+                },
+                .previous => {
+                    if (before_node) {
+                        // Find first node preceding node in iterator collection
+                        const prev_node = dom.tree_helpers.getPreviousNodeInTree(node, self.root);
+                        if (prev_node == null) return null;
+                        node = prev_node.?;
+                    } else {
+                        // Set beforeNode to true
+                        before_node = true;
+                    }
+                },
+            }
+
+            // Step 3.2: Let result be the result of filtering node within iterator
+            const result = try self.filterNode(node);
+
+            // Step 3.3: If result is FILTER_ACCEPT, then break
+            if (result == NodeFilter.FILTER_ACCEPT) {
+                break;
+            }
+        }
+
+        // Step 4: Set iterator's reference to node
+        self.reference = node;
+
+        // Step 5: Set iterator's pointer before reference to beforeNode
+        self.pointer_before_reference = before_node;
+
+        // Step 6: Return node
+        return node;
+    
+    }
+
+    fn filterNode(self: *NodeIterator, node: *Node) !u16 {
+
+        // Step 1: If traverser's active flag is set, throw InvalidStateError
+        if (self.active_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Let n be node's nodeType attribute value − 1
+        const n = node.node_type - 1;
+
+        // Step 3: If the nth bit of whatToShow is not set, return FILTER_SKIP
+        if (!NodeFilter.isNodeTypeShown(self.what_to_show, n)) {
+            return NodeFilter.FILTER_SKIP;
+        }
+
+        // Step 4: If filter is null, return FILTER_ACCEPT
+        if (self.filter == null) {
+            return NodeFilter.FILTER_ACCEPT;
+        }
+
+        // Step 5: Set traverser's active flag
+        self.active_flag = true;
+
+        // Step 6: Call filter callback
+        // Note: In real implementation, this would be a WebIDL callback invocation
+        // For now, we call the function pointer directly
+        const result = self.filter.?(node);
+
+        // Step 7: Unset traverser's active flag
+        self.active_flag = false;
+
+        // Step 8: Return result
+        return result;
+    
+    }
+
     pub fn preRemoveSteps(self: *NodeIterator, to_be_removed: *Node) void {
 
         const dom = @import("dom");

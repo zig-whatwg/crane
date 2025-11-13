@@ -143,6 +143,110 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    fn readInternal(
+        self: *ReadableStreamBYOBReader,
+        view: webidl.ArrayBufferView,
+        min: u64,
+    ) !*AsyncPromise(common.ReadResult) {
+
+        const allocator = self.allocator;
+        const loop = self.eventLoop;
+        const promise = try AsyncPromise(common.ReadResult).init(allocator, loop);
+
+        // Step 1: Let stream be reader.[[stream]]
+        const stream_ptr = self.stream orelse {
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Reader has no stream"),
+                },
+            };
+            promise.reject(exception);
+            return promise;
+        };
+
+        // Cast to actual ReadableStream type
+        const stream: *ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Step 3: Set stream.[[disturbed]] to true
+        stream.disturbed = true;
+
+        // Step 4: If stream is errored, reject promise
+        if (stream.state == .errored) {
+            const storedError = stream.storedError orelse common.JSValue{ .string = "Stream errored" };
+            const exception = try storedError.toException(self.allocator);
+            promise.reject(exception);
+            return promise;
+        }
+
+        // Step 5: Call controller.pullInto()
+        // Create ReadIntoRequest that will fulfill our promise
+        const PromiseContext = struct {
+            promisePtr: *AsyncPromise(common.ReadResult),
+            allocator: std.mem.Allocator,
+
+            fn chunkSteps(ctx: ?*anyopaque, chunk: ReadIntoRequestModule.ArrayBufferView) void {
+                const context: *@This() = @ptrCast(@alignCast(ctx.?));
+                // Fulfill promise with the filled view
+                context.promisePtr.fulfill(.{
+                    .value = common.JSValue{ .bytes = chunk.data },
+                    .done = false,
+                });
+            }
+
+            fn closeSteps(ctx: ?*anyopaque) void {
+                const context: *@This() = @ptrCast(@alignCast(ctx.?));
+                // Fulfill promise with done=true
+                context.promisePtr.fulfill(.{
+                    .value = common.JSValue{ .undefined = {} },
+                    .done = true,
+                });
+            }
+
+            fn errorSteps(ctx: ?*anyopaque, e: ReadIntoRequestModule.Value) void {
+                const context: *@This() = @ptrCast(@alignCast(ctx.?));
+                // Reject promise with error
+                const err_value = switch (e) {
+                    .string => |s| common.JSValue{ .string = s },
+                    else => common.JSValue{ .string = "Unknown error" },
+                };
+                const exception = err_value.toException(context.allocator) catch return;
+                context.promisePtr.reject(exception);
+            }
+        };
+
+        // Allocate context for the callback closures
+        const ctx = try allocator.create(PromiseContext);
+        ctx.* = .{ .promisePtr = promise, .allocator = allocator };
+
+        const readIntoRequest = ReadIntoRequest.init(
+            allocator,
+            PromiseContext.chunkSteps,
+            PromiseContext.closeSteps,
+            PromiseContext.errorSteps,
+            ctx,
+        );
+
+        // Get the byte stream controller and call pullInto
+        // Note: stream.controller should be *ReadableByteStreamController for BYOB
+        const controller: *ReadableByteStreamController = @ptrCast(@alignCast(stream.controller));
+
+        controller.pullInto(view, min, readIntoRequest) catch {
+            allocator.destroy(ctx);
+            const exception = webidl.errors.Exception{
+                .simple = .{
+                    .type = .TypeError,
+                    .message = try allocator.dupe(u8, "Pull into failed"),
+                },
+            };
+            promise.reject(exception);
+            return promise;
+        };
+
+        return promise;
+    
+    }
+
     pub fn call_releaseLock(self: *ReadableStreamBYOBReader) void {
 
         if (self.stream == null) {
@@ -185,6 +289,19 @@ pub const ReadableStreamBYOBReader = struct {
 
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
         return self.genericCancel(reason_value);
+    
+    }
+
+    fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+
+        // Step 1: Let stream be reader.[[stream]].
+        const stream = self.stream.?;
+
+        // Step 2: Assert: stream is not undefined.
+        // (Assertion is implicit - .? will panic if stream is null)
+
+        // Step 3: Return ! ReadableStreamCancel(stream, reason).
+        return stream.cancelInternal(reason);
     
     }
 

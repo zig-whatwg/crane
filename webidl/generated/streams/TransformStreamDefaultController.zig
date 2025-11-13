@@ -127,6 +127,33 @@ pub const TransformStreamDefaultController = struct {
     
     }
 
+    fn errorInternal(self: *TransformStreamDefaultController, error_value: common.JSValue) void {
+
+        // Spec step 1: Perform ! TransformStreamError(controller.[[stream]], e)
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+        stream.errorStream(error_value);
+    
+    }
+
+    fn terminateInternal(self: *TransformStreamDefaultController) !void {
+
+        // Spec step 1: Let stream be controller.[[stream]]
+        const stream: *TransformStream = @ptrCast(@alignCast(self.stream.?));
+
+        // Spec step 2: Let readableController be stream.[[readable]].[[controller]]
+        const readable_controller = stream.readableStream.controller;
+
+        // Spec step 3: Perform ! ReadableStreamDefaultControllerClose(readableController)
+        readable_controller.closeInternal();
+
+        // Spec step 4: Let error be a TypeError exception indicating that the stream has been terminated
+        const error_value = common.JSValue{ .string = "Stream has been terminated" };
+
+        // Spec step 5: Perform ! TransformStreamErrorWritableAndUnblockWrite(stream, error)
+        stream.errorWritableAndUnblockWrite(error_value);
+    
+    }
+
     pub fn clearAlgorithms(self: *TransformStreamDefaultController) void {
 
         self.transformAlgorithm.deinit();

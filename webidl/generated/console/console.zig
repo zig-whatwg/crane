@@ -16,12 +16,10 @@ const types = @import("types");
 const webidl = @import("webidl");
 
 
-const Allocator = std.mem.Allocator;
 const Group = types.Group;
 const LogLevel = types.LogLevel;
 const Message = types.Message;
 const CircularMessageBuffer = types.CircularMessageBuffer;
-
 /// Printer function signature for console output.
 ///
 /// Takes a pre-formatted message string and outputs it.
@@ -34,7 +32,6 @@ const CircularMessageBuffer = types.CircularMessageBuffer;
 /// }
 /// ```
 pub const PrintFn = *const fn (message: []const u8) void;
-
 /// Default printer function that outputs to stderr.
 ///
 /// This is the default value for console.printFn.
@@ -42,7 +39,6 @@ pub const PrintFn = *const fn (message: []const u8) void;
 fn defaultPrinter(message: []const u8) void {
     std.debug.print("{s}\n", .{message});
 }
-
 /// console namespace object per WHATWG console Standard
 ///
 /// WHATWG console Standard lines 8-39 (WebIDL):
@@ -181,6 +177,24 @@ pub const console = struct {
     
     }
 
+    fn internLabel(self: *console, label_utf8: []const u8) ![]const u8 {
+
+        // Check if already in pool
+        if (self.labelPool.getKey(label_utf8)) |existing| {
+            return existing;
+        }
+
+        // Not in pool - allocate and insert
+        const owned = try self.allocator.dupe(u8, label_utf8);
+        errdefer self.allocator.free(owned);
+
+        try self.labelPool.put(owned, {});
+
+        // Return the owned string from the pool
+        return self.labelPool.getKey(owned).?;
+    
+    }
+
     pub fn call_assert(self: *console, condition: bool, data: []const webidl.JSValue) void {
 
         // 1. If condition is true, return.
@@ -307,6 +321,226 @@ pub const console = struct {
             const args: [1]webidl.JSValue = .{data};
             self.logger(.log, &args);
         }
+    
+    }
+
+    fn constructTable(
+        self: *console,
+        rt: *types.RuntimeInterface,
+        data: webidl.JSValue,
+        properties: ?[]const webidl.DOMString,
+    ) !void {
+
+        // Step 1: Check if data is an array
+        const is_array = rt.vtable.isArray(rt.context, data);
+        if (!is_array) {
+            return error.NotTabular;
+        }
+
+        // Step 2: Get array length
+        const length_opt = try rt.vtable.getLength(rt.context, data);
+        const length = length_opt orelse return error.NotTabular;
+
+        if (length == 0) {
+            const args: [1]webidl.JSValue = .{data};
+            self.logger(.log, &args);
+            return;
+        }
+
+        // Step 3: Collect all unique keys from array elements
+        var all_keys = std.StringHashMap(void).init(self.allocator);
+        defer {
+            var key_iter = all_keys.keyIterator();
+            while (key_iter.next()) |key| {
+                self.allocator.free(key.*);
+            }
+            all_keys.deinit();
+        }
+
+        var i: u32 = 0;
+        while (i < length) : (i += 1) {
+            const index_str = try std.fmt.allocPrint(self.allocator, "{d}", .{i});
+            defer self.allocator.free(index_str);
+
+            const element = (try rt.vtable.getProperty(rt.context, data, index_str, self.allocator)) orelse continue;
+
+            if (rt.vtable.isObject(rt.context, element)) {
+                const keys = try rt.vtable.getKeys(rt.context, element, self.allocator);
+                defer {
+                    for (keys) |key| {
+                        self.allocator.free(key);
+                    }
+                    self.allocator.free(keys);
+                }
+
+                for (keys) |key| {
+                    const entry = try all_keys.getOrPut(key);
+                    if (!entry.found_existing) {
+                        entry.key_ptr.* = try self.allocator.dupe(u8, key);
+                    }
+                }
+            }
+        }
+
+        // Step 4: Determine which columns to display
+        var columns = infra.List([]const u8).init(self.allocator);
+        defer {
+            for (columns.items()) |col| {
+                self.allocator.free(col);
+            }
+            columns.deinit();
+        }
+
+        if (properties) |props| {
+            for (props) |prop| {
+                const prop_utf8 = try infra.string.utf16ToUtf8(self.allocator, prop);
+                defer self.allocator.free(prop_utf8);
+
+                if (all_keys.contains(prop_utf8)) {
+                    try columns.append(try self.allocator.dupe(u8, prop_utf8));
+                }
+            }
+        } else {
+            var key_iter = all_keys.keyIterator();
+            while (key_iter.next()) |key| {
+                try columns.append(try self.allocator.dupe(u8, key.*));
+            }
+        }
+
+        // Step 5: Build table string with borders
+        var table = infra.List(u8).init(self.allocator);
+        defer table.deinit();
+
+        // Calculate column widths
+        const col_widths = blk: {
+            var widths = try self.allocator.alloc(usize, columns.size() + 1);
+            widths[0] = "(index)".len;
+
+            for (columns.items(), 1..) |col, idx| {
+                widths[idx] = col.len;
+            }
+
+            // Check data for wider cells
+            i = 0;
+            while (i < length) : (i += 1) {
+                const idx_str = try std.fmt.allocPrint(self.allocator, "{d}", .{i});
+                defer self.allocator.free(idx_str);
+
+                widths[0] = @max(widths[0], idx_str.len);
+
+                const index_str = try std.fmt.allocPrint(self.allocator, "{d}", .{i});
+                defer self.allocator.free(index_str);
+
+                const element = (try rt.vtable.getProperty(rt.context, data, index_str, self.allocator)) orelse continue;
+
+                for (columns.items(), 1..) |col, col_idx| {
+                    if (rt.vtable.isObject(rt.context, element)) {
+                        const value = (try rt.vtable.getProperty(rt.context, element, col, self.allocator)) orelse continue;
+                        const val_str = try rt.vtable.toString(rt.context, value, self.allocator);
+                        defer self.allocator.free(val_str);
+                        widths[col_idx] = @max(widths[col_idx], val_str.len);
+                    }
+                }
+            }
+
+            break :blk widths;
+        };
+        defer self.allocator.free(col_widths);
+
+        // Top border
+        try table.appendSlice("┌");
+        for (col_widths, 0..) |width, idx| {
+            for (0..width + 2) |_| try table.appendSlice("─");
+            if (idx < col_widths.len - 1) {
+                try table.appendSlice("┬");
+            }
+        }
+        try table.appendSlice("┐\n");
+
+        // Header row
+        try table.appendSlice("│ (index)");
+        for (0..col_widths[0] - "(index)".len) |_| try table.append(' ');
+        try table.append(' ');
+
+        for (columns.items(), 1..) |col, idx| {
+            try table.appendSlice("│ ");
+            try table.appendSlice(col);
+            for (0..col_widths[idx] - col.len) |_| try table.append(' ');
+            try table.append(' ');
+        }
+        try table.appendSlice("│\n");
+
+        // Header separator
+        try table.appendSlice("├");
+        for (col_widths, 0..) |width, idx| {
+            for (0..width + 2) |_| try table.appendSlice("─");
+            if (idx < col_widths.len - 1) {
+                try table.appendSlice("┼");
+            }
+        }
+        try table.appendSlice("┤\n");
+
+        // Data rows
+        i = 0;
+        while (i < length) : (i += 1) {
+            const idx_str = try std.fmt.allocPrint(self.allocator, "{d}", .{i});
+            defer self.allocator.free(idx_str);
+
+            try table.appendSlice("│ ");
+            try table.appendSlice(idx_str);
+            for (0..col_widths[0] - idx_str.len) |_| try table.append(' ');
+            try table.append(' ');
+
+            const index_str = try std.fmt.allocPrint(self.allocator, "{d}", .{i});
+            defer self.allocator.free(index_str);
+
+            const element = (try rt.vtable.getProperty(rt.context, data, index_str, self.allocator)) orelse {
+                for (1..col_widths.len) |idx| {
+                    try table.appendSlice("│ ");
+                    for (0..col_widths[idx]) |_| try table.append(' ');
+                    try table.append(' ');
+                }
+                try table.appendSlice("│\n");
+                continue;
+            };
+
+            for (columns.items(), 1..) |col, idx| {
+                try table.appendSlice("│ ");
+
+                if (rt.vtable.isObject(rt.context, element)) {
+                    const value = (try rt.vtable.getProperty(rt.context, element, col, self.allocator)) orelse {
+                        for (0..col_widths[idx]) |_| try table.append(' ');
+                        try table.append(' ');
+                        continue;
+                    };
+
+                    const val_str = try rt.vtable.toString(rt.context, value, self.allocator);
+                    defer self.allocator.free(val_str);
+
+                    try table.appendSlice(val_str);
+                    for (0..col_widths[idx] - val_str.len) |_| try table.append(' ');
+                } else {
+                    for (0..col_widths[idx]) |_| try table.append(' ');
+                }
+                try table.append(' ');
+            }
+            try table.appendSlice("│\n");
+        }
+
+        // Bottom border
+        try table.appendSlice("└");
+        for (col_widths, 0..) |width, idx| {
+            for (0..width + 2) |_| try table.appendSlice("─");
+            if (idx < col_widths.len - 1) {
+                try table.appendSlice("┴");
+            }
+        }
+        try table.appendSlice("┘\n");
+
+        // Print the table
+        const table_items = table.items();
+        const table_value = webidl.JSValue{ .string = table_items };
+        self.printer(.table, &.{table_value});
     
     }
 
@@ -587,6 +821,219 @@ pub const console = struct {
         // Step 6: Perform Printer("timeEnd", « concat »)
         const args = [_]webidl.JSValue{.{ .string = concat }};
         self.printer(.time_end, &args);
+    
+    }
+
+    fn logger(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
+
+        // Fast path if disabled
+        if (!self.enabled) return;
+
+        // Step 1: If args is empty, return
+        if (args.len == 0) return;
+
+        // Step 2: Let first be args[0]
+        const first = args[0];
+
+        // Step 3: Let rest be all elements following first in args
+        const rest = args[1..];
+
+        // Step 4: If rest is empty, perform Printer(logLevel, « first »)
+        if (rest.len == 0) {
+            self.printer(log_level, &.{first});
+            return;
+        }
+
+        // Step 5: Otherwise, perform Printer(logLevel, Formatter(args))
+        const formatted = self.formatter(args) catch {
+            // If formatting fails, print args unformatted
+            self.printer(log_level, args);
+            return;
+        };
+        defer if (formatted.ptr != args.ptr) self.allocator.free(formatted);
+
+        self.printer(log_level, formatted);
+
+        // Step 6: Return undefined (implicit in Zig void return)
+    
+    }
+
+    fn formatter(self: *console, args: []const webidl.JSValue) ![]const webidl.JSValue {
+
+        // Step 1: If args's size is 1, return args
+        if (args.len == 1) return args;
+
+        // Step 2: Let target be the first element of args
+        const target = args[0];
+
+        // Step 3: Let current be the second element of args
+        const current = args[1];
+
+        // Convert target to string for format specifier scanning
+        const target_str = switch (target) {
+            .string => |s| s,
+            else => {
+                // Can't process format specifiers on non-strings
+                return args;
+            },
+        };
+
+        // Step 4: Find the first possible format specifier from left to right in target
+        const first_spec_match = blk: {
+            var specs = try format.findAllSpecifiers(self.allocator, target_str);
+            defer specs.deinit();
+
+            if (specs.size() > 0) {
+                break :blk specs.get(0);
+            } else {
+                break :blk null;
+            }
+        };
+
+        // Step 5: If no format specifier was found, return args
+        if (first_spec_match == null) return args;
+
+        const spec_info = first_spec_match.?;
+
+        // Step 6: Otherwise (a specifier was found)
+        // Convert current arg based on specifier type
+        const converted = try self.convertForSpecifier(current, spec_info.spec);
+        defer self.allocator.free(converted);
+
+        // Step 6.7: Replace specifier in target with converted
+        var new_target_buf = infra.List(u8).init(self.allocator);
+        defer new_target_buf.deinit();
+
+        // Append text before specifier
+        try new_target_buf.appendSlice(target_str[0..spec_info.index]);
+        // Append converted value
+        try new_target_buf.appendSlice(converted);
+        // Append text after specifier (skip the 2-char specifier: %s, %d, etc.)
+        try new_target_buf.appendSlice(target_str[spec_info.index + 2 ..]);
+
+        const new_target_str = try self.allocator.dupe(u8, new_target_buf.items());
+
+        // Step 7: Let result be a list containing target + elements from third onward
+        const result_len = 1 + (if (args.len > 2) args.len - 2 else 0);
+        var result = try self.allocator.alloc(webidl.JSValue, result_len);
+
+        result[0] = webidl.JSValue{ .string = new_target_str };
+
+        // Copy remaining args (starting from third element, index 2)
+        if (args.len > 2) {
+            @memcpy(result[1..], args[2..]);
+        }
+
+        // Step 8: Return Formatter(result) - RECURSIVE CALL
+        const final_result = try self.formatter(result);
+
+        // Clean up intermediate allocations
+        if (final_result.ptr != result.ptr) {
+            var string_still_used = false;
+            for (final_result) |item| {
+                if (item == .string and item.string.ptr == new_target_str.ptr) {
+                    string_still_used = true;
+                    break;
+                }
+            }
+            if (!string_still_used) {
+                self.allocator.free(new_target_str);
+            }
+            self.allocator.free(result);
+        }
+
+        return final_result;
+    
+    }
+
+    fn convertForSpecifier(self: *console, value: webidl.JSValue, spec: format.FormatSpec) ![]const u8 {
+
+        // If runtime is available, use it for type conversions
+        if (self.runtime) |rt| {
+            return switch (spec) {
+                .string => try rt.vtable.toString(rt.context, value, self.allocator),
+                .integer => {
+                    const int_val = try rt.vtable.toInteger(rt.context, value);
+                    return try std.fmt.allocPrint(self.allocator, "{d}", .{int_val});
+                },
+                .float => {
+                    const float_val = try rt.vtable.toFloat(rt.context, value);
+                    return try std.fmt.allocPrint(self.allocator, "{d}", .{float_val});
+                },
+                .optimal, .object => try rt.vtable.toString(rt.context, value, self.allocator),
+                .css => try self.allocator.dupe(u8, ""),
+            };
+        }
+
+        // Fallback: Use simple conversions when no runtime available
+        return switch (spec) {
+            .string => switch (value) {
+                .string => |s| try self.allocator.dupe(u8, s),
+                .number => |n| try std.fmt.allocPrint(self.allocator, "{d}", .{n}),
+                .boolean => |b| try self.allocator.dupe(u8, if (b) "true" else "false"),
+                .null => try self.allocator.dupe(u8, "null"),
+                .undefined => try self.allocator.dupe(u8, "undefined"),
+            },
+            .integer => switch (value) {
+                .string => |s| blk: {
+                    const parsed = std.fmt.parseInt(i32, s, 10) catch 0;
+                    break :blk try std.fmt.allocPrint(self.allocator, "{d}", .{parsed});
+                },
+                .number => |n| try std.fmt.allocPrint(self.allocator, "{d}", .{@as(i32, @intFromFloat(n))}),
+                .boolean => |b| try std.fmt.allocPrint(self.allocator, "{d}", .{if (b) @as(i32, 1) else @as(i32, 0)}),
+                .null => try self.allocator.dupe(u8, "0"),
+                .undefined => try self.allocator.dupe(u8, "NaN"),
+            },
+            .float => switch (value) {
+                .string => |s| blk: {
+                    const parsed = std.fmt.parseFloat(f64, s) catch std.math.nan(f64);
+                    break :blk try std.fmt.allocPrint(self.allocator, "{d}", .{parsed});
+                },
+                .number => |n| try std.fmt.allocPrint(self.allocator, "{d}", .{n}),
+                .boolean => |b| try std.fmt.allocPrint(self.allocator, "{d}", .{if (b) @as(f64, 1.0) else @as(f64, 0.0)}),
+                .null => try self.allocator.dupe(u8, "0"),
+                .undefined => try self.allocator.dupe(u8, "NaN"),
+            },
+            .optimal, .object => switch (value) {
+                .string => |s| try self.allocator.dupe(u8, s),
+                .number => |n| try std.fmt.allocPrint(self.allocator, "{d}", .{n}),
+                .boolean => |b| try self.allocator.dupe(u8, if (b) "true" else "false"),
+                .null => try self.allocator.dupe(u8, "null"),
+                .undefined => try self.allocator.dupe(u8, "undefined"),
+            },
+            .css => try self.allocator.dupe(u8, ""),
+        };
+    
+    }
+
+    fn printer(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
+
+        self.printerWithOwnedStrings(log_level, args, &.{});
+    
+    }
+
+    fn printerWithOwnedStrings(self: *console, log_level: LogLevel, args: []const webidl.JSValue, owned_strings: []const []const u8) void {
+
+        const indent = self.groupStack.size();
+        const timestamp = infra.Moment.now();
+
+        // Create message
+        var message = Message.init(log_level, timestamp, args, indent, self.allocator) catch return;
+
+        // Track owned strings
+        for (owned_strings) |owned_str| {
+            message.takeOwnership(owned_str) catch {};
+        }
+
+        // Add to buffer
+        self.messageBuffer.push(message);
+
+        // If print function is set, format and output immediately
+        if (self.printFn) |printFn| {
+            const formatted = message.format(self.allocator) catch return;
+            defer self.allocator.free(formatted);
+            printFn(formatted);
+        }
     
     }
 

@@ -18,7 +18,6 @@ const webidl = @import("webidl");
 
 
 pub const FilterFn = *const fn (*Element, *const anyopaque) bool;
-
 /// HTMLCollection is a collection of elements.
 ///
 /// This is a live collection - it automatically updates when the DOM changes.
@@ -67,6 +66,28 @@ pub const HTMLCollection = struct {
         };
         try coll.rebuild();
         return coll;
+    
+    }
+
+    fn rebuild(self: *HTMLCollection) !void {
+
+        if (self.root == null or self.filter_fn == null) return;
+        self.elements.clearRetainingCapacity();
+        try self.collectElements(self.root.?);
+    
+    }
+
+    fn collectElements(self: *HTMLCollection, node: *Node) !void {
+
+        for (node.child_nodes.items()) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                const element: *Element = @ptrCast(child);
+                if (self.filter_fn.?(element, self.filter_context.?)) {
+                    try self.elements.append(element);
+                }
+                try self.collectElements(child);
+            }
+        }
     
     }
 

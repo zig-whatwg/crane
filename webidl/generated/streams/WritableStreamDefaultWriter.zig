@@ -163,12 +163,45 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    fn getDesiredSizeInternal(self: *const WritableStreamDefaultWriter) ?f64 {
+
+        _ = self;
+        return 1.0; // Placeholder
+    
+    }
+
+    fn abortInternal(self: *WritableStreamDefaultWriter, reason: ?common.JSValue) !*AsyncPromise(void) {
+
+        _ = reason;
+        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+        promise.fulfill({});
+        return promise;
+    
+    }
+
+    fn closeInternal(self: *WritableStreamDefaultWriter) !*AsyncPromise(void) {
+
+        const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+        promise.fulfill({});
+        return promise;
+    
+    }
+
     pub fn writeInternal(self: *WritableStreamDefaultWriter, chunk: common.JSValue) !*AsyncPromise(void) {
 
         _ = chunk;
         const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
         promise.fulfill({});
         return promise;
+    
+    }
+
+    fn releaseInternal(self: *WritableStreamDefaultWriter) void {
+
+        if (self.stream) |stream| {
+            stream.writer = .none;
+            self.stream = null;
+        }
     
     }
 

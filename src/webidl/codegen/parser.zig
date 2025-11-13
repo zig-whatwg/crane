@@ -211,10 +211,36 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
 
     const definitions_section = source[last_import_end..end_pos];
 
-    // Clean up: remove leading/trailing whitespace but keep internal structure
-    const trimmed = std.mem.trim(u8, definitions_section, " \t\r\n");
+    // Filter out lines that redefine default imports (Allocator, std, webidl)
+    // These are auto-generated so we don't want duplicates
+    var filtered: std.ArrayList(u8) = .empty;
+    defer filtered.deinit(allocator);
 
-    return try allocator.dupe(u8, trimmed);
+    var line_iter = std.mem.tokenizeScalar(u8, definitions_section, '\n');
+    while (line_iter.next()) |line| {
+        const trimmed_line = std.mem.trim(u8, line, " \t\r");
+
+        // Skip empty lines
+        if (trimmed_line.len == 0) continue;
+
+        // Skip lines that redefine default imports
+        if (std.mem.startsWith(u8, trimmed_line, "const Allocator ")) continue;
+        if (std.mem.startsWith(u8, trimmed_line, "const std ")) continue;
+        if (std.mem.startsWith(u8, trimmed_line, "const webidl ")) continue;
+        if (std.mem.startsWith(u8, trimmed_line, "pub const Allocator ")) continue;
+        if (std.mem.startsWith(u8, trimmed_line, "pub const std ")) continue;
+        if (std.mem.startsWith(u8, trimmed_line, "pub const webidl ")) continue;
+
+        try filtered.appendSlice(allocator, line);
+        try filtered.append(allocator, '\n');
+    }
+
+    const result = try filtered.toOwnedSlice(allocator);
+    const trimmed = std.mem.trim(u8, result, " \t\r\n");
+    const final = try allocator.dupe(u8, trimmed);
+    allocator.free(result);
+
+    return final;
 }
 
 /// Parse a single import statement
@@ -564,16 +590,69 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
     var line_num: usize = 1;
 
     while (pos < struct_body.len) {
-        // Look for function declarations
-        if (std.mem.indexOfPos(u8, struct_body, pos, "pub fn ") orelse
-            std.mem.indexOfPos(u8, struct_body, pos, "pub inline fn ")) |fn_pos|
-        {
-            const is_inline = std.mem.startsWith(u8, struct_body[fn_pos..], "pub inline fn ");
-            const name_start = fn_pos + (if (is_inline) "pub inline fn ".len else "pub fn ".len);
+        // Look for function declarations (both public and private)
+        const pub_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub fn ");
+        const pub_inline_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub inline fn ");
+        const priv_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "fn ");
+        const priv_inline_fn_pos = std.mem.indexOfPos(u8, struct_body, pos, "inline fn ");
+
+        // Find the earliest function declaration
+        var fn_pos: ?usize = null;
+        var is_public = false;
+        var is_inline = false;
+        var prefix_len: usize = 0;
+
+        if (pub_inline_fn_pos) |pos_val| {
+            fn_pos = pos_val;
+            is_public = true;
+            is_inline = true;
+            prefix_len = "pub inline fn ".len;
+        }
+        if (pub_fn_pos) |pos_val| {
+            if (fn_pos == null or pos_val < fn_pos.?) {
+                fn_pos = pos_val;
+                is_public = true;
+                is_inline = false;
+                prefix_len = "pub fn ".len;
+            }
+        }
+        if (priv_inline_fn_pos) |pos_val| {
+            if (fn_pos == null or pos_val < fn_pos.?) {
+                fn_pos = pos_val;
+                is_public = false;
+                is_inline = true;
+                prefix_len = "inline fn ".len;
+            }
+        }
+        if (priv_fn_pos) |pos_val| {
+            if (fn_pos == null or pos_val < fn_pos.?) {
+                // Make sure this isn't part of "pub fn" or "inline fn"
+                if (pos_val >= 4) {
+                    const before = struct_body[pos_val - 4 .. pos_val];
+                    if (std.mem.eql(u8, before, "pub ") or std.mem.eql(u8, before, "line")) {
+                        pos += 1;
+                        continue;
+                    }
+                } else if (pos_val >= 7) {
+                    const before = struct_body[pos_val - 7 .. pos_val];
+                    if (std.mem.eql(u8, before, "inline ")) {
+                        pos += 1;
+                        continue;
+                    }
+                }
+                fn_pos = pos_val;
+                is_public = false;
+                is_inline = false;
+                prefix_len = "fn ".len;
+            }
+        }
+
+        if (fn_pos) |fn_start| {
+            const name_start = fn_start + prefix_len;
 
             // Extract method name
             const paren_pos = std.mem.indexOfScalarPos(u8, struct_body, name_start, '(') orelse {
-                pos = fn_pos + 1;
+                pos = fn_start + 1;
                 continue;
             };
             const method_name = std.mem.trim(u8, struct_body[name_start..paren_pos], " \t\r\n");
@@ -607,7 +686,7 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
                 .doc_comment = null,
                 .source_line = line_num,
                 .modifiers = .{
-                    .is_public = true,
+                    .is_public = is_public,
                     .is_inline = is_inline,
                 },
             });

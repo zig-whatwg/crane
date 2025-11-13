@@ -57,6 +57,34 @@ pub const URL = struct {
     
     }
 
+    fn initializeWithURLRecord(allocator: std.mem.Allocator, url_record: URLRecord) !URL {
+
+        // Step 1: Let query be urlRecord's query, if non-null; otherwise empty string
+        const query = url_record.query() orelse "";
+
+        // Step 3: Create new URLSearchParams object
+        // Step 4: Initialize it with query string
+        var query_impl = try allocator.create(URLSearchParamsImpl);
+        errdefer allocator.destroy(query_impl);
+
+        query_impl.* = try URLSearchParamsImpl.initFromString(allocator, query);
+        errdefer query_impl.deinit();
+
+        // Step 2: Create URL with url_record
+        var url = URL{
+            .url_record = url_record,
+            .query_impl = query_impl,
+            .allocator = allocator,
+        };
+
+        // Step 5: Set query object's URL object to this URL
+        // We set it to point back to this URL object for bidirectional sync
+        query_impl.url_object = @ptrCast(&url);
+
+        return url;
+    
+    }
+
     pub fn deinit(self: *URL) void {
 
         self.query_impl.deinit();

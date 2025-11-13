@@ -205,6 +205,11 @@ pub const URLSearchParams = struct {
     
     }
 
+    fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
+
+    /// forEach method
+    /// Calls callback for each [name, value] pair in the list
+    /// Note: Parameters are (value, name, this) per WebIDL/JavaScript convention
     pub fn forEach(self: *const URLSearchParams, callback: ForEachCallback) void {
 
         for (self.impl.list.items) |tuple| {

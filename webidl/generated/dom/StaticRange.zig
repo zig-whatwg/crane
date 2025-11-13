@@ -22,7 +22,6 @@ pub const StaticRangeInit = struct {
     endContainer: *Node,
     endOffset: u32,
 };
-
 /// DOM §5 - interface StaticRange : AbstractRange
 ///
 /// A StaticRange is a range object that does not update when the node tree mutates.

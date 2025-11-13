@@ -126,6 +126,111 @@ pub const TextEncoderStream = struct {
     
     }
 
+    fn encodeAndEnqueue(
+        self: *TextEncoderStream,
+        controller: *TransformStreamDefaultController,
+        chunk: webidl.JSValue,
+    ) !void {
+
+        // Step 1: Convert chunk to DOMString (extract string)
+        const input_string = switch (chunk) {
+            .string => |s| s,
+            else => return, // Skip non-string chunks
+        };
+
+        // Step 2-3: Process code units and encode to UTF-8
+        var output = std.ArrayList(u8).init(self.allocator);
+        defer output.deinit();
+
+        // Step 4: Process each code unit
+        for (input_string) |code_unit| {
+            // Step 4.3: Convert code unit to scalar value
+            const scalar_value_opt = try self.convertCodeUnitToScalarValue(code_unit);
+
+            // Step 4.4: If result is not continue, encode it
+            if (scalar_value_opt) |scalar_value| {
+                // Encode scalar value to UTF-8
+                var utf8_buf: [4]u8 = undefined;
+                const len = std.unicode.utf8Encode(scalar_value, &utf8_buf) catch {
+                    // Should never happen for valid scalar values
+                    continue;
+                };
+
+                try output.appendSlice(utf8_buf[0..len]);
+            }
+        }
+
+        // Step 4.2: If output is not empty, enqueue
+        if (output.items.len > 0) {
+            // Create Uint8Array JSValue
+            const bytes = try self.allocator.dupe(u8, output.items);
+            const output_js = webidl.JSValue{ .bytes = bytes };
+            try controller.call_enqueue(output_js);
+        }
+    
+    }
+
+    fn convertCodeUnitToScalarValue(
+        self: *TextEncoderStream,
+        item: u16,
+    ) !?u21 {
+
+        // Step 1: If encoder's leading surrogate is non-null
+        if (self.leadingSurrogate) |leading| {
+            // Step 1.2: Set encoder's leading surrogate to null
+            self.leadingSurrogate = null;
+
+            // Step 1.3: If item is a trailing surrogate
+            if (item >= 0xDC00 and item <= 0xDFFF) {
+                // Return scalar value from surrogates
+                const code_point: u21 = 0x10000 + (((@as(u21, leading) - 0xD800) << 10) | (@as(u21, item) - 0xDC00));
+                return code_point;
+            }
+
+            // Step 1.5: Return U+FFFD (unpaired leading surrogate)
+            return 0xFFFD;
+        }
+
+        // Step 2: If item is a leading surrogate
+        if (item >= 0xD800 and item < 0xDC00) {
+            // Set encoder's leading surrogate to item
+            self.leadingSurrogate = item;
+            // Return continue (null)
+            return null;
+        }
+
+        // Step 3: If item is a trailing surrogate
+        if (item >= 0xDC00 and item <= 0xDFFF) {
+            // Return U+FFFD (unpaired trailing surrogate)
+            return 0xFFFD;
+        }
+
+        // Step 4: Return item (valid BMP code point)
+        return @intCast(item);
+    
+    }
+
+    fn flushAndEnqueue(
+        self: *TextEncoderStream,
+        controller: *TransformStreamDefaultController,
+    ) !void {
+
+        // Step 1: If encoder's leading surrogate is non-null
+        if (self.leadingSurrogate != null) {
+            // Clear the leading surrogate
+            self.leadingSurrogate = null;
+
+            // Step 1.1: Enqueue U+FFFD bytes (0xEF, 0xBF, 0xBD)
+            const fffd_bytes = [_]u8{ 0xEF, 0xBF, 0xBD };
+            const bytes = try self.allocator.dupe(u8, &fffd_bytes);
+            const output_js = webidl.JSValue{ .bytes = bytes };
+
+            // Step 1.2: Enqueue chunk
+            try controller.call_enqueue(output_js);
+        }
+    
+    }
+
 };
 
 

@@ -266,6 +266,70 @@ pub const DOMTokenList = struct {
     
     }
 
+    fn validateToken(token: []const u8) !void {
+
+        // If token is empty string, throw SyntaxError
+        if (token.len == 0) {
+            return error.SyntaxError;
+        }
+
+        // If token contains ASCII whitespace, throw InvalidCharacterError
+        for (token) |c| {
+            if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == '\x0C') {
+                return error.InvalidCharacterError;
+            }
+        }
+    
+    }
+
+    fn runUpdateSteps(self: *DOMTokenList) !void {
+
+        // Step 1: If element is null and token set is empty, return
+        if (self.element == null and self.tokens.items().len == 0) {
+            return;
+        }
+
+        // Step 2: Set an attribute value for the associated element
+        if (self.element) |elem| {
+            // Serialize token set (space-separated)
+            const serialized = try self.serializeTokenSet();
+            defer self.allocator.free(serialized);
+
+            // Set attribute value
+            try elem.call_setAttribute(self.attribute_name, serialized);
+        }
+    
+    }
+
+    fn serializeTokenSet(self: *const DOMTokenList) ![]const u8 {
+
+        if (self.tokens.items().len == 0) {
+            return "";
+        }
+
+        // Calculate total length
+        var total_len: usize = 0;
+        for (self.tokens.items()) |token| {
+            total_len += token.len;
+        }
+        total_len += self.tokens.items().len - 1; // spaces
+
+        // Build string
+        const result = try self.allocator.alloc(u8, total_len);
+        var pos: usize = 0;
+        for (self.tokens.items(), 0..) |token, i| {
+            @memcpy(result[pos..][0..token.len], token);
+            pos += token.len;
+            if (i < self.tokens.items().len - 1) {
+                result[pos] = ' ';
+                pos += 1;
+            }
+        }
+
+        return result;
+    
+    }
+
 };
 
 
