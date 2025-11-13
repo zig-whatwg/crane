@@ -41,6 +41,7 @@ pub const AbortSignal = webidl.interface(struct {
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
+            .event_listener_list = null, // Inherited from EventTarget
             .allocator = allocator,
             .aborted = false,
             .reason = null,

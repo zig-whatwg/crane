@@ -16,6 +16,7 @@ const ChildNode = @import("child_node").ChildNode;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
+const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;

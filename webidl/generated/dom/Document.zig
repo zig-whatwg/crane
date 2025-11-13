@@ -20,6 +20,7 @@ const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadow
 const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
+const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const Node = @import("node").Node;

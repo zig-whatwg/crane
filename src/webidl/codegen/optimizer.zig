@@ -568,11 +568,34 @@ fn addImportForType(
         return;
     }
 
-    // Skip if contains invalid characters for a type name (commas, colons, parens in name)
+    // Handle generics BEFORE checking for invalid characters
+    // If contains '(' (generic like std.ArrayList(EventListener)), extract inner types
+    if (std.mem.indexOfScalar(u8, base_type, '(')) |paren_idx| {
+        // Find matching closing paren
+        var depth: usize = 0;
+        var start_idx: ?usize = null;
+        for (base_type[paren_idx..], 0..) |c, i| {
+            if (c == '(') {
+                depth += 1;
+                if (depth == 1) start_idx = paren_idx + i + 1;
+            } else if (c == ')') {
+                depth -= 1;
+                if (depth == 0 and start_idx != null) {
+                    const inner = base_type[start_idx.? .. paren_idx + i];
+                    // Recursively extract types from inner content
+                    try addImportForType(allocator, imports, inner, current_class, module_definitions, module_constants, post_class_definitions, module_imports);
+                    break;
+                }
+            }
+        }
+        return; // Done processing generic
+    }
+
+    // Skip if contains invalid characters for a type name (commas, colons)
     // These indicate malformed extraction (e.g., function parameters)
+    // Note: We already handled '(' above for generics
     if (std.mem.indexOfScalar(u8, base_type, ',') != null or
-        std.mem.indexOfScalar(u8, base_type, ':') != null or
-        std.mem.indexOfScalar(u8, base_type, '(') != null)
+        std.mem.indexOfScalar(u8, base_type, ':') != null)
     {
         return;
     }
@@ -619,28 +642,6 @@ fn addImportForType(
         if (std.mem.indexOf(u8, post_class_definitions, pub_pattern) != null) {
             return; // Type is locally defined in post-class section, don't import
         }
-    }
-
-    // If contains '(' (generic like std.ArrayList(EventListener)), extract inner types
-    if (std.mem.indexOfScalar(u8, base_type, '(')) |paren_idx| {
-        // Find matching closing paren
-        var depth: usize = 0;
-        var start_idx: ?usize = null;
-        for (base_type[paren_idx..], 0..) |c, i| {
-            if (c == '(') {
-                depth += 1;
-                if (depth == 1) start_idx = paren_idx + i + 1;
-            } else if (c == ')') {
-                depth -= 1;
-                if (depth == 0 and start_idx != null) {
-                    const inner = base_type[start_idx.? .. paren_idx + i];
-                    // Recursively extract types from inner content
-                    try addImportForType(allocator, imports, inner, current_class, module_definitions, module_constants, post_class_definitions, module_imports);
-                    break;
-                }
-            }
-        }
-        return;
     }
 
     // Skip if contains '.' (already qualified like infra.List)

@@ -15,6 +15,7 @@ const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
+const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const NodeList = @import("node_list").NodeList;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
