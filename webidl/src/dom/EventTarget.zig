@@ -339,79 +339,12 @@ pub const EventTarget = webidl.interface(struct {
         // Step 2: Initialize isTrusted to false
         event.is_trusted = false;
 
-        // Step 3: Dispatch event to this
-        return self.dispatchEvent(event);
-    }
-
-    /// Simplified dispatch algorithm
-    /// This is a basic implementation that handles the essential event dispatch flow
-    /// without full shadow DOM, touch events, or activation behavior support.
-    fn dispatchEvent(self: *EventTarget, event: *Event) bool {
-        // Set dispatch flag
-        event.dispatch_flag = true;
-
-        // Build event path (simplified - just this target for now)
-        // Full algorithm would walk parent chain and handle shadow DOM
-
-        // Set event phase to AT_TARGET
-        event.event_phase = Event.AT_TARGET;
-        event.current_target = self;
-        event.target = self;
-
-        // Invoke listeners at target
-        if (self.event_listener_list) |list| {
-            // Clone the list to avoid issues with listeners added during dispatch
-            var listeners_copy = std.ArrayList(EventListener).init(self.allocator);
-            defer listeners_copy.deinit();
-
-            for (list.items) |listener| {
-                listeners_copy.append(listener) catch break;
-            }
-
-            // Invoke each listener
-            for (listeners_copy.items) |listener| {
-                // Check if listener matches event type
-                if (!std.mem.eql(u8, listener.type, event.type)) continue;
-
-                // Check if listener is removed
-                if (listener.removed) continue;
-
-                // Check stop propagation
-                if (event.stop_propagation_flag) break;
-
-                // Check stop immediate propagation
-                if (event.stop_immediate_propagation_flag) break;
-
-                // Invoke callback
-                if (listener.callback) |callback| {
-                    callback(event);
-                }
-
-                // Remove if once flag set
-                if (listener.once) {
-                    // Mark as removed
-                    for (list.items) |*l| {
-                        if (l.type.ptr == listener.type.ptr and
-                            l.callback == listener.callback and
-                            l.capture == listener.capture)
-                        {
-                            l.removed = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Reset event state
-        event.event_phase = Event.NONE;
-        event.current_target = null;
-        event.dispatch_flag = false;
-        event.stop_propagation_flag = false;
-        event.stop_immediate_propagation_flag = false;
-
-        // Return true if not canceled, false if canceled
-        return !event.canceled_flag;
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     }
 }, .{
     .exposed = &.{.global},

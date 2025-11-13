@@ -3,8 +3,8 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
-const Event = @import("../webidl/src/dom/Event.zig").Event;
-const EventTarget = @import("../webidl/src/dom/EventTarget.zig").EventTarget;
+const Event = @import("event").Event;
+const EventTarget = @import("event_target").EventTarget;
 const EventPathItem = Event.EventPathItem;
 
 /// DOM §2.9.1 - append to an event path
