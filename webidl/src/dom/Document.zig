@@ -287,12 +287,155 @@ pub const Document = webidl.interface(struct {
     /// importNode(node, deep)
     /// DOM §4.6.1 - Returns a copy of node imported into this document.
     /// If deep is true, the copy also includes the node's descendants.
-    /// TODO: Implement full node cloning algorithm
+    ///
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-importnode
+    ///
+    /// Implementation notes:
+    /// - Handles common node types: Element, Text, Comment, ProcessingInstruction, DocumentFragment
+    /// - Does not yet support: Custom Elements, Shadow DOM, CDATA sections
+    /// - DocumentType nodes are rejected per spec
+    ///
+    /// Spec steps:
+    /// 1. If node is a document or shadow root, throw "NotSupportedError"
+    /// 2. Return clone a node with document=this, subtree=deep
     pub fn call_importNode(self: *Document, node: *Node, deep: bool) !*Node {
-        _ = self;
-        _ = node;
-        _ = deep;
-        return error.NotImplemented;
+        // Step 1: If node is a document or shadow root, throw "NotSupportedError"
+        if (node.node_type == Node.DOCUMENT_NODE) {
+            return error.NotSupportedError;
+        }
+        // TODO: Check for shadow root when shadow DOM is implemented
+
+        // Step 2: Clone the node
+        return self.cloneNode(node, deep, null);
+    }
+
+    /// Clone a node algorithm
+    /// Spec: https://dom.spec.whatwg.org/#concept-node-clone
+    ///
+    /// Simplified implementation for common node types.
+    /// Does not yet support: Custom Elements, Shadow DOM cloning
+    fn cloneNode(self: *Document, node: *Node, subtree: bool, parent: ?*Node) !*Node {
+        // Clone the single node first
+        const copy = try self.cloneSingleNode(node);
+        errdefer self.destroyNode(copy);
+
+        // If parent is provided, append copy to parent
+        if (parent) |p| {
+            // Append to parent's children
+            try p.child_nodes.append(copy);
+            copy.parent_node = p;
+        }
+
+        // If subtree is true, clone all children recursively
+        if (subtree) {
+            for (0..node.child_nodes.size()) |i| {
+                if (node.child_nodes.get(i)) |child| {
+                    _ = try self.cloneNode(child, true, copy);
+                }
+            }
+        }
+
+        return copy;
+    }
+
+    /// Clone a single node (without children)
+    /// Spec: https://dom.spec.whatwg.org/#concept-node-clone-single
+    fn cloneSingleNode(self: *Document, node: *Node) !*Node {
+        switch (node.node_type) {
+            Node.ELEMENT_NODE => {
+                const elem: *Element = @ptrCast(node);
+
+                // Create new element with same tag name
+                const copy_elem = try self.call_createElement(elem.tag_name);
+
+                // Clone all attributes
+                for (elem.attributes.items) |attr| {
+                    const copy_attr = try self.allocator.create(Attr);
+                    errdefer self.allocator.destroy(copy_attr);
+
+                    copy_attr.* = try Attr.init(
+                        self.allocator,
+                        attr.name,
+                        attr.value,
+                        attr.namespace_uri,
+                        attr.prefix,
+                    );
+
+                    try copy_elem.attributes.append(copy_attr);
+                }
+
+                return @ptrCast(copy_elem);
+            },
+
+            Node.TEXT_NODE => {
+                const text: *Text = @ptrCast(node);
+                const copy_text = try self.call_createTextNode(text.data);
+                return @ptrCast(copy_text);
+            },
+
+            Node.COMMENT_NODE => {
+                const comment: *Comment = @ptrCast(node);
+                const copy_comment = try self.call_createComment(comment.data);
+                return @ptrCast(copy_comment);
+            },
+
+            Node.PROCESSING_INSTRUCTION_NODE => {
+                const pi: *ProcessingInstruction = @ptrCast(node);
+                const copy_pi = try self.call_createProcessingInstruction(pi.target, pi.data);
+                return @ptrCast(copy_pi);
+            },
+
+            Node.DOCUMENT_FRAGMENT_NODE => {
+                const copy_fragment = try self.call_createDocumentFragment();
+                return @ptrCast(copy_fragment);
+            },
+
+            Node.DOCUMENT_TYPE_NODE => {
+                // Per spec: DocumentType cannot be cloned via importNode
+                return error.NotSupportedError;
+            },
+
+            Node.CDATA_SECTION_NODE => {
+                // TODO: Implement when CDATASection is fully supported
+                return error.NotImplemented;
+            },
+
+            else => {
+                return error.NotSupportedError;
+            },
+        }
+    }
+
+    /// Helper to destroy a node (for error cleanup)
+    fn destroyNode(self: *Document, node: *Node) void {
+        switch (node.node_type) {
+            Node.ELEMENT_NODE => {
+                const elem: *Element = @ptrCast(node);
+                elem.deinit();
+                self.allocator.destroy(elem);
+            },
+            Node.TEXT_NODE => {
+                const text: *Text = @ptrCast(node);
+                text.deinit();
+                self.allocator.destroy(text);
+            },
+            Node.COMMENT_NODE => {
+                const comment: *Comment = @ptrCast(node);
+                comment.deinit();
+                self.allocator.destroy(comment);
+            },
+            Node.PROCESSING_INSTRUCTION_NODE => {
+                const pi: *ProcessingInstruction = @ptrCast(node);
+                pi.deinit();
+                self.allocator.destroy(pi);
+            },
+            Node.DOCUMENT_FRAGMENT_NODE => {
+                const fragment: *DocumentFragment = @ptrCast(node);
+                fragment.deinit();
+                self.allocator.destroy(fragment);
+            },
+            else => {},
+        }
     }
 
     /// adoptNode(node)
