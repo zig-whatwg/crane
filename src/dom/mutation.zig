@@ -1202,8 +1202,8 @@ pub fn move(
     // Step 23: Run assign slottables for a tree with node's root
     // TODO: Shadow DOM - implement assign slottables for tree
 
-    // Step 24: For each shadow-including inclusive descendant inclusiveDescendant of node, in shadow-including tree order:
-    // For now, just iterate tree descendants (shadow DOM TODO)
+    // Step 24: For each shadow-including inclusive descendant of node, in shadow-including tree order
+    // Run moving steps (handles shadow-including traversal internally)
     runMovingStepsForTree(node, old_parent);
 
     // Step 25: Queue a tree mutation record for oldParent
@@ -1426,30 +1426,54 @@ fn insertIntoChildrenList(node: *Node, parent: *Node, child: ?*Node) void {
 }
 
 /// Helper: Run moving steps for node and all descendants
-/// Spec: Step 24 of move algorithm
+/// Spec: DOM §4.2.5 move algorithm step 24
+/// For each shadow-including inclusive descendant, run moving steps
 fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
-    // Step 24.1: If inclusiveDescendant is node, then run the moving steps with
-    // inclusiveDescendant and oldParent. Otherwise, run the moving steps with
-    // inclusiveDescendant and null.
+    // Step 24: For each shadow-including inclusive descendant of node,
+    // in shadow-including tree order
 
-    // Run moving steps for node itself with oldParent
-    runMovingSteps(node, old_parent);
+    // Try to use shadow-including traversal
+    if (tree_helpers.getShadowIncludingInclusiveDescendants(
+        node.allocator,
+        node,
+    )) |descendants| {
+        defer descendants.deinit();
 
-    // Run moving steps for all descendants with null
-    var stack: std.ArrayList(*Node) = .{};
-    defer stack.deinit();
+        // Step 24.1: If inclusiveDescendant is node, run moving steps with oldParent
+        // Otherwise, run moving steps with null
+        for (descendants.items, 0..) |descendant, i| {
+            if (i == 0) {
+                // First item is node itself
+                runMovingSteps(descendant, old_parent);
+            } else {
+                // All other descendants get null
+                runMovingSteps(descendant, null);
+            }
 
-    for (node.child_nodes.items()) |child| {
-        stack.append(child) catch continue;
-    }
+            // TODO: Step 24.2 - If inclusiveDescendant is custom and newParent is connected,
+            // enqueue connectedMoveCallback reaction
+        }
+    } else |_| {
+        // Fallback to regular tree traversal if shadow-including fails
+        // Run moving steps for node itself with oldParent
+        runMovingSteps(node, old_parent);
 
-    while (stack.items.len > 0) {
-        const current = stack.pop();
-        runMovingSteps(current, null);
+        // Run moving steps for all descendants with null
+        var stack: std.ArrayList(*Node) = .{};
+        defer stack.deinit();
 
-        // Add children to stack
-        for (current.child_nodes.items()) |child| {
+        for (node.child_nodes.items()) |child| {
             stack.append(child) catch continue;
+        }
+
+        while (stack.items.len > 0) {
+            const current = stack.pop();
+            runMovingSteps(current, null);
+
+            // Add children to stack
+            for (current.child_nodes.items()) |child| {
+                stack.append(child) catch continue;
+            }
         }
     }
 }
