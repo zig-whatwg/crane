@@ -10,6 +10,7 @@
 
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const Attr = @import("attr").Attr;
 const Event = @import("event").Event;
 const WritableStream = @import("writable_stream").WritableStream;
 const common = @import("common").common;
@@ -56,10 +57,14 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
-    pub fn deinit(_: *WritableStreamDefaultWriter) void {
+    pub fn deinit(_: *WritableStreamDefaultWriter) void {}
 
-    }
+    // ============================================================================
+    // WebIDL Interface: Readonly Attributes
+    // ============================================================================
 
+    /// readonly attribute Promise<undefined> closed
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-closed
     pub fn get_closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
@@ -164,10 +169,8 @@ pub const WritableStreamDefaultWriter = struct {
     }
 
     fn getDesiredSizeInternal(self: *const WritableStreamDefaultWriter) ?f64 {
-
         _ = self;
         return 1.0; // Placeholder
-    
     }
 
     fn abortInternal(self: *WritableStreamDefaultWriter, reason: ?common.JSValue) !*AsyncPromise(void) {

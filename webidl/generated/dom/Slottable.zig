@@ -32,67 +32,6 @@ pub const Slottable = struct {
     slottable_name: []const u8,
     assigned_slot: ?*anyopaque,
     manual_slot_assignment: ?*anyopaque,
-
-    // ========================================================================
-    // Methods
-    // ========================================================================
-
-    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
-
-        // The assignedSlot getter steps are to return the result of
-        // find a slot given this and true (open flag)
-
-        // TODO: Implement findSlot algorithm from shadow_dom_algorithms
-        // For now, return the assigned slot if it exists
-        // The "open" parameter means we only return slots in open shadow roots
-
-        _ = self;
-        return null; // TODO: Implement when slot algorithms are available
-    
-    }
-
-    pub fn getSlottableName(self: *const @This()) []const u8 {
-
-        return self.slottable_name;
-    
-    }
-
-    pub fn setSlottableName(self: *@This(), name: []const u8) void {
-
-        self.slottable_name = name;
-    
-    }
-
-    pub fn isAssigned(self: *const @This()) bool {
-
-        return self.assigned_slot != null;
-    
-    }
-
-    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
-
-        return self.assigned_slot;
-    
-    }
-
-    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
-
-        self.assigned_slot = slot;
-    
-    }
-
-    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
-
-        return self.manual_slot_assignment;
-    
-    }
-
-    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
-
-        self.manual_slot_assignment = slot;
-    
-    }
-
 };
 
 

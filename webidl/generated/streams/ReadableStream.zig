@@ -10,6 +10,7 @@
 
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const Attr = @import("attr").Attr;
 const Event = @import("event").Event;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
@@ -89,7 +90,6 @@ pub const ReadableStream = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator) !ReadableStream {
-
         // Create an owned event loop for backward compatibility
         const loop_ptr = try allocator.create(TestEventLoop);
         errdefer allocator.destroy(loop_ptr);
@@ -102,9 +102,11 @@ pub const ReadableStream = struct {
         stream.eventLoop_storage = loop_ptr;
 
         return stream;
-    
     }
 
+    /// Deinitialize the ReadableStream
+    ///
+    /// Spec: Cleanup internal slots and release resources
     pub fn deinit(self: *ReadableStream) void {
 
         // IMPORTANT: We do NOT run microtasks during deinit.
@@ -220,19 +222,33 @@ pub const ReadableStream = struct {
         loop: eventLoop.EventLoop,
         asyncIterable: common.JSValue,
     ) !*ReadableStream {
-
         // Spec: § 4.2.4 "Return ? ReadableStreamFromIterable(asyncIterable)"
         return try ReadableStreamFromIterable(allocator, loop, asyncIterable);
-    
     }
 
-    pub fn get_locked(self: *const ReadableStream) bool {
+    // ============================================================================
+    // WebIDL Interface: Readonly Attributes
+    // ============================================================================
 
+    /// readonly attribute boolean locked
+    /// IDL: readonly attribute boolean locked;
+    ///
+    /// Spec: § 4.1.2 "The locked getter steps are:"
+    /// Returns true if the stream is locked to a reader.
+    pub fn get_locked(self: *const ReadableStream) bool {
         // Spec: § 4.1.2 "Return ! IsReadableStreamLocked(this)."
         return self.reader != .none;
-    
     }
 
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
+
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    ///
+    /// Spec: § 4.1.3 "The cancel(reason) method steps are:"
+    /// Cancels the stream, signaling a loss of interest in the stream by a consumer.
     pub fn call_cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
@@ -368,14 +384,20 @@ pub const ReadableStream = struct {
     }
 
     pub fn call_tee(self: *ReadableStream) !TeeBranches {
-
         // Step 1: Let branches be ? ReadableStreamTee(this, false).
         return self.teeInternal(false);
-    
     }
 
+    /// from(asyncIterable) static method
+    ///
+    /// IDL: static ReadableStream from(any asyncIterable);
+    ///
+    /// Spec: § 4.1.8 "The static from(asyncIterable) method steps are:"
+    /// Creates a ReadableStream from an async iterable.
+    ///
+    /// Spec steps:
+    /// 1. Return ? ReadableStreamFromIterable(asyncIterable).
     pub fn call_from(allocator: std.mem.Allocator, loop: eventLoop.EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream {
-
         // Convert webidl.JSValue to common.AsyncIterator
         // In a full JavaScript runtime, this would call GetIterator(asyncIterable, async)
         // For now, we expect asyncIterable to wrap an AsyncIterator
@@ -386,9 +408,10 @@ pub const ReadableStream = struct {
 
         // Call ReadableStreamFromIterable algorithm
         return readableStreamFromIterable(allocator, loop, iterator);
-    
     }
 
+    /// Extract an AsyncIterator from a JSValue
+    /// This is a bridge function until full JavaScript runtime integration
     fn extractAsyncIterator(allocator: std.mem.Allocator, value: webidl.JSValue) !common.AsyncIterator {
 
         // For testing/development, we support passing MockAsyncIterator as pointer in JSValue
@@ -566,22 +589,33 @@ pub const ReadableStream = struct {
     }
 
     pub fn call_values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
-
         return ReadableStreamAsyncIterator.init(
             self.allocator,
             self,
             self.eventLoop,
             preventCancel,
         );
-    
     }
 
+    /// Get an async iterator with default options (preventCancel = false)
+    ///
+    /// This is the default async iterator used by for-await loops
     pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
-
         return self.call_values(false);
-    
     }
 
+    // ============================================================================
+    // Transfer/Serialization Support
+    // ============================================================================
+
+    /// [[TransferSteps]](dataHolder)
+    ///
+    /// Spec: § 4.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    ///
+    /// Steps for transferring a ReadableStream via postMessage().
+    /// Creates a MessagePort pair, pipes the stream through it, and serializes
+    /// the receiving port for transfer to another realm.
     pub fn transferSteps(self: *ReadableStream) !*structured_clone.SerializedData {
 
         const cross_realm_transform = @import("cross_realm_transform");
@@ -624,7 +658,6 @@ pub const ReadableStream = struct {
         self: *ReadableStream,
         serialized: *structured_clone.SerializedData,
     ) !void {
-
         const cross_realm_transform = @import("cross_realm_transform");
 
         // Spec step 1: Let deserializedRecord = ! StructuredDeserializeWithTransfer(dataHolder.[[port]], current Realm)
@@ -635,9 +668,17 @@ pub const ReadableStream = struct {
 
         // Spec step 3: Perform ! SetUpCrossRealmTransformReadable(value, port)
         try cross_realm_transform.setupCrossRealmTransformReadable(self.allocator, self, port);
-    
     }
 
+    // ============================================================================
+    // Internal Algorithms (Abstract Operations)
+    // ============================================================================
+
+    /// ReadableStreamCancel(stream, reason)
+    ///
+    /// ReadableStreamCancel(stream, reason)
+    ///
+    /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
     pub fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Spec step 1: Set stream.[[disturbed]] to true

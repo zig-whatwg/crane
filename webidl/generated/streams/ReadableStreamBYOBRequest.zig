@@ -40,18 +40,23 @@ pub const ReadableStreamBYOBRequest = struct {
     
     }
 
-    pub fn deinit(_: *ReadableStreamBYOBRequest) void {
+    pub fn deinit(_: *ReadableStreamBYOBRequest) void {}
 
-    }
+    // ============================================================================
+    // WebIDL Interface Methods
+    // ============================================================================
 
+    /// Get the view for writing
+    ///
+    /// Spec: § 4.8.2 "The view getter steps are:"
     pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.ArrayBufferView {
-
         return self.view;
-    
     }
 
+    /// Respond with the number of bytes written
+    ///
+    /// Spec: § 4.8.3 "The respond(bytesWritten) method steps"
     pub fn call_respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
-
         // Spec step 1: If this.[[controller]] is undefined, throw TypeError
         const controller_ptr = self.controller orelse return error.TypeError;
 
@@ -66,9 +71,11 @@ pub const ReadableStreamBYOBRequest = struct {
         // Mark as responded by clearing references
         self.controller = null;
         self.view = null;
-    
     }
 
+    /// Respond with a new view
+    ///
+    /// Spec: § 4.8.3 "The respondWithNewView(view) method steps are:"
     pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: webidl.ArrayBufferView) !void {
 
         // Spec step 1: If this.[[controller]] is undefined, throw TypeError

@@ -9,7 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -26,34 +25,6 @@ pub const DocumentOrShadowRoot = struct {
     // ========================================================================
 
     custom_element_registry: ?*anyopaque,
-
-    // ========================================================================
-    // Methods
-    // ========================================================================
-
-    pub fn get_customElementRegistry(self: *const @This()) ?*anyopaque {
-
-        // Step 1: If this is a document, then return this's custom element registry
-        // Step 2: Assert: this is a ShadowRoot node
-        // Step 3: Return this's custom element registry
-
-        // Both cases just return the custom_element_registry field
-        return self.custom_element_registry;
-    
-    }
-
-    pub fn getCustomElementRegistry(self: *const @This()) ?*anyopaque {
-
-        return self.custom_element_registry;
-    
-    }
-
-    pub fn setCustomElementRegistry(self: *@This(), registry: ?*anyopaque) void {
-
-        self.custom_element_registry = registry;
-    
-    }
-
 };
 
 

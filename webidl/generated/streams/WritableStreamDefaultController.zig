@@ -70,21 +70,29 @@ pub const WritableStreamDefaultController = struct {
     }
 
     pub fn deinit(self: *WritableStreamDefaultController) void {
-
         self.abortController.deinit();
         self.queue.deinit();
-    
     }
 
-    pub fn call_error(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
+    // ============================================================================
+    // WebIDL Interface: Instance Methods
+    // ============================================================================
 
+    /// undefined error(optional any e)
+    /// Spec: § 5.4.3 "The error(e) method steps are:"
+    pub fn call_error(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
         self.errorInternal(error_value);
-    
     }
 
-    fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
+    // ============================================================================
+    // Internal Algorithms
+    // ============================================================================
 
+    /// WritableStreamDefaultControllerError(controller, error)
+    ///
+    /// Spec: § 5.7.3 "Error the controller"
+    fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
         // Spec step 1: Let stream be controller.[[stream]]
         const stream_ptr: *WritableStream = @ptrCast(@alignCast(self.stream.?));
 
@@ -96,20 +104,19 @@ pub const WritableStreamDefaultController = struct {
 
         // Spec step 4: Perform ! WritableStreamStartErroring(stream, error)
         stream_ptr.startErroring(error_value);
-    
     }
 
     fn clearAlgorithms(self: *WritableStreamDefaultController) void {
-
         self.abortAlgorithm = common.defaultAbortAlgorithm();
         self.closeAlgorithm = common.defaultCloseAlgorithm();
         self.writeAlgorithm = common.defaultWriteAlgorithm();
         self.strategySizeAlgorithm = common.defaultSizeAlgorithm();
-    
     }
 
+    /// [[AbortSteps]](reason)
+    ///
+    /// Spec: § 5.2.6 "Controller's abort steps"
     pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) common.Promise(void) {
-
         // Spec step 1: Let result be the result of performing this.[[abortAlgorithm]], passing reason
         const result = self.abortAlgorithm.call(reason);
 
@@ -118,16 +125,19 @@ pub const WritableStreamDefaultController = struct {
 
         // Spec step 3: Return result
         return result;
-    
     }
 
+    /// [[ErrorSteps]]()
+    ///
+    /// Spec: § 5.2.7 "Controller's error steps"
     pub fn errorSteps(self: *WritableStreamDefaultController) void {
-
         // Spec step 1: Perform ! ResetQueue(this)
         self.queue.resetQueue();
-    
     }
 
+    /// WritableStreamDefaultControllerClose(controller)
+    ///
+    /// Spec: § 5.7.2 "Close the controller"
     pub fn closeInternal(self: *WritableStreamDefaultController) void {
 
         // Spec step 1: Perform ! EnqueueValueWithSize(controller, close sentinel, 0)
@@ -152,22 +162,23 @@ pub const WritableStreamDefaultController = struct {
     }
 
     fn advanceQueueIfNeeded(self: *WritableStreamDefaultController) void {
-
         // Simplified implementation - in full version, this would:
         // 1. Check if controller is not started or queue is empty
         // 2. Check if there's an in-flight write
         // 3. Dequeue next chunk and process it
         // For now, this is a no-op placeholder
         _ = self;
-    
     }
 
     pub fn calculateDesiredSize(self: *const WritableStreamDefaultController) ?f64 {
-
         return self.strategyHwm - self.queue.queue_total_size;
-    
     }
 
+    /// Process a write (internal method for queue processing)
+    ///
+    /// This is called by WritableStreamDefaultControllerAdvanceQueueIfNeeded
+    /// to process the next chunk in the queue. If this controller is part of
+    /// a TransformStream, it routes through the transform controller.
     pub fn processWrite(self: *WritableStreamDefaultController, chunk: common.JSValue) common.Promise(void) {
 
         // Check if this is part of a TransformStream

@@ -71,30 +71,6 @@ pub const HTMLSlotElement = struct {
     
     }
 
-    pub fn getName(self: *const Self) []const u8 {
-
-        return self.name;
-    
-    }
-
-    pub fn getAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
-
-        return &self.assigned_nodes;
-    
-    }
-
-    pub fn getManuallyAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
-
-        return &self.manually_assigned_nodes;
-    
-    }
-
-    pub fn hasAssignedNodes(self: *const Self) bool {
-
-        return self.assigned_nodes.items.len > 0;
-    
-    }
-
 };
 
 

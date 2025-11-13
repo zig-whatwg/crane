@@ -37,12 +37,6 @@ pub const CustomElementRegistry = struct {
     
     }
 
-    pub fn deinit(self: *CustomElementRegistry) void {
-
-        self.scoped_document_set.deinit();
-    
-    }
-
 };
 
 

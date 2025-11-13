@@ -102,30 +102,32 @@ pub const TextEncoderStream = struct {
     }
 
     pub fn deinit(self: *TextEncoderStream) void {
-
         self.transform.deinit();
         self.allocator.destroy(self.transform);
-    
     }
 
+    /// Get encoding (TextEncoderCommon mixin)
     pub fn get_encoding(self: *const TextEncoderStream) []const u8 {
-
         return self.encoding;
-    
     }
 
+    /// Get readable stream (GenericTransformStream mixin)
     pub fn get_readable(self: *const TextEncoderStream) *@import("readable_stream").ReadableStream {
-
         return self.transform.readableStream;
-    
     }
 
+    /// Get writable stream (GenericTransformStream mixin)
     pub fn get_writable(self: *const TextEncoderStream) *@import("writable_stream").WritableStream {
-
         return self.transform.writableStream;
-    
     }
 
+    // ============================================================================
+    // Transform Algorithms
+    // ============================================================================
+
+    /// Encode and enqueue a chunk algorithm
+    ///
+    /// WHATWG Encoding Standard § 5.3 lines 1068-1097
     fn encodeAndEnqueue(
         self: *TextEncoderStream,
         controller: *TransformStreamDefaultController,

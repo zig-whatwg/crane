@@ -44,18 +44,22 @@ pub const NamedNodeMap = struct {
     }
 
     pub fn deinit(self: *NamedNodeMap) void {
-
         _ = self;
         // No cleanup needed - we don't own the element
-    
     }
 
+    /// DOM §4.9 - length getter
+    /// Returns the attribute list's size.
     pub fn get_length(self: *const NamedNodeMap) u32 {
-
         return @intCast(self.element.attributes.items.len);
-    
     }
 
+    /// DOM §4.9 - item(index)
+    /// Returns the attribute at the given index, or null if out of bounds.
+    ///
+    /// Steps:
+    /// 1. If index is equal to or greater than this's attribute list's size, then return null.
+    /// 2. Otherwise, return this's attribute list[index].
     pub fn call_item(self: *const NamedNodeMap, index: u32) ?*Attr {
 
         if (index >= self.element.attributes.items.len) {
@@ -82,25 +86,38 @@ pub const NamedNodeMap = struct {
         namespace: ?[]const u8,
         local_name: []const u8,
     ) ?*Attr {
-
         // Get an attribute given namespace, localName, and element
         return getAttributeByNamespaceAndLocalName(namespace, local_name, self.element);
-    
     }
 
+    /// DOM §4.9 - setNamedItem(attr)
+    /// Sets the given attribute. Returns the old attribute if replaced, or null.
+    ///
+    /// Steps: Return the result of setting an attribute given attr and element.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItem(self: *NamedNodeMap, attr: *Attr) !?*Attr {
-
         return try NamedNodeMap.setAttribute(attr, self.element);
-    
     }
 
+    /// DOM §4.9 - setNamedItemNS(attr)
+    /// Sets the given attribute with namespace. Returns the old attribute if replaced, or null.
+    ///
+    /// Steps: Return the result of setting an attribute given attr and element.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItemNS(self: *NamedNodeMap, attr: *Attr) !?*Attr {
-
         // Same as setNamedItem - the method handles namespaces automatically via attr's properties
         return try NamedNodeMap.setAttribute(attr, self.element);
-    
     }
 
+    /// DOM §4.9 - removeNamedItem(qualifiedName)
+    /// Removes the attribute with the given qualified name.
+    /// Throws NotFoundError if the attribute doesn't exist.
+    ///
+    /// Steps:
+    /// 1. Let attr be the result of removing an attribute given qualifiedName and element.
+    /// 2. If attr is null, then throw a "NotFoundError" DOMException.
+    /// 3. Return attr.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_removeNamedItem(self: *NamedNodeMap, qualified_name: []const u8) !*Attr {
 
         // Step 1: Remove an attribute by name

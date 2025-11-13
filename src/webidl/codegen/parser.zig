@@ -702,29 +702,62 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
     return methods.toOwnedSlice();
 }
 
-/// Find the end of a method signature (before opening brace)
+/// Find the opening brace of the method body
+/// Handles anonymous struct return types: fn foo() struct { ... } { body }
+/// Returns the position of the '{' that starts the method body
 fn findMethodSignatureEnd(source: []const u8, start: usize) ?usize {
     var pos = start;
-    var depth: i32 = 0;
+    var paren_depth: i32 = 0;
 
+    // First, find the closing paren of the parameter list
     while (pos < source.len) : (pos += 1) {
         const c = source[pos];
         if (c == '(') {
-            depth += 1;
+            paren_depth += 1;
         } else if (c == ')') {
-            depth -= 1;
-            if (depth == 0) {
-                // Found closing paren, now find the opening brace
-                var search = pos + 1;
-                while (search < source.len) : (search += 1) {
-                    if (source[search] == '{') {
-                        return search;
-                    }
-                }
-                return null;
+            paren_depth -= 1;
+            if (paren_depth == 0) {
+                break;
             }
         }
     }
+
+    if (paren_depth != 0) return null;
+
+    // Now search for the opening brace of the method body
+    // Need to track braces to handle anonymous struct return types
+    var search = pos + 1;
+    var brace_depth: i32 = 0;
+
+    while (search < source.len) : (search += 1) {
+        const c = source[search];
+
+        if (c == '{') {
+            if (brace_depth == 0) {
+                // This is the method body opening brace (or first struct brace)
+                // Check if there's a matching closing brace before another opening brace
+                // to distinguish struct return type from method body
+                const next_open = std.mem.indexOfScalarPos(u8, source, search + 1, '{');
+                const next_close = std.mem.indexOfScalarPos(u8, source, search + 1, '}');
+
+                if (next_close) |close_pos| {
+                    if (next_open == null or close_pos < next_open.?) {
+                        // Found closing brace before next opening - this is a struct return type
+                        // Continue past it to find the real method body
+                        brace_depth += 1;
+                        continue;
+                    }
+                }
+                // This is the method body
+                return search;
+            } else {
+                brace_depth += 1;
+            }
+        } else if (c == '}') {
+            brace_depth -= 1;
+        }
+    }
+
     return null;
 }
 

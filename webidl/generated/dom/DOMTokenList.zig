@@ -70,11 +70,11 @@ pub const DOMTokenList = struct {
     }
 
     pub fn get_length(self: *const DOMTokenList) u32 {
-
         return @intCast(self.tokens.items().len);
-    
     }
 
+    /// DOM §4.7 - DOMTokenList.item(index)
+    /// Returns the token at the given index, or null if out of bounds.
     pub fn call_item(self: *const DOMTokenList, index: u32) ?[]const u8 {
 
         if (index >= self.tokens.items().len) {

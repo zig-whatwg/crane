@@ -35,25 +35,6 @@ pub const AbortController = struct {
     
     }
 
-    pub fn deinit(self: *AbortController) void {
-
-        self.signal.deinit();
-    
-    }
-
-    pub fn call_abort(self: *AbortController, reason: ?webidl.Exception) void {
-
-        // Spec: "signal abort on this with reason if it is given"
-        self.signal.signalAbort(reason);
-    
-    }
-
-    pub fn get_signal(self: *const AbortController) *const AbortSignal {
-
-        return &self.signal;
-    
-    }
-
 };
 
 

@@ -55,11 +55,12 @@ pub const ReadableStreamBYOBReader = struct {
     }
 
     pub fn deinit(self: *ReadableStreamBYOBReader) void {
-
         self.readIntoRequests.deinit(self.allocator);
-    
     }
 
+    /// Read data into the provided view
+    ///
+    /// Spec: § 4.5.3 "The read(view, options) method steps are:"
     pub fn call_read(
         self: *ReadableStreamBYOBReader,
         view: webidl.ArrayBufferView,
@@ -293,7 +294,6 @@ pub const ReadableStreamBYOBReader = struct {
     }
 
     fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
-
         // Step 1: Let stream be reader.[[stream]].
         const stream = self.stream.?;
 
@@ -302,9 +302,11 @@ pub const ReadableStreamBYOBReader = struct {
 
         // Step 3: Return ! ReadableStreamCancel(stream, reason).
         return stream.cancelInternal(reason);
-    
     }
 
+    /// ReadableStreamReaderGenericRelease(reader)
+    ///
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
 
         // Step 1: Let stream be reader.[[stream]].

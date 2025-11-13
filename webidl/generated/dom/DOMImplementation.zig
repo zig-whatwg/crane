@@ -47,12 +47,17 @@ pub const DOMImplementation = struct {
     }
 
     pub fn deinit(self: *DOMImplementation) void {
-
         _ = self;
         // No cleanup needed - document owns this
-    
     }
 
+    /// createDocumentType(name, publicId, systemId)
+    /// DOM §4.5 - Creates a DocumentType node
+    ///
+    /// Spec algorithm:
+    /// 1. If name is not a valid doctype name, then throw an "InvalidCharacterError" DOMException.
+    /// 2. Return a new doctype, with name as its name, publicId as its public ID, and systemId
+    ///    as its system ID, and with its node document set to the associated document of this.
     pub fn call_createDocumentType(
         self: *DOMImplementation,
         name: []const u8,
@@ -194,12 +199,6 @@ pub const DOMImplementation = struct {
 
         // Step 9: Return doc
         return doc;
-    
-    }
-
-    pub fn call_hasFeature() bool {
-
-        return true;
     
     }
 

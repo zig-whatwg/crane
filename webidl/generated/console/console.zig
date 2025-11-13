@@ -116,11 +116,23 @@ pub const console = struct {
     // ========================================================================
 
     pub fn init(allocator: Allocator) !console {
-
         return initWithBufferSize(allocator, 1000);
-    
     }
 
+    /// Initialize a new console namespace object with custom buffer size.
+    ///
+    /// Allows customization of message buffer size for different deployment scenarios:
+    /// - Embedded systems: small buffer (e.g., 100)
+    /// - Servers: large buffer (e.g., 10000)
+    /// - Testing: no buffer (0)
+    /// - Default: 1000 messages (browser standard)
+    ///
+    /// # Example
+    /// ```zig
+    /// // Large buffer for server logging
+    /// var console = try console.initWithBufferSize(allocator, 10000);
+    /// defer console.deinit();
+    /// ```
     pub fn initWithBufferSize(allocator: Allocator, buffer_size: usize) !console {
 
         var labelPool = std.StringHashMap(void).init(allocator);
@@ -276,29 +288,34 @@ pub const console = struct {
     }
 
     pub fn call_debug(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.debug, data);
-    
     }
 
+    /// error(...data)
+    /// Spec: https://console.spec.whatwg.org/#error
     pub fn call_error(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.error_level, data);
-    
     }
 
+    /// info(...data)
+    /// Spec: https://console.spec.whatwg.org/#info
     pub fn call_info(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.info, data);
-    
     }
 
+    /// log(...data)
+    /// Spec: https://console.spec.whatwg.org/#log
     pub fn call_log(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.log, data);
-    
     }
 
+    /// table(tabularData, properties)
+    ///
+    /// WHATWG console Standard lines 102-106:
+    /// Try to construct a table with columns of properties and rows of tabularData.
+    /// Falls back to logging if it can't be parsed as tabular.
+    ///
+    /// IDL: undefined table(optional any tabularData, optional sequence<DOMString> properties);
     pub fn call_table(self: *console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
 
         if (tabular_data == null) {
@@ -607,11 +624,11 @@ pub const console = struct {
     }
 
     pub fn call_warn(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.warn, data);
-    
     }
 
+    /// dir(item, options)
+    /// Spec: https://console.spec.whatwg.org/#dir
     pub fn call_dir(self: *console, item: ?webidl.JSValue, options: ?webidl.JSValue) void {
 
         _ = options;
@@ -625,11 +642,11 @@ pub const console = struct {
     }
 
     pub fn call_dirxml(self: *console, data: []const webidl.JSValue) void {
-
         self.logger(.dirxml, data);
-    
     }
 
+    /// count(label)
+    /// Spec: https://console.spec.whatwg.org/#count
     pub fn call_count(self: *console, label: []const u8) void {
 
         // Step 1: Let map be the associated count map

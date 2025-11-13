@@ -79,69 +79,6 @@ pub const MutationRecord = struct {
     
     }
 
-    pub fn deinit(self: *MutationRecord) void {
-
-        _ = self;
-        // NodeLists and Nodes are owned elsewhere, we don't free them
-        // Strings (mutation_type, attribute_name, etc.) may need freeing
-        // depending on how they're allocated - TBD based on usage patterns
-    
-    }
-
-    pub fn get_type(self: *const MutationRecord) []const u8 {
-
-        return self.mutation_type;
-    
-    }
-
-    pub fn get_target(self: *const MutationRecord) *Node {
-
-        return self.target;
-    
-    }
-
-    pub fn get_addedNodes(self: *const MutationRecord) *NodeList {
-
-        return self.added_nodes;
-    
-    }
-
-    pub fn get_removedNodes(self: *const MutationRecord) *NodeList {
-
-        return self.removed_nodes;
-    
-    }
-
-    pub fn get_previousSibling(self: *const MutationRecord) ?*Node {
-
-        return self.previous_sibling;
-    
-    }
-
-    pub fn get_nextSibling(self: *const MutationRecord) ?*Node {
-
-        return self.next_sibling;
-    
-    }
-
-    pub fn get_attributeName(self: *const MutationRecord) ?[]const u8 {
-
-        return self.attribute_name;
-    
-    }
-
-    pub fn get_attributeNamespace(self: *const MutationRecord) ?[]const u8 {
-
-        return self.attribute_namespace;
-    
-    }
-
-    pub fn get_oldValue(self: *const MutationRecord) ?[]const u8 {
-
-        return self.old_value;
-    
-    }
-
 };
 
 

@@ -9,6 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const Attr = @import("attr").Attr;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 const std = @import("std");
 const webidl = @import("webidl");
@@ -86,73 +87,109 @@ pub const URLSearchParams = struct {
     }
 
     pub fn deinit(self: *URLSearchParams) void {
-
         self.impl.deinit();
-    
     }
 
+    // ========================================================================
+    // Update Steps Algorithm
+    // ========================================================================
+
+    /// Update a URLSearchParams object
+    /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-update (lines 2057-2065)
     pub fn updateSteps(self: *URLSearchParams) !void {
-
         try self.impl.update();
-    
     }
 
+    // ========================================================================
+    // Attributes
+    // ========================================================================
+
+    /// size attribute getter
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-size (line 2062)
     pub fn size(self: *const URLSearchParams) usize {
-
         return self.impl.list.items.len;
-    
     }
 
+    // ========================================================================
+    // Methods (delegate to impl)
+    // ========================================================================
+
+    /// append(name, value) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-append (lines 2064-2066)
+    /// Appends name-value pair to list, runs update steps
     pub fn append(self: *URLSearchParams, name: []const u8, value: []const u8) !void {
-
         try self.impl.append(name, value);
-    
     }
 
+    /// delete(name, value?) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-delete (lines 2068-2073)
+    /// Removes tuples matching name (and optionally value), runs update steps
     pub fn delete(self: *URLSearchParams, name: []const u8, value: ?[]const u8) !void {
-
         try self.impl.delete(name, value);
-    
     }
 
+    /// get(name) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-get (lines 2075-2080)
+    /// Returns value of first tuple with given name, or null
     pub fn get(self: *const URLSearchParams, name: []const u8) ?[]const u8 {
-
         return self.impl.get(name);
-    
     }
 
+    /// getAll(name) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-getall (lines 2082-2091)
+    /// Returns sequence of all values for tuples with given name
     pub fn getAll(self: *const URLSearchParams, allocator: std.mem.Allocator, name: []const u8) ![][]const u8 {
-
         return self.impl.getAll(allocator, name);
-    
     }
 
+    /// has(name, value?) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-has (lines 2093-2098)
+    /// Returns true if list contains tuple matching name (and optionally value)
     pub fn has(self: *const URLSearchParams, name: []const u8, value: ?[]const u8) bool {
-
         return self.impl.has(name, value);
-    
     }
 
+    /// set(name, value) method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-set (lines 2100-2109)
+    /// Sets value of first tuple with name, removes others, or appends if not found
     pub fn set(self: *URLSearchParams, name: []const u8, value: []const u8) !void {
-
         try self.impl.set(name, value);
-    
     }
 
+    /// sort() method
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-sort (lines 2111-2113)
+    /// Sorts tuples by name (stable sort), runs update steps
     pub fn sort(self: *URLSearchParams) !void {
-
         try self.impl.sort();
-    
     }
 
+    /// toString() method (stringifier)
+    /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-stringifier (lines 2121-2123)
+    /// Serializes list to application/x-www-form-urlencoded format
     pub fn toString(self: *const URLSearchParams, allocator: std.mem.Allocator) ![]u8 {
-
         return self.impl.toString(allocator);
-    
     }
 
-    pub fn next(self: *EntriesIterator) ?Entry {
+    // ========================================================================
+    // Iteration Support
+    // ========================================================================
+    // Spec: https://url.spec.whatwg.org/#interface-urlsearchparams (line 2004)
+    // WebIDL: iterable<USVString, USVString>
 
+    /// Entry type for iteration
+    /// Represents a [name, value] tuple from the list
+    pub const Entry = struct {
+        name: []const u8,
+        value: []const u8,
+    };
+
+    /// Iterator for entries (returns [name, value] tuples)
+    pub const EntriesIterator = struct {
+
+        params: *const URLSearchParams,
+        index: usize,
+
+        pub fn next(self: *EntriesIterator) ?Entry {
             if (self.index >= self.params.impl.list.items.len) return null;
             const tuple = self.params.impl.list.items[self.index];
             self.index += 1;
@@ -160,25 +197,8 @@ pub const URLSearchParams = struct {
                 .name = tuple.name,
                 .value = tuple.value,
             };
-        
-    }
-
-    pub fn next(self: *KeysIterator) ?[]const u8 {
-
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.name;
-        
-    }
-
-    pub fn next(self: *ValuesIterator) ?[]const u8 {
-
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
-            self.index += 1;
-            return tuple.value;
-        
+        }
+    
     }
 
     pub fn entries(self: *const URLSearchParams) EntriesIterator {
@@ -200,12 +220,11 @@ pub const URLSearchParams = struct {
     }
 
     pub fn iterator(self: *const URLSearchParams) EntriesIterator {
-
         return self.entries();
-    
     }
 
-    fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
+    /// forEach callback type
+    pub const ForEachCallback = *const fn (value: []const u8, name: []const u8, params: *const URLSearchParams) void;
 
     /// forEach method
     /// Calls callback for each [name, value] pair in the list

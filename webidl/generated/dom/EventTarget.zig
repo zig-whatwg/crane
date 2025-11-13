@@ -146,8 +146,38 @@ pub const EventTarget = struct {
     
     }
 
-    fn flattenMoreOptions(options: anytype) struct {
- capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal 
+    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
+
+        const OptionsType = @TypeOf(options);
+
+        // If options is a boolean, only capture is set to that value
+        if (OptionsType == bool) {
+            return .{
+                .capture = options,
+                .passive = null,
+                .once = false,
+                .signal = null,
+            };
+        }
+
+        // If options is AddEventListenerOptions dictionary, extract all fields
+        if (@hasField(OptionsType, "capture")) {
+            return .{
+                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
+                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
+                .once = if (@hasField(OptionsType, "once")) options.once else false,
+                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
+            };
+        }
+
+        // Default: return all defaults
+        return .{
+            .capture = false,
+            .passive = null,
+            .once = false,
+            .signal = null,
+        };
+    
     }
 
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {

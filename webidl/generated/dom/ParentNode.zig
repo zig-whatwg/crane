@@ -14,6 +14,7 @@ const Element = @import("element").Element;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
+const Text = @import("text").Text;
 const dom = @import("dom").dom;
 const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
@@ -122,7 +123,6 @@ pub const ParentNode = struct {
     }
 
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -137,11 +137,17 @@ pub const ParentNode = struct {
         // Step 2: Pre-insert node into this before this's first child
         const first_child = this_node.get_firstChild();
         _ = try mutation.preInsert(node, this_node, first_child);
-    
     }
 
+    /// DOM §4.3.2 - ParentNode.append()
+    /// Inserts nodes after the last child, while replacing strings with Text nodes.
+    ///
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Append node to this.
+    ///
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -155,11 +161,18 @@ pub const ParentNode = struct {
 
         // Step 2: Append node to this
         _ = try mutation.append(node, this_node);
-    
     }
 
+    /// DOM §4.3.2 - ParentNode.replaceChildren()
+    /// Replaces all children with nodes, while replacing strings with Text nodes.
+    ///
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Ensure pre-insert validity of node into this before null.
+    /// 3. Replace all with node within this.
+    ///
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
-
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
@@ -176,9 +189,20 @@ pub const ParentNode = struct {
 
         // Step 3: Replace all with node within this
         try mutation.replaceAll(node, this_node);
-    
     }
 
+    /// DOM §4.3.2 - ParentNode.moveBefore()
+    /// Moves, without first removing, movedNode into this after child.
+    /// This method preserves state associated with movedNode.
+    ///
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    ///
+    /// Steps:
+    /// 1. Let referenceChild be child.
+    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+    /// 3. Move node into this before referenceChild.
+    ///
+    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
 
         const mutation = @import("dom").mutation;

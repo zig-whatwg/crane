@@ -120,11 +120,12 @@ pub const ReadableByteStreamController = struct {
     }
 
     pub fn get_byobRequest(self: *const ReadableByteStreamController) ?*ReadableStreamBYOBRequest {
-
         return self.byobRequest;
-    
     }
 
+    /// readonly attribute unrestricted double? desiredSize
+    /// Calculate desired size
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerGetDesiredSize(controller)"
     pub fn get_desiredSize(self: *const ReadableByteStreamController) ?f64 {
 
         // If stream is closed, return 0
@@ -191,12 +192,20 @@ pub const ReadableByteStreamController = struct {
     }
 
     pub fn call_error(self: *ReadableByteStreamController, e: webidl.JSValue) void {
-
         const error_value = common.JSValue.fromWebIDL(e);
         self.errorInternal(error_value);
-    
     }
 
+    // ============================================================================
+    // Controller Contracts (§ 4.7.4)
+    // ============================================================================
+
+    /// [[PullSteps]](readRequest) - Implements the controller contract
+    ///
+    /// Spec: § 4.7.4 "[[PullSteps]](readRequest)"
+    ///
+    /// This is called when a default reader reads from a byte stream.
+    /// If autoAllocateChunkSize is set, this automatically allocates a buffer.
     pub fn pullSteps(
         self: *ReadableByteStreamController,
         reader: *anyopaque,
@@ -419,15 +428,16 @@ pub const ReadableByteStreamController = struct {
         size: u64,
         pullIntoDescriptor: *PullIntoDescriptor,
     ) void {
-
         _ = self; // Assertion-only parameter
 
         // Step 1-2: Assertions (caller ensures validity)
         // Step 3: Increment bytes filled
         pullIntoDescriptor.bytes_filled += size;
-    
     }
 
+    /// Fill pull-into descriptor from queue
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerFillPullIntoDescriptorFromQueue"
     fn fillPullIntoDescriptorFromQueue(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
@@ -492,18 +502,18 @@ pub const ReadableByteStreamController = struct {
     }
 
     fn shiftPendingPullInto(self: *ReadableByteStreamController) *PullIntoDescriptor {
-
         // Step 1: Assert: controller.[[byobRequest]] is null
         // Step 2: Return shift from list
         return self.pendingPullIntos.orderedRemove(0);
-    
     }
 
+    /// Convert pull-into descriptor to typed array view
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerConvertPullIntoDescriptor"
     fn convertPullIntoDescriptor(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
     ) !webidl.ArrayBufferView {
-
         // Step 1-4: Extract and validate fields
         const bytes_filled = pullIntoDescriptor.bytes_filled;
         const element_size = pullIntoDescriptor.element_size;
@@ -521,9 +531,15 @@ pub const ReadableByteStreamController = struct {
             pullIntoDescriptor.byte_offset,
             length,
         );
-    
     }
 
+    // ============================================================================
+    // Internal Control Flow (§ 4.10.11)
+    // ============================================================================
+
+    /// Error the controller
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerError"
     fn errorInternal(self: *ReadableByteStreamController, e: common.JSValue) void {
 
         _ = e; // Will be used for stream error
@@ -548,13 +564,14 @@ pub const ReadableByteStreamController = struct {
     }
 
     fn clearAlgorithms(self: *ReadableByteStreamController) void {
-
         // Reset algorithms to defaults to allow GC
         self.cancelAlgorithm = common.defaultCancelAlgorithm();
         self.pullAlgorithm = common.defaultPullAlgorithm();
-    
     }
 
+    /// Close the controller
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerClose"
     fn closeInternal(self: *ReadableByteStreamController) void {
 
         // Step 1: Get stream
@@ -825,11 +842,12 @@ pub const ReadableByteStreamController = struct {
     }
 
     pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
-
         return self.respond(bytesWritten);
-    
     }
 
+    /// Respond with a new view (replacement buffer)
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondWithNewView"
     pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
 
         // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
@@ -917,11 +935,12 @@ pub const ReadableByteStreamController = struct {
     }
 
     pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
-
         return self.respondWithNewView(view);
-    
     }
 
+    /// Internal respond implementation
+    ///
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInternal"
     fn respondInternal(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
@@ -1314,8 +1333,34 @@ pub const ReadableByteStreamController = struct {
     
     }
 
-    pub fn tee(self: *ReadableByteStreamController) !struct {
- branch1: *anyopaque, branch2: *anyopaque 
+    pub fn tee(self: *ReadableByteStreamController) !struct { branch1: *anyopaque, branch2: *anyopaque } {
+
+        // Get the stream
+        const stream_ptr = self.stream orelse return error.NoStream;
+        const ReadableStreamModule = @import("readable_stream");
+        const stream: *ReadableStreamModule.ReadableStream = @ptrCast(@alignCast(stream_ptr));
+
+        // Create two new streams that share this controller
+        const branch1 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch1);
+        branch1.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        const branch2 = try self.allocator.create(ReadableStreamModule.ReadableStream);
+        errdefer self.allocator.destroy(branch2);
+        branch2.* = try ReadableStreamModule.ReadableStream.init(self.allocator);
+
+        // TODO: Wire both branches to share this controller
+        // BLOCKED: ReadableStream.controller is typed as *ReadableStreamDefaultController
+        // but needs to be union to support *ReadableByteStreamController too
+        // For now, just return the branches without proper controller wiring
+        branch1.state = stream.state;
+        branch2.state = stream.state;
+
+        return .{
+            .branch1 = @ptrCast(branch1),
+            .branch2 = @ptrCast(branch2),
+        };
+    
     }
 
 };

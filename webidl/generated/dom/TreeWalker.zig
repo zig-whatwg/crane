@@ -9,6 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const Attr = @import("attr").Attr;
 const Node = @import("node").Node;
 const NodeFilter = @import("node_filter").NodeFilter;
 const std = @import("std");
@@ -65,42 +66,50 @@ pub const TreeWalker = struct {
     }
 
     pub fn deinit(self: *TreeWalker) void {
-
         _ = self;
         // No cleanup needed - we don't own the nodes
-    
     }
 
+    // ========================================================================
+    // Attributes
+    // ========================================================================
+
+    /// DOM §6.3 - TreeWalker.root
+    /// Returns the root node
     pub fn get_root(self: *const TreeWalker) *Node {
-
         return self.root;
-    
     }
 
+    /// DOM §6.3 - TreeWalker.whatToShow
+    /// Returns the whatToShow bitmask
     pub fn get_whatToShow(self: *const TreeWalker) u32 {
-
         return self.what_to_show;
-    
     }
 
+    /// DOM §6.3 - TreeWalker.filter
+    /// Returns the filter callback (may be null)
     pub fn get_filter(self: *const TreeWalker) NodeFilter.OptionalAcceptNodeFn {
-
         return self.filter;
-    
     }
 
+    /// DOM §6.3 - TreeWalker.currentNode getter
+    /// Returns the current node
     pub fn get_currentNode(self: *const TreeWalker) *Node {
-
         return self.current;
-    
     }
 
+    /// DOM §6.3 - TreeWalker.currentNode setter
+    /// Sets the current node to the given value
     pub fn set_currentNode(self: *TreeWalker, node: *Node) void {
-
         self.current = node;
-    
     }
 
+    // ========================================================================
+    // Navigation methods
+    // ========================================================================
+
+    /// DOM §6.3 - TreeWalker.parentNode()
+    /// Move to parent node if it passes filter, return null otherwise
     pub fn parentNode(self: *TreeWalker) !?*Node {
 
         const dom = @import("dom");
@@ -128,29 +137,29 @@ pub const TreeWalker = struct {
     }
 
     pub fn firstChild(self: *TreeWalker) !?*Node {
-
         return try self.traverseChildren(.first);
-    
     }
 
+    /// DOM §6.3 - TreeWalker.lastChild()
+    /// Move to last child that passes filter
     pub fn lastChild(self: *TreeWalker) !?*Node {
-
         return try self.traverseChildren(.last);
-    
     }
 
+    /// DOM §6.3 - TreeWalker.previousSibling()
+    /// Move to previous sibling that passes filter
     pub fn previousSibling(self: *TreeWalker) !?*Node {
-
         return try self.traverseSiblings(.previous);
-    
     }
 
+    /// DOM §6.3 - TreeWalker.nextSibling()
+    /// Move to next sibling that passes filter
     pub fn nextSibling(self: *TreeWalker) !?*Node {
-
         return try self.traverseSiblings(.next);
-    
     }
 
+    /// DOM §6.3 - TreeWalker.previousNode()
+    /// Move to previous node in tree order that passes filter
     pub fn previousNode(self: *TreeWalker) !?*Node {
 
         const dom = @import("dom");

@@ -76,19 +76,22 @@ pub const Range = struct {
     }
 
     pub fn registerWithDocument(self: *Range) !void {
-
         try self.owner_document.registerRange(self);
-    
     }
 
     pub fn deinit(self: *Range) void {
-
         // Unregister from document
         self.owner_document.unregisterRange(self);
         // No other cleanup needed - we don't own the nodes
-    
     }
 
+    // ========================================================================
+    // Range-specific attributes (AbstractRange attributes inherited via extends)
+    // ========================================================================
+
+    /// DOM §5 - Range.commonAncestorContainer
+    /// Returns the node, furthest away from the document, that is an ancestor
+    /// of both range's start node and end node.
     pub fn get_commonAncestorContainer(self: *const Range) *Node {
 
         const dom = @import("dom");
@@ -210,12 +213,62 @@ pub const Range = struct {
         offset: u32,
         otherNode: *Node,
         otherOffset: u32,
-    ) enum {
- before, equal, after 
+    ) enum { before, equal, after } {
+
+        // Step 1: Assert nodes have same root (caller's responsibility)
+
+        // Step 2: If node is otherNode, compare offsets
+        if (node == otherNode) {
+            if (offset == otherOffset) return .equal;
+            if (offset < otherOffset) return .before;
+            return .after;
+        }
+
+        const dom = @import("dom");
+
+        // Step 3: If otherNode is following node
+        if (dom.tree_helpers.isFollowing(otherNode, node)) {
+            // Recursively compare in reverse
+            const reversed = compareBoundaryPointsHelper(otherNode, otherOffset, node, offset);
+            return switch (reversed) {
+                .before => .after,
+                .after => .before,
+                .equal => .equal,
+            };
+        }
+
+        // Step 4 & 5: Determine child of otherNode to compare
+        var child: *Node = undefined;
+        if (dom.tree_helpers.isAncestor(otherNode, node)) {
+            // Step 4: otherNode is ancestor of node
+            child = node;
+        } else {
+            // Step 5: Find ancestor of node whose parent is otherNode
+            var current = node;
+            while (current.parent_node) |parent| {
+                if (parent == otherNode) {
+                    child = current;
+                    break;
+                }
+                current = parent;
+            } else {
+                // This shouldn't happen if nodes have same root
+                return .equal;
+            }
+        }
+
+        // Step 6: Compare child's index with otherOffset
+        const childIndex = dom.tree_helpers.getChildIndex(otherNode, child) orelse return .equal;
+        if (childIndex < otherOffset) {
+            return .after;
+        }
+
+        // Step 7: Return before
+        return .before;
+    
     }
 
     fn isNodeContained(self: *const Range, node: *Node) bool {
-
         const dom = @import("dom");
 
         // Check same root
@@ -233,11 +286,12 @@ pub const Range = struct {
         if (beforeEnd != .before) return false;
 
         return true;
-    
     }
 
+    /// Helper: Check if a node is partially contained in this range
+    /// Per DOM spec: A node is partially contained if it's an inclusive ancestor
+    /// of the start node but not the end node, or vice versa
     fn isNodePartiallyContained(self: *const Range, node: *Node) bool {
-
         const dom = @import("dom");
 
         const isAncestorOfStart = dom.tree_helpers.isInclusiveAncestor(node, self.start_container);
@@ -245,49 +299,50 @@ pub const Range = struct {
 
         // Partially contained if ancestor of one but not both
         return (isAncestorOfStart and !isAncestorOfEnd) or (!isAncestorOfStart and isAncestorOfEnd);
-    
     }
 
+    /// DOM §5.3 - Range.setStartBefore(node)
+    /// Sets the start to immediately before the given node
     pub fn call_setStartBefore(self: *Range, node: *Node) !void {
-
         const dom = @import("dom");
         const parent = dom.tree_helpers.getParentNode(node) orelse return error.InvalidNodeTypeError;
         const index = dom.tree_helpers.getChildIndex(parent, node) orelse return error.InvalidStateError;
 
         try self.call_setStart(parent, @intCast(index));
-    
     }
 
+    /// DOM §5.3 - Range.setStartAfter(node)
+    /// Sets the start to immediately after the given node
     pub fn call_setStartAfter(self: *Range, node: *Node) !void {
-
         const dom = @import("dom");
         const parent = dom.tree_helpers.getParentNode(node) orelse return error.InvalidNodeTypeError;
         const index = dom.tree_helpers.getChildIndex(parent, node) orelse return error.InvalidStateError;
 
         try self.call_setStart(parent, @intCast(index + 1));
-    
     }
 
+    /// DOM §5.3 - Range.setEndBefore(node)
+    /// Sets the end to immediately before the given node
     pub fn call_setEndBefore(self: *Range, node: *Node) !void {
-
         const dom = @import("dom");
         const parent = dom.tree_helpers.getParentNode(node) orelse return error.InvalidNodeTypeError;
         const index = dom.tree_helpers.getChildIndex(parent, node) orelse return error.InvalidStateError;
 
         try self.call_setEnd(parent, @intCast(index));
-    
     }
 
+    /// DOM §5.3 - Range.setEndAfter(node)
+    /// Sets the end to immediately after the given node
     pub fn call_setEndAfter(self: *Range, node: *Node) !void {
-
         const dom = @import("dom");
         const parent = dom.tree_helpers.getParentNode(node) orelse return error.InvalidNodeTypeError;
         const index = dom.tree_helpers.getChildIndex(parent, node) orelse return error.InvalidStateError;
 
         try self.call_setEnd(parent, @intCast(index + 1));
-    
     }
 
+    /// DOM §5.3 - Range.collapse(toStart)
+    /// Collapses the range to one of its boundary points
     pub fn call_collapse(self: *Range, toStart: bool) void {
 
         if (toStart) {
@@ -303,16 +358,16 @@ pub const Range = struct {
     }
 
     pub fn call_selectNode(self: *Range, node: *Node) !void {
-
         const dom = @import("dom");
         const parent = dom.tree_helpers.getParentNode(node) orelse return error.InvalidNodeTypeError;
         const index = dom.tree_helpers.getChildIndex(parent, node) orelse return error.InvalidStateError;
 
         try self.call_setStart(parent, @intCast(index));
         try self.call_setEnd(parent, @intCast(index + 1));
-    
     }
 
+    /// DOM §5.3 - Range.selectNodeContents(node)
+    /// Selects the contents of the node
     pub fn call_selectNodeContents(self: *Range, node: *Node) !void {
 
         // If node is a doctype, throw InvalidNodeTypeError
@@ -695,7 +750,6 @@ pub const Range = struct {
     }
 
     pub fn call_cloneRange(self: *Range) !*Range {
-
         const range = try self.allocator.create(Range);
         range.* = try Range.init(self.allocator, self.start_container);
         range.start_container = self.start_container;
@@ -707,16 +761,17 @@ pub const Range = struct {
         try range.registerWithDocument();
 
         return range;
-    
     }
 
+    /// DOM §5 - Range.detach()
+    /// Does nothing. Kept for compatibility.
     pub fn call_detach(self: *Range) void {
-
         _ = self;
         // Historical artifact - does nothing per spec
-    
     }
 
+    /// DOM §5 - Range.isPointInRange(node, offset)
+    /// Returns true if the point (node, offset) is within the range
     pub fn call_isPointInRange(self: *Range, node: *Node, offset: u32) !bool {
 
         const dom = @import("dom");
@@ -889,37 +944,6 @@ pub const Range = struct {
         for (node.child_nodes.items()) |child| {
             try self.appendContainedTextNodes(child, result);
         }
-    
-    }
-
-    pub fn get_startContainer(self: *const AbstractRange) *Node {
-
-        return self.start_container;
-    
-    }
-
-    pub fn get_startOffset(self: *const AbstractRange) u32 {
-
-        return self.start_offset;
-    
-    }
-
-    pub fn get_endContainer(self: *const AbstractRange) *Node {
-
-        return self.end_container;
-    
-    }
-
-    pub fn get_endOffset(self: *const AbstractRange) u32 {
-
-        return self.end_offset;
-    
-    }
-
-    pub fn get_collapsed(self: *const AbstractRange) bool {
-
-        return self.start_container == self.end_container and
-            self.start_offset == self.end_offset;
     
     }
 
