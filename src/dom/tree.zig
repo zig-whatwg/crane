@@ -13,6 +13,7 @@
 //! throughout the mutation, traversal, and query APIs.
 
 const std = @import("std");
+const infra = @import("infra");
 
 // Import actual Node type from WebIDL generated code via package
 // Node.zig exports both Node interface and NodeBase struct
@@ -249,7 +250,7 @@ fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equ
 
     // Neither is ancestor of the other, find common ancestor
     // and compare which branch comes first
-    var ancestors_a = std.ArrayList(*const Node).init(std.heap.page_allocator);
+    var ancestors_a = infra.List(*const Node).init(std.heap.page_allocator);
     defer ancestors_a.deinit();
 
     // Build ancestor chain for A
@@ -263,14 +264,14 @@ fn compareTreeOrder(node_a: *const Node, node_b: *const Node) enum { before, equ
     var current_b: ?*const Node = node_b;
     while (current_b) |node_b_ancestor| {
         // Check if this B ancestor is in A's chain
-        for (ancestors_a.items, 0..) |node_a_ancestor, i| {
+        for (ancestors_a.items(), 0..) |node_a_ancestor, i| {
             if (node_a_ancestor == node_b_ancestor) {
                 // Found common ancestor
                 if (i == 0) {
                     return .before;
                 }
 
-                const child_of_common_a = ancestors_a.items[i - 1];
+                const child_of_common_a = ancestors_a.items()[i - 1];
 
                 // Find B's child of common ancestor
                 var child_of_common_b: *const Node = node_b;

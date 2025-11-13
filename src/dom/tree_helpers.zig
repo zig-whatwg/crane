@@ -229,7 +229,7 @@ pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, e
 
     // Neither is ancestor of the other, find common ancestor
     // and compare which branch comes first
-    var ancestorsA = std.ArrayList(*const Node).init(std.heap.page_allocator);
+    var ancestorsA = infra.List(*const Node).init(std.heap.page_allocator);
     defer ancestorsA.deinit();
 
     // Build ancestor chain for A
@@ -416,7 +416,7 @@ pub fn countDescendants(node: *const Node) usize {
 /// Returns null if nodes are in different trees
 pub fn findCommonAncestor(a: *const Node, b: *const Node) ?*Node {
     // Collect all ancestors of a
-    var a_ancestors = std.ArrayList(*const Node).init(std.heap.page_allocator);
+    var a_ancestors = infra.List(*const Node).init(std.heap.page_allocator);
     defer a_ancestors.deinit();
 
     var current = a;
@@ -580,8 +580,8 @@ pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*
 /// 1. Visit node
 /// 2. Visit first child and its descendants
 /// 3. Visit next sibling and its descendants
-pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !std.ArrayList(*Node) {
-    var result = std.ArrayList(*Node).init(allocator);
+pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+    var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
     // Add root first (inclusive)
@@ -594,7 +594,7 @@ pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Nod
 }
 
 /// Helper function to recursively collect descendants
-fn collectDescendantsInTreeOrder(result: *std.ArrayList(*Node), node: *const Node) !void {
+fn collectDescendantsInTreeOrder(result: *infra.List(*Node), node: *const Node) !void {
     // Visit all children in order
     // node.child_nodes is a List, not ArrayList, so iterate properly
     var i: usize = 0;
@@ -607,8 +607,8 @@ fn collectDescendantsInTreeOrder(result: *std.ArrayList(*Node), node: *const Nod
 }
 
 /// Get all descendants (not including root) in tree order
-pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !std.ArrayList(*Node) {
-    var result = std.ArrayList(*Node).init(allocator);
+pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+    var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
     // Don't add root, just its descendants

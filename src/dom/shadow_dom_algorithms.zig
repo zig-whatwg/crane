@@ -283,9 +283,9 @@ pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
 /// Find all slottables that should be assigned to a slot.
 ///
 /// Spec: https://dom.spec.whatwg.org/#find-slottables
-pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !std.ArrayList(*anyopaque) {
+pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyopaque) {
     // Step 1: Let result be « »
-    var result = std.ArrayList(*anyopaque).init(allocator);
+    var result = infra.List(*anyopaque).init(allocator);
     errdefer result.deinit();
 
     // Step 2: Let root be slot's root
@@ -331,9 +331,9 @@ pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !std.ArrayList(*an
 /// Find all slottables including nested slot distribution.
 ///
 /// Spec: https://dom.spec.whatwg.org/#find-flattened-slottables
-pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !std.ArrayList(*anyopaque) {
+pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyopaque) {
     // Step 1: Let result be « »
-    var result = std.ArrayList(*anyopaque).init(allocator);
+    var result = infra.List(*anyopaque).init(allocator);
     errdefer result.deinit();
 
     // Step 2: If slot's root is not a shadow root, return result

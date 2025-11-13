@@ -9,6 +9,7 @@
 //! Used by ParentNode mixin (querySelector, querySelectorAll) and Element.matches()
 
 const std = @import("std");
+const infra = @import("infra");
 const selector_mod = @import("selector");
 const Tokenizer = selector_mod.Tokenizer;
 const Parser = selector_mod.Parser;
@@ -35,7 +36,7 @@ pub fn scopeMatchSelectorsString(
     allocator: std.mem.Allocator,
     selectors: []const u8,
     node: anytype,
-) !std.ArrayList(*ElementWithBase) {
+) !infra.List(*ElementWithBase) {
     // Step 1: Parse selector
     var tokenizer = Tokenizer.init(allocator, selectors);
     var parser = Parser.init(allocator, &tokenizer) catch {
@@ -90,9 +91,9 @@ fn matchSelectorAgainstTree(
     selector_list: *const SelectorList,
     root: *NodeBase,
     scoping_root: anytype,
-) !std.ArrayList(*ElementWithBase) {
-    var matches: std.ArrayList(*ElementWithBase) = .empty;
-    errdefer matches.deinit(allocator);
+) !infra.List(*ElementWithBase) {
+    var matches = infra.List(*ElementWithBase).init(allocator);
+    errdefer matches.deinit();
 
     // Get scoping root as ElementWithBase if it's an element
     const scoping_element: ?*const ElementWithBase = blk: {
@@ -121,13 +122,13 @@ fn traverseAndMatch(
     matcher: *const Matcher,
     selector_list: *const SelectorList,
     node: *NodeBase,
-    matches: *std.ArrayList(*ElementWithBase),
+    matches: *infra.List(*ElementWithBase),
 ) !void {
     // Check if this node is an element and matches
     if (node.node_type == NodeBase.ELEMENT_NODE) {
         const element: *ElementWithBase = @ptrCast(node);
         if (try matcher.matches(element, selector_list)) {
-            try matches.append(allocator, element);
+            try matches.append(element);
         }
     }
 
