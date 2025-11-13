@@ -61,7 +61,7 @@ pub const ParentNode = struct {
     // Methods
     // ========================================================================
 
-    pub fn get_children(self: anytype) !*HTMLCollection {
+    pub fn get_children(self: ParentNode) !*HTMLCollection {
 
         const NodeType = @import("node").Node;
         const allocator = self.allocator;
@@ -82,7 +82,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn get_firstElementChild(self: anytype) ?*Element {
+    pub fn get_firstElementChild(self: ParentNode) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -98,7 +98,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn get_lastElementChild(self: anytype) ?*Element {
+    pub fn get_lastElementChild(self: ParentNode) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -117,7 +117,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn get_childElementCount(self: anytype) u32 {
+    pub fn get_childElementCount(self: ParentNode) u32 {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -134,7 +134,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_prepend(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -153,7 +153,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_append(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -171,7 +171,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceChildren(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -192,7 +192,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
+    pub fn call_moveBefore(self: ParentNode, node: anytype, child: anytype) !void {
 
         const mutation = @import("dom").mutation;
 
@@ -214,7 +214,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
+    pub fn call_querySelector(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
 
         // Run scope-match a selectors string against this
         const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -229,7 +229,7 @@ pub const ParentNode = struct {
     
     }
 
-    pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
+    pub fn call_querySelectorAll(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
 
         // Run scope-match a selectors string against this
         var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);

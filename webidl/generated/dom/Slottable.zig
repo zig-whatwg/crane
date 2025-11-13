@@ -36,7 +36,7 @@ pub const Slottable = struct {
     // Methods
     // ========================================================================
 
-    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+    pub fn get_assignedSlot(self: *const Slottable) ?*anyopaque {
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -50,43 +50,43 @@ pub const Slottable = struct {
     
     }
 
-    pub fn getSlottableName(self: *const @This()) []const u8 {
+    pub fn getSlottableName(self: *const Slottable) []const u8 {
 
         return self.slottable_name;
     
     }
 
-    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+    pub fn setSlottableName(self: *Slottable, name: []const u8) void {
 
         self.slottable_name = name;
     
     }
 
-    pub fn isAssigned(self: *const @This()) bool {
+    pub fn isAssigned(self: *const Slottable) bool {
 
         return self.assigned_slot != null;
     
     }
 
-    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
+    pub fn getAssignedSlotInternal(self: *const Slottable) ?*anyopaque {
 
         return self.assigned_slot;
     
     }
 
-    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setAssignedSlot(self: *Slottable, slot: ?*anyopaque) void {
 
         self.assigned_slot = slot;
     
     }
 
-    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
+    pub fn getManualSlotAssignment(self: *const Slottable) ?*anyopaque {
 
         return self.manual_slot_assignment;
     
     }
 
-    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setManualSlotAssignment(self: *Slottable, slot: ?*anyopaque) void {
 
         self.manual_slot_assignment = slot;
     

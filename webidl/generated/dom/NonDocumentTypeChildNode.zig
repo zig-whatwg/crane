@@ -48,7 +48,7 @@ pub const NonDocumentTypeChildNode = struct {
     // Methods
     // ========================================================================
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: NonDocumentTypeChildNode) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -76,7 +76,7 @@ pub const NonDocumentTypeChildNode = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: NonDocumentTypeChildNode) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;

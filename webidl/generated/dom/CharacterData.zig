@@ -211,7 +211,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -266,7 +266,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -314,7 +314,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -369,7 +369,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: CharacterData) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -387,7 +387,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: CharacterData) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -415,7 +415,7 @@ pub const CharacterData = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: CharacterData) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;

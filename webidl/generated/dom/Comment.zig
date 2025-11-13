@@ -76,7 +76,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: Comment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -131,7 +131,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: Comment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -179,7 +179,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: Comment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -234,7 +234,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: Comment) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -252,7 +252,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: Comment) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -280,7 +280,7 @@ pub const Comment = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: Comment) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;

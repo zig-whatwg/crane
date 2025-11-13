@@ -82,7 +82,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: ProcessingInstruction, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -137,7 +137,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: ProcessingInstruction, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -185,7 +185,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: ProcessingInstruction, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -240,7 +240,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: ProcessingInstruction) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -258,7 +258,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: ProcessingInstruction) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -286,7 +286,7 @@ pub const ProcessingInstruction = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: ProcessingInstruction) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;

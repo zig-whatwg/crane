@@ -51,7 +51,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
-    pub fn deinit(self: *Self) void {
+    pub fn deinit(self: *HTMLSlotElement) void {
 
         if (self.name.len > 0) {
             self.allocator.free(self.name);
@@ -61,7 +61,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
-    pub fn setName(self: *Self, name: []const u8) !void {
+    pub fn setName(self: *HTMLSlotElement, name: []const u8) !void {
 
         if (self.name.len > 0) {
             self.allocator.free(self.name);
@@ -70,25 +70,25 @@ pub const HTMLSlotElement = struct {
     
     }
 
-    pub fn getName(self: *const Self) []const u8 {
+    pub fn getName(self: *const HTMLSlotElement) []const u8 {
 
         return self.name;
     
     }
 
-    pub fn getAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
+    pub fn getAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
 
         return &self.assigned_nodes;
     
     }
 
-    pub fn getManuallyAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
+    pub fn getManuallyAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
 
         return &self.manually_assigned_nodes;
     
     }
 
-    pub fn hasAssignedNodes(self: *const Self) bool {
+    pub fn hasAssignedNodes(self: *const HTMLSlotElement) bool {
 
         return self.assigned_nodes.items.len > 0;
     

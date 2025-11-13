@@ -77,7 +77,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn get_children(self: anytype) !*HTMLCollection {
+    pub fn get_children(self: DocumentFragment) !*HTMLCollection {
 
         const NodeType = @import("node").Node;
         const allocator = self.allocator;
@@ -98,7 +98,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn get_firstElementChild(self: anytype) ?*Element {
+    pub fn get_firstElementChild(self: DocumentFragment) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -114,7 +114,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn get_lastElementChild(self: anytype) ?*Element {
+    pub fn get_lastElementChild(self: DocumentFragment) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -133,7 +133,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn get_childElementCount(self: anytype) u32 {
+    pub fn get_childElementCount(self: DocumentFragment) u32 {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -150,7 +150,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_prepend(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -169,7 +169,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_append(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -187,7 +187,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceChildren(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -208,7 +208,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
+    pub fn call_moveBefore(self: DocumentFragment, node: anytype, child: anytype) !void {
 
         const mutation = @import("dom").mutation;
 
@@ -230,7 +230,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
+    pub fn call_querySelector(self: DocumentFragment, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
 
         // Run scope-match a selectors string against this
         const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -245,7 +245,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
+    pub fn call_querySelectorAll(self: DocumentFragment, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
 
         // Run scope-match a selectors string against this
         var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -266,7 +266,7 @@ pub const DocumentFragment = struct {
     
     }
 
-    pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
+    pub fn call_getElementById(self: DocumentFragment, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
 
         _ = allocator; // Not needed for traversal
 

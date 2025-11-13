@@ -45,7 +45,7 @@ pub const NonElementParentNode = struct {
     // Methods
     // ========================================================================
 
-    pub fn call_getElementById(self: anytype, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
+    pub fn call_getElementById(self: NonElementParentNode, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
 
         _ = allocator; // Not needed for traversal
 

@@ -60,7 +60,13 @@ pub const Element = webidl.interface(struct {
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
         // NOTE: Parent Node fields will be flattened by codegen
+        // NOTE: Mixin fields (Slottable) are also flattened by codegen
         return .{
+            // Slottable mixin fields
+            .slottable_name = "",
+            .assigned_slot = null,
+            .manual_slot_assignment = null,
+            // Element own fields
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,
@@ -68,7 +74,10 @@ pub const Element = webidl.interface(struct {
             .local_name = tag_name,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
+            .custom_element_state = .undefined,
+            .is_value = null,
             .cached_class_list = null,
+            .cached_attributes = null,
         };
     }
 

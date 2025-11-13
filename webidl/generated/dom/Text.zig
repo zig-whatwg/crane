@@ -166,7 +166,7 @@ pub const Text = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -221,7 +221,7 @@ pub const Text = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -269,7 +269,7 @@ pub const Text = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -324,7 +324,7 @@ pub const Text = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: Text) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -342,7 +342,7 @@ pub const Text = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: Text) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -370,7 +370,7 @@ pub const Text = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: Text) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -394,7 +394,7 @@ pub const Text = struct {
     
     }
 
-    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+    pub fn get_assignedSlot(self: *const Text) ?*anyopaque {
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -408,43 +408,43 @@ pub const Text = struct {
     
     }
 
-    pub fn getSlottableName(self: *const @This()) []const u8 {
+    pub fn getSlottableName(self: *const Text) []const u8 {
 
         return self.slottable_name;
     
     }
 
-    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+    pub fn setSlottableName(self: *Text, name: []const u8) void {
 
         self.slottable_name = name;
     
     }
 
-    pub fn isAssigned(self: *const @This()) bool {
+    pub fn isAssigned(self: *const Text) bool {
 
         return self.assigned_slot != null;
     
     }
 
-    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
+    pub fn getAssignedSlotInternal(self: *const Text) ?*anyopaque {
 
         return self.assigned_slot;
     
     }
 
-    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setAssignedSlot(self: *Text, slot: ?*anyopaque) void {
 
         self.assigned_slot = slot;
     
     }
 
-    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
+    pub fn getManualSlotAssignment(self: *const Text) ?*anyopaque {
 
         return self.manual_slot_assignment;
     
     }
 
-    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setManualSlotAssignment(self: *Text, slot: ?*anyopaque) void {
 
         self.manual_slot_assignment = slot;
     

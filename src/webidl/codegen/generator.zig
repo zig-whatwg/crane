@@ -372,6 +372,63 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     try writer.writeAll("};\n");
 }
 
+/// Rewrite self parameter type in method signature for mixin inheritance
+/// Example: (self: *ReadableStreamGenericReader, ...) -> (self: *ReadableStreamBYOBReader, ...)
+/// Also handles: (self: *const ReadableStreamGenericReader, ...) -> (self: *const ReadableStreamBYOBReader, ...)
+/// And: (self: *const @This()) -> (self: *const TargetClass)
+fn rewriteSelfParameterType(allocator: Allocator, signature: []const u8, target_class: []const u8) ![]const u8 {
+    // Find "self: " pattern in signature
+    const self_pattern = "self: ";
+    const self_start = std.mem.indexOf(u8, signature, self_pattern) orelse {
+        // No self parameter - return unchanged
+        return signature;
+    };
+
+    var cursor = self_start + self_pattern.len;
+
+    // Skip pointer syntax: * or *const
+    if (cursor < signature.len and signature[cursor] == '*') {
+        cursor += 1;
+        // Check for "const " after the *
+        if (cursor + 6 < signature.len and std.mem.startsWith(u8, signature[cursor..], "const ")) {
+            cursor += 6; // "const "
+        }
+    }
+
+    const type_start = cursor;
+
+    // Check for @This() special case
+    var type_end = type_start;
+    if (std.mem.startsWith(u8, signature[type_start..], "@This()")) {
+        type_end = type_start + "@This()".len;
+    } else {
+        // Find the end of the type name (next comma, paren, or whitespace)
+        while (type_end < signature.len) : (type_end += 1) {
+            const c = signature[type_end];
+            if (c == ',' or c == ')' or c == ' ' or c == '\t' or c == '\n') {
+                break;
+            }
+        }
+    }
+
+    const original_type = signature[type_start..type_end];
+
+    // If the type is already the target class, no rewrite needed
+    if (std.mem.eql(u8, original_type, target_class)) {
+        return signature;
+    }
+
+    // Build rewritten signature
+    var result: std.ArrayList(u8) = .empty;
+    defer result.deinit(allocator);
+
+    try result.appendSlice(allocator, signature[0..type_start]); // Up to and including "self: *" or "self: *const "
+    try result.appendSlice(allocator, target_class); // New type name
+    try result.appendSlice(allocator, signature[type_end..]); // Rest of signature (including closing paren if @This())
+
+    return try result.toOwnedSlice(allocator);
+}
+
 /// Write a single method
 fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_level_imports: []ir.Import, class_name: []const u8) !void {
     // Doc comment
@@ -382,7 +439,10 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         }
     }
 
-    // Method signature
+    // Method signature - rewrite self parameter type for mixin methods
+    const rewritten_signature = try rewriteSelfParameterType(allocator, method.signature, class_name);
+    defer if (rewritten_signature.ptr != method.signature.ptr) allocator.free(rewritten_signature);
+
     const pub_str = if (method.modifiers.is_public) "pub " else "";
     const inline_str = if (method.modifiers.is_inline) "inline " else "";
 
@@ -390,7 +450,7 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         pub_str,
         inline_str,
         method.name,
-        method.signature,
+        rewritten_signature,
     });
 
     // Method body - strip local imports that shadow top-level imports or the current class

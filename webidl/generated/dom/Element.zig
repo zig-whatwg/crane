@@ -90,7 +90,13 @@ pub const Element = struct {
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
 
         // NOTE: Parent Node fields will be flattened by codegen
+        // NOTE: Mixin fields (Slottable) are also flattened by codegen
         return .{
+            // Slottable mixin fields
+            .slottable_name = "",
+            .assigned_slot = null,
+            .manual_slot_assignment = null,
+            // Element own fields
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,
@@ -98,7 +104,10 @@ pub const Element = struct {
             .local_name = tag_name,
             .attributes = infra.List(Attr).init(allocator),
             .shadow_root = null,
+            .custom_element_state = .undefined,
+            .is_value = null,
             .cached_class_list = null,
+            .cached_attributes = null,
         };
     
     }
@@ -573,7 +582,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -628,7 +637,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -676,7 +685,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -731,7 +740,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: Element) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -749,7 +758,7 @@ pub const Element = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: Element) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -777,7 +786,7 @@ pub const Element = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: Element) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -801,7 +810,7 @@ pub const Element = struct {
     
     }
 
-    pub fn get_children(self: anytype) !*HTMLCollection {
+    pub fn get_children(self: Element) !*HTMLCollection {
 
         const NodeType = @import("node").Node;
         const allocator = self.allocator;
@@ -822,7 +831,7 @@ pub const Element = struct {
     
     }
 
-    pub fn get_firstElementChild(self: anytype) ?*Element {
+    pub fn get_firstElementChild(self: Element) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -838,7 +847,7 @@ pub const Element = struct {
     
     }
 
-    pub fn get_lastElementChild(self: anytype) ?*Element {
+    pub fn get_lastElementChild(self: Element) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -857,7 +866,7 @@ pub const Element = struct {
     
     }
 
-    pub fn get_childElementCount(self: anytype) u32 {
+    pub fn get_childElementCount(self: Element) u32 {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -874,7 +883,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_prepend(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -893,7 +902,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_append(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -911,7 +920,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceChildren(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -932,7 +941,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
+    pub fn call_moveBefore(self: Element, node: anytype, child: anytype) !void {
 
         const mutation = @import("dom").mutation;
 
@@ -954,7 +963,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
+    pub fn call_querySelector(self: Element, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
 
         // Run scope-match a selectors string against this
         const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -969,7 +978,7 @@ pub const Element = struct {
     
     }
 
-    pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
+    pub fn call_querySelectorAll(self: Element, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
 
         // Run scope-match a selectors string against this
         var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
@@ -990,7 +999,7 @@ pub const Element = struct {
     
     }
 
-    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+    pub fn get_assignedSlot(self: *const Element) ?*anyopaque {
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -1004,43 +1013,43 @@ pub const Element = struct {
     
     }
 
-    pub fn getSlottableName(self: *const @This()) []const u8 {
+    pub fn getSlottableName(self: *const Element) []const u8 {
 
         return self.slottable_name;
     
     }
 
-    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+    pub fn setSlottableName(self: *Element, name: []const u8) void {
 
         self.slottable_name = name;
     
     }
 
-    pub fn isAssigned(self: *const @This()) bool {
+    pub fn isAssigned(self: *const Element) bool {
 
         return self.assigned_slot != null;
     
     }
 
-    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
+    pub fn getAssignedSlotInternal(self: *const Element) ?*anyopaque {
 
         return self.assigned_slot;
     
     }
 
-    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setAssignedSlot(self: *Element, slot: ?*anyopaque) void {
 
         self.assigned_slot = slot;
     
     }
 
-    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
+    pub fn getManualSlotAssignment(self: *const Element) ?*anyopaque {
 
         return self.manual_slot_assignment;
     
     }
 
-    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setManualSlotAssignment(self: *Element, slot: ?*anyopaque) void {
 
         self.manual_slot_assignment = slot;
     

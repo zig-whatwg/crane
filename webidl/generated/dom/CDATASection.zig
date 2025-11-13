@@ -72,7 +72,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_before(self: CDATASection, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -127,7 +127,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_after(self: CDATASection, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -175,7 +175,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
+    pub fn call_replaceWith(self: CDATASection, nodes: []const dom_types.NodeOrDOMString) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -230,7 +230,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn call_remove(self: anytype) !void {
+    pub fn call_remove(self: CDATASection) !void {
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
@@ -248,7 +248,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn previousElementSibling(self: anytype) ?*Element {
+    pub fn previousElementSibling(self: CDATASection) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -276,7 +276,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn nextElementSibling(self: anytype) ?*Element {
+    pub fn nextElementSibling(self: CDATASection) ?*Element {
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
@@ -300,7 +300,7 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
+    pub fn get_assignedSlot(self: *const CDATASection) ?*anyopaque {
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -314,43 +314,43 @@ pub const CDATASection = struct {
     
     }
 
-    pub fn getSlottableName(self: *const @This()) []const u8 {
+    pub fn getSlottableName(self: *const CDATASection) []const u8 {
 
         return self.slottable_name;
     
     }
 
-    pub fn setSlottableName(self: *@This(), name: []const u8) void {
+    pub fn setSlottableName(self: *CDATASection, name: []const u8) void {
 
         self.slottable_name = name;
     
     }
 
-    pub fn isAssigned(self: *const @This()) bool {
+    pub fn isAssigned(self: *const CDATASection) bool {
 
         return self.assigned_slot != null;
     
     }
 
-    pub fn getAssignedSlotInternal(self: *const @This()) ?*anyopaque {
+    pub fn getAssignedSlotInternal(self: *const CDATASection) ?*anyopaque {
 
         return self.assigned_slot;
     
     }
 
-    pub fn setAssignedSlot(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setAssignedSlot(self: *CDATASection, slot: ?*anyopaque) void {
 
         self.assigned_slot = slot;
     
     }
 
-    pub fn getManualSlotAssignment(self: *const @This()) ?*anyopaque {
+    pub fn getManualSlotAssignment(self: *const CDATASection) ?*anyopaque {
 
         return self.manual_slot_assignment;
     
     }
 
-    pub fn setManualSlotAssignment(self: *@This(), slot: ?*anyopaque) void {
+    pub fn setManualSlotAssignment(self: *CDATASection, slot: ?*anyopaque) void {
 
         self.manual_slot_assignment = slot;
     

@@ -130,13 +130,13 @@ pub const TextDecoderStream = struct {
     
     }
 
-    pub fn get_readable(self: *const GenericTransformStream) *ReadableStream {
+    pub fn get_readable(self: *const TextDecoderStream) *ReadableStream {
 
         return self.transform.readableStream;
     
     }
 
-    pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
+    pub fn get_writable(self: *const TextDecoderStream) *WritableStream {
 
         return self.transform.writableStream;
     

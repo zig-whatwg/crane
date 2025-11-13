@@ -265,7 +265,7 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
-    pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
+    pub fn get_closed(self: *const ReadableStreamBYOBReader) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
@@ -278,7 +278,7 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
-    pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+    pub fn call_cancel(self: *ReadableStreamBYOBReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
         if (self.stream == null) {
@@ -300,7 +300,7 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
-    fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+    fn genericCancel(self: *ReadableStreamBYOBReader, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Step 1: Let stream be reader.[[stream]].
         const stream = self.stream.?;
@@ -313,7 +313,7 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
-    pub fn genericRelease(self: *ReadableStreamGenericReader) void {
+    pub fn genericRelease(self: *ReadableStreamBYOBReader) void {
 
         // Step 1: Let stream be reader.[[stream]].
         const stream = self.stream.?;
