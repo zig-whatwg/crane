@@ -56,6 +56,9 @@ pub const AbortSignal = struct {
     /// Dependent signals: weak set of AbortSignals that depend on this signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
     dependent_signals: infra.List(*AbortSignal),
+    /// Event handler for abort event
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-onabort
+    onabort: ?*anyopaque = null,
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -98,6 +101,17 @@ pub const AbortSignal = struct {
     }
     pub fn get_reason(self: *const AbortSignal) ?webidl.Exception {
         return self.reason;
+    }
+    /// DOM - AbortSignal.onabort
+    ///
+    /// Event handler IDL attribute for the abort event.
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-onabort
+    pub fn get_onabort(self: *const AbortSignal) ?*anyopaque {
+        return self.onabort;
+    }
+
+    pub fn set_onabort(self: *AbortSignal, handler: ?*anyopaque) void {
+        self.onabort = handler;
     }
     pub fn call_throwIfAborted(self: *const AbortSignal) !void {
         if (self.aborted) {
@@ -435,3 +449,24 @@ pub const AbortSignal = struct {
         .cross_origin_isolated = false,
     };
 };
+
+// Tests
+
+test "AbortSignal - onabort event handler" {
+    const allocator = std.testing.allocator;
+
+    var signal = try AbortSignal.init(allocator);
+    defer signal.deinit();
+
+    // Test initial value is null
+    try std.testing.expectEqual(@as(?*anyopaque, null), signal.get_onabort());
+
+    // Test setting a handler (using arbitrary pointer as placeholder)
+    const dummy_handler: *const u32 = &42;
+    signal.set_onabort(@ptrCast(@constCast(dummy_handler)));
+    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(@constCast(dummy_handler))), signal.get_onabort());
+
+    // Test setting back to null
+    signal.set_onabort(null);
+    try std.testing.expectEqual(@as(?*anyopaque, null), signal.get_onabort());
+}
