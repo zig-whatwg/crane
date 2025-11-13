@@ -72,19 +72,24 @@ fn getRootNode(node: *@import("node").Node) *@import("node").Node {
 /// Find element by ID in tree
 fn findElementById(allocator: std.mem.Allocator, node: *@import("node").Node, id: []const u8, result: *NodeSet) !void {
     const Node = @import("node").Node;
+    const ElementWithBase = @import("../element_with_base.zig").ElementWithBase;
 
     // Check if this is an element with matching ID
     if (node.node_type == Node.ELEMENT_NODE) {
-        // Check if node name equals the id (simplified - normally we'd check id attribute)
-        // TODO: Properly check id attribute when attribute support is available
-        if (std.mem.eql(u8, node.node_name, id)) {
-            try result.add(node);
-            return; // IDs are unique, stop after finding first match
+        // Cast to ElementWithBase to access getId()
+        const element: *ElementWithBase = @ptrCast(node);
+
+        // Check id attribute
+        if (element.getId()) |element_id| {
+            if (std.mem.eql(u8, element_id, id)) {
+                try result.add(node);
+                return; // IDs are unique, stop after finding first match
+            }
         }
     }
 
     // Recursively search children
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         try findElementById(allocator, child, id, result);
     }
 }
@@ -138,10 +143,18 @@ pub fn fnNamespaceUri(allocator: std.mem.Allocator, ctx: *const Context, args: [
         break :blk node_set.get(0).?;
     };
 
-    // For elements, check if we have namespace_uri field
-    // For now, return empty string as namespace support is not fully implemented
-    // TODO: Properly access Element.namespace_uri when Element type is available
-    _ = node;
+    const Node = @import("node").Node;
+    const ElementWithBase = @import("../element_with_base.zig").ElementWithBase;
+
+    // For elements, return namespace URI; for other nodes, return empty string
+    if (node.node_type == Node.ELEMENT_NODE) {
+        const element: *const ElementWithBase = @ptrCast(@alignCast(node));
+        if (element.namespace_uri) |ns_uri| {
+            return Value{ .string = try allocator.dupe(u8, ns_uri) };
+        }
+    }
+
+    // For non-element nodes or elements without namespace, return empty string
     return Value{ .string = try allocator.dupe(u8, "") };
 }
 

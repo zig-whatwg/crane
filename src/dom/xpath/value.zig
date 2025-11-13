@@ -170,15 +170,9 @@ pub const NodeSet = struct {
             }
         };
 
-        // Need to sort mutable slice, so we have to work around infra.List
-        // TODO: Add a sortableSlice() method to infra.List for this use case
-        if (self.nodes.heap_storage) |*heap| {
-            std.mem.sort(*NodeBase, heap.items, {}, Context.lessThan);
-        } else if (self.nodes.len > 0) {
-            // Inline storage - sort directly in array
-            const slice = self.nodes.inline_storage[0..self.nodes.len];
-            std.mem.sort(*NodeBase, @constCast(slice), {}, Context.lessThan);
-        }
+        // Sort nodes in document order using sortableSlice()
+        const slice = self.nodes.sortableSlice();
+        std.mem.sort(*NodeBase, slice, {}, Context.lessThan);
     }
 
     /// Create union of two node-sets (§3.3 Union operator)

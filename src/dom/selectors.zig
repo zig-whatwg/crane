@@ -166,10 +166,10 @@ test "selectors: scopeMatchSelectorsString with type selector" {
 
     // Query for "p"
     var matches = try scopeMatchSelectorsString(allocator, "p", &root);
-    defer matches.deinit(allocator);
+    defer matches.deinit();
 
-    try testing.expectEqual(@as(usize, 1), matches.items.len);
-    try testing.expect(matches.items[0] == child);
+    try testing.expectEqual(@as(usize, 1), matches.items().len);
+    try testing.expect(matches.items()[0] == child);
 }
 
 test "selectors: scopeMatchSelectorsString with no matches" {
@@ -180,9 +180,9 @@ test "selectors: scopeMatchSelectorsString with no matches" {
 
     // Query for "p" (but tree only has div)
     var matches = try scopeMatchSelectorsString(allocator, "p", &root);
-    defer matches.deinit(allocator);
+    defer matches.deinit();
 
-    try testing.expectEqual(@as(usize, 0), matches.items.len);
+    try testing.expectEqual(@as(usize, 0), matches.items().len);
 }
 
 test "selectors: scopeMatchSelectorsString with syntax error" {
@@ -226,10 +226,10 @@ test "selectors: :scope pseudo-class matches scoping root" {
 
     // Query for ":scope" - should match the scoping root (div)
     var matches = try scopeMatchSelectorsString(allocator, ":scope", &root);
-    defer matches.deinit(allocator);
+    defer matches.deinit();
 
-    try testing.expectEqual(@as(usize, 1), matches.items.len);
-    try testing.expect(matches.items[0] == &root);
+    try testing.expectEqual(@as(usize, 1), matches.items().len);
+    try testing.expect(matches.items()[0] == &root);
 }
 
 test "selectors: :scope > p matches direct children" {
@@ -271,8 +271,8 @@ test "selectors: :scope > p matches direct children" {
 
     // Query for ":scope > p" from root - should match only direct p child
     var matches = try scopeMatchSelectorsString(allocator, ":scope > p", &root);
-    defer matches.deinit(allocator);
+    defer matches.deinit();
 
-    try testing.expectEqual(@as(usize, 1), matches.items.len);
-    try testing.expect(matches.items[0] == p1);
+    try testing.expectEqual(@as(usize, 1), matches.items().len);
+    try testing.expect(matches.items()[0] == p1);
 }

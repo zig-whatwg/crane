@@ -316,13 +316,13 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
     // Remove all transient observers whose observer matches
     // We iterate backwards to safely remove items during iteration
-    // Cast observer to opaque type for comparison with registered.observer
-    const observer_opaque: *opaque {} = @ptrCast(observer);
-    var i: usize = node.registered_observers.len;
+    // Compare pointer addresses since opaque types from different modules can't be directly compared
+    const observer_ptr = @intFromPtr(observer);
+    var i: usize = node.registered_observers.size();
     while (i > 0) {
         i -= 1;
         const registered = node.registered_observers.get(i) orelse continue;
-        if (registered.is_transient and registered.observer == observer_opaque) {
+        if (registered.is_transient and @intFromPtr(registered.observer) == observer_ptr) {
             _ = node.registered_observers.remove(i) catch unreachable;
         }
     }

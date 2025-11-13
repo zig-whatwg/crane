@@ -365,6 +365,21 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             return &[_]T{};
         }
 
+        /// Get a mutable slice of items for sorting or other operations
+        /// Returns a slice that can be passed to std.mem.sort
+        /// Useful when you need to sort with custom context
+        pub fn sortableSlice(self: *Self) []T {
+            if (self.heap_storage) |*heap| {
+                return heap.items;
+            }
+
+            if (comptime inline_capacity > 0) {
+                return self.inline_storage[0..self.len];
+            }
+
+            return &[_]T{};
+        }
+
         pub fn ensureCapacity(self: *Self, capacity: usize) !void {
             if (capacity <= inline_capacity) {
                 return;
