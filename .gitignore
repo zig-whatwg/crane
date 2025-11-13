@@ -24,3 +24,6 @@ test_arraylist*
 -e 
 # AI planning documents (ephemeral)
 history/
+
+# Temporary files and planning documents
+/tmp/
