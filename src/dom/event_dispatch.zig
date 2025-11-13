@@ -5,6 +5,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Event = @import("event").Event;
 const EventTarget = @import("event_target").EventTarget;
+const EventListener = @import("event_target").EventListener;
 const EventPathItem = Event.EventPathItem;
 
 /// DOM §2.9.1 - append to an event path
@@ -268,71 +269,24 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 /// Each EventTarget has an associated "get the parent" algorithm.
 /// Nodes, shadow roots, and documents override this algorithm.
 fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
-    const NodeBase = @import("../webidl/generated/dom/node.zig").NodeBase;
-    const EventTargetBase = @import("../webidl/generated/dom/event_target.zig").EventTargetBase;
+    _ = event; // TODO: Use event.composed for shadow DOM traversal
 
-    // Cast EventTarget to EventTargetBase to access polymorphic features
-    const target_base = @as(*EventTargetBase, @ptrCast(target));
+    // Simplified version: Try to cast to Node and get parent
+    // Full version would handle ShadowRoot, Document, and Window
+    const Node = @import("node").Node;
 
-    // Try to cast to Node (most common case)
-    // Node's get the parent: return node's assigned slot if assigned, otherwise parent
-    if (target_base.tryCast(NodeBase)) |node_base| {
-        // Check if node is assigned to a slot (Shadow DOM feature)
-        // Node has assigned_slot field from Slottable mixin
-        if (@hasField(@TypeOf(node_base.*), "assigned_slot")) {
-            if (@field(node_base, "assigned_slot")) |slot| {
-                return @ptrCast(slot);
-            }
-        }
+    // Try to cast EventTarget to Node
+    // This works because Node extends EventTarget
+    const node = Node.fromEventTarget(target) catch return null;
 
-        // Otherwise return parent_node
-        if (node_base.parent_node) |parent| {
-            return @ptrCast(parent);
-        }
-        return null;
+    // Check if node is assigned to a slot (Shadow DOM feature)
+    // For now, skip this check as slots aren't fully implemented
+
+    // Return parent_node
+    if (node.parent_node) |parent| {
+        return &parent.base;
     }
 
-    // Try to cast to ShadowRoot
-    // ShadowRoot's get the parent: return null if event's composed flag is unset
-    // and shadow root is the root of event's path's first struct's invocation target,
-    // otherwise return shadow root's host
-    const ShadowRootBase = @import("../webidl/generated/dom/ShadowRoot.zig").ShadowRootBase;
-    if (target_base.tryCast(ShadowRootBase)) |shadow_root| {
-        // Check if event's composed flag is unset
-        if (!event.composed) {
-            // Check if shadow root is the root of event's path's first struct's invocation target
-            if (event.path.items.len > 0) {
-                const first_struct = event.path.items[0];
-                const invocation_target = first_struct.invocation_target;
-
-                // Get the root of the invocation target
-                // For now, simplified check: if invocation target is the shadow root, return null
-                if (@intFromPtr(invocation_target) == @intFromPtr(target)) {
-                    return null;
-                }
-            }
-        }
-
-        // Otherwise return shadow root's host
-        return @ptrCast(shadow_root.host_element);
-    }
-
-    // Try to cast to Document
-    // Document's get the parent: return null if event type is "load" or
-    // document has no browsing context, otherwise return document's relevant global object
-    const DocumentBase = @import("../webidl/generated/dom/document.zig").DocumentBase;
-    if (target_base.tryCast(DocumentBase)) |_| {
-        // Check if event type is "load"
-        if (std.mem.eql(u8, event.event_type, "load")) {
-            return null;
-        }
-
-        // TODO: Check if document has browsing context
-        // For now, return null (no browsing context / global object implementation yet)
-        return null;
-    }
-
-    // Default: return null (as per spec)
     return null;
 }
 
@@ -370,17 +324,12 @@ fn invoke(
     // Step 6: Let listeners be a clone of event's currentTarget's event listener list
     // Clone to avoid issues with listeners added/removed during dispatch
     const current_target = event.current_target.?;
-    const EventListener = @import("../webidl/generated/dom/EventTarget.zig").EventListener;
-    const EventTargetBase = @import("../webidl/generated/dom/EventTarget.zig").EventTargetBase;
 
     var listeners = std.ArrayList(EventListener).init(event.allocator);
     defer listeners.deinit();
 
     // Get the event_listener_list from EventTarget
-    // Must cast to EventTargetBase to access the event_listener_list field
-    // (All EventTargets have EventTargetBase as their first field or embedded via inheritance)
-    const target_base = @as(*EventTargetBase, @ptrCast(current_target));
-    if (target_base.event_listener_list) |list| {
+    if (current_target.event_listener_list) |list| {
         try listeners.appendSlice(list.items);
     }
 
@@ -455,7 +404,7 @@ fn invokeCallback(
 /// Inner invoke algorithm that actually calls the listeners
 fn innerInvoke(
     event: *Event,
-    listeners: []const @import("../webidl/generated/dom/EventTarget.zig").EventListener,
+    listeners: []const EventListener,
     phase: []const u8,
     invocation_target_in_shadow_tree: bool,
     legacy_output_did_listeners_throw_flag: ?*bool,
