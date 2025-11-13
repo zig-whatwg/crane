@@ -88,8 +88,12 @@ pub const Text = webidl.interface(struct {
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
             // Steps 6.2-6.5: Update live ranges
-            const range_tracking = @import("range_tracking");
-            range_tracking.updateRangesAfterSplit(self_node, new_node_as_node, offset);
+            if (self_node.owner_document) |owner_doc| {
+                const Document = @import("document").Document;
+                const doc = try Document.fromNode(owner_doc);
+                const range_tracking = @import("range_tracking");
+                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);
+            }
         }
 
         // Step 7: Replace data with node, offset, count, and empty string

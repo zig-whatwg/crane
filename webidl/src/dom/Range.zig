@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const AbstractRange = @import("abstract_range").AbstractRange;
 const Node = @import("node").Node;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
+const Document = @import("document").Document;
 
 /// DOM Spec: interface Range : AbstractRange
 ///
@@ -21,23 +22,43 @@ pub const Range = webidl.interface(struct {
     pub const extends = AbstractRange;
 
     allocator: Allocator,
+    /// Owner document - needed for per-document range tracking
+    owner_document: *Document,
 
     /// DOM §5 - Range constructor
     /// The new Range() constructor steps are to set this's start and end to
     /// (current global object's associated Document, 0).
-    pub fn init(allocator: Allocator, document: *Node) !Range {
-        return .{
+    pub fn init(allocator: Allocator, document_node: *Node) !Range {
+        // Get Document from node
+        const Document_Type = @import("document").Document;
+        const doc = Document_Type.fromNode(document_node) catch {
+            return error.InvalidNodeTypeError;
+        };
+
+        const range = Range{
             .allocator = allocator,
-            .start_container = document,
+            .owner_document = doc,
+            .start_container = document_node,
             .start_offset = 0,
-            .end_container = document,
+            .end_container = document_node,
             .end_offset = 0,
         };
+
+        // Note: Cannot auto-register here since we're in init
+        // Caller must call registerWithDocument after heap allocation
+        return range;
+    }
+
+    /// Register this range with its owner document for live tracking
+    /// Must be called after init and heap allocation
+    pub fn registerWithDocument(self: *Range) !void {
+        try self.owner_document.registerRange(self);
     }
 
     pub fn deinit(self: *Range) void {
-        _ = self;
-        // No cleanup needed - we don't own the nodes
+        // Unregister from document
+        self.owner_document.unregisterRange(self);
+        // No other cleanup needed - we don't own the nodes
     }
 
     // ========================================================================
@@ -745,6 +766,10 @@ pub const Range = webidl.interface(struct {
         range.start_offset = self.start_offset;
         range.end_container = self.end_container;
         range.end_offset = self.end_offset;
+
+        // Register the cloned range with the document
+        try range.registerWithDocument();
+
         return range;
     }
 

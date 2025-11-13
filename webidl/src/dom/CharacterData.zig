@@ -164,9 +164,16 @@ pub const CharacterData = webidl.interface(struct {
         self.data = new_data;
 
         // Steps 8-11 - Update ranges
-        const range_tracking = @import("range_tracking");
-        const new_length = @as(u32, @intCast(data.len));
-        range_tracking.updateRangesAfterReplace(&self.base, offset, count, new_length);
+        if (self.base.owner_document) |owner_doc| {
+            const Document = @import("document").Document;
+            if (Document.fromNode(owner_doc)) |doc| {
+                const range_tracking = @import("range_tracking");
+                const new_length = @as(u32, @intCast(data.len));
+                range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+            } else |_| {
+                // Document conversion failed, skip range updates
+            }
+        }
 
         // Step 12 - Run children changed steps for parent
         // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"

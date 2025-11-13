@@ -21,6 +21,7 @@ const Text = @import("text").Text;
 const Comment = @import("comment").Comment;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Attr = @import("attr").Attr;
+const Range = @import("range").Range;
 
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
@@ -41,6 +42,10 @@ pub const Document = webidl.interface(struct {
     document_type: enum { html, xml },
     /// Document origin (opaque for now)
     origin: ?*anyopaque,
+    /// Live ranges associated with this document
+    /// Spec: https://dom.spec.whatwg.org/#concept-live-range
+    ranges: std.ArrayList(*Range),
+    ranges_mutex: std.Thread.Mutex,
 
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
@@ -52,6 +57,8 @@ pub const Document = webidl.interface(struct {
             .document_type = .xml,
             .origin = null,
             .base_uri = "about:blank",
+            .ranges = std.ArrayList(*Range).init(allocator),
+            .ranges_mutex = std.Thread.Mutex{},
         };
     }
 
@@ -67,6 +74,10 @@ pub const Document = webidl.interface(struct {
         if (self._implementation) |*impl| {
             impl.deinit();
         }
+
+        // Clean up ranges list (ranges themselves are owned by their creators)
+        self.ranges.deinit();
+
         // NOTE: Parent Node cleanup is handled by codegen
     }
 
@@ -86,6 +97,30 @@ pub const Document = webidl.interface(struct {
 
         try self._string_pool.put(owned, {});
         return owned;
+    }
+
+    /// Register a live range with this document
+    /// Spec: https://dom.spec.whatwg.org/#concept-live-range
+    pub fn registerRange(self: *Document, range: *Range) !void {
+        self.ranges_mutex.lock();
+        defer self.ranges_mutex.unlock();
+
+        try self.ranges.append(range);
+    }
+
+    /// Unregister a live range from this document
+    pub fn unregisterRange(self: *Document, range: *Range) void {
+        self.ranges_mutex.lock();
+        defer self.ranges_mutex.unlock();
+
+        var i: usize = 0;
+        while (i < self.ranges.items.len) {
+            if (self.ranges.items[i] == range) {
+                _ = self.ranges.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     }
 
     /// implementation getter
