@@ -1082,9 +1082,19 @@ pub const Node = webidl.interface(struct {
     }
 
     /// Remove all transient registered observers whose source matches the given registered observer
-    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) !void {
-        // TODO: Implement transient registered observers
-        // For now, this is a no-op since we haven't implemented transient observers yet
+    ///
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
+    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
         _ = self;
         _ = source;
     }
