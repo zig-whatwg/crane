@@ -200,14 +200,150 @@ test "MutationObserverAgent - reset clears state" {
 //    - Mix of different mutation types
 //    - Performance tests with large numbers of observers/mutations
 
-// Placeholder for future integration tests
-test "MutationObserver - integration tests (TODO)" {
-    // These tests require full DOM implementation with:
-    // - Working Element with setAttribute/removeAttribute
-    // - Working Text/Comment with data property
-    // - Working Node with appendChild/removeChild
-    // - Working Document to create elements
+// ============================================================================
+// Integration Tests - Mutation Record Queuing
+// ============================================================================
 
-    // For now, mark as skipped
-    try std.testing.expect(true);
+test "MutationObserver - childList mutation records queued on insert" {
+    const allocator = std.testing.allocator;
+
+    // Create a simple tree structure using ElementWithBase for testing
+    const ElementWithBase = dom.ElementWithBase;
+    const mutation = dom.mutation;
+
+    var parent = try ElementWithBase.init(allocator, "div");
+    defer parent.deinit();
+
+    var child1 = try ElementWithBase.init(allocator, "span");
+    defer child1.deinit();
+
+    // Create a mutation observer
+    const callback = struct {
+        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+    }.cb;
+
+    var observer = try MutationObserver.init(allocator, callback);
+    defer observer.deinit();
+
+    // Observe childList changes
+    const options = MutationObserverInit{
+        .childList = true,
+        .subtree = false,
+        .attributes = false,
+        .attributeOldValue = null,
+        .characterData = false,
+        .characterDataOldValue = null,
+        .attributeFilter = null,
+    };
+
+    try observer.call_observe(parent.asNode(), options);
+
+    // Perform insertion - this should queue a mutation record
+    _ = try mutation.insert(child1.asNode(), parent.asNode(), null);
+
+    // Check that observer has pending records
+    try std.testing.expect(observer.getRecordQueue().len > 0);
+
+    // Take records to verify
+    const records = try observer.takeRecords();
+    defer allocator.free(records);
+
+    try std.testing.expectEqual(@as(usize, 1), records.len);
+    try std.testing.expectEqualStrings("childList", records[0].type);
+    try std.testing.expectEqual(parent.asNode(), records[0].target);
+}
+
+test "MutationObserver - childList mutation records queued on remove" {
+    const allocator = std.testing.allocator;
+
+    const ElementWithBase = dom.ElementWithBase;
+    const mutation = dom.mutation;
+
+    var parent = try ElementWithBase.init(allocator, "div");
+    defer parent.deinit();
+
+    var child1 = try ElementWithBase.init(allocator, "span");
+    defer child1.deinit();
+
+    // Insert child first
+    _ = try mutation.insert(child1.asNode(), parent.asNode(), null);
+
+    // Create observer after insertion
+    const callback = struct {
+        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+    }.cb;
+
+    var observer = try MutationObserver.init(allocator, callback);
+    defer observer.deinit();
+
+    const options = MutationObserverInit{
+        .childList = true,
+        .subtree = false,
+        .attributes = false,
+        .attributeOldValue = null,
+        .characterData = false,
+        .characterDataOldValue = null,
+        .attributeFilter = null,
+    };
+
+    try observer.call_observe(parent.asNode(), options);
+
+    // Remove child - this should queue a mutation record
+    mutation.remove(child1.asNode());
+
+    // Verify record was queued
+    const records = try observer.takeRecords();
+    defer allocator.free(records);
+
+    try std.testing.expectEqual(@as(usize, 1), records.len);
+    try std.testing.expectEqualStrings("childList", records[0].type);
+    try std.testing.expectEqual(parent.asNode(), records[0].target);
+}
+
+test "MutationObserver - multiple mutations queue multiple records" {
+    const allocator = std.testing.allocator;
+
+    const ElementWithBase = dom.ElementWithBase;
+    const mutation = dom.mutation;
+
+    var parent = try ElementWithBase.init(allocator, "div");
+    defer parent.deinit();
+
+    var child1 = try ElementWithBase.init(allocator, "span");
+    defer child1.deinit();
+
+    var child2 = try ElementWithBase.init(allocator, "p");
+    defer child2.deinit();
+
+    // Create observer
+    const callback = struct {
+        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+    }.cb;
+
+    var observer = try MutationObserver.init(allocator, callback);
+    defer observer.deinit();
+
+    const options = MutationObserverInit{
+        .childList = true,
+        .subtree = false,
+        .attributes = false,
+        .attributeOldValue = null,
+        .characterData = false,
+        .characterDataOldValue = null,
+        .attributeFilter = null,
+    };
+
+    try observer.call_observe(parent.asNode(), options);
+
+    // Perform multiple insertions
+    _ = try mutation.insert(child1.asNode(), parent.asNode(), null);
+    _ = try mutation.insert(child2.asNode(), parent.asNode(), null);
+
+    // Verify multiple records were queued
+    const records = try observer.takeRecords();
+    defer allocator.free(records);
+
+    try std.testing.expectEqual(@as(usize, 2), records.len);
+    try std.testing.expectEqualStrings("childList", records[0].type);
+    try std.testing.expectEqualStrings("childList", records[1].type);
 }
