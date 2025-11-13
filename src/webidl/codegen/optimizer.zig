@@ -498,6 +498,15 @@ fn addImportForType(
         return;
     }
 
+    // Skip if contains invalid characters for a type name (commas, colons, parens in name)
+    // These indicate malformed extraction (e.g., function parameters)
+    if (std.mem.indexOfScalar(u8, base_type, ',') != null or
+        std.mem.indexOfScalar(u8, base_type, ':') != null or
+        std.mem.indexOfScalar(u8, base_type, '(') != null)
+    {
+        return;
+    }
+
     // Skip if type is locally defined in module constants
     // This includes constants defined anywhere in the module (even between imports)
     for (module_constants) |constant| {

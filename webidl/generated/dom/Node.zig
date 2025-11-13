@@ -15,7 +15,6 @@ const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
-const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const NodeList = @import("node_list").NodeList;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
@@ -23,7 +22,6 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const infra = @import("infra");
-const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 

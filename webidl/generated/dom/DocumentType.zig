@@ -16,7 +16,6 @@ const ChildNode = @import("child_node").ChildNode;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
-const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
@@ -26,7 +25,6 @@ const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types");
 const infra = @import("infra");
-const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
