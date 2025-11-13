@@ -11,6 +11,7 @@
 const Allocator = @import("std.mem").Allocator;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const TransformStream = @import("transform_stream").TransformStream;
+const anyopaque = @import("anyopaque");
 const common = @import("common").common;
 const std = @import("std");
 const webidl = @import("webidl");

@@ -10,6 +10,7 @@
 
 const Allocator = @import("std.mem").Allocator;
 const EventInit = @import("event_init").EventInit;
+const EventPathItem = @import("event_path_item").EventPathItem;
 const EventTarget = @import("event_target").EventTarget;
 const infra = @import("infra").infra;
 const std = @import("std");

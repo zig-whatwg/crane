@@ -29,6 +29,7 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Slottable = @import("slottable").Slottable;
 const Text = @import("text").Text;
+const anyopaque = @import("anyopaque");
 const dom = @import("dom").dom;
 const dom_types = @import("dom_types").dom_types;
 const infra = @import("infra").infra;

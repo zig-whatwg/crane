@@ -11,6 +11,7 @@
 const Allocator = @import("std.mem").Allocator;
 const Element = @import("element").Element;
 const Node = @import("node").Node;
+const anyopaque = @import("anyopaque");
 const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");

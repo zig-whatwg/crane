@@ -350,11 +350,6 @@ fn addImportForType(
         return;
     }
 
-    // Skip if starts with lowercase (likely a primitive like u8, i32, bool, etc.)
-    if (base_type.len > 0 and base_type[0] >= 'a' and base_type[0] <= 'z') {
-        return;
-    }
-
     // Skip if type is locally defined in module_definitions
     // e.g., "const Group = types.Group;" means Group is already available
     // Simple heuristic: check if "const TypeName =" appears in the definitions
@@ -434,10 +429,15 @@ fn addImportForType(
 
     // Add to imports (deduplicated by map)
     if (!imports.contains(base_type)) {
+        // Determine if this is a type or module import
+        // Lowercase names are module imports (dom_types, mutation, etc.)
+        // Uppercase names are type imports (Node, Element, etc.)
+        const is_type = base_type.len > 0 and base_type[0] >= 'A' and base_type[0] <= 'Z';
+
         try imports.put(base_type, ir.Import{
             .name = try allocator.dupe(u8, base_type),
             .module = try allocator.dupe(u8, module),
-            .is_type = true,
+            .is_type = is_type,
             .visibility = .private,
             .source_line = 0,
         });
