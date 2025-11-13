@@ -186,7 +186,10 @@ pub const NamedNodeMap = webidl.interface(struct {
         attribute.owner_element = element;
 
         // Step 3: Set attribute's node document to element's node document
-        // TODO: Set node document when Attr has Node fields accessible
+        // Access through Node base class
+        if (element.base.owner_document) |doc| {
+            attribute.base.owner_document = doc;
+        }
 
         // Step 4: Handle attribute changes
         try Attr.handleAttributeChanges(attribute, element, null, attribute.value);
@@ -229,7 +232,9 @@ pub const NamedNodeMap = webidl.interface(struct {
         new_attribute.owner_element = element;
 
         // Step 4: Set newAttribute's node document to element's node document
-        // TODO: Set node document when accessible
+        if (element.base.owner_document) |doc| {
+            new_attribute.base.owner_document = doc;
+        }
 
         // Step 5: Set oldAttribute's element to null
         old_attribute.owner_element = null;

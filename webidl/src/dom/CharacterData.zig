@@ -24,7 +24,6 @@ pub const CharacterData = webidl.interface(struct {
         return .{
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
 

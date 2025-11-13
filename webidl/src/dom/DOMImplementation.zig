@@ -59,7 +59,10 @@ pub const DOMImplementation = webidl.interface(struct {
         // Step 2: Create and return new doctype
         const doctype = try self.allocator.create(DocumentType);
         doctype.* = try DocumentType.init(self.allocator, name, public_id, system_id);
-        // TODO: Set node document to self.document when Node has ownerDocument
+
+        // Set node document
+        doctype.base.owner_document = self.document;
+
         return doctype;
     }
 
