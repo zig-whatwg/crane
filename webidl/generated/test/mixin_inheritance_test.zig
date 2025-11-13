@@ -46,6 +46,7 @@ pub const Parent = struct {
     // Fields
     // ========================================================================
 
+    mixin_field: u32,
     parent_field: u32,
 };
 
@@ -150,6 +151,8 @@ pub const ParentMulti = struct {
     // Fields
     // ========================================================================
 
+    field_a: u32,
+    field_b: u32,
     parent_multi_field: u32,
 };
 

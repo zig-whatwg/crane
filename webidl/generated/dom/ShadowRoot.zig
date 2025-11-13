@@ -73,6 +73,7 @@ pub const ShadowRoot = struct {
     // Fields
     // ========================================================================
 
+    custom_element_registry: ?*anyopaque,
     allocator: Allocator,
     host_element: *Element,
     shadow_mode: ShadowRootMode,

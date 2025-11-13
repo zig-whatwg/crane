@@ -76,6 +76,9 @@ pub const TextDecoder = struct {
     // Fields
     // ========================================================================
 
+    encoding: []const u8,
+    fatal: webidl.boolean,
+    ignoreBOM: webidl.boolean,
     allocator: std.mem.Allocator,
     enc: *const Encoding,
     doNotFlush: bool,

@@ -50,6 +50,7 @@ pub fn enhanceClass(
     var enhanced = ir.EnhancedClassIR{
         .class = class.*,
         .all_fields = &.{},
+        .struct_fields = &.{},
         .all_methods = &.{},
         .all_properties = &.{},
         .all_imports = &.{},
@@ -60,6 +61,13 @@ pub fn enhanceClass(
     errdefer {
         for (enhanced.all_fields) |*field| field.deinit(allocator);
         allocator.free(enhanced.all_fields);
+    }
+
+    // Collect struct fields (mixin + own, no parent inherited)
+    enhanced.struct_fields = try collectStructFields(allocator, class, registry);
+    errdefer {
+        for (enhanced.struct_fields) |*field| field.deinit(allocator);
+        allocator.free(enhanced.struct_fields);
     }
 
     // Collect all methods (own + inherited, resolve overrides)
@@ -120,6 +128,37 @@ fn collectAllFields(
     }
 
     // Add mixin fields (before own fields)
+    for (class.mixins) |mixin_name| {
+        if (registry.get(mixin_name)) |mixin| {
+            for (mixin.own_fields) |field| {
+                try fields.append(try cloneField(allocator, field));
+            }
+        }
+    }
+
+    // Add own fields
+    for (class.own_fields) |field| {
+        try fields.append(try cloneField(allocator, field));
+    }
+
+    return fields.toOwnedSlice();
+}
+
+/// Collect fields for struct definition (mixin + own, but not parent inherited)
+/// Parent inherited fields shouldn't be written because Zig doesn't support field inheritance
+/// But mixin fields should be written because mixins are composition (includes)
+fn collectStructFields(
+    allocator: Allocator,
+    class: *ir.ClassDef,
+    registry: *ClassRegistry,
+) ![]ir.Field {
+    var fields = infra.List(ir.Field).init(allocator);
+    errdefer {
+        for (fields.toSliceMut()) |*field| field.deinit(allocator);
+        fields.deinit();
+    }
+
+    // Add mixin fields first
     for (class.mixins) |mixin_name| {
         if (registry.get(mixin_name)) |mixin| {
             for (mixin.own_fields) |field| {
@@ -437,19 +476,19 @@ fn resolveImports(
 
     // Collect type references from fields
     for (all_fields) |field| {
-        try addImportForType(allocator, &imports, field.type_name, class.name, module_definitions, module_constants, post_class_definitions);
+        try addImportForType(allocator, &imports, field.type_name, class.name, module_definitions, module_constants, post_class_definitions, module_imports);
     }
 
     // Collect type references from methods
     for (all_methods) |method| {
         for (method.referenced_types) |type_name| {
-            try addImportForType(allocator, &imports, type_name, class.name, module_definitions, module_constants, post_class_definitions);
+            try addImportForType(allocator, &imports, type_name, class.name, module_definitions, module_constants, post_class_definitions, module_imports);
         }
     }
 
     // Collect type references from properties
     for (all_properties) |prop| {
-        try addImportForType(allocator, &imports, prop.type_name, class.name, module_definitions, module_constants, post_class_definitions);
+        try addImportForType(allocator, &imports, prop.type_name, class.name, module_definitions, module_constants, post_class_definitions, module_imports);
     }
 
     // Note: Imports are now propagated through inheritance chain via collectInheritedImports
@@ -479,6 +518,7 @@ fn addImportForType(
     module_definitions: []const u8,
     module_constants: []const ir.Constant,
     post_class_definitions: []const u8,
+    module_imports: []const ir.Import,
 ) !void {
     // Extract base type name
     var base_type = type_name;
@@ -565,7 +605,7 @@ fn addImportForType(
                 if (depth == 0 and start_idx != null) {
                     const inner = base_type[start_idx.? .. paren_idx + i];
                     // Recursively extract types from inner content
-                    try addImportForType(allocator, imports, inner, current_class, module_definitions, module_constants, post_class_definitions);
+                    try addImportForType(allocator, imports, inner, current_class, module_definitions, module_constants, post_class_definitions, module_imports);
                     break;
                 }
             }
@@ -626,10 +666,16 @@ fn addImportForType(
 
     // Add to imports (deduplicated by map)
     if (!imports.contains(base_type)) {
-        // Determine if this is a type or module import
-        // Lowercase names are module imports (dom_types, mutation, etc.)
-        // Uppercase names are type imports (Node, Element, etc.)
-        const is_type = base_type.len > 0 and base_type[0] >= 'A' and base_type[0] <= 'Z';
+        // Check if this import exists in module_imports from source file
+        // If so, use the is_type value from the source (more accurate)
+        var is_type = base_type.len > 0 and base_type[0] >= 'A' and base_type[0] <= 'Z';
+        for (module_imports) |module_import| {
+            if (std.mem.eql(u8, module_import.name, base_type)) {
+                // Found in source imports - use the source's is_type value
+                is_type = module_import.is_type;
+                break;
+            }
+        }
 
         try imports.put(base_type, ir.Import{
             .name = try allocator.dupe(u8, base_type),

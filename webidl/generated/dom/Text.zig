@@ -41,6 +41,9 @@ pub const Text = struct {
     // Fields
     // ========================================================================
 
+    slottable_name: []const u8,
+    assigned_slot: ?*anyopaque,
+    manual_slot_assignment: ?*anyopaque,
     allocator: Allocator,
 
     // ========================================================================

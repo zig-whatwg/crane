@@ -34,6 +34,10 @@ pub const ReadableStreamBYOBReader = struct {
     // Fields
     // ========================================================================
 
+    allocator: std.mem.Allocator,
+    closedPromise: *AsyncPromise(void),
+    stream: ?*ReadableStream,
+    eventLoop: eventLoop.EventLoop,
     readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================

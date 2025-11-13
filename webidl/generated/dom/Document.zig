@@ -53,6 +53,7 @@ pub const Document = struct {
     // Fields
     // ========================================================================
 
+    custom_element_registry: ?*anyopaque,
     allocator: Allocator,
     _implementation: ?DOMImplementation,
     _string_pool: std.StringHashMap(void),

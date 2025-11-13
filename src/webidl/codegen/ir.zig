@@ -340,6 +340,10 @@ pub const EnhancedClassIR = struct {
     /// All fields (own + inherited, flattened)
     all_fields: []Field,
 
+    /// Struct fields (mixin + own, but not parent inherited)
+    /// Use this for writing the struct definition
+    struct_fields: []Field,
+
     /// All methods (own + inherited, with overrides resolved)
     all_methods: []Method,
 
@@ -357,6 +361,11 @@ pub const EnhancedClassIR = struct {
             field.deinit(allocator);
         }
         allocator.free(self.all_fields);
+
+        for (self.struct_fields) |*field| {
+            field.deinit(allocator);
+        }
+        allocator.free(self.struct_fields);
 
         for (self.all_methods) |*method| {
             method.deinit(allocator);

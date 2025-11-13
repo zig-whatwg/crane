@@ -474,8 +474,26 @@ fn parseImportStatement(
     const module_path = statement[path_start..path_end];
 
     // Check if this is a type import: @import("...").TypeName
+    // Pattern: after closing quote should be ")." followed by an identifier
     const after_import = statement[path_end + 1 ..];
-    const is_type = std.mem.indexOf(u8, after_import, ").") != null;
+    var is_type = false;
+    if (after_import.len >= 2 and after_import[0] == ')' and after_import[1] == '.') {
+        // Check if there's an identifier after the dot (not just whitespace/semicolon)
+        if (after_import.len > 2) {
+            const after_dot = after_import[2..];
+            // Must have at least one alphanumeric character for it to be a type access
+            for (after_dot) |c| {
+                if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or (c >= '0' and c <= '9') or c == '_') {
+                    is_type = true;
+                    break;
+                }
+                // Stop at whitespace/semicolon - no identifier found
+                if (c == ' ' or c == '\t' or c == '\n' or c == '\r' or c == ';') {
+                    break;
+                }
+            }
+        }
+    }
 
     return ir.Import{
         .name = try allocator.dupe(u8, name),

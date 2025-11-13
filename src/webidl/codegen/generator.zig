@@ -308,12 +308,14 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     try writer.print("pub const {s} = struct {{\n", .{class.name});
 
     // Fields
-    // Only write own fields - inherited fields come from parent struct embedding
-    if (class.own_fields.len > 0) {
+    // Write struct fields (mixin + own, but not parent inherited)
+    // Mixin fields must be written because mixins are composition (includes)
+    // Parent fields are not written because Zig doesn't support field inheritance
+    if (enhanced.struct_fields.len > 0) {
         try writer.writeAll("    // ========================================================================\n");
         try writer.writeAll("    // Fields\n");
         try writer.writeAll("    // ========================================================================\n\n");
-        for (class.own_fields) |field| {
+        for (enhanced.struct_fields) |field| {
             if (field.doc_comment) |doc| {
                 try writer.print("    /// {s}\n", .{doc});
             }

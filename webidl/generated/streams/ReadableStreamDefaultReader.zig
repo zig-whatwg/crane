@@ -47,6 +47,10 @@ pub const ReadableStreamDefaultReader = struct {
     // Fields
     // ========================================================================
 
+    allocator: std.mem.Allocator,
+    closedPromise: *AsyncPromise(void),
+    stream: ?*ReadableStream,
+    eventLoop: eventLoop.EventLoop,
     readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
