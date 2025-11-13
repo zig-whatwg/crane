@@ -21,9 +21,14 @@ const EventTarget = @import("event_target").EventTarget;
 const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
+const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
+const Slottable = @import("slottable").Slottable;
 const Text = @import("text").Text;
+const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+const dom_types = @import("dom_types").dom_types;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 

@@ -228,6 +228,91 @@ fn collectAllProperties(
     return properties.toOwnedSlice();
 }
 
+/// Collect imports from mixins and parent classes
+/// This propagates imports through the inheritance chain
+fn collectInheritedImports(
+    allocator: Allocator,
+    class: *ir.ClassDef,
+    registry: *ClassRegistry,
+) ![]ir.Import {
+    var imports = std.StringHashMap(ir.Import).init(allocator);
+    defer {
+        // Clean up all Import contents before freeing HashMap
+        var iter = imports.valueIterator();
+        while (iter.next()) |import| {
+            allocator.free(import.name);
+            allocator.free(import.module);
+        }
+        imports.deinit();
+    }
+
+    // Add own class's imports
+    for (class.required_imports) |import| {
+        if (!imports.contains(import.name)) {
+            try imports.put(import.name, ir.Import{
+                .name = try allocator.dupe(u8, import.name),
+                .module = try allocator.dupe(u8, import.module),
+                .is_type = import.is_type,
+                .visibility = import.visibility,
+                .source_line = import.source_line,
+            });
+        }
+    }
+
+    // Add imports from mixins
+    for (class.mixins) |mixin_name| {
+        if (registry.get(mixin_name)) |mixin| {
+            for (mixin.required_imports) |import| {
+                if (!imports.contains(import.name)) {
+                    try imports.put(import.name, ir.Import{
+                        .name = try allocator.dupe(u8, import.name),
+                        .module = try allocator.dupe(u8, import.module),
+                        .is_type = import.is_type,
+                        .visibility = import.visibility,
+                        .source_line = import.source_line,
+                    });
+                }
+            }
+        }
+    }
+
+    // Add imports from parent (recursively)
+    if (class.parent) |parent_name| {
+        if (registry.get(parent_name)) |parent| {
+            const parent_imports = try collectInheritedImports(allocator, parent, registry);
+            defer {
+                for (parent_imports) |*import| import.deinit(allocator);
+                allocator.free(parent_imports);
+            }
+            for (parent_imports) |import| {
+                if (!imports.contains(import.name)) {
+                    try imports.put(import.name, ir.Import{
+                        .name = try allocator.dupe(u8, import.name),
+                        .module = try allocator.dupe(u8, import.module),
+                        .is_type = import.is_type,
+                        .visibility = import.visibility,
+                        .source_line = import.source_line,
+                    });
+                }
+            }
+        }
+    }
+
+    // Convert HashMap to array
+    var result = infra.List(ir.Import).init(allocator);
+    errdefer {
+        for (result.toSliceMut()) |*import| import.deinit(allocator);
+        result.deinit();
+    }
+
+    var iter = imports.valueIterator();
+    while (iter.next()) |import| {
+        try result.append(try cloneImport(allocator, import.*));
+    }
+
+    return result.toOwnedSlice();
+}
+
 /// Resolve all imports needed for this class
 fn resolveImports(
     allocator: Allocator,
@@ -273,10 +358,29 @@ fn resolveImports(
         .source_line = 0,
     });
 
-    // Add module-level imports from the source file
-    // These include custom types, helper modules, etc. that the class needs
-    for (module_imports) |module_import| {
+    // Add imports from own class, mixins, and parent chain
+    // This propagates imports through the inheritance graph
+    const inherited_imports = try collectInheritedImports(allocator, class, registry);
+    defer {
+        for (inherited_imports) |*import| import.deinit(allocator);
+        allocator.free(inherited_imports);
+    }
+    for (inherited_imports) |inherited_import| {
         // Skip if already present (e.g., std, webidl already added above)
+        if (imports.contains(inherited_import.name)) continue;
+
+        try imports.put(inherited_import.name, ir.Import{
+            .name = try allocator.dupe(u8, inherited_import.name),
+            .module = try allocator.dupe(u8, inherited_import.module),
+            .is_type = inherited_import.is_type,
+            .visibility = inherited_import.visibility,
+            .source_line = inherited_import.source_line,
+        });
+    }
+
+    // Also add module-level imports from the source file (for file-scoped imports)
+    for (module_imports) |module_import| {
+        // Skip if already present
         if (imports.contains(module_import.name)) continue;
 
         try imports.put(module_import.name, ir.Import{
@@ -305,9 +409,8 @@ fn resolveImports(
         try addImportForType(allocator, &imports, prop.type_name, class.name, module_definitions);
     }
 
-    // Note: No hardcoded inheritance-based imports
-    // All types are detected automatically from method bodies via extractTypesFromCode
-    _ = registry;
+    // Note: Imports are now propagated through inheritance chain via collectInheritedImports
+    // Additional types are detected automatically from method bodies via extractTypesFromCode
 
     // Convert to array
     var result = infra.List(ir.Import).init(allocator);

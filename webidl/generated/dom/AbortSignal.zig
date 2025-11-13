@@ -8,6 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;

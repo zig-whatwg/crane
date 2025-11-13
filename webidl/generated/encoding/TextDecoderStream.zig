@@ -10,9 +10,11 @@
 
 const Allocator = @import("std.mem").Allocator;
 const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
+const ReadableStream = @import("readable_stream").ReadableStream;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 const TransformStream = @import("transform_stream").TransformStream;
+const WritableStream = @import("writable_stream").WritableStream;
 const encoding_mod = @import("encoding");
 const std = @import("std");
 const streams = @import("streams");

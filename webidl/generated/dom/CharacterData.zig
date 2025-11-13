@@ -11,6 +11,7 @@
 const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
+const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
@@ -24,7 +25,9 @@ const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocu
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
+const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types").dom_types;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
