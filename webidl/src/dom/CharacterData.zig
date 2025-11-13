@@ -163,7 +163,10 @@ pub const CharacterData = webidl.interface(struct {
         self.allocator.free(self.data);
         self.data = new_data;
 
-        // TODO: Steps 8-11 - Update ranges (requires Range implementation)
+        // Steps 8-11 - Update ranges
+        const range_tracking = @import("range_tracking");
+        const new_length = @as(u32, @intCast(data.len));
+        range_tracking.updateRangesAfterReplace(&self.base, offset, count, new_length);
 
         // Step 12 - Run children changed steps for parent
         // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"

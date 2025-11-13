@@ -56,6 +56,7 @@ pub const tree_helpers = @import("tree_helpers.zig");
 pub const mutation = @import("mutation.zig");
 pub const mutation_observer_algorithms = @import("mutation_observer_algorithms.zig");
 pub const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
+pub const range_tracking = @import("range_tracking.zig");
 pub const selectors = @import("selectors.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");

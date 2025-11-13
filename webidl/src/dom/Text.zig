@@ -88,10 +88,8 @@ pub const Text = webidl.interface(struct {
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
             // Steps 6.2-6.5: Update live ranges
-            // TODO: Implement when Range is fully implemented
-            // For each live range whose start node is node and start offset > offset,
-            // set its start node to new node and decrease its start offset by offset
-            // Similar updates for end node and parent ranges
+            const range_tracking = @import("range_tracking");
+            range_tracking.updateRangesAfterSplit(self_node, new_node_as_node, offset);
         }
 
         // Step 7: Replace data with node, offset, count, and empty string
