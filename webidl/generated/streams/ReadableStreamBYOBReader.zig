@@ -8,10 +8,16 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const AsyncPromise = @import("async_promise").AsyncPromise;
+const DictionaryParsing = @import("dict_parsing");
 const Event = @import("event").Event;
+const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
+const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
+const common = @import("common").common;
+const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 

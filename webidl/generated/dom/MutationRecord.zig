@@ -8,11 +8,10 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 

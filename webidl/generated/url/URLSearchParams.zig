@@ -8,9 +8,8 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 const std = @import("std");
 const webidl = @import("webidl");
 

@@ -8,9 +8,10 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const TransformStream = @import("transform_stream").TransformStream;
+const WritableStream = @import("writable_stream").WritableStream;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -28,9 +29,10 @@ pub const CompressionStream = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const TransformStream = @import("transform_stream").TransformStream;
+const WritableStream = @import("writable_stream").WritableStream;
 const std = @import("std");
 const webidl = @import("webidl");
 

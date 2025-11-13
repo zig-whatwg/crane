@@ -8,10 +8,16 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const Text = @import("text").Text;
+const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
+const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
+const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+const encoding_mod = @import("encoding");
+pub const includes' declaration)
+const TextDecoderCommon = @import("TextDecoderCommon.zig").includes' declaration)
+const TextDecoderCommon;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 

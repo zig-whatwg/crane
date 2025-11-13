@@ -8,9 +8,13 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
+const WritableStream = @import("writable_stream").WritableStream;
+const common = @import("common").common;
+const dict_parsing = @import("dict_parsing").dict_parsing;
+const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 

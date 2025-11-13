@@ -8,19 +8,21 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const ChildNode = @import("child_node").ChildNode;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
+const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
+const Slottable = @import("slottable").Slottable;
+const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
 const webidl = @import("webidl");
 

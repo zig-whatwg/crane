@@ -8,8 +8,6 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;

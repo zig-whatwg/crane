@@ -8,13 +8,13 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const Document = @import("document").Document;
+const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
 const Node = @import("node").Node;
 const Text = @import("text").Text;
+const dom = @import("dom").dom;
 const std = @import("std");
 const webidl = @import("webidl");
 

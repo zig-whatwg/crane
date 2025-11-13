@@ -8,10 +8,12 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const console = @import("console").console;
+const format = @import("format");
+const infra = @import("infra");
 const std = @import("std");
+const types = @import("types");
 const webidl = @import("webidl");
 
 pub const console = struct {

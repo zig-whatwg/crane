@@ -8,11 +8,14 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 const Text = @import("text").Text;
+const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
+const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+const encoding_mod = @import("encoding");
 const std = @import("std");
+const streams = @import("streams");
 const webidl = @import("webidl");
 
 pub const TextDecoderStream = struct {

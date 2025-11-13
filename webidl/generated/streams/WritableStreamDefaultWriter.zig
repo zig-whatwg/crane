@@ -8,10 +8,12 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const AsyncPromise = @import("async_promise").AsyncPromise;
 const Event = @import("event").Event;
+const WritableStream = @import("writable_stream").WritableStream;
+const common = @import("common").common;
+const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 

@@ -8,11 +8,27 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
+const MutationRecord = @import("mutation_record").MutationRecord;
+const MutationRecord, observer: *MutationObserver) void;
+
+// Import types that are shared between Node and MutationObserver
+const MutationObserverInit = @import("mutation_observer_init").MutationRecord, observer: *MutationObserver) void;
+
+// Import types that are shared between Node and MutationObserver
+const MutationObserverInit;
 const Node = @import("node").Node;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+const fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
+
+// Import types that are shared between Node and MutationObserver
+const MutationObserverInit = @import("mutation_observer_init").fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
+
+// Import types that are shared between Node and MutationObserver
+const MutationObserverInit;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 

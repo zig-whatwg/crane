@@ -8,12 +8,12 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
+const DocumentFragment = @import("document_fragment").DocumentFragment;
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;

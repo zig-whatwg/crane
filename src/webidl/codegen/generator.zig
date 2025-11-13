@@ -54,10 +54,6 @@ fn writeHeader(writer: anytype) !void {
 
 /// Write all imports
 fn writeImports(writer: anytype, imports: []ir.Import) !void {
-    // Always include std and webidl
-    try writer.writeAll("const std = @import(\"std\");\n");
-    try writer.writeAll("const webidl = @import(\"webidl\");\n");
-
     // Sort imports by name for consistent output
     var sorted_imports: std.ArrayList(ir.Import) = .empty;
     defer sorted_imports.deinit(std.heap.page_allocator);

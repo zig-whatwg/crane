@@ -8,10 +8,13 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 const Text = @import("text").Text;
+const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
+const TransformStream = @import("transform_stream").TransformStream;
+const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 

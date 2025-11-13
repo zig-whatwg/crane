@@ -8,11 +8,22 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const AsyncPromise = @import("async_promise").AsyncPromise;
 const Event = @import("event").Event;
+const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
+const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
+const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
+const TestEventLoop = @import("test_event_loop").TestEventLoop;
+const WritableStream = @import("writable_stream").WritableStream;
+const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
+const async_iterator = @import("async_iterator").async_iterator;
+const common = @import("common").common;
+const dict_parsing = @import("dict_parsing").dict_parsing;
+const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
+const structured_clone = @import("structured_clone").structured_clone;
 const webidl = @import("webidl");
 
 pub const ReadableStream = struct {

@@ -8,11 +8,14 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
-const AbortController = @import("abort_controller").AbortController;
+const AbortController = @import("dom").AbortController;
 const Allocator = @import("std.mem").Allocator;
+const AsyncPromise = @import("async_promise").AsyncPromise;
 const Event = @import("event").Event;
+const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
+const WritableStream = @import("writable_stream").WritableStream;
+const common = @import("common").common;
+const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 

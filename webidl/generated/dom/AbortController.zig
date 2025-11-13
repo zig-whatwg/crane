@@ -8,8 +8,6 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");

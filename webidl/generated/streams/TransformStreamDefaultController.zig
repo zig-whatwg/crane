@@ -8,9 +8,10 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
 const Allocator = @import("std.mem").Allocator;
+const ReadableStream = @import("readable_stream").ReadableStream;
+const TransformStream = @import("transform_stream").TransformStream;
+const common = @import("common").common;
 const std = @import("std");
 const webidl = @import("webidl");
 

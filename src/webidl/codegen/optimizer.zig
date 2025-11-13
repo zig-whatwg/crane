@@ -42,6 +42,7 @@ pub fn enhanceClass(
     allocator: Allocator,
     class: *ir.ClassDef,
     registry: *ClassRegistry,
+    module_imports: []const ir.Import,
 ) !ir.EnhancedClassIR {
     var enhanced = ir.EnhancedClassIR{
         .class = class.*,
@@ -79,6 +80,7 @@ pub fn enhanceClass(
         enhanced.all_fields,
         enhanced.all_methods,
         enhanced.all_properties,
+        module_imports,
         registry,
     );
 
@@ -231,6 +233,7 @@ fn resolveImports(
     all_fields: []ir.Field,
     all_methods: []ir.Method,
     all_properties: []ir.Property,
+    module_imports: []const ir.Import,
     registry: *ClassRegistry,
 ) ![]ir.Import {
     var imports = std.StringHashMap(ir.Import).init(allocator);
@@ -266,6 +269,21 @@ fn resolveImports(
         .visibility = .private,
         .source_line = 0,
     });
+
+    // Add module-level imports from the source file
+    // These include custom types, helper modules, etc. that the class needs
+    for (module_imports) |module_import| {
+        // Skip if already present (e.g., std, webidl already added above)
+        if (imports.contains(module_import.name)) continue;
+
+        try imports.put(module_import.name, ir.Import{
+            .name = try allocator.dupe(u8, module_import.name),
+            .module = try allocator.dupe(u8, module_import.module),
+            .is_type = module_import.is_type,
+            .visibility = module_import.visibility,
+            .source_line = module_import.source_line,
+        });
+    }
 
     // Collect type references from fields
     for (all_fields) |field| {

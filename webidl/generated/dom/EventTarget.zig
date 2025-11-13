@@ -8,11 +8,11 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const std = @import("std");
-const webidl = @import("webidl");
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
+const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
