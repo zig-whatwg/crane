@@ -32,6 +32,25 @@ pub const EventListenerRemovalContext = struct {
 
 /// DOM Spec: interface AbortSignal : EventTarget
 
+/// Compare two callbacks for equality (from EventTarget)
+pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    const a_val = a.?;
+    const b_val = b.?;
+    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
+        return false;
+    }
+    return switch (a_val) {
+        .undefined, .null => true,
+        .boolean => |a_bool| a_bool == b_val.boolean,
+        .number => |a_num| a_num == b_val.number,
+        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
+        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
+        else => false,
+    };
+}
+
 pub const AbortSignal = struct {
     // ========================================================================
     // Fields
@@ -229,13 +248,161 @@ pub const AbortSignal = struct {
     
     }
 
+    fn ensureEventListenerList(self: *AbortSignal) !*std.ArrayList(EventListener) {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        if (self_parent.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self_parent.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self_parent.allocator);
+        self_parent.event_listener_list = list;
+        return list;
+    
+    }
+
+    fn getEventListenerList(self: *const AbortSignal) []const EventListener {
+        const self_parent: *const EventTarget = @ptrCast(self);
+
+        if (self_parent.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    
+    }
+
+    fn flattenOptions(options: anytype) bool {
+
+        const OptionsType = @TypeOf(options);
+
+        // Step 1: If options is a boolean, return it
+        if (OptionsType == bool) {
+            return options;
+        }
+
+        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
+        if (@hasField(OptionsType, "capture")) {
+            return options.capture;
+        }
+
+        // Default: return false
+        return false;
+    
+    }
+
+    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
+
+        const OptionsType = @TypeOf(options);
+
+        // If options is a boolean, only capture is set to that value
+        if (OptionsType == bool) {
+            return .{
+                .capture = options,
+                .passive = null,
+                .once = false,
+                .signal = null,
+            };
+        }
+
+        // If options is AddEventListenerOptions dictionary, extract all fields
+        if (@hasField(OptionsType, "capture")) {
+            return .{
+                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
+                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
+                .once = if (@hasField(OptionsType, "once")) options.once else false,
+                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
+            };
+        }
+
+        // Default: return all defaults
+        return .{
+            .capture = false,
+            .passive = null,
+            .once = false,
+            .signal = null,
+        };
+    
+    }
+
+    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+
+        _ = event_target;
+        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
+        // AND eventTarget is Window or specific node conditions
+        // For now, simplified: return true for touch/wheel events
+        if (std.mem.eql(u8, event_type, "touchstart") or
+            std.mem.eql(u8, event_type, "touchmove") or
+            std.mem.eql(u8, event_type, "wheel") or
+            std.mem.eql(u8, event_type, "mousewheel"))
+        {
+            // TODO: Check eventTarget conditions per spec
+            return true;
+        }
+        // Step 2: Return false
+        return false;
+    
+    }
+
+    fn addAnEventListener(self: *AbortSignal, listener: EventListener) !void {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self_parent);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self_parent,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
+        }
+    
+    }
+
     pub fn call_addEventListener(
         self: *AbortSignal,
         event_type: []const u8,
         callback: ?webidl.JSValue,
         options: anytype,
     ) !void {
-        const self_parent: *EventTarget = @ptrCast(self);
 
         // Step 1: Flatten more options
         const flattened = flattenMoreOptions(options);
@@ -250,7 +417,34 @@ pub const AbortSignal = struct {
             .signal = flattened.signal,
         };
 
-        try self_parent.addAnEventListener(listener);
+        try self.addAnEventListener(listener);
+    
+    }
+
+    fn removeAnEventListener(self: *AbortSignal, listener: EventListener) void {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self_parent.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     
     }
 
@@ -260,7 +454,6 @@ pub const AbortSignal = struct {
         callback: ?webidl.JSValue,
         options: anytype,
     ) void {
-        const self_parent: *EventTarget = @ptrCast(self);
 
         // Step 1: Flatten options
         const capture = flattenOptions(options);
@@ -272,7 +465,7 @@ pub const AbortSignal = struct {
             .capture = capture,
         };
 
-        self_parent.removeAnEventListener(listener);
+        self.removeAnEventListener(listener);
     
     }
 

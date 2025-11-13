@@ -99,10 +99,18 @@ pub const CustomEvent = struct {
     
     }
 
-    pub fn call_preventDefault(self: *CustomEvent) void {
+    fn setCanceledFlag(self: *CustomEvent) void {
         const self_parent: *Event = @ptrCast(self);
 
-        self_parent.setCanceledFlag();
+        if (self_parent.cancelable and !self_parent.in_passive_listener_flag) {
+            self_parent.canceled_flag = true;
+        }
+    
+    }
+
+    pub fn call_preventDefault(self: *CustomEvent) void {
+
+        self.setCanceledFlag();
     
     }
 
@@ -242,6 +250,34 @@ pub const CustomEvent = struct {
     
     }
 
+    fn initializeEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        // Step 1: Set event's initialized flag
+        self_parent.initialized_flag = true;
+
+        // Step 2: Unset event's stop propagation flag, stop immediate propagation flag, and canceled flag
+        self_parent.stop_propagation_flag = false;
+        self_parent.stop_immediate_propagation_flag = false;
+        self_parent.canceled_flag = false;
+
+        // Step 3: Set event's isTrusted attribute to false
+        self_parent.is_trusted = false;
+
+        // Step 4: Set event's target to null
+        self_parent.target = null;
+
+        // Step 5: Set event's type attribute to type
+        self_parent.event_type = event_type;
+
+        // Step 6: Set event's bubbles attribute to bubbles
+        self_parent.bubbles = bubbles;
+
+        // Step 7: Set event's cancelable attribute to cancelable
+        self_parent.cancelable = cancelable;
+    
+    }
+
     pub fn call_initEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -249,7 +285,7 @@ pub const CustomEvent = struct {
         if (self_parent.dispatch_flag) return;
 
         // Step 2: Initialize this
-        self_parent.initializeEvent(event_type, bubbles, cancelable);
+        self.initializeEvent(event_type, bubbles, cancelable);
     
     }
 
@@ -354,10 +390,9 @@ pub const CustomEvent = struct {
     }
 
     pub fn set_returnValue(self: *CustomEvent, value: bool) void {
-        const self_parent: *Event = @ptrCast(self);
 
         if (!value) {
-            self_parent.setCanceledFlag();
+            self.setCanceledFlag();
         }
     
     }

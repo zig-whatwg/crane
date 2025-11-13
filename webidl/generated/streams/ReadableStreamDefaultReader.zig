@@ -197,7 +197,7 @@ pub const ReadableStreamDefaultReader = struct {
         const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
 
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
-        return self_parent.genericCancel(reason_value);
+        return self.genericCancel(reason_value);
     
     }
 

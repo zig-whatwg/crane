@@ -481,30 +481,36 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
 
         if (parent_type_info) |pti| {
             if (pti.type_name) |pt| {
-                // Cast self to parent type for method body
-                // This works because flattened fields guarantee compatible memory layout
-                if (pti.has_pointer) {
-                    // Check if the rewritten signature has const to preserve it
-                    const is_const = std.mem.indexOf(u8, rewritten_signature, "self: *const ") != null;
-                    if (is_const and pti.has_const) {
-                        try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
-                    } else if (is_const and !pti.has_const) {
-                        // Parent was not const, but child is - need @constCast
-                        try writer.print("        const self_parent: *{s} = @ptrCast(@constCast(self));\n", .{pt});
-                    } else if (!is_const and pti.has_const) {
-                        // Parent was const, child is not - preserve const
-                        try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
-                    } else {
-                        try writer.print("        const self_parent: *{s} = @ptrCast(self);\n", .{pt});
-                    }
-                } else {
-                    // Non-pointer self (e.g., self: anytype) - no cast needed, just rename
-                    try writer.print("        const self_parent = self;\n", .{});
-                }
-
-                // Rewrite body to use self_parent instead of self
+                // Rewrite body to use self_parent for field access, self for method calls
                 const rewritten_body = try rewriteSelfReferences(allocator, method.body, "self_parent");
                 defer allocator.free(rewritten_body);
+
+                // Check if self_parent is actually used in the rewritten body
+                const needs_self_parent = std.mem.indexOf(u8, rewritten_body, "self_parent") != null;
+
+                // Only declare self_parent if it's actually used (for field access)
+                if (needs_self_parent) {
+                    // Cast self to parent type for method body
+                    // This works because flattened fields guarantee compatible memory layout
+                    if (pti.has_pointer) {
+                        // Check if the rewritten signature has const to preserve it
+                        const is_const = std.mem.indexOf(u8, rewritten_signature, "self: *const ") != null;
+                        if (is_const and pti.has_const) {
+                            try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
+                        } else if (is_const and !pti.has_const) {
+                            // Parent was not const, but child is - need @constCast
+                            try writer.print("        const self_parent: *{s} = @ptrCast(@constCast(self));\n", .{pt});
+                        } else if (!is_const and pti.has_const) {
+                            // Parent was const, child is not - preserve const
+                            try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
+                        } else {
+                            try writer.print("        const self_parent: *{s} = @ptrCast(self);\n", .{pt});
+                        }
+                    } else {
+                        // Non-pointer self (e.g., self: anytype) - no cast needed, just rename
+                        try writer.print("        const self_parent = self;\n", .{});
+                    }
+                }
 
                 const cleaned_body = try stripShadowingImports(allocator, rewritten_body, top_level_imports, class_name);
                 defer if (cleaned_body.ptr != rewritten_body.ptr) allocator.free(cleaned_body);
@@ -735,8 +741,11 @@ fn extractSelfTypeInfo(allocator: Allocator, signature: []const u8) !?SelfTypeIn
     };
 }
 
-/// Rewrite all occurrences of "self" to a new name in method body
-/// Example: rewriteSelfReferences(body, "self_parent") replaces "self" with "self_parent"
+/// Rewrite "self" references in method body to use a different name for field access
+/// Example: rewriteSelfReferences(body, "self_parent") replaces "self.field" with "self_parent.field"
+///
+/// Method calls (self.methodName()) are kept as "self" because inherited methods
+/// exist in the child class and should be called on self, not self_parent.
 fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []const u8) ![]const u8 {
     var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
@@ -784,8 +793,69 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
         try result.appendSlice(allocator, body[pos..self_pos]);
 
         if (is_valid_self) {
-            // Replace with new name
-            try result.appendSlice(allocator, new_name);
+            // Check if this is a method call: self.methodName(
+            // If so, keep as "self" because methods are inherited into child class
+            const is_method_call = blk: {
+                var scan_pos = self_pos + 4; // After "self"
+
+                // Skip whitespace
+                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
+                    scan_pos += 1;
+                }
+
+                // Must have '.'
+                if (scan_pos >= body.len or body[scan_pos] != '.') break :blk false;
+                scan_pos += 1;
+
+                // Skip whitespace
+                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
+                    scan_pos += 1;
+                }
+
+                // Must have identifier
+                if (scan_pos >= body.len) break :blk false;
+                const first_char = body[scan_pos];
+                if (!((first_char >= 'a' and first_char <= 'z') or
+                    (first_char >= 'A' and first_char <= 'Z') or
+                    first_char == '_'))
+                {
+                    break :blk false;
+                }
+
+                // Skip identifier
+                while (scan_pos < body.len) {
+                    const ch = body[scan_pos];
+                    if ((ch >= 'a' and ch <= 'z') or
+                        (ch >= 'A' and ch <= 'Z') or
+                        (ch >= '0' and ch <= '9') or
+                        ch == '_')
+                    {
+                        scan_pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                // Skip whitespace
+                while (scan_pos < body.len and (body[scan_pos] == ' ' or body[scan_pos] == '\t')) {
+                    scan_pos += 1;
+                }
+
+                // Check if followed by '(' - if so, it's a method call
+                if (scan_pos < body.len and body[scan_pos] == '(') {
+                    break :blk true;
+                }
+
+                break :blk false;
+            };
+
+            if (is_method_call) {
+                // Keep as "self" for method calls (inherited methods are in child class)
+                try result.appendSlice(allocator, "self");
+            } else {
+                // Replace with new name for field access
+                try result.appendSlice(allocator, new_name);
+            }
             pos = self_pos + 4; // Skip "self"
         } else {
             // Keep original "self" (it's part of another word)

@@ -247,13 +247,11 @@ fn collectAllMethods(
                 allocator.free(parent_methods);
             }
             for (parent_methods) |method| {
-                // Skip private methods - they cannot be inherited
-                if (!method.modifiers.is_public) continue;
-
                 // Skip if already defined in child class (child override wins)
                 if (seen_methods.contains(method.name)) continue;
 
-                // Inherit the method - will be rewritten in generator to use child's self type
+                // Inherit the method (both public and private) - will be rewritten in generator to use child's self type
+                // Private methods are needed because public methods may depend on them
                 try methods.append(try cloneMethod(allocator, method));
                 try seen_methods.put(method.name, {});
             }

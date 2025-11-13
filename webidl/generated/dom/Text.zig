@@ -38,6 +38,25 @@ const webidl = @import("webidl");
 /// CharacterData includes: ChildNode, NonDocumentTypeChildNode
 /// Text also includes: Slottable
 
+/// Compare two callbacks for equality (from EventTarget)
+pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    const a_val = a.?;
+    const b_val = b.?;
+    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
+        return false;
+    }
+    return switch (a_val) {
+        .undefined, .null => true,
+        .boolean => |a_bool| a_bool == b_val.boolean,
+        .number => |a_num| a_num == b_val.number,
+        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
+        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
+        else => false,
+    };
+}
+
 pub const Text = struct {
     // ========================================================================
     // Fields
@@ -495,7 +514,7 @@ pub const Text = struct {
     pub fn set_data(self: *Text, new_value: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
-        try self_parent.replaceData(0, @intCast(self_parent.data.len), new_value);
+        try self.replaceData(0, @intCast(self_parent.data.len), new_value);
     
     }
 
@@ -529,28 +548,101 @@ pub const Text = struct {
     pub fn call_appendData(self: *Text, data: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
-        try self_parent.replaceData(@intCast(self_parent.data.len), 0, data);
+        try self.replaceData(@intCast(self_parent.data.len), 0, data);
     
     }
 
     pub fn call_insertData(self: *Text, offset: u32, data: []const u8) !void {
-        const self_parent: *CharacterData = @ptrCast(self);
 
-        try self_parent.replaceData(offset, 0, data);
+        try self.replaceData(offset, 0, data);
     
     }
 
     pub fn call_deleteData(self: *Text, offset: u32, count: u32) !void {
-        const self_parent: *CharacterData = @ptrCast(self);
 
-        try self_parent.replaceData(offset, count, "");
+        try self.replaceData(offset, count, "");
     
     }
 
     pub fn call_replaceData(self: *Text, offset: u32, count: u32, data: []const u8) !void {
+
+        try self.replaceData(offset, count, data);
+    
+    }
+
+    fn replaceData(self: *Text, offset: u32, count_param: u32, data: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
-        try self_parent.replaceData(offset, count, data);
+        const length: u32 = @intCast(self_parent.data.len);
+        var count = count_param;
+
+        // Step 2: Check bounds
+        if (offset > length) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Clamp count
+        if (offset + count > length) {
+            count = length - offset;
+        }
+
+        // Step 4: Queue mutation record
+        const mutation = @import("mutation");
+        const empty_nodes: []const *Node = &[_]*Node{};
+        try mutation.queueMutationRecord(
+            "characterData",
+            &self_parent.base,
+            null,
+            null,
+            self_parent.data, // oldValue
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
+
+        // Steps 5-7: Build new data string
+        const new_len = length - count + @as(u32, @intCast(data.len));
+        const new_data = try self_parent.allocator.alloc(u8, new_len);
+
+        // Copy before offset
+        @memcpy(new_data[0..offset], self_parent.data[0..offset]);
+
+        // Copy new data
+        @memcpy(new_data[offset .. offset + data.len], data);
+
+        // Copy after deleted region
+        const after_start = offset + count;
+        if (after_start < length) {
+            @memcpy(new_data[offset + data.len ..], self_parent.data[after_start..]);
+        }
+
+        // Replace old data
+        self_parent.allocator.free(self_parent.data);
+        self_parent.data = new_data;
+
+        // Steps 8-11 - Update ranges
+        if (self_parent.base.owner_document) |doc| {
+            // owner_document is already *Document, no conversion needed
+            const range_tracking = @import("range_tracking");
+            const new_length = @as(u32, @intCast(data.len));
+            range_tracking.updateRangesAfterReplace(doc, &self_parent.base, offset, count, new_length);
+        }
+
+        // Step 12 - Run children changed steps for parent
+        // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
+        // Spec: https://dom.spec.whatwg.org/#concept-node-replace
+        //
+        // Children changed steps are extension points for other specifications (e.g., HTML)
+        // to define custom behavior when children change. Examples:
+        // - Shadow DOM slot assignment algorithm
+        // - Form-associated element connections
+        // - Custom element reactions
+        if (self_parent.base.parent_node) |parent| {
+            // Call the mutation module's children changed callback system
+            // This will invoke any registered callbacks from other specifications
+            @import("mutation").runChildrenChangedSteps(parent);
+        }
     
     }
 
@@ -1333,6 +1425,23 @@ pub const Text = struct {
     
     }
 
+    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+
+        // If this is a Text node, collect its data
+        if (node.node_type == Node.TEXT_NODE) {
+            const cd: *const CharacterData = @ptrCast(@alignCast(node));
+            try result.appendSlice(cd.data);
+        }
+
+        // Recursively process all children
+        for (0..node.child_nodes.len) |i| {
+            if (node.child_nodes.get(i)) |child| {
+                try collectDescendantText(child, result);
+            }
+        }
+    
+    }
+
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1393,7 +1502,7 @@ pub const Text = struct {
         switch (self_parent.node_type) {
             ELEMENT_NODE => {
                 // Return result of locating a namespace prefix
-                return self_parent.locateNamespacePrefix(namespace);
+                return self.locateNamespacePrefix(namespace);
             },
             DOCUMENT_NODE => {
                 // If document element is null, return null
@@ -1414,29 +1523,152 @@ pub const Text = struct {
     }
 
     pub fn call_lookupNamespaceURI(self: *const Text, prefix_param: ?[]const u8) ?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
 
         // Spec step 1: If prefix is empty string, set to null
         const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
 
         // Spec step 2: Return result of locating a namespace
-        return self_parent.locateNamespace(prefix);
+        return self.locateNamespace(prefix);
     
     }
 
     pub fn call_isDefaultNamespace(self: *const Text, namespace_param: ?[]const u8) bool {
-        const self_parent: *const Node = @ptrCast(self);
 
         // Spec step 1: If namespace is empty string, set to null
         const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
 
         // Spec step 2: Let defaultNamespace be result of locating namespace using null prefix
-        const default_namespace = self_parent.locateNamespace(null);
+        const default_namespace = self.locateNamespace(null);
 
         // Spec step 3: Return true if defaultNamespace equals namespace
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
+    
+    }
+
+    fn locateNamespacePrefix(self: *const Text, namespace: []const u8) ?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        if (self_parent.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self_parent));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        for (elem.attributes.items) |attr| {
+            if (attr.prefix) |attr_prefix| {
+                if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
+                    return attr.local_name;
+                }
+            }
+        }
+
+        // Step 3: If parent element exists, recurse
+        if (self_parent.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    
+    }
+
+    fn locateNamespace(self: *const Text, prefix: ?[]const u8) ?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        switch (self_parent.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self_parent));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // If it has an attribute whose namespace is XMLNS namespace, prefix is "xmlns",
+                // and local name is prefix, return its value if not empty string, else null.
+                // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
+                // prefix is null, and local name is "xmlns", return its value if not empty, else null.
+                for (elem.attributes.items) |attr| {
+                    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+                    if (attr.namespace_uri) |attr_ns| {
+                        if (std.mem.eql(u8, attr_ns, xmlns_ns)) {
+                            // Check if this matches our prefix
+                            if (prefix) |p| {
+                                // Looking for xmlns:prefix attribute
+                                if (attr.prefix) |attr_prefix| {
+                                    if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.local_name, p)) {
+                                        return if (attr.value.len > 0) attr.value else null;
+                                    }
+                                }
+                            } else {
+                                // Looking for xmlns attribute (default namespace)
+                                if (attr.prefix == null and std.mem.eql(u8, attr.local_name, "xmlns")) {
+                                    return if (attr.value.len > 0) attr.value else null;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step 5: If parent element is null, return null
+                const parent = self_parent.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self_parent));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self_parent));
+                const element = attr.owner_element orelse return null;
+
+                // Step 2: Return result of locating namespace on element
+                return element.base.locateNamespace(prefix);
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self_parent.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
     
     }
 
@@ -1486,13 +1718,161 @@ pub const Text = struct {
     
     }
 
+    fn ensureEventListenerList(self: *Text) !*std.ArrayList(EventListener) {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        if (self_parent.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self_parent.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self_parent.allocator);
+        self_parent.event_listener_list = list;
+        return list;
+    
+    }
+
+    fn getEventListenerList(self: *const Text) []const EventListener {
+        const self_parent: *const EventTarget = @ptrCast(self);
+
+        if (self_parent.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    
+    }
+
+    fn flattenOptions(options: anytype) bool {
+
+        const OptionsType = @TypeOf(options);
+
+        // Step 1: If options is a boolean, return it
+        if (OptionsType == bool) {
+            return options;
+        }
+
+        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
+        if (@hasField(OptionsType, "capture")) {
+            return options.capture;
+        }
+
+        // Default: return false
+        return false;
+    
+    }
+
+    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
+
+        const OptionsType = @TypeOf(options);
+
+        // If options is a boolean, only capture is set to that value
+        if (OptionsType == bool) {
+            return .{
+                .capture = options,
+                .passive = null,
+                .once = false,
+                .signal = null,
+            };
+        }
+
+        // If options is AddEventListenerOptions dictionary, extract all fields
+        if (@hasField(OptionsType, "capture")) {
+            return .{
+                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
+                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
+                .once = if (@hasField(OptionsType, "once")) options.once else false,
+                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
+            };
+        }
+
+        // Default: return all defaults
+        return .{
+            .capture = false,
+            .passive = null,
+            .once = false,
+            .signal = null,
+        };
+    
+    }
+
+    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+
+        _ = event_target;
+        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
+        // AND eventTarget is Window or specific node conditions
+        // For now, simplified: return true for touch/wheel events
+        if (std.mem.eql(u8, event_type, "touchstart") or
+            std.mem.eql(u8, event_type, "touchmove") or
+            std.mem.eql(u8, event_type, "wheel") or
+            std.mem.eql(u8, event_type, "mousewheel"))
+        {
+            // TODO: Check eventTarget conditions per spec
+            return true;
+        }
+        // Step 2: Return false
+        return false;
+    
+    }
+
+    fn addAnEventListener(self: *Text, listener: EventListener) !void {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self_parent);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self_parent,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
+        }
+    
+    }
+
     pub fn call_addEventListener(
         self: *Text,
         event_type: []const u8,
         callback: ?webidl.JSValue,
         options: anytype,
     ) !void {
-        const self_parent: *EventTarget = @ptrCast(self);
 
         // Step 1: Flatten more options
         const flattened = flattenMoreOptions(options);
@@ -1507,7 +1887,34 @@ pub const Text = struct {
             .signal = flattened.signal,
         };
 
-        try self_parent.addAnEventListener(listener);
+        try self.addAnEventListener(listener);
+    
+    }
+
+    fn removeAnEventListener(self: *Text, listener: EventListener) void {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self_parent.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     
     }
 
@@ -1517,7 +1924,6 @@ pub const Text = struct {
         callback: ?webidl.JSValue,
         options: anytype,
     ) void {
-        const self_parent: *EventTarget = @ptrCast(self);
 
         // Step 1: Flatten options
         const capture = flattenOptions(options);
@@ -1529,7 +1935,7 @@ pub const Text = struct {
             .capture = capture,
         };
 
-        self_parent.removeAnEventListener(listener);
+        self.removeAnEventListener(listener);
     
     }
 
