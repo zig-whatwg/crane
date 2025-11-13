@@ -429,9 +429,14 @@ fn innerInvoke(
         if (std.mem.eql(u8, phase, "bubbling") and listener.capture) continue;
 
         // Step 2.5: If listener's once is true, then remove the event listener
+        // Spec: "If listener's once is true, then remove an event listener given
+        // event's currentTarget attribute value and listener."
+        // https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
         if (listener.once) {
-            // TODO: Implement removeEventListener
-            // For now, we can't remove during iteration - mark as removed
+            const current_target = event.current_target orelse continue;
+            // Remove from the actual event listener list (not the cloned iteration list)
+            // This is safe because we're iterating over a clone, not the original list
+            current_target.removeAnEventListener(listener);
         }
 
         // Step 2.6-8: Handle global and currentEvent (Window-specific)
