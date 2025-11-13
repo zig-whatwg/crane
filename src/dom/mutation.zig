@@ -996,11 +996,12 @@ pub fn remove(
     // in shadow-including tree order, run removing steps
     // Spec: DOM §4.2.5 step 14
     if (tree_helpers.getShadowIncludingDescendants(parent.allocator, node)) |descendants| {
-        defer descendants.deinit();
+        var mut_descendants = descendants;
+        defer mut_descendants.deinit();
 
         // Step 14.1: Run the removing steps with descendant and null
         // Step 14.2: Custom element disconnectedCallback
-        for (descendants.items) |descendant| {
+        for (mut_descendants.items()) |descendant| {
             runRemovingSteps(descendant, null);
 
             // TODO: If descendant is custom and isParentConnected is true,

@@ -627,6 +627,28 @@ pub const Parser = struct {
             else => return error.InvalidSelector,
         }
 
+        // Check for case-sensitivity flag ('i' or 's') before ']'
+        var case_sensitive = true;
+
+        // Skip whitespace before checking for flag
+        self.skipWhitespace();
+
+        // Check if current token is a case-sensitivity flag
+        if (self.current_token) |flag_token| {
+            if (flag_token.tag == .ident) {
+                const flag = flag_token.value;
+                if (std.mem.eql(u8, flag, "i") or std.mem.eql(u8, flag, "s")) {
+                    if (std.mem.eql(u8, flag, "i")) {
+                        case_sensitive = false;
+                    }
+                    // Consume the flag
+                    try self.advance();
+                    // Skip any whitespace after the flag
+                    self.skipWhitespace();
+                }
+            }
+        }
+
         // Consume ']'
         try self.expectToken(.rbracket);
         try self.advance();
@@ -634,6 +656,7 @@ pub const Parser = struct {
         return AttributeSelector{
             .name = name,
             .matcher = matcher,
+            .case_sensitive = case_sensitive,
         };
     }
 

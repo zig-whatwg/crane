@@ -1743,25 +1743,24 @@ test "Matcher: attribute dash match [lang|='en']" {
     try testing.expect(try matcher.matches(elem, &selector_list));
 }
 
-// TODO: Case-insensitive attribute matching needs parser support for 'i' flag
-// test "Matcher: attribute case-insensitive [type='TEXT' i]" {
-//     const allocator = testing.allocator;
-//     const elem = try createTestElementWithAttrs(allocator, "input", &.{
-//         .{ .name = "type", .value = "text" },
-//     });
-//     defer destroyTestElement(allocator, elem);
-//
-//     const input = "[type='TEXT' i]";
-//     var tokenizer = Tokenizer.init(allocator, input);
-//     var p = try Parser.init(allocator, &tokenizer);
-//     defer p.deinit();
-//
-//     var selector_list = try p.parse();
-//     defer selector_list.deinit();
-//
-//     const matcher = Matcher.init(allocator);
-//     try testing.expect(try matcher.matches(elem, &selector_list));
-// }
+test "Matcher: attribute case-insensitive [type='TEXT' i]" {
+    const allocator = testing.allocator;
+    const elem = try createTestElementWithAttrs(allocator, "input", &.{
+        .{ .name = "type", .value = "text" },
+    });
+    defer destroyTestElement(allocator, elem);
+
+    const input = "[type='TEXT' i]"; // Note: space before 'i' may be required by tokenizer
+    var tokenizer = Tokenizer.init(allocator, input);
+    var p = try Parser.init(allocator, &tokenizer);
+    defer p.deinit();
+
+    var selector_list = try p.parse();
+    defer selector_list.deinit();
+
+    const matcher = Matcher.init(allocator);
+    try testing.expect(try matcher.matches(elem, &selector_list));
+}
 
 // ============================================================================
 // Logical Pseudo-Class Tests
