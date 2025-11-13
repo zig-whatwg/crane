@@ -236,8 +236,18 @@ pub const EventTarget = webidl.interface(struct {
         }
 
         // Step 6: If listener's signal is not null, add abort steps
-        if (listener.signal) |_| {
-            // TODO: Add abort steps to signal to remove listener
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
         }
     }
 

@@ -9,6 +9,15 @@ const EventTarget = @import("event_target").EventTarget;
 /// Takes the abort reason as parameter
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
 
+/// Event listener removal context for abort signal
+/// Stores the target and listener to be removed when signal is aborted
+pub const EventListenerRemovalContext = struct {
+    target: *EventTarget,
+    listener_type: []const u8,
+    listener_callback: ?webidl.JSValue,
+    listener_capture: bool,
+};
+
 /// DOM Spec: interface AbortSignal : EventTarget
 pub const AbortSignal = webidl.interface(struct {
     pub const extends = EventTarget;
@@ -19,6 +28,9 @@ pub const AbortSignal = webidl.interface(struct {
     /// [[abortAlgorithms]]: List of algorithms to run when aborted
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-abort-algorithms
     abort_algorithms: infra.List(AbortAlgorithm),
+    /// Event listeners to remove when signal is aborted
+    /// Spec: Step 6 of "add an event listener" algorithm
+    event_listener_removals: std.ArrayList(EventListenerRemovalContext),
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -26,11 +38,13 @@ pub const AbortSignal = webidl.interface(struct {
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
+            .event_listener_removals = std.ArrayList(EventListenerRemovalContext).init(allocator),
         };
     }
 
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
+        self.event_listener_removals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
     }
 
@@ -92,6 +106,13 @@ pub const AbortSignal = webidl.interface(struct {
         // TODO: Fire 'abort' event (requires full event loop integration)
     }
 
+    /// Add an event listener removal to be performed when signal is aborted
+    /// Spec: Step 6 of "add an event listener" - add abort steps to remove the listener
+    /// https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    pub fn addEventListenerRemoval(self: *AbortSignal, context: EventListenerRemovalContext) !void {
+        try self.event_listener_removals.append(context);
+    }
+
     /// Run the abort steps for an AbortSignal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
@@ -104,6 +125,19 @@ pub const AbortSignal = webidl.interface(struct {
 
         // Spec step 2: Empty signal's abort algorithms
         self.abort_algorithms.clear();
+
+        // Remove all event listeners registered with this signal
+        // Spec: Step 6 of "add an event listener" - remove listener when signal is aborted
+        for (self.event_listener_removals.items) |removal| {
+            const EventListener = @import("event_target").EventListener;
+            const listener = EventListener{
+                .type = removal.listener_type,
+                .callback = removal.listener_callback,
+                .capture = removal.listener_capture,
+            };
+            removal.target.removeAnEventListener(listener);
+        }
+        self.event_listener_removals.clearRetainingCapacity();
 
         // Spec step 3: Fire an event named 'abort' at signal
         // TODO: Implement when event firing infrastructure is available
