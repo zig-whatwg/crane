@@ -48,9 +48,8 @@ pub const Range = struct {
     /// The new Range() constructor steps are to set this's start and end to
     /// (current global object's associated Document, 0).
     pub fn init(allocator: Allocator, document_node: *Node) !Range {
-        // Get Document from node
-        const Document_Type = @import("document").Document;
-        const doc = Document_Type.fromNode(document_node) catch {
+        // Get Document from node using asDocument pattern
+        const doc = document_node.asDocument() orelse {
             return error.InvalidNodeTypeError;
         };
 
@@ -118,7 +117,7 @@ pub const Range = struct {
             Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
             Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
                 // CharacterData nodes - get data length
-                const charData = CharacterData.fromNode(node) catch return 0;
+                const charData = node.asCharacterData() orelse return 0;
                 return charData.get_length();
             },
             else => {
@@ -461,7 +460,7 @@ pub const Range = struct {
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
                 // This is CharacterData - call deleteData to remove the range
-                const charData = try CharacterData.fromNode(self.start_container);
+                const charData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
                 const count = self.end_offset - self.start_offset;
                 try charData.call_deleteData(self.start_offset, count);
             }
@@ -494,8 +493,8 @@ pub const Range = struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = try CharacterData.fromNode(self.start_container);
-            const cloneCharData = try CharacterData.fromNode(clone);
+            const originalCharData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
+            const cloneCharData = clone.asCharacterData() orelse return error.InvalidNodeTypeError;
 
             // Substring from original start offset to original end offset
             const count = self.end_offset - self.start_offset;
@@ -571,8 +570,8 @@ pub const Range = struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = try CharacterData.fromNode(self.start_container);
-            const cloneCharData = try CharacterData.fromNode(clone);
+            const originalCharData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
+            const cloneCharData = clone.asCharacterData() orelse return error.InvalidNodeTypeError;
 
             // Substring from start offset to end offset
             const originalData = originalCharData.get_data();
@@ -652,7 +651,7 @@ pub const Range = struct {
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            const textNode = try Text.fromNode(self.start_container);
+            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
             const newText = try textNode.call_splitText(self.start_offset);
             referenceNode = &newText.base.base;
         }
@@ -873,7 +872,7 @@ pub const Range = struct {
         if (self.start_container == self.end_container and
             self.start_container.node_type == Node.TEXT_NODE)
         {
-            const textNode = try Text.fromNode(self.start_container);
+            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
 
             // Return substring from start offset to end offset
@@ -886,7 +885,7 @@ pub const Range = struct {
 
         // Step 3: If start node is a Text node, append from start offset to end
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            const textNode = try Text.fromNode(self.start_container);
+            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             if (self.start_offset <= data.len) {
                 const substring = data[self.start_offset..];
@@ -902,7 +901,7 @@ pub const Range = struct {
         if (self.end_container.node_type == Node.TEXT_NODE and
             self.end_container != self.start_container)
         {
-            const textNode = try Text.fromNode(self.end_container);
+            const textNode = self.end_container.asText() orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             if (self.end_offset <= data.len) {
                 const substring = data[0..self.end_offset];
@@ -917,7 +916,7 @@ pub const Range = struct {
     fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
         // If this node is contained and is a Text node, append its data
         if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
-            const textNode = try Text.fromNode(node);
+            const textNode = node.asText() orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             try result.appendSlice(data);
             return;

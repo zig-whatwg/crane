@@ -147,13 +147,12 @@ pub const AbstractRange = struct {
             .end_offset = end_offset,
         });
     }
-    fn initFields(allocator: std.mem.Allocator, fields: *const struct {
+    fn initFields(_: std.mem.Allocator, fields: *const struct {
         start_container: *Node,
         start_offset: u32,
         end_container: *Node,
         end_offset: u32,
     }) !AbstractRange {
-        _ = allocator; // AbstractRange has no heap allocations
         return .{
             .start_container = fields.start_container,
             .start_offset = fields.start_offset,

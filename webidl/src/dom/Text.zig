@@ -89,8 +89,8 @@ pub const Text = webidl.interface(struct {
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
             // Steps 6.2-6.5: Update live ranges
-            if (self_node.owner_document) |owner_doc| {
-                const doc = try Document.fromNode(owner_doc);
+            if (self_node.owner_document) |doc| {
+                // owner_document is already *Document, no conversion needed
                 const range_tracking = @import("range_tracking");
                 range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);
             }
@@ -124,7 +124,7 @@ pub const Text = webidl.interface(struct {
         var current: ?*Node = first;
         while (current) |node| {
             if (node.node_type == Node.TEXT_NODE) {
-                const textNode = try Text.fromNode(node);
+                const textNode = node.asText() orelse return error.InvalidNodeTypeError;
                 try result.appendSlice(textNode.base.get_data());
                 current = dom.tree_helpers.getNextSibling(node);
             } else {

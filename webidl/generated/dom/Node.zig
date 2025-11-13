@@ -485,14 +485,28 @@ pub const Node = struct {
         const composed = if (options) |opts| opts.composed else false;
 
         if (composed) {
-            // Return shadow-including root
-            // TODO: Implement shadow-including root traversal when Shadow DOM is fully integrated
-            // For now, shadow-including root falls back to regular root
-            // Shadow-including root algorithm:
-            // - Get node's root
-            // - If root is shadow root, recursively get root's host's shadow-including root
-            // - Otherwise return root
-            return tree.root(self);
+            // Return shadow-including root (DOM §4.2.2.4)
+            // Algorithm:
+            // 1. Let root be node's root
+            // 2. If root is a shadow root, return root's host's shadow-including root
+            // 3. Return root
+            var root = tree.root(self);
+
+            // Check if root is a ShadowRoot by checking type_tag
+            const ShadowRoot = @import("shadow_root").ShadowRoot;
+            while (root.base.type_tag == .ShadowRoot) {
+                // Cast to ShadowRoot to access host
+                const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
+
+                // Get the host element (which is a Node)
+                const host_element = shadow_root.host_element;
+                const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
+
+                // Get host's root (might be another shadow root)
+                root = tree.root(host_node);
+            }
+
+            return root;
         } else {
             // Return regular root
             return tree.root(self);
@@ -766,8 +780,21 @@ pub const Node = struct {
                     std.debug.assert(copy_elem.shadow_root == null);
 
                     // Step 6.2-6.4: Determine shadow root registry and attach shadow root
-                    // For now, we use a simplified version without full registry support
-                    // TODO: Implement full custom element registry handling
+                    //
+                    // Per spec (DOM §4.2.7):
+                    // - If node's shadow root's custom element registry is non-null, use it
+                    // - Otherwise, if fallbackRegistry is non-null, use fallbackRegistry
+                    // - Otherwise, set registry to null
+                    //
+                    // NOTE: Custom element registry is part of the HTML spec, not DOM spec.
+                    // Full implementation requires:
+                    // - ShadowRoot.custom_element_registry field (currently not present)
+                    // - CustomElementRegistry type and implementation
+                    // - Registry scoping logic
+                    //
+                    // For now, we pass null for the registry. When custom elements are
+                    // implemented, fallback_registry will be used here to determine the
+                    // registry for the cloned shadow root.
 
                     // Attach shadow root to copy
                     var copy_shadow = try ShadowRoot.init(

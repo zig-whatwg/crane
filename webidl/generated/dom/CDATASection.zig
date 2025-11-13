@@ -125,8 +125,8 @@ pub const CDATASection = struct {
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
             // Steps 6.2-6.5: Update live ranges
-            if (self_node.owner_document) |owner_doc| {
-                const doc = try Document.fromNode(owner_doc);
+            if (self_node.owner_document) |doc| {
+                // owner_document is already *Document, no conversion needed
                 const range_tracking = @import("range_tracking");
                 range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);
             }
@@ -159,7 +159,7 @@ pub const CDATASection = struct {
         var current: ?*Node = first;
         while (current) |node| {
             if (node.node_type == Node.TEXT_NODE) {
-                const textNode = try CDATASection.fromNode(node);
+                const textNode = node.asText() orelse return error.InvalidNodeTypeError;
                 try result.appendSlice(textNode.base.get_data());
                 current = dom.tree_helpers.getNextSibling(node);
             } else {
@@ -293,14 +293,11 @@ pub const CDATASection = struct {
         self.data = new_data;
 
         // Steps 8-11 - Update ranges
-        if (self.base.owner_document) |owner_doc| {
-            if (Document.fromNode(owner_doc)) |doc| {
-                const range_tracking = @import("range_tracking");
-                const new_length = @as(u32, @intCast(data.len));
-                range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
-            } else |_| {
-                // Document conversion failed, skip range updates
-            }
+        if (self.base.owner_document) |doc| {
+            // owner_document is already *Document, no conversion needed
+            const range_tracking = @import("range_tracking");
+            const new_length = @as(u32, @intCast(data.len));
+            range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
         }
 
         // Step 12 - Run children changed steps for parent
@@ -374,14 +371,28 @@ pub const CDATASection = struct {
         const composed = if (options) |opts| opts.composed else false;
 
         if (composed) {
-            // Return shadow-including root
-            // TODO: Implement shadow-including root traversal when Shadow DOM is fully integrated
-            // For now, shadow-including root falls back to regular root
-            // Shadow-including root algorithm:
-            // - Get node's root
-            // - If root is shadow root, recursively get root's host's shadow-including root
-            // - Otherwise return root
-            return tree.root(self);
+            // Return shadow-including root (DOM §4.2.2.4)
+            // Algorithm:
+            // 1. Let root be node's root
+            // 2. If root is a shadow root, return root's host's shadow-including root
+            // 3. Return root
+            var root = tree.root(self);
+
+            // Check if root is a ShadowRoot by checking type_tag
+            const ShadowRoot = @import("shadow_root").ShadowRoot;
+            while (root.base.type_tag == .ShadowRoot) {
+                // Cast to ShadowRoot to access host
+                const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
+
+                // Get the host element (which is a Node)
+                const host_element = shadow_root.host_element;
+                const host_node: *CDATASection = @ptrCast(@alignCast(&host_element.base));
+
+                // Get host's root (might be another shadow root)
+                root = tree.root(host_node);
+            }
+
+            return root;
         } else {
             // Return regular root
             return tree.root(self);

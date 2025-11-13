@@ -64,24 +64,25 @@ pub const AbortSignal = struct {
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
-            .event_listener_removals = .{},
-            .source_signals = .{},
-            .dependent_signals = .{},
+            .event_listener_removals = std.ArrayList(EventListenerRemovalContext).init(allocator),
+            .source_signals = std.ArrayList(*AbortSignal).init(allocator),
+            .dependent_signals = std.ArrayList(*AbortSignal).init(allocator),
         };
     }
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
-        self.event_listener_removals.deinit(self.allocator);
-        self.source_signals.deinit(self.allocator);
-        self.dependent_signals.deinit(self.allocator);
+        self.event_listener_removals.deinit();
+        self.source_signals.deinit();
+        self.dependent_signals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
-
+    
+        
         // Clean up base fields
         if (self.base.event_listener_list) |list| {
             list.deinit(self.allocator);
             self.allocator.destroy(list);
         }
-    }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to EventTargetBase for type-generic code.
@@ -113,7 +114,7 @@ pub const AbortSignal = struct {
     }
     /// Create a dependent abort signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
-    ///
+    /// 
     /// Steps:
     /// 1. Let resultSignal be a new object implementing signalInterface using realm
     /// 2. For each signal of signals:
@@ -165,7 +166,7 @@ pub const AbortSignal = struct {
     }
     /// Signal abort algorithm
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-signal-abort
-    ///
+    /// 
     /// Steps:
     /// 1. If signal is aborted, then return
     /// 2. Set signal's abort reason to reason if given, otherwise to new "AbortError" DOMException
@@ -176,7 +177,7 @@ pub const AbortSignal = struct {
     /// - Append dependentSignal to dependentSignalsToAbort
     /// 5. Run the abort steps for signal
     /// 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal
-    ///
+    /// 
     /// TODO: Fire 'abort' event (requires full event loop integration)
     pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
         // Spec step 1: If signal is aborted, then return
@@ -189,8 +190,8 @@ pub const AbortSignal = struct {
         self.aborted = true;
 
         // Spec step 3: Let dependentSignalsToAbort be a new list
-        var dependent_signals_to_abort: std.ArrayList(*AbortSignal) = .{};
-        defer dependent_signals_to_abort.deinit(self.allocator);
+        var dependent_signals_to_abort = std.ArrayList(*AbortSignal).init(self.allocator);
+        defer dependent_signals_to_abort.deinit();
 
         // Spec step 4: For each dependentSignal of signal's dependent signals
         for (self.dependent_signals.items) |dependent_signal| {
@@ -198,8 +199,9 @@ pub const AbortSignal = struct {
             if (!dependent_signal.aborted) {
                 // Set dependentSignal's abort reason to signal's abort reason
                 dependent_signal.reason = self.reason;
+                dependent_signal.aborted = true;
                 // Append dependentSignal to dependentSignalsToAbort
-                dependent_signals_to_abort.append(self.allocator, dependent_signal) catch continue;
+                dependent_signals_to_abort.append(dependent_signal) catch continue;
             }
         }
 
@@ -431,3 +433,4 @@ pub const AbortSignal = struct {
         .cross_origin_isolated = false,
     };
 };
+
