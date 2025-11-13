@@ -475,6 +475,71 @@ pub const Element = webidl.interface(struct {
         try self.removeAttributeByNamespaceAndLocalName(namespace, local_name);
     }
 
+    /// toggleAttribute(qualifiedName, force?)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-toggleattribute
+    ///
+    /// The toggleAttribute(qualifiedName, force) method steps are:
+    /// 1. If qualifiedName is not valid attribute local name, throw InvalidCharacterError
+    /// 2. If this is in HTML namespace and node document is HTML, set qualifiedName to ASCII lowercase
+    /// 3. Let attribute be first attribute whose qualified name is qualifiedName, else null
+    /// 4. If attribute is null:
+    ///    a. If force not given or is true, create attribute with empty value, append, return true
+    ///    b. Return false
+    /// 5. Otherwise, if force not given or is false, remove attribute, return false
+    /// 6. Return true
+    pub fn call_toggleAttribute(
+        self: *Element,
+        qualified_name: []const u8,
+        force: ?bool,
+    ) !bool {
+        // Step 1: Validate qualified name
+        if (qualified_name.len == 0) {
+            return error.InvalidCharacterError;
+        }
+
+        // Step 2: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const normalized_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            if (qualified_name.len > lowercased_buf.len) {
+                break :blk qualified_name; // Edge case: name too long
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 3: Find existing attribute
+        const existing = self.getAttributeByName(normalized_name);
+
+        // Step 4: If attribute is null
+        if (existing == null) {
+            // Step 4a: If force not given or is true, create and append
+            if (force == null or force.? == true) {
+                const new_attr = try Attr.init(
+                    self.allocator,
+                    null, // namespace
+                    null, // prefix
+                    normalized_name,
+                    "", // empty value
+                );
+                try self.appendAttribute(&new_attr);
+                return true;
+            }
+            // Step 4b: Return false
+            return false;
+        }
+
+        // Step 5: Otherwise, if force not given or is false, remove attribute
+        if (force == null or force.? == false) {
+            try self.removeAttributeByName(normalized_name);
+            return false;
+        }
+
+        // Step 6: Return true (attribute exists and force is true)
+        return true;
+    }
+
     /// hasAttribute(qualifiedName)
     /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattribute
     ///
