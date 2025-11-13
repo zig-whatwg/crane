@@ -30,6 +30,25 @@ const webidl = @import("webidl");
 
 /// DOM Spec: interface DocumentType : Node
 
+/// Compare two callbacks for equality (from EventTarget)
+pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    const a_val = a.?;
+    const b_val = b.?;
+    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
+        return false;
+    }
+    return switch (a_val) {
+        .undefined, .null => true,
+        .boolean => |a_bool| a_bool == b_val.boolean,
+        .number => |a_num| a_num == b_val.number,
+        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
+        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
+        else => false,
+    };
+}
+
 pub const DocumentType = struct {
 
     // ========================================================================

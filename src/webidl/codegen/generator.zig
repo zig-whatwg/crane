@@ -36,14 +36,59 @@ pub fn generateCode(
         if (defs.len > 0) {
             try writer.writeAll("\n");
             try writer.writeAll(defs);
-            try writer.writeAll("\n\n");
+            try writer.writeAll("\n");
         }
     }
+
+    // Add helper functions needed by inherited methods
+    if (needsCallbackEquals(enhanced)) {
+        try writer.writeAll("\n");
+        try writer.writeAll(
+            \\/// Compare two callbacks for equality (from EventTarget)
+            \\pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
+            \\    if (a == null and b == null) return true;
+            \\    if (a == null or b == null) return false;
+            \\    const a_val = a.?;
+            \\    const b_val = b.?;
+            \\    if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
+            \\        return false;
+            \\    }
+            \\    return switch (a_val) {
+            \\        .undefined, .null => true,
+            \\        .boolean => |a_bool| a_bool == b_val.boolean,
+            \\        .number => |a_num| a_num == b_val.number,
+            \\        .string => |a_str| std.mem.eql(u8, a_str, b_val.string),
+            \\        .object => |a_obj| @intFromPtr(&a_obj) == @intFromPtr(&b_val.object),
+            \\        else => false,
+            \\    };
+            \\}
+            \\
+        );
+    }
+
+    try writer.writeAll("\n");
 
     // Class definition
     try writeClass(writer, enhanced);
 
     return output.toOwnedSlice(allocator);
+}
+
+/// Check if class needs callbackEquals helper function
+fn needsCallbackEquals(enhanced: ir.EnhancedClassIR) bool {
+    const class = enhanced.class;
+
+    // EventTarget itself has it in module definitions
+    if (std.mem.eql(u8, class.name, "EventTarget")) return false;
+
+    // Check if any method uses callbackEquals
+    for (enhanced.all_methods) |method| {
+        if (std.mem.indexOf(u8, method.body, "callbackEquals") != null) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /// Check if class needs Node constant aliases
