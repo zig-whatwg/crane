@@ -723,6 +723,73 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
     return fields.toOwnedSlice();
 }
 
+/// A range representing a nested type definition
+const NestedTypeRange = struct {
+    start: usize,
+    end: usize,
+};
+
+/// Find all nested type definition ranges (struct, enum, union)
+fn findNestedTypeRanges(allocator: Allocator, struct_body: []const u8) ![]NestedTypeRange {
+    var ranges = infra.List(NestedTypeRange).init(allocator);
+    errdefer ranges.deinit();
+
+    var pos: usize = 0;
+    while (pos < struct_body.len) {
+        // Look for "pub const Name = struct {" or "pub const Name = enum {" or "pub const Name = union {"
+        const pub_const_pos = std.mem.indexOfPos(u8, struct_body, pos, "pub const ") orelse break;
+
+        // Find the equals sign
+        const eq_pos = std.mem.indexOfScalarPos(u8, struct_body, pub_const_pos, '=') orelse {
+            pos = pub_const_pos + 1;
+            continue;
+        };
+
+        // Check if it's followed by struct, enum, or union
+        const after_eq = std.mem.trimLeft(u8, struct_body[eq_pos + 1 ..], " \t\r\n");
+        const is_struct = std.mem.startsWith(u8, after_eq, "struct {") or std.mem.startsWith(u8, after_eq, "struct{");
+        const is_enum = std.mem.startsWith(u8, after_eq, "enum {") or std.mem.startsWith(u8, after_eq, "enum{");
+        const is_union = std.mem.startsWith(u8, after_eq, "union {") or std.mem.startsWith(u8, after_eq, "union{") or std.mem.startsWith(u8, after_eq, "union(");
+
+        if (is_struct or is_enum or is_union) {
+            // Find the opening brace
+            const open_brace_pos = std.mem.indexOfScalarPos(u8, struct_body, eq_pos, '{') orelse {
+                pos = eq_pos + 1;
+                continue;
+            };
+
+            // Find matching closing brace
+            const close_brace_pos = findMatchingBrace(struct_body, open_brace_pos) orelse {
+                pos = open_brace_pos + 1;
+                continue;
+            };
+
+            // Store the range (from pub const to closing brace + semicolon if present)
+            var end_pos = close_brace_pos + 1;
+            if (end_pos < struct_body.len and struct_body[end_pos] == ';') {
+                end_pos += 1;
+            }
+
+            try ranges.append(.{ .start = pub_const_pos, .end = end_pos });
+            pos = end_pos;
+        } else {
+            pos = pub_const_pos + 1;
+        }
+    }
+
+    return ranges.toOwnedSlice();
+}
+
+/// Check if a position is inside any nested type range
+fn isInsideNestedType(pos: usize, nested_ranges: []const NestedTypeRange) bool {
+    for (nested_ranges) |range| {
+        if (pos >= range.start and pos < range.end) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Parse method declarations
 fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
     var methods = infra.List(ir.Method).init(allocator);
@@ -730,6 +797,10 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         for (methods.toSliceMut()) |*method| method.deinit(allocator);
         methods.deinit();
     }
+
+    // Find all nested type definitions first
+    const nested_ranges = try findNestedTypeRanges(allocator, struct_body);
+    defer allocator.free(nested_ranges);
 
     var pos: usize = 0;
     var line_num: usize = 1;
@@ -818,6 +889,12 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
         }
 
         if (fn_pos) |fn_start| {
+            // Skip if this function is inside a nested type definition
+            if (isInsideNestedType(fn_start, nested_ranges)) {
+                pos = fn_start + 1;
+                continue;
+            }
+
             if (is_node_iterator) {
                 std.debug.print(">>> Found fn at position {d}\n", .{fn_start});
                 // Show 60 chars context
@@ -1284,20 +1361,47 @@ fn parseConstants(allocator: Allocator, struct_body: []const u8) ![]ir.Constant 
                 continue;
             }
 
-            const semicolon = std.mem.indexOfScalarPos(u8, struct_body, eq_pos, ';') orelse {
-                pos = eq_pos + 1;
-                continue;
-            };
+            // Check if this is a nested type definition (struct, enum, union)
+            const after_eq = std.mem.trimLeft(u8, struct_body[eq_pos + 1 ..], " \t\r\n");
+            const is_struct = std.mem.startsWith(u8, after_eq, "struct {") or std.mem.startsWith(u8, after_eq, "struct{");
+            const is_enum = std.mem.startsWith(u8, after_eq, "enum {") or std.mem.startsWith(u8, after_eq, "enum{");
+            const is_union = std.mem.startsWith(u8, after_eq, "union {") or std.mem.startsWith(u8, after_eq, "union{") or std.mem.startsWith(u8, after_eq, "union(");
+
+            var semicolon: usize = undefined;
+            if (is_struct or is_enum or is_union) {
+                // Find the opening brace
+                const open_brace_pos = std.mem.indexOfScalarPos(u8, struct_body, eq_pos, '{') orelse {
+                    pos = eq_pos + 1;
+                    continue;
+                };
+
+                // Find matching closing brace
+                const close_brace_pos = findMatchingBrace(struct_body, open_brace_pos) orelse {
+                    pos = open_brace_pos + 1;
+                    continue;
+                };
+
+                // Now find semicolon after the closing brace
+                semicolon = std.mem.indexOfScalarPos(u8, struct_body, close_brace_pos, ';') orelse {
+                    pos = close_brace_pos + 1;
+                    continue;
+                };
+            } else {
+                // Regular constant - find first semicolon
+                semicolon = std.mem.indexOfScalarPos(u8, struct_body, eq_pos, ';') orelse {
+                    pos = eq_pos + 1;
+                    continue;
+                };
+            }
 
             const value = std.mem.trim(u8, struct_body[eq_pos + 1 .. semicolon], " \t\r\n");
 
-            // Skip struct/enum/union definitions - these are type definitions, not constants
-            if (std.mem.startsWith(u8, value, "struct") or
-                std.mem.startsWith(u8, value, "enum") or
-                std.mem.startsWith(u8, value, "union"))
-            {
-                pos = semicolon + 1;
-                continue;
+            // Debug: Check if Direction
+            if (std.mem.eql(u8, name, "Direction")) {
+                std.debug.print("\n=== Direction Constant ===\n", .{});
+                std.debug.print("name=[{s}]\n", .{name});
+                std.debug.print("value=[{s}]\n", .{value});
+                std.debug.print("value.len={d}\n", .{value.len});
             }
 
             var type_name: ?[]const u8 = null;

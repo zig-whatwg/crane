@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const AbstractRange = @import("abstract_range").AbstractRange;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const Container = @import("container").Container;
 const Node = @import("node").Node;
 const std = @import("std");

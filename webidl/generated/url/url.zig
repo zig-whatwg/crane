@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const URLRecord = @import("url_record").URLRecord;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 const api_parser = @import("api_parser");

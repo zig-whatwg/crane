@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;

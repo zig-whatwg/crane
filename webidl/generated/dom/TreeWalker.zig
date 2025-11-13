@@ -8,11 +8,9 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
-const ChildType = @import("child_type").ChildType;
+const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 const NodeFilter = @import("node_filter").NodeFilter;
-const SiblingType = @import("sibling_type").SiblingType;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -36,6 +34,13 @@ pub const TreeWalker = struct {
     what_to_show: u32,
     filter: NodeFilter.OptionalAcceptNodeFn,
     active_flag: bool,
+
+    // ========================================================================
+    // Constants
+    // ========================================================================
+
+    pub const ChildType = enum { first, last };
+    pub const SiblingType = enum { next, previous };
 
     // ========================================================================
     // Methods

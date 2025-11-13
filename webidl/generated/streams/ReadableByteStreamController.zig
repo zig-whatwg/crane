@@ -10,7 +10,7 @@
 
 const AbortController = @import("dom").AbortController;
 const Algorithm = @import("algorithm").Algorithm;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const Controller = @import("controller").Controller;
 const Descriptor = @import("descriptor").Descriptor;
@@ -19,17 +19,17 @@ const IntoDescriptor = @import("into_descriptor").IntoDescriptor;
 const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
 const Offset = @import("offset").Offset;
-const PullIntoDescriptorModule = @import("pull_into_descriptor").PullIntoDescriptorModule;
+const PullIntoDescriptorModule = @import("pull_into_descriptor");
 const PullIntos = @import("pull_intos").PullIntos;
 const Queue = @import("queue").Queue;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
+const ReadIntoRequestModule = @import("read_into_request");
 const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
 const Request = @import("request").Request;
 const ViewConstruction = @import("view_construction").ViewConstruction;
 const common = @import("common");
-const eventLoop = @import("event_loop").eventLoop;
+const eventLoop = @import("event_loop");
 const std = @import("std");
 const webidl = @import("webidl");
 

@@ -241,11 +241,24 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
     for (sorted_imports.items) |import| {
         const vis = if (import.visibility == .public) "pub " else "";
 
-        // Heuristic: if name equals module (both lowercase), it's likely a module import, not a type
-        // E.g., const common = @import("common") vs const Foo = @import("foo").Foo
+        // Special case: std.mem aliases (Allocator, ArrayList, etc.)
+        // These should be written as: const Allocator = std.mem.Allocator;
+        if (std.mem.eql(u8, import.module, "std.mem")) {
+            try writer.print("{s}const {s} = std.mem.{s};\n", .{
+                vis,
+                import.name,
+                import.name,
+            });
+            continue;
+        }
+
+        // Heuristic: Determine if this is a module import vs type import
+        // Module imports: const std = @import("std"), const common = @import("common")
+        // Type imports: const Foo = @import("foo").Foo
+        // Special case: const FooModule = @import("foo") (module with "Module" suffix)
         const name_is_lowercase = import.name.len > 0 and import.name[0] >= 'a' and import.name[0] <= 'z';
-        const names_match = std.mem.eql(u8, import.name, import.module);
-        const is_module_import = !import.is_type or (name_is_lowercase and names_match);
+        const ends_with_module = std.mem.endsWith(u8, import.name, "Module");
+        const is_module_import = !import.is_type or name_is_lowercase or ends_with_module;
 
         if (!is_module_import and import.is_type) {
             // Type import: const Foo = @import("foo").Foo;

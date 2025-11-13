@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
 const MutationRecord = @import("mutation_record").MutationRecord;
 const Node = @import("node").Node;

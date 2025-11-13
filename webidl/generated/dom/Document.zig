@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const AbortSignal = @import("abort_signal").AbortSignal;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const Attr = @import("attr").Attr;
 const CDATASection = @import("cdata_section").CDATASection;
 const CharacterData = @import("character_data").CharacterData;

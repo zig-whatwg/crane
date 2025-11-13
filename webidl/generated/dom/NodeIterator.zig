@@ -8,8 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
-const Direction = @import("direction").Direction;
+const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 const NodeFilter = @import("node_filter").NodeFilter;
 const std = @import("std");
@@ -35,6 +34,12 @@ pub const NodeIterator = struct {
     what_to_show: u32,
     filter: NodeFilter.OptionalAcceptNodeFn,
     active_flag: bool,
+
+    // ========================================================================
+    // Constants
+    // ========================================================================
+
+    pub const Direction = enum { next, previous };
 
     // ========================================================================
     // Methods

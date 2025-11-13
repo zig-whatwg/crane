@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const Algorithm = @import("algorithm").Algorithm;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const Exception = @import("exception").Exception;
 const JSValue = @import("j_s_value").JSValue;
 const ReadableStream = @import("readable_stream").ReadableStream;

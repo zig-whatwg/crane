@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const Attr = @import("attr").Attr;
 const Element = @import("element").Element;
 const infra = @import("infra");

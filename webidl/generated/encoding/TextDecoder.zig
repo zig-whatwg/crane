@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;

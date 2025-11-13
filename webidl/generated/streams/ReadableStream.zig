@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const ByteTeeState = @import("byte_tee_state").ByteTeeState;
 const FromIterableState = @import("from_iterable_state").FromIterableState;
@@ -31,7 +31,7 @@ const WritableStreamDefaultWriter = @import("writable_stream_default_writer").Wr
 const async_iterator = @import("async_iterator");
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
-const eventLoop = @import("event_loop").eventLoop;
+const eventLoop = @import("event_loop");
 const std = @import("std");
 const structured_clone = @import("structured_clone");
 const webidl = @import("webidl");

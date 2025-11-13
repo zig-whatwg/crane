@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -35,7 +35,7 @@ pub const TestMixin = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -62,7 +62,7 @@ pub const Parent = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -89,7 +89,7 @@ pub const Child = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -116,7 +116,7 @@ pub const MixinA = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -143,7 +143,7 @@ pub const MixinB = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -171,7 +171,7 @@ pub const ParentMulti = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -199,7 +199,7 @@ pub const ChildMulti = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 

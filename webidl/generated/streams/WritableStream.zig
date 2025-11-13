@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const AbortRequest = @import("abort_request").AbortRequest;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const Controller = @import("controller").Controller;
 const JSValue = @import("j_s_value").JSValue;
@@ -21,7 +21,7 @@ const WritableStreamDefaultController = @import("writable_stream_default_control
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
-const eventLoop = @import("event_loop").eventLoop;
+const eventLoop = @import("event_loop");
 const std = @import("std");
 const structured_clone = @import("structured_clone");
 const webidl = @import("webidl");

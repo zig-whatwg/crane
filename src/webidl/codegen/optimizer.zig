@@ -504,10 +504,19 @@ fn addImportForType(
 
     // Also check in module_definitions text as a fallback
     // e.g., "const Group = types.Group;" means Group is already available
+    // Also check for struct/enum/union definitions: "pub const Foo = struct {" or "const Foo = struct {"
     if (module_definitions.len > 0) {
         var search_pattern: [256]u8 = undefined;
+
+        // Check for "const TypeName =" (any const definition)
         const pattern = try std.fmt.bufPrint(&search_pattern, "const {s} =", .{base_type});
         if (std.mem.indexOf(u8, module_definitions, pattern) != null) {
+            return; // Type is locally defined, don't import
+        }
+
+        // Also check for "pub const TypeName =" (public const definition)
+        const pub_pattern = try std.fmt.bufPrint(&search_pattern, "pub const {s} =", .{base_type});
+        if (std.mem.indexOf(u8, module_definitions, pub_pattern) != null) {
             return; // Type is locally defined, don't import
         }
     }

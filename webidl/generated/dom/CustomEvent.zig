@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const CustomEventInit = @import("custom_event_init").CustomEventInit;
 const Event = @import("event").Event;
 const EventPathItem = @import("event_path_item").EventPathItem;

@@ -8,7 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const TransformStream = @import("transform_stream").TransformStream;
 const WritableStream = @import("writable_stream").WritableStream;
@@ -39,7 +39,7 @@ pub const CompressionStream = struct {
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const TransformStream = @import("transform_stream").TransformStream;
 const WritableStream = @import("writable_stream").WritableStream;

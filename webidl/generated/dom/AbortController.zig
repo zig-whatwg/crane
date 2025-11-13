@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const AbortSignal = @import("abort_signal").AbortSignal;
-const Allocator = @import("std.mem").Allocator;
+const Allocator = std.mem.Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
