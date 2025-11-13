@@ -1037,10 +1037,12 @@ pub const Node = webidl.interface(struct {
             },
             ATTRIBUTE_NODE => {
                 // Step 1: If element is null, return null
-                // TODO: Get element from Attr when accessible
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self));
+                const element = attr.owner_element orelse return null;
 
                 // Step 2: Return result of locating namespace on element
-                return null; // Requires Attr.element access
+                return element.base.locateNamespace(prefix);
             },
             else => {
                 // Step 1: If parent element is null, return null
