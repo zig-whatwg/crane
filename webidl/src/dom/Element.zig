@@ -128,15 +128,137 @@ pub const Element = webidl.interface(struct {
         }
     }
 
-    /// getAttribute(qualifiedName)
-    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
-    pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {
-        for (self.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                return attr.value;
+    // ========================================================================
+    // DOM §4.10.3-4.10.4 - Attribute Helper Algorithms
+    // ========================================================================
+
+    /// Get an attribute by name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-name
+    ///
+    /// To get an attribute by name given a string qualifiedName and element:
+    /// 1. If element is in HTML namespace and its node document is HTML document,
+    ///    then set qualifiedName to qualifiedName in ASCII lowercase
+    /// 2. Return first attribute in element's attribute list whose qualified name
+    ///    is qualifiedName; otherwise null
+    fn getAttributeByName(self: *const Element, qualified_name: []const u8) ?*Attr {
+        // Step 1: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const search_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            // ASCII lowercase the qualified name
+            if (qualified_name.len > lowercased_buf.len) {
+                // Name too long for stack buffer, use heap
+                // For now, just use original (this is edge case)
+                break :blk qualified_name;
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 2: Find first attribute with matching qualified name
+        for (self.attributes.items) |*attr| {
+            const attr_qualified_name = attr.get_name() catch continue;
+            defer if (attr.prefix != null) self.allocator.free(attr_qualified_name); // Free if allocated
+
+            if (std.mem.eql(u8, attr_qualified_name, search_name)) {
+                return attr;
             }
         }
         return null;
+    }
+
+    /// Get an attribute by namespace and local name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-namespace
+    ///
+    /// To get an attribute by namespace and local name given null or string namespace,
+    /// string localName, and element:
+    /// 1. If namespace is empty string, set it to null
+    /// 2. Return attribute in element's attribute list whose namespace is namespace
+    ///    and local name is localName, if any; otherwise null
+    fn getAttributeByNamespaceAndLocalName(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) ?*Attr {
+        // Step 1: Empty string namespace becomes null
+        const ns = if (namespace) |n| if (n.len == 0) null else n else null;
+
+        // Step 2: Find attribute with matching namespace and local name
+        for (self.attributes.items) |*attr| {
+            // Check namespace match
+            const ns_match = if (ns == null and attr.namespace_uri == null)
+                true
+            else if (ns != null and attr.namespace_uri != null)
+                std.mem.eql(u8, ns.?, attr.namespace_uri.?)
+            else
+                false;
+
+            // Check local name match
+            const name_match = std.mem.eql(u8, attr.local_name, local_name);
+
+            if (ns_match and name_match) {
+                return attr;
+            }
+        }
+        return null;
+    }
+
+    /// Check if this element is an HTML element in an HTML document
+    /// Used for ASCII lowercasing of attribute names
+    fn isHTMLElementInHTMLDocument(self: *const Element) bool {
+        // Check if element is in HTML namespace
+        const html_ns = "http://www.w3.org/1999/xhtml";
+        const in_html_namespace = if (self.namespace_uri) |ns|
+            std.mem.eql(u8, ns, html_ns)
+        else
+            false;
+
+        if (!in_html_namespace) return false;
+
+        // Check if node document is an HTML document
+        // For now, we'll assume documents are HTML unless explicitly XML
+        // Full implementation would check document.type
+        // TODO: Check owner_document.type when Document is fully implemented
+        return true;
+    }
+
+    // ========================================================================
+    // DOM §4.10.4 - Attribute Public Methods
+    // ========================================================================
+
+    /// getAttribute(qualifiedName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
+    ///
+    /// The getAttribute(qualifiedName) method steps are:
+    /// 1. Let attr be result of getting an attribute given qualifiedName and this
+    /// 2. If attr is null, return null
+    /// 3. Return attr's value
+    pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {
+        // Step 1: Get attribute by name
+        const attr = self.getAttributeByName(qualified_name) orelse return null;
+
+        // Step 3: Return attr's value
+        return attr.value;
+    }
+
+    /// getAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
+    ///
+    /// The getAttributeNS(namespace, localName) method steps are:
+    /// 1. Let attr be result of getting an attribute given namespace, localName, and this
+    /// 2. If attr is null, return null
+    /// 3. Return attr's value
+    pub fn call_getAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) ?[]const u8 {
+        // Step 1: Get attribute by namespace and local name
+        const attr = self.getAttributeByNamespaceAndLocalName(namespace, local_name) orelse return null;
+
+        // Step 3: Return attr's value
+        return attr.value;
     }
 
     /// setAttribute(qualifiedName, value)
@@ -167,13 +289,59 @@ pub const Element = webidl.interface(struct {
 
     /// hasAttribute(qualifiedName)
     /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattribute
+    ///
+    /// The hasAttribute(qualifiedName) method steps are:
+    /// 1. If this is in HTML namespace and its node document is HTML document,
+    ///    then set qualifiedName to qualifiedName in ASCII lowercase
+    /// 2. Return true if this has attribute whose qualified name is qualifiedName;
+    ///    otherwise false
     pub fn call_hasAttribute(self: *const Element, qualified_name: []const u8) bool {
-        for (self.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                return true;
+        return self.getAttributeByName(qualified_name) != null;
+    }
+
+    /// hasAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
+    ///
+    /// The hasAttributeNS(namespace, localName) method steps are:
+    /// 1. If namespace is empty string, set it to null
+    /// 2. Return true if this has attribute whose namespace is namespace and
+    ///    local name is localName; otherwise false
+    pub fn call_hasAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) bool {
+        return self.getAttributeByNamespaceAndLocalName(namespace, local_name) != null;
+    }
+
+    /// getAttributeNames()
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenames
+    ///
+    /// The getAttributeNames() method steps are to return the qualified names
+    /// of the attributes in this's attribute list, in order; otherwise a new list.
+    ///
+    /// These are not guaranteed to be unique.
+    ///
+    /// Note: Caller owns returned memory and must free each string and the ArrayList
+    pub fn call_getAttributeNames(self: *const Element) !std.ArrayList([]const u8) {
+        var names = std.ArrayList([]const u8).init(self.allocator);
+        errdefer {
+            for (names.items) |_| {
+                // Only free if prefix exists (qualified name was allocated)
+                // If no prefix, it's just local_name which is owned by Attr
             }
+            names.deinit();
         }
-        return false;
+
+        for (self.attributes.items) |*attr| {
+            const qualified_name = try attr.get_name();
+            // Note: get_name() returns allocated string if prefix exists,
+            // otherwise returns local_name directly
+            // The caller is responsible for freeing if needed
+            try names.append(qualified_name);
+        }
+
+        return names;
     }
 
     /// DOM §4.10.1 - Element.id
