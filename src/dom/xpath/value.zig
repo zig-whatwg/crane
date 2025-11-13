@@ -355,8 +355,10 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
             return try allocator.dupe(u8, node.node_name);
         },
         NodeBase.PROCESSING_INSTRUCTION_NODE => {
-            // PI content (excluding target)
-            // TODO: Properly extract PI data when available
+            // PI content (excluding target) - XPath 1.0 §5.2
+            if (NodeBase.asCharacterDataConst(node)) |char_data| {
+                return try allocator.dupe(u8, char_data.get_data());
+            }
             return try allocator.dupe(u8, "");
         },
         NodeBase.ATTRIBUTE_NODE => {
@@ -377,8 +379,9 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
 fn collectTextContent(allocator: std.mem.Allocator, node: *const NodeBase, result: *std.ArrayList(u8)) !void {
     // If this is a text node, add its content
     if (node.node_type == NodeBase.TEXT_NODE or node.node_type == NodeBase.CDATA_SECTION_NODE) {
-        // TODO: Access character data - need to figure out how to get allocator
-        // For now, skip this
+        if (NodeBase.asCharacterDataConst(node)) |char_data| {
+            try result.appendSlice(allocator, char_data.get_data());
+        }
     }
 
     // Recursively collect from children
@@ -388,23 +391,6 @@ fn collectTextContent(allocator: std.mem.Allocator, node: *const NodeBase, resul
         }
     }
 }
-
-// TODO: Re-enable when we have proper text node access
-// /// Helper to collect text content from all descendant text nodes
-// fn collectTextContent(node: *Node, result: *std.ArrayList(u8)) !void {
-//     // If this is a text node, add its content
-//     if (node.node_type == Node.TEXT_NODE or node.node_type == Node.CDATA_SECTION_NODE) {
-//         // TODO: Access actual text data when available
-//         // For now, use node_name as placeholder
-//         try result.appendSlice(node.node_name);
-//     }
-//
-//     // Recursively collect from children
-//     for (node.child_nodes.items) |child| {
-//         try collectTextContent(child, result);
-//     }
-// }
-
 // ============================================================================
 // Tests
 // ============================================================================
