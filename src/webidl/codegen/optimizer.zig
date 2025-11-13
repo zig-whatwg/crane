@@ -357,15 +357,18 @@ fn addImportForType(
     }
 
     // Map type to module
-    var module_name_buf: std.ArrayList(u8) = .empty;
-    defer module_name_buf.deinit(allocator);
-
     const special_case = typeToModule(base_type);
+
+    // Track whether we need to free the module string
+    var module_allocated = false;
     const module: []const u8 = if (special_case.len > 0 and !std.mem.eql(u8, special_case, base_type))
         special_case
     else blk: {
         // Convert PascalCase to snake_case
         // E.g., "EventTarget" -> "event_target", "HTMLCollection" -> "html_collection"
+        var module_name_buf: std.ArrayList(u8) = .empty;
+        defer module_name_buf.deinit(allocator);
+
         for (base_type, 0..) |c, i| {
             if (c >= 'A' and c <= 'Z') {
                 // Uppercase letter
@@ -380,9 +383,10 @@ fn addImportForType(
                 try module_name_buf.append(allocator, c);
             }
         }
+        module_allocated = true;
         break :blk try module_name_buf.toOwnedSlice(allocator);
     };
-    defer if (!std.mem.eql(u8, module, special_case)) allocator.free(module);
+    defer if (module_allocated) allocator.free(module);
 
     if (module.len == 0) return;
 
