@@ -22,7 +22,6 @@ pub const DocumentOrShadowRoot = struct {
     // DocumentOrShadowRoot fields
     // ========================================================================
     /// Custom element registry for this document or shadow root
-    /// TODO: Implement when CustomElementRegistry is available
     custom_element_registry: ?*anyopaque = null,
 
     // ========================================================================

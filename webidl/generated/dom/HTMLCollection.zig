@@ -13,6 +13,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+pub const FilterFn = *const fn (*Element, *const anyopaque) bool;
 /// HTMLCollection is a collection of elements.
 /// 
 /// This is a live collection - it automatically updates when the DOM changes.
@@ -27,15 +29,19 @@ const webidl = @import("webidl");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 const Element = @import("element").Element;
+const Node = @import("node").Node;
 pub const HTMLCollection = struct {
     // ========================================================================
     // HTMLCollection fields
     // ========================================================================
     allocator: Allocator,
-    /// The elements in this collection (live reference)
-    /// NOTE: In a full implementation, this would be computed dynamically
-    /// based on a filter function and root node.
+    /// The elements in this collection (cached)
     elements: infra.List(*Element),
+    /// Root node for live traversal
+    root: ?*Node = null,
+    /// Filter function for live collection
+    filter_fn: ?FilterFn = null,
+    filter_context: ?*const anyopaque = null,
 
     pub fn init(allocator: Allocator) !HTMLCollection {
         return .{
@@ -50,6 +56,33 @@ pub const HTMLCollection = struct {
     // HTMLCollection methods
     // ========================================================================
 
+    pub fn initWithFilter(allocator: Allocator, root: *Node, filter_fn: FilterFn, filter_context: *const anyopaque) !HTMLCollection {
+        var coll = HTMLCollection{
+            .allocator = allocator,
+            .elements = infra.List(*Element).init(allocator),
+            .root = root,
+            .filter_fn = filter_fn,
+            .filter_context = filter_context,
+        };
+        try coll.rebuild();
+        return coll;
+    }
+    fn rebuild(self: *HTMLCollection) !void {
+        if (self.root == null or self.filter_fn == null) return;
+        self.elements.clearRetainingCapacity();
+        try self.collectElements(self.root.?);
+    }
+    fn collectElements(self: *HTMLCollection, node: *Node) !void {
+        for (node.child_nodes.items()) |child| {
+            if (child.node_type == Node.ELEMENT_NODE) {
+                const element: *Element = @ptrCast(child);
+                if (self.filter_fn.?(element, self.filter_context.?)) {
+                    try self.elements.append(element);
+                }
+                try self.collectElements(child);
+            }
+        }
+    }
     /// DOM §4.3.5 - HTMLCollection.length
     /// Returns the number of elements in the collection.
     pub fn get_length(self: *const HTMLCollection) u32 {
@@ -74,7 +107,7 @@ pub const HTMLCollection = struct {
             if (std.mem.eql(u8, id, name)) {
                 return element;
             }
-            
+
             // Check if element's name attribute matches
             if (element.call_getAttribute("name")) |attr_name| {
                 if (std.mem.eql(u8, attr_name, name)) {

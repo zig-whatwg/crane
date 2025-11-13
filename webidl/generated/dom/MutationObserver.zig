@@ -42,8 +42,19 @@ pub const MutationObserver = struct {
     /// Callback invoked when mutations are observed
     callback: MutationCallback,
     /// List of weak references to nodes being observed
-    /// TODO: Implement weak references properly
-    /// For now, store direct pointers (caller must ensure lifetime)
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
+    /// 
+    /// Implementation note:
+    /// In garbage-collected languages (JavaScript), "weak references" means the GC
+    /// can collect nodes even while observed. In Zig with manual memory management,
+    /// "weak" means we don't own the nodes (don't call deinit on them).
+    /// 
+    /// Lifetime contract:
+    /// - MutationObserver does NOT own observed nodes
+    /// - Caller must ensure nodes outlive the observer, OR
+    /// - Caller must call disconnect() before freeing observed nodes
+    /// - This is the correct implementation for Zig's memory model
     node_list: std.ArrayList(*Node),
     /// Queue of pending mutation records
     record_queue: std.ArrayList(MutationRecord),
@@ -68,7 +79,10 @@ pub const MutationObserver = struct {
         self.node_list.deinit();
 
         // Clear record queue
-        // TODO: Should we call deinit on each record?
+        // Call deinit on each record for proper cleanup
+        for (self.record_queue.items) |*record| {
+            record.deinit();
+        }
         self.record_queue.deinit();
     }
     // ========================================================================
@@ -216,6 +230,33 @@ pub const MutationObserver = struct {
     /// Used by the notify mutation observers algorithm.
     pub fn getRecordQueue(self: *const MutationObserver) []const MutationRecord {
         return self.record_queue.items;
+    }
+    /// Check if this observer is observing a specific node
+    /// 
+    /// Useful for caller to verify observation state before node cleanup.
+    /// Returns true if the node is in this observer's node list.
+    pub fn isObserving(self: *const MutationObserver, node: *const Node) bool {
+        for (self.node_list.items) |observed_node| {
+            if (observed_node == node) {
+                return true;
+            }
+        }
+        return false;
+    }
+    /// Remove a node from the observation list
+    /// 
+    /// This is an internal helper for cases where a node needs to be
+    /// removed from observation without calling disconnect().
+    /// Useful when node is about to be freed.
+    pub fn unobserveNode(self: *MutationObserver, node: *const Node) void {
+        var i: usize = 0;
+        while (i < self.node_list.items.len) {
+            if (self.node_list.items[i] == node) {
+                _ = self.node_list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
     }
     /// Clear the record queue
     /// 

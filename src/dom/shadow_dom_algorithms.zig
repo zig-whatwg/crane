@@ -29,13 +29,64 @@ const VALID_SHADOW_HOST_NAMES = [_][]const u8{
     "p",       "section", "span",
 };
 
+/// Check if a name is a valid custom element name
+///
+/// Spec: https://html.spec.whatwg.org/#valid-custom-element-name
+/// A valid custom element name must:
+/// - Contain a hyphen (-)
+/// - Start with a lowercase ASCII letter (a-z)
+/// - Only contain lowercase ASCII letters, digits, hyphens, dots, underscores
+/// - Not be one of the reserved names
+fn isValidCustomElementName(name: []const u8) bool {
+    // Reserved names per HTML spec
+    const RESERVED_NAMES = [_][]const u8{
+        "annotation-xml",
+        "color-profile",
+        "font-face",
+        "font-face-src",
+        "font-face-uri",
+        "font-face-format",
+        "font-face-name",
+        "missing-glyph",
+    };
+
+    // Must contain a hyphen
+    if (std.mem.indexOfScalar(u8, name, '-') == null) {
+        return false;
+    }
+
+    // Must start with lowercase ASCII letter
+    if (name.len == 0 or !std.ascii.isLower(name[0])) {
+        return false;
+    }
+
+    // Check all characters are valid: lowercase letters, digits, hyphen, dot, underscore
+    for (name) |c| {
+        if (!std.ascii.isLower(c) and !std.ascii.isDigit(c) and c != '-' and c != '.' and c != '_') {
+            return false;
+        }
+    }
+
+    // Must not be a reserved name
+    for (RESERVED_NAMES) |reserved| {
+        if (std.mem.eql(u8, name, reserved)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 /// Check if a local name is a valid shadow host name
 ///
 /// DOM §4.10.2 - A valid shadow host name is:
-/// - a valid custom element name (TODO)
+/// - a valid custom element name
 /// - one of the standard HTML elements listed above
 fn isValidShadowHostName(local_name: []const u8) bool {
-    // TODO: Check if it's a valid custom element name
+    // Check if it's a valid custom element name
+    if (isValidCustomElementName(local_name)) {
+        return true;
+    }
 
     // Check against standard HTML element names
     for (VALID_SHADOW_HOST_NAMES) |valid_name| {
@@ -61,11 +112,20 @@ pub fn attachShadowRoot(
     slot_assignment: SlotAssignmentMode,
     registry: ?*anyopaque,
 ) !void {
-    _ = registry; // TODO: Implement CustomElementRegistry support
+    // registry is used below in Step 12
 
     // Step 1: If element's namespace is not the HTML namespace, then throw NotSupportedError
-    // TODO: Check namespace when Element has namespace field accessible
-    // For now, assume HTML namespace
+    // HTML namespace is "http://www.w3.org/1999/xhtml"
+    const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+
+    if (element.namespace_uri) |ns| {
+        if (!std.mem.eql(u8, ns, HTML_NAMESPACE)) {
+            return error.NotSupportedError;
+        }
+    } else {
+        // If namespace_uri is null, assume HTML namespace for elements created via createElement
+        // This is the common case for DOM manipulation
+    }
 
     // Step 2: If element's local name is not a valid shadow host name, then throw NotSupportedError
     if (!isValidShadowHostName(element.tag_name)) {
@@ -73,7 +133,16 @@ pub fn attachShadowRoot(
     }
 
     // Step 3: If element's local name is a valid custom element name, or element's "is" value is non-null:
-    // TODO: Implement custom element checks
+    if (isValidCustomElementName(element.local_name) or element.is_value != null) {
+        // Step 3.1: Let definition be the result of looking up a custom element definition
+        // given element's custom element registry, its namespace, its local name, and its is value
+        // Note: Custom element registry lookup deferred until Custom Elements spec implementation
+
+        // Step 3.2: If definition is not null and definition's disable shadow is true,
+        // then throw NotSupportedError
+        // Note: This check requires Custom Element definition lookup
+        // For now, we allow shadow attachment on all custom elements
+    }
 
     // Step 4: If element is a shadow host:
     if (element.shadow_root) |current_shadow_root| {
@@ -89,7 +158,18 @@ pub fn attachShadowRoot(
 
         // Step 4.3: Otherwise:
         // Step 4.3.1: Remove all of currentShadowRoot's children, in tree order
-        // TODO: Implement when ShadowRoot extends DocumentFragment with child removal
+        // ShadowRoot extends DocumentFragment which extends Node, so it has child_nodes
+        const shadow_node: *Node = @ptrCast(current_shadow_root);
+        const children = shadow_node.child_nodes.items;
+
+        // Remove children in reverse order to avoid index shifting issues
+        var i: usize = children.len;
+        while (i > 0) {
+            i -= 1;
+            const child = children[i];
+            // Use removeChild to properly remove each child
+            _ = try shadow_node.call_removeChild(child);
+        }
 
         // Step 4.3.2: Set currentShadowRoot's declarative to false
         current_shadow_root.setDeclarative(false);
@@ -118,7 +198,9 @@ pub fn attachShadowRoot(
 
     // Step 7: If element's custom element state is "precustomized" or "custom",
     // then set shadow's available to element internals to true
-    // TODO: Implement when Element has custom_element_state field
+    if (element.custom_element_state == .precustomized or element.custom_element_state == .custom) {
+        shadow.setAvailableToElementInternals(true);
+    }
 
     // Step 8: Set shadow's slot assignment to slotAssignment
     // (Done in init above)
@@ -133,7 +215,8 @@ pub fn attachShadowRoot(
     // (Done in init above)
 
     // Step 12: Set shadow's custom element registry to registry
-    // TODO: Implement when ShadowRoot has custom_element_registry setter
+    // ShadowRoot includes DocumentOrShadowRoot mixin which has setCustomElementRegistry
+    shadow.setCustomElementRegistry(registry);
 
     // Step 13: Set element's shadow root to shadow
     element.shadow_root = shadow;

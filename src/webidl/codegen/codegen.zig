@@ -201,16 +201,33 @@ const ImportSet = struct {
         try self.addPackageType("RegisteredObserver", "registered_observer");
         try self.addPackageType("GetRootNodeOptions", "node");
 
-        // Don't import Document/Element if this IS Document/Element
+        // Don't import Document/Element/Attr/CharacterData if this IS one of them
         if (!std.mem.eql(u8, class_name, "Document")) {
             try self.addPackageType("Document", "document");
         }
         if (!std.mem.eql(u8, class_name, "Element")) {
             try self.addPackageType("Element", "element");
         }
+        if (!std.mem.eql(u8, class_name, "Attr")) {
+            try self.addPackageType("Attr", "attr");
+        }
+        if (!std.mem.eql(u8, class_name, "CharacterData")) {
+            try self.addPackageType("CharacterData", "character_data");
+        }
 
+        // Add all Node type constants
         try self.addPackageConst("ELEMENT_NODE", "node");
+        try self.addPackageConst("ATTRIBUTE_NODE", "node");
+        try self.addPackageConst("TEXT_NODE", "node");
+        try self.addPackageConst("CDATA_SECTION_NODE", "node");
+        try self.addPackageConst("ENTITY_REFERENCE_NODE", "node");
+        try self.addPackageConst("ENTITY_NODE", "node");
+        try self.addPackageConst("PROCESSING_INSTRUCTION_NODE", "node");
+        try self.addPackageConst("COMMENT_NODE", "node");
         try self.addPackageConst("DOCUMENT_NODE", "node");
+        try self.addPackageConst("DOCUMENT_TYPE_NODE", "node");
+        try self.addPackageConst("DOCUMENT_FRAGMENT_NODE", "node");
+        try self.addPackageConst("NOTATION_NODE", "node");
         try self.addPackageConst("DOCUMENT_POSITION_DISCONNECTED", "node");
     }
 

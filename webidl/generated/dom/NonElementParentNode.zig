@@ -55,10 +55,11 @@ pub const NonElementParentNode = struct {
 
                         // Check if id attribute matches
                         // Per spec: element's ID is the value of its "id" attribute
-                        // For now, compare node_name as a placeholder until attributes are fully integrated
-                        // TODO: Once NamedNodeMap is fully integrated, use: element.attributes.getNamedItem("id")
-                        if (std.mem.eql(u8, element.node_name, target_id)) {
-                            return element;
+                        const attributes = element.get_attributes();
+                        if (attributes.call_getNamedItem("id")) |id_attr| {
+                            if (std.mem.eql(u8, id_attr.value, target_id)) {
+                                return element;
+                            }
                         }
                     }
 

@@ -21,8 +21,8 @@ pub const DocumentType = @import("document_type").DocumentType;
 /// Accessed via document.implementation getter.
 const Allocator = std.mem.Allocator;
 const Document = @import("document").Document;
-const Node = @import("node").Node;
 const Element = @import("element").Element;
+const Node = @import("node").Node;
 const Text = @import("text").Text;
 pub const DOMImplementation = struct {
     // ========================================================================
@@ -73,7 +73,10 @@ pub const DOMImplementation = struct {
         // Step 2: Create and return new doctype
         const doctype = try self.allocator.create(DocumentType);
         doctype.* = try DocumentType.init(self.allocator, name, public_id, system_id);
-        // TODO: Set node document to self.document when Node has ownerDocument
+
+        // Set node document
+        doctype.base.owner_document = self.document;
+
         return doctype;
     }
     /// createDocument(namespace, qualifiedName, doctype)
@@ -105,7 +108,7 @@ pub const DOMImplementation = struct {
         // Step 1: Create new XMLDocument
         const document = try self.allocator.create(Document);
         document.* = try Document.init(self.allocator);
-        // TODO: Mark as XMLDocument when we have document type distinction
+        document.document_type = .xml;
 
         const document_node: *Node = @ptrCast(document);
 
@@ -131,13 +134,19 @@ pub const DOMImplementation = struct {
         }
 
         // Step 6: Set document's origin
-        // TODO: Set origin from self.document.origin when origin tracking is implemented
+        document.origin = self.document.origin;
 
         // Step 7: Set content type based on namespace
-        // TODO: Set contentType when Document has contentType field
-        // HTML namespace: "application/xhtml+xml"
-        // SVG namespace: "image/svg+xml"
-        // Other: "application/xml"
+        const Namespaces = @import("infra").Namespaces;
+        document.content_type = if (namespace) |ns| blk: {
+            if (std.mem.eql(u8, ns, Namespaces.HTML)) {
+                break :blk "application/xhtml+xml";
+            } else if (std.mem.eql(u8, ns, Namespaces.SVG)) {
+                break :blk "image/svg+xml";
+            } else {
+                break :blk "application/xml";
+            }
+        } else "application/xml";
 
         // Step 8: Return document
         return document;
@@ -167,12 +176,12 @@ pub const DOMImplementation = struct {
         // Step 1: Create new HTML document
         const doc = try self.allocator.create(Document);
         doc.* = try Document.init(self.allocator);
-        // TODO: Mark as HTML document when we have document type distinction
+        doc.document_type = .html;
 
         const doc_node: *Node = @ptrCast(doc);
 
         // Step 2: Set content type to "text/html"
-        // TODO: Set contentType when Document has contentType field
+        doc.content_type = "text/html";
 
         // Step 3: Create and append doctype
         const doctype = try doc.call_createDocumentType("html", "", "");
@@ -207,7 +216,7 @@ pub const DOMImplementation = struct {
         _ = try mutation.append(body_node, html_node);
 
         // Step 8: Set doc's origin
-        // TODO: Set origin from self.document.origin when origin tracking is implemented
+        doc.origin = self.document.origin;
 
         // Step 9: Return doc
         return doc;

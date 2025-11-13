@@ -24,10 +24,21 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
-const ELEMENT_NODE = @import("node").ELEMENT_NODE;
-const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
-const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
+const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
+const TEXT_NODE = @import("node").TEXT_NODE;
+const CDATA_SECTION_NODE = @import("node").CDATA_SECTION_NODE;
+const ENTITY_REFERENCE_NODE = @import("node").ENTITY_REFERENCE_NODE;
+const ENTITY_NODE = @import("node").ENTITY_NODE;
+const PROCESSING_INSTRUCTION_NODE = @import("node").PROCESSING_INSTRUCTION_NODE;
+const COMMENT_NODE = @import("node").COMMENT_NODE;
+const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_TYPE_NODE = @import("node").DOCUMENT_TYPE_NODE;
+const DOCUMENT_FRAGMENT_NODE = @import("node").DOCUMENT_FRAGMENT_NODE;
+const NOTATION_NODE = @import("node").NOTATION_NODE;
+const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const Text = @import("text").Text;
 pub const CDATASection = struct {
     base: TextBase,
@@ -107,10 +118,11 @@ pub const CDATASection = struct {
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
             // Steps 6.2-6.5: Update live ranges
-            // TODO: Implement when Range is fully implemented
-            // For each live range whose start node is node and start offset > offset,
-            // set its start node to new node and decrease its start offset by offset
-            // Similar updates for end node and parent ranges
+            if (self_node.owner_document) |owner_doc| {
+                const doc = try Document.fromNode(owner_doc);
+                const range_tracking = @import("range_tracking");
+                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);
+            }
         }
 
         // Step 7: Replace data with node, offset, count, and empty string
@@ -124,14 +136,31 @@ pub const CDATASection = struct {
     /// 
     /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const CDATASection) ![]const u8 {
-        // Simplified implementation - just return this node's data
-        // Full implementation would need to:
-        // 1. Find all contiguous Text node siblings (previous and next)
-        // 2. Concatenate their data in tree order
-        //
-        // For now, without full tree implementation, just return own data
-        // TODO: Implement contiguous Text node traversal
-        return self.get_data();
+        const dom = @import("dom");
+        var result = std.ArrayList(u8).init(self.allocator);
+        errdefer result.deinit();
+
+        // Collect all contiguous Text nodes in tree order
+        // Start from the first contiguous Text node (walk backward to find start)
+        var first = &self.base.base;
+        while (dom.tree_helpers.getPreviousSibling(first)) |prev| {
+            if (prev.node_type != Node.TEXT_NODE) break;
+            first = prev;
+        }
+
+        // Walk forward from first, collecting data
+        var current: ?*Node = first;
+        while (current) |node| {
+            if (node.node_type == Node.TEXT_NODE) {
+                const textNode = try CDATASection.fromNode(node);
+                try result.appendSlice(textNode.base.get_data());
+                current = dom.tree_helpers.getNextSibling(node);
+            } else {
+                break;
+            }
+        }
+
+        return result.toOwnedSlice();
     }
     /// DOM §4.11 - data getter
     /// Returns this's data.
@@ -221,7 +250,20 @@ pub const CDATASection = struct {
             count = length - offset;
         }
 
-        // TODO: Step 4 - Queue mutation record (requires mutation observers)
+        // Step 4: Queue mutation record
+        const mutation = @import("mutation");
+        const empty_nodes: []const *Node = &[_]*Node{};
+        try mutation.queueMutationRecord(
+            "characterData",
+            &self.base,
+            null,
+            null,
+            self.data, // oldValue
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
 
         // Steps 5-7: Build new data string
         const new_len = length - count + @as(u32, @intCast(data.len));
@@ -243,8 +285,31 @@ pub const CDATASection = struct {
         self.allocator.free(self.data);
         self.data = new_data;
 
-        // TODO: Steps 8-11 - Update ranges (requires Range implementation)
-        // TODO: Step 12 - Run children changed steps for parent
+        // Steps 8-11 - Update ranges
+        if (self.base.owner_document) |owner_doc| {
+            if (Document.fromNode(owner_doc)) |doc| {
+                const range_tracking = @import("range_tracking");
+                const new_length = @as(u32, @intCast(data.len));
+                range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+            } else |_| {
+                // Document conversion failed, skip range updates
+            }
+        }
+
+        // Step 12 - Run children changed steps for parent
+        // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
+        // Spec: https://dom.spec.whatwg.org/#concept-node-replace
+        //
+        // Children changed steps are extension points for other specifications (e.g., HTML)
+        // to define custom behavior when children change. Examples:
+        // - Shadow DOM slot assignment algorithm
+        // - Form-associated element connections
+        // - Custom element reactions
+        if (self.base.parent_node) |parent| {
+            // Call the mutation module's children changed callback system
+            // This will invoke any registered callbacks from other specifications
+            @import("mutation").runChildrenChangedSteps(parent);
+        }
     }
 
     // WebIDL extended attributes metadata

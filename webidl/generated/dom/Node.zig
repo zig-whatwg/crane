@@ -15,6 +15,7 @@ const webidl = @import("webidl");
 
 pub const EventTarget = @import("event_target").EventTarget;
 pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+pub const Attr = @import("attr").Attr;
 /// Runtime type tag for Node hierarchy.
 /// Used for safe downcasting from NodeBase to derived types.
 pub const NodeTypeTag = enum {
@@ -50,6 +51,14 @@ pub const NodeBase = struct {
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
+    cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
+    cached_child_nodes: ?*@import("node_list").NodeList = null,
 
     // ========================================================================
     // Base struct initialization helpers
@@ -345,6 +354,14 @@ pub const Node = struct {
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
+    cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void = null,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
+    cached_child_nodes: ?*@import("node_list").NodeList = null,
 
     pub const ELEMENT_NODE: u16 = 1;
     pub const ATTRIBUTE_NODE: u16 = 2;
@@ -377,6 +394,8 @@ pub const Node = struct {
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             // NOTE: Parent EventTarget initialization is handled by codegen
         };
     }
@@ -384,6 +403,12 @@ pub const Node = struct {
         // NOTE: EventTarget parent cleanup is handled by codegen
         self.child_nodes.deinit();
         self.registered_observers.deinit();
+
+        // Clean up cached NodeList if it exists
+        if (self.cached_child_nodes) |list| {
+            list.deinit();
+            self.allocator.destroy(list);
+        }
     
         
         // Clean up base fields
@@ -449,15 +474,28 @@ pub const Node = struct {
     }
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Node, options: ?GetRootNodeOptions) *Node {
-        // TODO: Support shadow-including root when options.composed is true
-        _ = options;
-        // For now, return regular root (from tree.zig)
-        var current = self;
-        while (current.parent_node) |parent| {
-            current = parent;
+        const tree = @import("dom").tree;
+
+        // Check if we need shadow-including root
+        const composed = if (options) |opts| opts.composed else false;
+
+        if (composed) {
+            // Return shadow-including root
+            // TODO: Implement shadow-including root traversal when Shadow DOM is fully integrated
+            // For now, shadow-including root falls back to regular root
+            // Shadow-including root algorithm:
+            // - Get node's root
+            // - If root is shadow root, recursively get root's host's shadow-including root
+            // - Otherwise return root
+            return tree.root(self);
+        } else {
+            // Return regular root
+            return tree.root(self);
         }
-        return current;
     }
     /// contains(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
@@ -540,9 +578,18 @@ pub const Node = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                // TODO: Cast to DocumentType when implemented
-                // For now, just check node_name
-                if (!std.mem.eql(u8, a.node_name, b.node_name)) return false;
+                const DocumentType = @import("document_type").DocumentType;
+                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
+                const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
+
+                // Check name
+                if (!std.mem.eql(u8, doctype_a.name, doctype_b.name)) return false;
+
+                // Check public ID
+                if (!std.mem.eql(u8, doctype_a.public_id, doctype_b.public_id)) return false;
+
+                // Check system ID
+                if (!std.mem.eql(u8, doctype_a.system_id, doctype_b.system_id)) return false;
             },
             ELEMENT_NODE => {
                 // Element: check namespace, namespace prefix, local name, and attribute list size
@@ -577,7 +624,6 @@ pub const Node = struct {
             ATTRIBUTE_NODE => {
                 // Attr: check namespace, local name, and value
                 // Note: Attr nodes don't participate in tree, but we check for completeness
-                const Attr = @import("attr").Attr;
                 const attr_a: *const Attr = @ptrCast(@alignCast(a));
                 const attr_b: *const Attr = @ptrCast(@alignCast(b));
                 return Node.attributeEquals(attr_a, attr_b);
@@ -653,8 +699,16 @@ pub const Node = struct {
     pub fn call_cloneNode(self: *Node, deep: bool) !*Node {
         // Step 1: If this is a shadow root, throw NotSupportedError
         if (self.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-            // TODO: Check if this is specifically a ShadowRoot and throw error
-            // For now, allow cloning of DocumentFragment
+            // Check if this is specifically a ShadowRoot
+            // ShadowRoot inherits from DocumentFragment, so we need to check the type tag
+            const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
+
+            // Try to access as DocumentFragmentBase to check type tag
+            // This is safe because DocumentFragment/ShadowRoot have base as first field
+            const frag_base: *const DocumentFragmentBase = @ptrCast(@alignCast(self));
+            if (frag_base.type_tag == .ShadowRoot) {
+                return error.NotSupportedError;
+            }
         }
 
         // Step 2: Return the result of cloning this node with subtree set to deep
@@ -678,8 +732,11 @@ pub const Node = struct {
         // Step 2: Let copy be the result of cloning a single node
         var copy = try Node.cloneSingleNode(node, document, fallback_registry);
 
-        // Step 3: Run any cloning steps (not implemented - would be extension point for HTML etc.)
-        // TODO: Call cloning steps hook if defined
+        // Step 3: Run any cloning steps defined for node
+        // Specifications may define cloning steps for specific node types
+        if (node.cloning_steps_hook) |hook| {
+            try hook(node, copy, subtree);
+        }
 
         // Step 4: If parent is non-null, append copy to parent
         if (parent) |p| {
@@ -694,8 +751,50 @@ pub const Node = struct {
             }
         }
 
-        // Step 6: If node is an element and shadow host, clone shadow root (not implemented yet)
-        // TODO: Handle shadow root cloning when shadow DOM is fully implemented
+        // Step 6: If node is an element, node is shadow host, and shadow root is clonable, clone shadow
+        if (node.node_type == Node.ELEMENT_NODE) {
+            const elem: *const Element = @ptrCast(@alignCast(node));
+            if (elem.shadow_root) |shadow| {
+                // Check if shadow root is clonable
+                if (shadow.clonable_flag) {
+                    // Clone the shadow root per spec
+                    const ShadowRoot = @import("shadow_root").ShadowRoot;
+                    const copy_elem: *Element = @ptrCast(@alignCast(copy));
+
+                    // Assert: copy is not a shadow host (should be true since we just created it)
+                    std.debug.assert(copy_elem.shadow_root == null);
+
+                    // Step 6.2-6.4: Determine shadow root registry and attach shadow root
+                    // For now, we use a simplified version without full registry support
+                    // TODO: Implement full custom element registry handling
+
+                    // Attach shadow root to copy
+                    var copy_shadow = try ShadowRoot.init(
+                        copy.allocator,
+                        copy_elem,
+                        shadow.shadow_mode,
+                        shadow.delegates_focus_flag,
+                        shadow.slot_assignment_mode,
+                        shadow.clonable_flag,
+                        shadow.serializable_flag,
+                        shadow.available_to_element_internals,
+                        false, // declarative will be set next
+                    );
+
+                    // Step 6.5: Set copy's shadow root's declarative to node's shadow root's declarative
+                    copy_shadow.declarative_flag = shadow.declarative_flag;
+
+                    copy_elem.shadow_root = &copy_shadow;
+
+                    // Step 6.6: Clone shadow root children
+                    const shadow_node = shadow.asNode();
+                    for (shadow_node.child_nodes.items) |child| {
+                        const copy_shadow_node = copy_shadow.asNode();
+                        _ = try Node.cloneNodeInternal(child, document, subtree, copy_shadow_node, null);
+                    }
+                }
+            }
+        }
 
         // Step 7: Return copy
         return copy;
@@ -721,7 +820,6 @@ pub const Node = struct {
 
                 // Clone attributes
                 for (elem.attributes.items) |attr| {
-                    const Attr = @import("attr").Attr;
                     const copy_attr = Attr{
                         .allocator = elem.allocator,
                         .namespace_uri = attr.namespace_uri,
@@ -763,7 +861,6 @@ pub const Node = struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Clone Attr
-                const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(node));
 
                 var copy_attr = try Attr.init(
@@ -825,15 +922,31 @@ pub const Node = struct {
         // Returns parent if it's an Element, null otherwise
         const parent = self.parent_node orelse return null;
         if (parent.node_type == ELEMENT_NODE) {
-            // TODO: Proper type casting when Element type is integrated
-            return @ptrCast(parent);
+            // Cast to Element - safe because we checked node_type
+            return @ptrCast(@alignCast(parent));
         }
         return null;
     }
-    pub fn get_childNodes(self: *const Node) *const infra.List(*Node) {
-        // Returns a NodeList rooted at this matching only children
-        // TODO: Return actual NodeList interface when implemented
-        return &self.child_nodes;
+    pub fn get_childNodes(self: *Node) !*@import("node_list").NodeList {
+        // [SameObject] - Return the same NodeList object each time
+        // The NodeList is a live view of this node's children
+
+        if (self.cached_child_nodes) |list| {
+            return list;
+        }
+
+        // Create new NodeList on first access
+        const NodeList = @import("node_list").NodeList;
+        const list = try self.allocator.create(NodeList);
+        list.* = try NodeList.init(self.allocator);
+
+        // Populate with current children (live view will track changes)
+        for (self.child_nodes.items) |child| {
+            try list.addNode(child);
+        }
+
+        self.cached_child_nodes = list;
+        return list;
     }
     pub fn get_firstChild(self: *const Node) ?*Node {
         if (self.child_nodes.len > 0) {
@@ -897,18 +1010,55 @@ pub const Node = struct {
     }
     pub fn get_nodeValue(self: *const Node) ?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
-        // Returns value for Attr and CharacterData, null otherwise
-        // TODO: Implement for Attr and CharacterData nodes
-        _ = self;
-        return null;
+        // The nodeValue getter steps are to return the following, switching on the interface:
+        // - Attr: this's value
+        // - CharacterData: this's data
+        // - Otherwise: null
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node
+                const attr: *const Attr = @ptrCast(@alignCast(self));
+                return attr.value;
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes (Text, Comment, ProcessingInstruction, CDATASection)
+                const char_data: *const CharacterData = @ptrCast(@alignCast(self));
+                return char_data.data;
+            },
+            else => {
+                // All other node types return null
+                return null;
+            },
+        }
     }
-    pub fn set_nodeValue(self: *Node, value: ?[]const u8) void {
+    pub fn set_nodeValue(self: *Node, value: ?[]const u8) !void {
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
-        // If null, treat as empty string
-        // Set value for Attr, replace data for CharacterData
-        // TODO: Implement for Attr and CharacterData nodes
-        _ = self;
-        _ = value;
+        // The nodeValue setter steps are to, if given value is null, act as if it was empty string
+        // Then:
+        // - Attr: Set an existing attribute value with this and the given value
+        // - CharacterData: Replace data with node this, offset 0, count this's length, data given value
+        // - Otherwise: Do nothing
+
+        const str_value = value orelse "";
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node - set an existing attribute value
+                const attr: *Attr = @ptrCast(@alignCast(self));
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, str_value);
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes - replace data
+                const char_data: *CharacterData = @ptrCast(@alignCast(self));
+                // Replace data: offset 0, count = length, data = str_value
+                try char_data.call_replaceData(0, @intCast(char_data.data.len), str_value);
+            },
+            else => {
+                // All other node types do nothing
+            },
+        }
     }
     pub fn get_textContent(self: *const Node) !?[]const u8 {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
@@ -933,7 +1083,6 @@ pub const Node = struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Return node's value (no allocation - returns reference)
-                const Attr = @import("attr").Attr;
                 const attr: *const Attr = @ptrCast(@alignCast(node));
                 return attr.value;
             },
@@ -985,11 +1134,9 @@ pub const Node = struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Set an existing attribute value
-                const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(node));
-                // TODO: Use "set an existing attribute value" algorithm
-                // For now, just update the value
-                attr.value = value;
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, value);
             },
             Node.TEXT_NODE, Node.COMMENT_NODE, Node.CDATA_SECTION_NODE => {
                 // Replace data with node, offset 0, count node's length, and data value
@@ -1027,26 +1174,175 @@ pub const Node = struct {
     /// lookupPrefix(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const Node, namespace_param: ?[]const u8) ?[]const u8 {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = namespace_param;
-        return null;
+        // Spec step 1: If namespace is null or empty, return null
+        const namespace = namespace_param orelse return null;
+        if (namespace.len == 0) return null;
+
+        // Spec step 2: Switch on node type
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                // Return result of locating a namespace prefix
+                return self.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_NODE => {
+                // If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+                return doc_elem.base.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            else => {
+                // For other node types, use parent element if exists
+                const parent = self.parent_element orelse return null;
+                return parent.base.locateNamespacePrefix(namespace);
+            },
+        }
     }
     /// lookupNamespaceURI(prefix)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
-    pub fn call_lookupNamespaceURI(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = prefix;
-        return null;
+    pub fn call_lookupNamespaceURI(self: *const Node, prefix_param: ?[]const u8) ?[]const u8 {
+        // Spec step 1: If prefix is empty string, set to null
+        const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
+
+        // Spec step 2: Return result of locating a namespace
+        return self.locateNamespace(prefix);
     }
     /// isDefaultNamespace(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Node, namespace_param: ?[]const u8) bool {
-        // TODO: Implement full algorithm from spec
-        _ = self;
-        _ = namespace_param;
-        return false;
+        // Spec step 1: If namespace is empty string, set to null
+        const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
+
+        // Spec step 2: Let defaultNamespace be result of locating namespace using null prefix
+        const default_namespace = self.locateNamespace(null);
+
+        // Spec step 3: Return true if defaultNamespace equals namespace
+        if (default_namespace == null and namespace == null) return true;
+        if (default_namespace == null or namespace == null) return false;
+        return std.mem.eql(u8, default_namespace.?, namespace.?);
+    }
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
+    fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
+        if (self.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        for (elem.attributes.items) |attr| {
+            if (attr.prefix) |attr_prefix| {
+                if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
+                    return attr.local_name;
+                }
+            }
+        }
+
+        // Step 3: If parent element exists, recurse
+        if (self.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    }
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
+    fn locateNamespace(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // If it has an attribute whose namespace is XMLNS namespace, prefix is "xmlns",
+                // and local name is prefix, return its value if not empty string, else null.
+                // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
+                // prefix is null, and local name is "xmlns", return its value if not empty, else null.
+                for (elem.attributes.items) |attr| {
+                    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+                    if (attr.namespace_uri) |attr_ns| {
+                        if (std.mem.eql(u8, attr_ns, xmlns_ns)) {
+                            // Check if this matches our prefix
+                            if (prefix) |p| {
+                                // Looking for xmlns:prefix attribute
+                                if (attr.prefix) |attr_prefix| {
+                                    if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.local_name, p)) {
+                                        return if (attr.value.len > 0) attr.value else null;
+                                    }
+                                }
+                            } else {
+                                // Looking for xmlns attribute (default namespace)
+                                if (attr.prefix == null and std.mem.eql(u8, attr.local_name, "xmlns")) {
+                                    return if (attr.value.len > 0) attr.value else null;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step 5: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self));
+                const element = attr.owner_element orelse return null;
+
+                // Step 2: Return result of locating namespace on element
+                return element.base.locateNamespace(prefix);
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
     }
     /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
@@ -1069,9 +1365,19 @@ pub const Node = struct {
         }
     }
     /// Remove all transient registered observers whose source matches the given registered observer
-    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) !void {
-        // TODO: Implement transient registered observers
-        // For now, this is a no-op since we haven't implemented transient observers yet
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
+    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
         _ = self;
         _ = source;
     }
@@ -1133,8 +1439,18 @@ pub const Node = struct {
         }
 
         // Step 6: If listener's signal is not null, add abort steps
-        if (listener.signal) |_| {
-            // TODO: Add abort steps to signal to remove listener
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
         }
     }
     /// addEventListener(type, callback, options)
@@ -1232,10 +1548,12 @@ pub const Node = struct {
         // Step 2: Initialize isTrusted to false
         event.is_trusted = false;
 
-        // Step 3: Dispatch event to this
-        // TODO: Implement dispatch algorithm (see whatwg-cbk)
-        _ = self;
-        @panic("dispatchEvent - dispatch algorithm not yet implemented (see whatwg-cbk)");
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     }
 
     // WebIDL extended attributes metadata

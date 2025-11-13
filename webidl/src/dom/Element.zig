@@ -14,7 +14,6 @@ const Slottable = @import("slottable").Slottable;
 const NodeList = @import("node_list").NodeList;
 const dom_types = @import("dom_types");
 const Allocator = std.mem.Allocator;
-const Attr = @import("attr").Attr;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Text = @import("text").Text;

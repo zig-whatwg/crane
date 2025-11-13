@@ -79,12 +79,9 @@ pub const NamedNodeMap = struct {
         self: *const NamedNodeMap,
         namespace: ?[]const u8,
         local_name: []const u8,
-    ) !?*Attr {
-        _ = self;
-        _ = namespace;
-        _ = local_name;
-        // TODO: Implement namespace-aware attribute handling
-        return error.NotImplemented;
+    ) ?*Attr {
+        // Get an attribute given namespace, localName, and element
+        return getAttributeByNamespaceAndLocalName(namespace, local_name, self.element);
     }
     /// DOM §4.9 - setNamedItem(attr)
     /// Sets the given attribute. Returns the old attribute if replaced, or null.
@@ -190,10 +187,13 @@ pub const NamedNodeMap = struct {
         attribute.owner_element = element;
 
         // Step 3: Set attribute's node document to element's node document
-        // TODO: Set node document when Attr has Node fields accessible
+        // Access through Node base class
+        if (element.base.owner_document) |doc| {
+            attribute.base.owner_document = doc;
+        }
 
         // Step 4: Handle attribute changes
-        // TODO: Call handleAttributeChanges(attribute, element, null, attribute.value)
+        try Attr.handleAttributeChanges(attribute, element, null, attribute.value);
     }
     /// Remove an attribute - DOM Spec algorithm
     pub fn removeAttribute(attribute: *Attr) !void {
@@ -212,7 +212,7 @@ pub const NamedNodeMap = struct {
         attribute.owner_element = null;
 
         // Step 4: Handle attribute changes
-        // TODO: Call handleAttributeChanges(attribute, element, attribute.value, null)
+        try Attr.handleAttributeChanges(attribute, element, attribute.value, "");
     }
     /// Replace an attribute - DOM Spec algorithm
     pub fn replaceAttribute(old_attribute: *Attr, new_attribute: *Attr) !void {
@@ -231,12 +231,15 @@ pub const NamedNodeMap = struct {
         new_attribute.owner_element = element;
 
         // Step 4: Set newAttribute's node document to element's node document
-        // TODO: Set node document when accessible
+        if (element.base.owner_document) |doc| {
+            new_attribute.base.owner_document = doc;
+        }
 
         // Step 5: Set oldAttribute's element to null
         old_attribute.owner_element = null;
 
-        // TODO: Handle attribute changes
+        // Step 6: Handle attribute changes
+        try Attr.handleAttributeChanges(new_attribute, element, old_attribute.value, new_attribute.value);
     }
     /// Get an attribute by namespace and local name
     fn getAttributeByNamespaceAndLocalName(
@@ -263,10 +266,13 @@ pub const NamedNodeMap = struct {
     /// Remove an attribute by name - DOM Spec algorithm
     pub fn removeAttributeByName(qualified_name: []const u8, element: *Element) !?*Attr {
         // Step 1: Let attr be the result of getting an attribute
+        // Get an attribute given qualifiedName and element
         for (element.attributes.items, 0..) |*attr, i| {
-            // For now, compare qualified name to local name (simplified)
-            // TODO: Full qualified name handling with namespace prefix
-            if (std.mem.eql(u8, attr.local_name, qualified_name)) {
+            // Compare qualified name (prefix:localName or just localName)
+            const attr_qualified_name = try attr.get_name();
+            defer if (attr.prefix != null) element.allocator.free(attr_qualified_name);
+
+            if (std.mem.eql(u8, attr_qualified_name, qualified_name)) {
                 // Step 2: If attr is non-null, remove attr
                 const removed = element.attributes.orderedRemove(i);
                 removed.owner_element = null;

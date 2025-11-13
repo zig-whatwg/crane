@@ -9,6 +9,7 @@ const dom_types = @import("dom_types");
 
 const Allocator = std.mem.Allocator;
 const Node = dom_types.Node;
+const Document = @import("document").Document;
 
 /// DOM Spec: interface CharacterData : Node
 pub const CharacterData = webidl.interface(struct {
@@ -165,7 +166,6 @@ pub const CharacterData = webidl.interface(struct {
 
         // Steps 8-11 - Update ranges
         if (self.base.owner_document) |owner_doc| {
-            const Document = @import("document").Document;
             if (Document.fromNode(owner_doc)) |doc| {
                 const range_tracking = @import("range_tracking");
                 const new_length = @as(u32, @intCast(data.len));

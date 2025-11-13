@@ -13,6 +13,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom_types = @import("dom_types");
+
+const Node = dom_types.Node;
 /// Runtime type tag for CharacterData hierarchy.
 /// Used for safe downcasting from CharacterDataBase to derived types.
 pub const CharacterDataTypeTag = enum {
@@ -148,8 +150,19 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
+const Attr = @import("attr").Attr;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
+const TEXT_NODE = @import("node").TEXT_NODE;
+const CDATA_SECTION_NODE = @import("node").CDATA_SECTION_NODE;
+const ENTITY_REFERENCE_NODE = @import("node").ENTITY_REFERENCE_NODE;
+const ENTITY_NODE = @import("node").ENTITY_NODE;
+const PROCESSING_INSTRUCTION_NODE = @import("node").PROCESSING_INSTRUCTION_NODE;
+const COMMENT_NODE = @import("node").COMMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_TYPE_NODE = @import("node").DOCUMENT_TYPE_NODE;
+const DOCUMENT_FRAGMENT_NODE = @import("node").DOCUMENT_FRAGMENT_NODE;
+const NOTATION_NODE = @import("node").NOTATION_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
@@ -171,7 +184,6 @@ pub const CharacterData = struct {
             .base = NodeBase.initForCharacterData(allocator),
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
-            // TODO: Initialize Node parent fields (will be added by codegen)
         };
     }
     pub fn deinit(self: *CharacterData) void {
@@ -553,7 +565,20 @@ pub const CharacterData = struct {
             count = length - offset;
         }
 
-        // TODO: Step 4 - Queue mutation record (requires mutation observers)
+        // Step 4: Queue mutation record
+        const mutation = @import("mutation");
+        const empty_nodes: []const *Node = &[_]*Node{};
+        try mutation.queueMutationRecord(
+            "characterData",
+            &self.base,
+            null,
+            null,
+            self.data, // oldValue
+            empty_nodes,
+            empty_nodes,
+            null,
+            null,
+        );
 
         // Steps 5-7: Build new data string
         const new_len = length - count + @as(u32, @intCast(data.len));
@@ -575,8 +600,31 @@ pub const CharacterData = struct {
         self.allocator.free(self.data);
         self.data = new_data;
 
-        // TODO: Steps 8-11 - Update ranges (requires Range implementation)
-        // TODO: Step 12 - Run children changed steps for parent
+        // Steps 8-11 - Update ranges
+        if (self.base.owner_document) |owner_doc| {
+            if (Document.fromNode(owner_doc)) |doc| {
+                const range_tracking = @import("range_tracking");
+                const new_length = @as(u32, @intCast(data.len));
+                range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+            } else |_| {
+                // Document conversion failed, skip range updates
+            }
+        }
+
+        // Step 12 - Run children changed steps for parent
+        // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
+        // Spec: https://dom.spec.whatwg.org/#concept-node-replace
+        //
+        // Children changed steps are extension points for other specifications (e.g., HTML)
+        // to define custom behavior when children change. Examples:
+        // - Shadow DOM slot assignment algorithm
+        // - Form-associated element connections
+        // - Custom element reactions
+        if (self.base.parent_node) |parent| {
+            // Call the mutation module's children changed callback system
+            // This will invoke any registered callbacks from other specifications
+            @import("mutation").runChildrenChangedSteps(parent);
+        }
     }
 
     // WebIDL extended attributes metadata

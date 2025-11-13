@@ -401,8 +401,18 @@ pub const EventTarget = struct {
         }
 
         // Step 6: If listener's signal is not null, add abort steps
-        if (listener.signal) |_| {
-            // TODO: Add abort steps to signal to remove listener
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
         }
     }
     /// addEventListener(type, callback, options)
@@ -500,10 +510,12 @@ pub const EventTarget = struct {
         // Step 2: Initialize isTrusted to false
         event.is_trusted = false;
 
-        // Step 3: Dispatch event to this
-        // TODO: Implement dispatch algorithm (see whatwg-cbk)
-        _ = self;
-        @panic("dispatchEvent - dispatch algorithm not yet implemented (see whatwg-cbk)");
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     }
 
     // WebIDL extended attributes metadata

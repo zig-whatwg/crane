@@ -24,8 +24,9 @@ pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 /// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 const AbstractRangeBase = @import("abstract_range").AbstractRangeBase;
 const Allocator = std.mem.Allocator;
-const Node = @import("node").Node;
 const Document = @import("document").Document;
+const Node = @import("node").Node;
+const Element = @import("element").Element;
 const CharacterData = @import("character_data").CharacterData;
 const Text = @import("text").Text;
 pub const Range = struct {
@@ -35,6 +36,8 @@ pub const Range = struct {
     // Range fields
     // ========================================================================
     allocator: Allocator,
+    /// Owner document - needed for per-document range tracking
+    owner_document: *Document,
 
     pub const START_TO_START: u16 = 0;
     pub const START_TO_END: u16 = 1;
@@ -44,19 +47,30 @@ pub const Range = struct {
     /// DOM §5 - Range constructor
     /// The new Range() constructor steps are to set this's start and end to
     /// (current global object's associated Document, 0).
-    pub fn init(allocator: Allocator, document: *Node) !Range {
-        return .{
-            .base = AbstractRangeBase.initForRange(allocator),
+    pub fn init(allocator: Allocator, document_node: *Node) !Range {
+        // Get Document from node
+        const Document_Type = @import("document").Document;
+        const doc = Document_Type.fromNode(document_node) catch {
+            return error.InvalidNodeTypeError;
+        };
+
+        const range = Range{
             .allocator = allocator,
-            .start_container = document,
+            .owner_document = doc,
+            .start_container = document_node,
             .start_offset = 0,
-            .end_container = document,
+            .end_container = document_node,
             .end_offset = 0,
         };
+
+        // Note: Cannot auto-register here since we're in init
+        // Caller must call registerWithDocument after heap allocation
+        return range;
     }
     pub fn deinit(self: *Range) void {
-        _ = self;
-        // No cleanup needed - we don't own the nodes
+        // Unregister from document
+        self.owner_document.unregisterRange(self);
+        // No other cleanup needed - we don't own the nodes
     }
 
     /// Helper to get base struct for polymorphic operations.
@@ -69,6 +83,11 @@ pub const Range = struct {
     // Range methods
     // ========================================================================
 
+    /// Register this range with its owner document for live tracking
+    /// Must be called after init and heap allocation
+    pub fn registerWithDocument(self: *Range) !void {
+        try self.owner_document.registerRange(self);
+    }
     /// DOM §5 - Range.commonAncestorContainer
     /// Returns the node, furthest away from the document, that is an ancestor
     /// of both range's start node and end node.
@@ -89,35 +108,86 @@ pub const Range = struct {
 
         return container;
     }
+    /// Helper: Get the length of a node per DOM spec
+    /// Per DOM §5.2: The length of a node is:
+    /// - 0 for DocumentType or Attr nodes
+    /// - data's length for CharacterData nodes
+    /// - number of children for other nodes
+    fn getNodeLength(node: *Node) u32 {
+        switch (node.node_type) {
+            Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
+            Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
+                // CharacterData nodes - get data length
+                const charData = CharacterData.fromNode(node) catch return 0;
+                return charData.get_length();
+            },
+            else => {
+                // Element, Document, DocumentFragment, etc. - return number of children
+                return @intCast(node.child_nodes.size());
+            },
+        }
+    }
     /// DOM §5.3 - Range.setStart(node, offset)
     /// Sets the start of the range to the given boundary point
     pub fn call_setStart(self: *Range, node: *Node, offset: u32) !void {
-        // TODO: Implement validation and set the boundary point
-        // Per spec: If node is a doctype, throw InvalidNodeTypeError
-        // Set start to boundary point (node, offset)
+        // Step 1: If node is a doctype, throw InvalidNodeTypeError
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 2: If offset > node's length, throw IndexSizeError
+        const nodeLength = getNodeLength(node);
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Let bp be boundary point (node, offset)
+        // Step 4: Set the start
+        const dom = @import("dom");
+        const nodeRoot = dom.tree.getRoot(node);
+        const rangeRoot = dom.tree.getRoot(self.start_container);
+
+        // Step 4.1: If range's root is not equal to node's root, or if bp is after range's end
+        if (nodeRoot != rangeRoot or self.isAfter(node, offset, self.end_container, self.end_offset)) {
+            // Set range's end to bp
+            self.end_container = node;
+            self.end_offset = offset;
+        }
+
+        // Step 4.2: Set range's start to bp
         self.start_container = node;
         self.start_offset = offset;
-
-        // If start is after end, set end to start
-        if (self.isAfter(self.start_container, self.start_offset, self.end_container, self.end_offset)) {
-            self.end_container = self.start_container;
-            self.end_offset = self.start_offset;
-        }
     }
     /// DOM §5.3 - Range.setEnd(node, offset)
     /// Sets the end of the range to the given boundary point
     pub fn call_setEnd(self: *Range, node: *Node, offset: u32) !void {
-        // TODO: Implement validation and set the boundary point
-        // Per spec: If node is a doctype, throw InvalidNodeTypeError
-        // Set end to boundary point (node, offset)
+        // Step 1: If node is a doctype, throw InvalidNodeTypeError
+        if (node.node_type == Node.DOCUMENT_TYPE_NODE) {
+            return error.InvalidNodeTypeError;
+        }
+
+        // Step 2: If offset > node's length, throw IndexSizeError
+        const nodeLength = getNodeLength(node);
+        if (offset > nodeLength) {
+            return error.IndexSizeError;
+        }
+
+        // Step 3: Let bp be boundary point (node, offset)
+        // Step 5: Set the end
+        const dom = @import("dom");
+        const nodeRoot = dom.tree.getRoot(node);
+        const rangeRoot = dom.tree.getRoot(self.start_container);
+
+        // Step 5.1: If range's root is not equal to node's root, or if bp is before range's start
+        if (nodeRoot != rangeRoot or self.isAfter(self.start_container, self.start_offset, node, offset)) {
+            // Set range's start to bp
+            self.start_container = node;
+            self.start_offset = offset;
+        }
+
+        // Step 5.2: Set range's end to bp
         self.end_container = node;
         self.end_offset = offset;
-
-        // If end is before start, set start to end
-        if (self.isAfter(self.end_container, self.end_offset, self.start_container, self.start_offset)) {
-            self.start_container = self.end_container;
-            self.start_offset = self.end_offset;
-        }
     }
     /// Helper: Check if boundary point A is after boundary point B
     /// Per DOM spec: A boundary point (nodeA, offsetA) is after another
@@ -390,9 +460,10 @@ pub const Range = struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
-                // This is CharacterData - we would call deleteData if it existed
-                // For now, this is a simplified implementation
-                // TODO: Implement CharacterData deleteData method
+                // This is CharacterData - call deleteData to remove the range
+                const charData = try CharacterData.fromNode(self.start_container);
+                const count = self.end_offset - self.start_offset;
+                try charData.call_deleteData(self.start_offset, count);
             }
         }
     }
@@ -419,8 +490,28 @@ pub const Range = struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE))
         {
-            // TODO: Clone the node and set its data to substring
-            // For now, return fragment
+            // Step 4.1: Let clone be a clone of original start node
+            const clone = try self.start_container.call_cloneNode(false); // Shallow clone
+
+            // Step 4.2: Set the data of clone to substring
+            const originalCharData = try CharacterData.fromNode(self.start_container);
+            const cloneCharData = try CharacterData.fromNode(clone);
+
+            // Substring from original start offset to original end offset
+            const count = self.end_offset - self.start_offset;
+            const originalData = originalCharData.get_data();
+            if (self.start_offset < originalData.len and self.end_offset <= originalData.len) {
+                const substring = originalData[self.start_offset..self.end_offset];
+                try cloneCharData.set_data(substring);
+            }
+
+            // Step 4.3: Append clone to fragment
+            _ = try fragment.call_appendChild(clone);
+
+            // Step 4.4: Replace data in original node (remove extracted text)
+            try originalCharData.call_deleteData(self.start_offset, count);
+
+            // Step 4.5: Return fragment
             return fragment;
         }
 
@@ -476,8 +567,24 @@ pub const Range = struct {
                 self.start_container.node_type == Node.PROCESSING_INSTRUCTION_NODE or
                 self.start_container.node_type == Node.COMMENT_NODE))
         {
-            // TODO: Clone the node and set its data to substring
-            // For now, return fragment
+            // Step 4.1: Let clone be a clone of start node
+            const clone = try self.start_container.call_cloneNode(false); // Shallow clone
+
+            // Step 4.2: Set the data of clone to substring
+            const originalCharData = try CharacterData.fromNode(self.start_container);
+            const cloneCharData = try CharacterData.fromNode(clone);
+
+            // Substring from start offset to end offset
+            const originalData = originalCharData.get_data();
+            if (self.start_offset < originalData.len and self.end_offset <= originalData.len) {
+                const substring = originalData[self.start_offset..self.end_offset];
+                try cloneCharData.set_data(substring);
+            }
+
+            // Step 4.3: Append clone to fragment
+            _ = try fragment.call_appendChild(clone);
+
+            // Step 4.4: Return fragment (note: cloneContents doesn't modify original)
             return fragment;
         }
 
@@ -539,22 +646,15 @@ pub const Range = struct {
         else
             self.start_container;
 
-        // Step 6: Validate pre-insertion
-        // TODO: Full pre-insertion validity check
-        // For now, basic check
-        if (parent.node_type == Node.DOCUMENT_NODE and node.node_type != Node.ELEMENT_NODE and
-            node.node_type != Node.PROCESSING_INSTRUCTION_NODE and
-            node.node_type != Node.COMMENT_NODE and
-            node.node_type != Node.DOCUMENT_TYPE_NODE and
-            node.node_type != Node.DOCUMENT_FRAGMENT_NODE)
-        {
-            return error.HierarchyRequestError;
-        }
+        // Step 6: Ensure pre-insertion validity
+        const mutation = @import("dom").mutation;
+        try mutation.ensurePreInsertValidity(node, parent, referenceNode);
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            // TODO: Implement text splitting
-            // For now, skip this step
+            const textNode = try Text.fromNode(self.start_container);
+            const newText = try textNode.call_splitText(self.start_offset);
+            referenceNode = &newText.base.base;
         }
 
         // Step 8: If node is referenceNode, use its next sibling
@@ -615,13 +715,11 @@ pub const Range = struct {
         }
 
         // Step 3: Extract range contents into a fragment
-        // Note: This is a simplified version - full extractContents is in whatwg-boy
-        // For now, we'll create an empty fragment as placeholder
-        // const fragment = try self.call_extractContents();
-        // defer {
-        //     fragment.deinit();
-        //     self.allocator.destroy(fragment);
-        // }
+        const fragment = try self.call_extractContents();
+        defer {
+            fragment.deinit();
+            self.allocator.destroy(fragment);
+        }
 
         // Step 4: If newParent has children, replace all with null
         while (newParent.child_nodes.size() > 0) {
@@ -635,8 +733,7 @@ pub const Range = struct {
         try self.call_insertNode(newParent);
 
         // Step 6: Append fragment to newParent
-        // TODO: When extractContents is implemented, uncomment this
-        // _ = try newParent.call_appendChild(&fragment.base);
+        _ = try newParent.call_appendChild(&fragment.base);
 
         // Step 7: Select newParent within range
         try self.call_selectNode(newParent);
@@ -649,6 +746,10 @@ pub const Range = struct {
         range.start_offset = self.start_offset;
         range.end_container = self.end_container;
         range.end_offset = self.end_offset;
+
+        // Register the cloned range with the document
+        try range.registerWithDocument();
+
         return range;
     }
     /// DOM §5 - Range.detach()
@@ -763,12 +864,69 @@ pub const Range = struct {
         return false;
     }
     /// DOM §5 - Range stringifier
-    /// Returns the text content of the range
+    /// Returns the text content of the range per spec §5.7
     pub fn toString(self: *Range, allocator: Allocator) ![]const u8 {
-        // TODO: Implement per spec §5.7
-        _ = self;
-        _ = allocator;
-        return error.NotImplemented;
+        var result = std.ArrayList(u8).init(allocator);
+        errdefer result.deinit();
+
+        // Step 2: If start node == end node and it's a Text node
+        if (self.start_container == self.end_container and
+            self.start_container.node_type == Node.TEXT_NODE)
+        {
+            const textNode = try Text.fromNode(self.start_container);
+            const data = textNode.base.get_data();
+
+            // Return substring from start offset to end offset
+            if (self.end_offset >= self.start_offset and self.end_offset <= data.len) {
+                const substring = data[self.start_offset..self.end_offset];
+                try result.appendSlice(substring);
+                return result.toOwnedSlice();
+            }
+        }
+
+        // Step 3: If start node is a Text node, append from start offset to end
+        if (self.start_container.node_type == Node.TEXT_NODE) {
+            const textNode = try Text.fromNode(self.start_container);
+            const data = textNode.base.get_data();
+            if (self.start_offset <= data.len) {
+                const substring = data[self.start_offset..];
+                try result.appendSlice(substring);
+            }
+        }
+
+        // Step 4: Append concatenation of all contained Text nodes in tree order
+        const commonAncestor = self.get_commonAncestorContainer();
+        try self.appendContainedTextNodes(commonAncestor, &result);
+
+        // Step 5: If end node is a Text node, append from start to end offset
+        if (self.end_container.node_type == Node.TEXT_NODE and
+            self.end_container != self.start_container)
+        {
+            const textNode = try Text.fromNode(self.end_container);
+            const data = textNode.base.get_data();
+            if (self.end_offset <= data.len) {
+                const substring = data[0..self.end_offset];
+                try result.appendSlice(substring);
+            }
+        }
+
+        // Step 6: Return s
+        return result.toOwnedSlice();
+    }
+    /// Helper for toString: Recursively append contained Text node data
+    fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
+        // If this node is contained and is a Text node, append its data
+        if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
+            const textNode = try Text.fromNode(node);
+            const data = textNode.base.get_data();
+            try result.appendSlice(data);
+            return;
+        }
+
+        // Recursively process children in tree order
+        for (node.child_nodes.items()) |child| {
+            try self.appendContainedTextNodes(child, result);
+        }
     }
     /// DOM §5 - AbstractRange.startContainer
     /// Returns the node at the start of the range

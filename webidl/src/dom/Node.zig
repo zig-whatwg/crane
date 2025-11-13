@@ -13,6 +13,7 @@ const TransientRegisteredObserver = @import("registered_observer").TransientRegi
 const CharacterData = @import("character_data").CharacterData;
 const Text = @import("text").Text;
 const Element = @import("element").Element;
+const Attr = @import("attr").Attr;
 
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
@@ -293,7 +294,6 @@ pub const Node = webidl.interface(struct {
             ATTRIBUTE_NODE => {
                 // Attr: check namespace, local name, and value
                 // Note: Attr nodes don't participate in tree, but we check for completeness
-                const Attr = @import("attr").Attr;
                 const attr_a: *const Attr = @ptrCast(@alignCast(a));
                 const attr_b: *const Attr = @ptrCast(@alignCast(b));
                 return Node.attributeEquals(attr_a, attr_b);
@@ -496,7 +496,6 @@ pub const Node = webidl.interface(struct {
 
                 // Clone attributes
                 for (elem.attributes.items) |attr| {
-                    const Attr = @import("attr").Attr;
                     const copy_attr = Attr{
                         .allocator = elem.allocator,
                         .namespace_uri = attr.namespace_uri,
@@ -538,7 +537,6 @@ pub const Node = webidl.interface(struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Clone Attr
-                const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(node));
 
                 var copy_attr = try Attr.init(
@@ -710,7 +708,6 @@ pub const Node = webidl.interface(struct {
         switch (self.node_type) {
             ATTRIBUTE_NODE => {
                 // Attr node
-                const Attr = @import("attr").Attr;
                 const attr: *const Attr = @ptrCast(@alignCast(self));
                 return attr.value;
             },
@@ -739,7 +736,6 @@ pub const Node = webidl.interface(struct {
         switch (self.node_type) {
             ATTRIBUTE_NODE => {
                 // Attr node - set an existing attribute value
-                const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(self));
                 // Use "set an existing attribute value" algorithm from Attr
                 try Attr.setExistingAttributeValue(attr, str_value);
@@ -781,7 +777,6 @@ pub const Node = webidl.interface(struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Return node's value (no allocation - returns reference)
-                const Attr = @import("attr").Attr;
                 const attr: *const Attr = @ptrCast(@alignCast(node));
                 return attr.value;
             },
@@ -836,7 +831,6 @@ pub const Node = webidl.interface(struct {
             },
             Node.ATTRIBUTE_NODE => {
                 // Set an existing attribute value
-                const Attr = @import("attr").Attr;
                 const attr: *Attr = @ptrCast(@alignCast(node));
                 // Use "set an existing attribute value" algorithm from Attr
                 try Attr.setExistingAttributeValue(attr, value);

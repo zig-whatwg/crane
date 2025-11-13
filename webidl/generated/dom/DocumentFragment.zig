@@ -115,8 +115,20 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
+const Attr = @import("attr").Attr;
+const CharacterData = @import("character_data").CharacterData;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
+const TEXT_NODE = @import("node").TEXT_NODE;
+const CDATA_SECTION_NODE = @import("node").CDATA_SECTION_NODE;
+const ENTITY_REFERENCE_NODE = @import("node").ENTITY_REFERENCE_NODE;
+const ENTITY_NODE = @import("node").ENTITY_NODE;
+const PROCESSING_INSTRUCTION_NODE = @import("node").PROCESSING_INSTRUCTION_NODE;
+const COMMENT_NODE = @import("node").COMMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_TYPE_NODE = @import("node").DOCUMENT_TYPE_NODE;
+const DOCUMENT_FRAGMENT_NODE = @import("node").DOCUMENT_FRAGMENT_NODE;
+const NOTATION_NODE = @import("node").NOTATION_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
@@ -324,6 +336,8 @@ pub const DocumentFragment = struct {
     /// Moves, without first removing, movedNode into this after child.
     /// This method preserves state associated with movedNode.
     /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// 
     /// Steps:
     /// 1. Let referenceChild be child.
     /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
@@ -332,14 +346,23 @@ pub const DocumentFragment = struct {
     /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     /// (Included from ParentNode mixin)
     pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
-        _ = self;
-        _ = node;
-        _ = child;
-        // TODO: Implement DOM §4.3.2 moveBefore() algorithm
-        // Step 1: Set referenceChild to child
-        // Step 2: If referenceChild is node, adjust to node's next sibling
-        // Step 3: Call move algorithm (from mutation.zig - when implemented)
-        @panic("ParentNode.moveBefore() not yet implemented");
+        const mutation = @import("dom").mutation;
+
+        // Get Node pointers from the anytype parameters
+        const parent_node = @as(*@import("node").Node, @ptrCast(self));
+        const moved_node = @as(*@import("node").Node, @ptrCast(node));
+        const child_node = if (child) |c| @as(?*@import("node").Node, @ptrCast(c)) else null;
+
+        // Step 1: Let referenceChild be child
+        var reference_child = child_node;
+
+        // Step 2: If referenceChild is node, then set referenceChild to node's next sibling
+        if (reference_child == moved_node) {
+            reference_child = moved_node.next_sibling;
+        }
+
+        // Step 3: Move node into this before referenceChild
+        try mutation.move(moved_node, parent_node, reference_child);
     }
     /// DOM §4.3.2 - ParentNode.querySelector()
     /// Returns the first element that is a descendant of this that matches selectors.
@@ -417,10 +440,11 @@ pub const DocumentFragment = struct {
 
                         // Check if id attribute matches
                         // Per spec: element's ID is the value of its "id" attribute
-                        // For now, compare node_name as a placeholder until attributes are fully integrated
-                        // TODO: Once NamedNodeMap is fully integrated, use: element.attributes.getNamedItem("id")
-                        if (std.mem.eql(u8, element.node_name, target_id)) {
-                            return element;
+                        const attributes = element.get_attributes();
+                        if (attributes.call_getNamedItem("id")) |id_attr| {
+                            if (std.mem.eql(u8, id_attr.value, target_id)) {
+                                return element;
+                            }
                         }
                     }
 

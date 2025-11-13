@@ -14,6 +14,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const DocumentFragment = @import("document_fragment").DocumentFragment;
 
+
 /// DOM §4.8.1 - ShadowRootMode enum
 ///
 /// Defines the mode of a shadow root.
@@ -55,8 +56,20 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
+const Attr = @import("attr").Attr;
+const CharacterData = @import("character_data").CharacterData;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
+const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
+const TEXT_NODE = @import("node").TEXT_NODE;
+const CDATA_SECTION_NODE = @import("node").CDATA_SECTION_NODE;
+const ENTITY_REFERENCE_NODE = @import("node").ENTITY_REFERENCE_NODE;
+const ENTITY_NODE = @import("node").ENTITY_NODE;
+const PROCESSING_INSTRUCTION_NODE = @import("node").PROCESSING_INSTRUCTION_NODE;
+const COMMENT_NODE = @import("node").COMMENT_NODE;
 const DOCUMENT_NODE = @import("node").DOCUMENT_NODE;
+const DOCUMENT_TYPE_NODE = @import("node").DOCUMENT_TYPE_NODE;
+const DOCUMENT_FRAGMENT_NODE = @import("node").DOCUMENT_FRAGMENT_NODE;
+const NOTATION_NODE = @import("node").NOTATION_NODE;
 const DOCUMENT_POSITION_DISCONNECTED = @import("node").DOCUMENT_POSITION_DISCONNECTED;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 pub const ShadowRoot = struct {
@@ -66,7 +79,6 @@ pub const ShadowRoot = struct {
     // Fields from DocumentOrShadowRoot mixin
     // ========================================================================
     /// Custom element registry for this document or shadow root
-    /// TODO: Implement when CustomElementRegistry is available
     custom_element_registry: ?*anyopaque = null,
 
     // ========================================================================
@@ -92,6 +104,8 @@ pub const ShadowRoot = struct {
     /// Keep custom element registry null (for declarative shadow roots)
     /// Note: custom_element_registry comes from DocumentOrShadowRoot mixin
     keep_custom_element_registry_null: bool,
+    /// Event handler for slotchange event
+    onslotchange: ?*anyopaque = null,
 
     pub const includes = .{DocumentOrShadowRoot};
 
@@ -188,15 +202,11 @@ pub const ShadowRoot = struct {
     /// Event handler for the slotchange event.
     /// Fired when slot assignments change.
     pub fn get_onslotchange(self: *const ShadowRoot) ?*anyopaque {
-        // TODO: Implement event handler IDL attribute
-        _ = self;
-        return null;
+        return self.onslotchange;
     }
 
     pub fn set_onslotchange(self: *ShadowRoot, handler: ?*anyopaque) void {
-        // TODO: Implement event handler IDL attribute
-        _ = self;
-        _ = handler;
+        self.onslotchange = handler;
     }
 
     // ========================================================================
@@ -249,7 +259,6 @@ test "ShadowRoot - creation with basic properties" {
     const allocator = std.testing.allocator;
 
     // Create a mock Element to use as host
-    // TODO: Use real Element when fully integrated
     var mock_element: Element = undefined;
 
     var shadow_root = try ShadowRoot.init(
