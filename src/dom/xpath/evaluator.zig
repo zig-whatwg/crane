@@ -459,16 +459,40 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             // Namespace axis: namespace nodes of the context node
             // XPath 1.0: The namespace axis contains the namespace nodes of the context node
             // In XPath 1.0, namespace nodes are distinct from attribute nodes
+            //
+            // NOTE: Full namespace axis implementation requires virtual namespace nodes.
+            // Since namespace nodes don't exist in DOM, we approximate by:
+            // 1. Collecting xmlns:* attribute nodes (namespace declarations)
+            // 2. Including xmlns attribute (default namespace declaration)
+            //
+            // This is not fully spec-compliant (missing inherited namespaces, xml namespace)
+            // but handles the common case where namespace axis queries xmlns attributes.
+            //
+            // For proper namespace resolution, use Context.bindNamespace() and qualified names.
 
-            // TODO: Implement proper namespace node representation
-            // For now, skip namespace nodes as they require special handling
-            // Namespace nodes don't have a direct DOM representation - they're XPath-specific
-            // We would need to:
-            // 1. Enumerate all in-scope namespaces for the element
-            // 2. Create virtual namespace nodes for each prefix->URI mapping
-            // 3. Include xml namespace (always bound to http://www.w3.org/XML/1998/namespace)
+            if (node.node_type == NodeBase.ELEMENT_NODE) {
+                const element_node: *Node = @ptrCast(@alignCast(node));
+                const element: *Element = @ptrCast(@alignCast(element_node));
 
-            // This is low priority as namespace axis is rarely used in practice
+                // Add xmlns:* and xmlns attributes as approximation of namespace nodes
+                for (0..element.attributes.size()) |i| {
+                    if (element.attributes.get(i)) |attr| {
+                        const attr_name = attr.getName();
+                        // Check for xmlns or xmlns:prefix
+                        if (std.mem.eql(u8, attr_name, "xmlns") or
+                            std.mem.startsWith(u8, attr_name, "xmlns:"))
+                        {
+                            try result.add(attr.asNode());
+                        }
+                    }
+                }
+            }
+
+            // NOTE: This implementation is incomplete. It does not:
+            // - Include inherited namespace declarations from ancestors
+            // - Include the implicit xml namespace binding
+            // - Create true virtual namespace nodes
+            // These limitations are acceptable as namespace axis is rarely used in practice.
         },
         .self => {
             // Just the node itself
