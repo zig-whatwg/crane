@@ -25,6 +25,7 @@ const NonElementParentNode = @import("non_element_parent_node").NonElementParent
 const ParentNode = @import("parent_node").ParentNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
+const Text = @import("text").Text;
 const dom = @import("dom").dom;
 const dom_types = @import("dom_types");
 const std = @import("std");

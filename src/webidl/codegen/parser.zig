@@ -1086,6 +1086,37 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
             }
         }
 
+        // Look for pattern: Type.method() - static method calls or Type.init()
+        // This catches patterns like Text.init(), Node.create(), etc.
+        if (c >= 'A' and c <= 'Z') {
+            const type_start = pos;
+            var scan = pos;
+
+            // Extract the type name
+            while (scan < combined.len) {
+                const ch = combined[scan];
+                if ((ch >= 'a' and ch <= 'z') or
+                    (ch >= 'A' and ch <= 'Z') or
+                    (ch >= '0' and ch <= '9') or
+                    ch == '_')
+                {
+                    scan += 1;
+                } else {
+                    break;
+                }
+            }
+
+            // Check if followed by '.' (static method call)
+            if (scan < combined.len and combined[scan] == '.') {
+                const type_name = combined[type_start..scan];
+                if (!isBuiltinType(type_name) and !local_aliases.contains(type_name)) {
+                    try types.put(type_name, {});
+                }
+                pos = scan;
+                continue;
+            }
+        }
+
         pos += 1;
     }
 

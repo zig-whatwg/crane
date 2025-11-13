@@ -33,6 +33,7 @@ const Range = @import("range").Range;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
+const Thread = @import("thread").Thread;
 const anyopaque = @import("anyopaque");
 const dom = @import("dom").dom;
 const dom_types = @import("dom_types").dom_types;

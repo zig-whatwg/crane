@@ -9,8 +9,12 @@
 //   - Automatic import resolution
 
 const AbortController = @import("dom").AbortController;
+const Algorithm = @import("algorithm").Algorithm;
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const Controller = @import("controller").Controller;
+const JSValue = @import("j_s_value").JSValue;
+const Loop = @import("loop").Loop;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const WritableStream = @import("writable_stream").WritableStream;
 const anyopaque = @import("anyopaque");

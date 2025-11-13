@@ -10,6 +10,9 @@
 
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const Exception = @import("exception").Exception;
+const JSValue = @import("j_s_value").JSValue;
+const Promise = @import("promise").Promise;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;

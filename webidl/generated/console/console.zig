@@ -9,6 +9,12 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const Buffer = @import("buffer").Buffer;
+const Map = @import("map").Map;
+const Moment = @import("moment").Moment;
+const Pool = @import("pool").Pool;
+const Stack = @import("stack").Stack;
+const Table = @import("table").Table;
 const format = @import("format");
 const infra = @import("infra");
 const std = @import("std");

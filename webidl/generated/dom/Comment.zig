@@ -24,6 +24,7 @@ const NodeList = @import("node_list").NodeList;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
+const Text = @import("text").Text;
 const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");

@@ -10,10 +10,16 @@
 
 const AbstractRange = @import("abstract_range").AbstractRange;
 const Allocator = @import("std.mem").Allocator;
+const Ancestor = @import("ancestor").Ancestor;
+const CharData = @import("char_data").CharData;
 const CharacterData = @import("character_data").CharacterData;
+const Children = @import("children").Children;
+const Data = @import("data").Data;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Node = @import("node").Node;
+const Parent = @import("parent").Parent;
+const Point = @import("point").Point;
 const Text = @import("text").Text;
 const infra = @import("infra").infra;
 const std = @import("std");
