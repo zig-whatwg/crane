@@ -72,14 +72,16 @@ pub const TextDecoderError = error{
 /// ```
 
 pub const TextDecoder = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    encoding: []const u8,
-    fatal: webidl.boolean,
-    ignoreBOM: webidl.boolean,
+    allocator: std.mem.Allocator,
+    enc: *const Encoding,
+    doNotFlush: bool,
+    bomSeen: bool,
+    reusableUtf16Buffer: ?webidl.DOMString,
+    reusableUtf8Buffer: ?[]u8,
 
     // ========================================================================
     // Methods

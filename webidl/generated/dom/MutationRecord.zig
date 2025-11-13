@@ -23,7 +23,6 @@ const webidl = @import("webidl");
 /// about what changed in the tree.
 
 pub const MutationRecord = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

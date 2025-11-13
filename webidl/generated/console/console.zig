@@ -105,7 +105,6 @@ fn defaultPrinter(message: []const u8) void {
 /// - `labelPool`: Interned label strings for performance
 
 pub const console = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

@@ -41,15 +41,13 @@ const Decoder = encoding_mod.Decoder;
 /// ```
 
 pub const TextDecoderStream = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    encoding: []const u8,
-    fatal: webidl.boolean,
-    ignoreBOM: webidl.boolean,
-    transform: *TransformStream,
+    allocator: std.mem.Allocator,
+    enc: *const Encoding,
+    decoder: *Decoder,
 
     // ========================================================================
     // Methods

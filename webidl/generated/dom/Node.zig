@@ -17,13 +17,13 @@ const Element = @import("element").Element;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
-const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const NodeList = @import("node_list").NodeList;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -32,13 +32,19 @@ const webidl = @import("webidl");
 /// DOM Spec: interface Node : EventTarget
 
 pub const Node = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    node_type: u16,
+    node_name: []const u8,
+    parent_node: ?*Node,
+    child_nodes: infra.List(*Node),
+    owner_document: ?*Document,
+    registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    cached_child_nodes: ?*@import("node_list").NodeList,
 
     // ========================================================================
     // Constants
@@ -1208,6 +1214,13 @@ pub const Node = struct {
     
     }
 
+};
+
+
+/// GetRootNodeOptions dictionary
+/// Spec: https://dom.spec.whatwg.org/#dictdef-getrootnodeoptions
+pub const GetRootNodeOptions = struct {
+    composed: bool = false,
 };
 
 

@@ -22,7 +22,6 @@ const webidl = @import("webidl");
 /// call nextNode() and previousNode().
 
 pub const NodeIterator = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

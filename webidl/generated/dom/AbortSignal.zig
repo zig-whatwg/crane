@@ -33,13 +33,17 @@ pub const EventListenerRemovalContext = struct {
 /// DOM Spec: interface AbortSignal : EventTarget
 
 pub const AbortSignal = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    allocator: std.mem.Allocator,
+    aborted: bool,
+    reason: ?webidl.Exception,
+    abort_algorithms: infra.List(AbortAlgorithm),
+    event_listener_removals: infra.List(EventListenerRemovalContext),
+    source_signals: infra.List(*AbortSignal),
+    dependent_signals: infra.List(*AbortSignal),
 
     // ========================================================================
     // Methods

@@ -9,7 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
-const EventInit = @import("event_init").EventInit;
 const EventTarget = @import("event_target").EventTarget;
 const infra = @import("infra");
 const std = @import("std");
@@ -31,7 +30,6 @@ pub const EventPathItem = struct {
 /// Event WebIDL interface
 
 pub const Event = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
@@ -401,6 +399,13 @@ pub const Event = struct {
     
     }
 
+};
+
+
+pub const EventInit = struct {
+    bubbles: bool = false,
+    cancelable: bool = false,
+    composed: bool = false,
 };
 
 

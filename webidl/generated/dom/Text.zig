@@ -27,6 +27,7 @@ const Slottable = @import("slottable").Slottable;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types");
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -38,16 +39,11 @@ const webidl = @import("webidl");
 /// Text also includes: Slottable
 
 pub const Text = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
-    slottable_name: []const u8,
-    assigned_slot: ?*anyopaque,
-    manual_slot_assignment: ?*anyopaque,
 
     // ========================================================================
     // Constants

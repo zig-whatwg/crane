@@ -26,6 +26,7 @@ const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types");
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -33,13 +34,14 @@ const webidl = @import("webidl");
 /// DOM Spec: interface DocumentType : Node
 
 pub const DocumentType = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    allocator: std.mem.Allocator,
+    name: []const u8,
+    public_id: []const u8,
+    system_id: []const u8,
 
     // ========================================================================
     // Constants

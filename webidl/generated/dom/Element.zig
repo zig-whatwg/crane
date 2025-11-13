@@ -32,6 +32,7 @@ const TransientRegisteredObserver = @import("registered_observer").TransientRegi
 const dom = @import("dom");
 const dom_types = @import("dom_types");
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -50,16 +51,21 @@ pub const CustomElementState = enum {
 /// DOM Spec: interface Element : Node
 
 pub const Element = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
-    slottable_name: []const u8,
-    assigned_slot: ?*anyopaque,
-    manual_slot_assignment: ?*anyopaque,
+    tag_name: []const u8,
+    namespace_uri: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+    attributes: infra.List(Attr),
+    shadow_root: ?*ShadowRoot,
+    custom_element_state: CustomElementState,
+    is_value: ?[]const u8,
+    cached_class_list: ?*@import("dom_token_list").DOMTokenList,
+    cached_attributes: ?*@import("named_node_map").NamedNodeMap,
 
     // ========================================================================
     // Constants

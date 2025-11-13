@@ -24,6 +24,7 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
         .classes = &.{},
         .module_constants = &.{},
         .module_definitions = &.{},
+        .post_class_definitions = &.{},
     };
     errdefer file_ir.deinit(allocator);
 
@@ -55,6 +56,10 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
         }
         allocator.free(file_ir.classes);
     }
+
+    // Extract post-class definitions (types defined after the class)
+    file_ir.post_class_definitions = try parsePostClassDefinitions(allocator, source);
+    errdefer allocator.free(file_ir.post_class_definitions);
 
     return file_ir;
 }
@@ -383,6 +388,76 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
     return try allocator.dupe(u8, trimmed_section);
 }
 
+/// Parse post-class definitions (types defined after the main class)
+/// These are helper types like TeeState, AbortRequest, ReadableStreamIterator
+fn parsePostClassDefinitions(allocator: Allocator, source: []const u8) ![]const u8 {
+    // Find the end of the main class definition
+    // Look for the closing of webidl.interface(), webidl.namespace(), or webidl.mixin()
+
+    // Find first class
+    const interface_pos = std.mem.indexOf(u8, source, "webidl.interface(");
+    const namespace_pos = std.mem.indexOf(u8, source, "webidl.namespace(");
+    const mixin_pos = std.mem.indexOf(u8, source, "webidl.mixin(");
+
+    var class_start: ?usize = null;
+    if (interface_pos) |pos| class_start = pos;
+    if (namespace_pos) |pos| {
+        if (class_start) |cs| {
+            class_start = @min(cs, pos);
+        } else {
+            class_start = pos;
+        }
+    }
+    if (mixin_pos) |pos| {
+        if (class_start) |cs| {
+            class_start = @min(cs, pos);
+        } else {
+            class_start = pos;
+        }
+    }
+
+    // If no class found, no post-class definitions
+    if (class_start == null) {
+        return try allocator.dupe(u8, "");
+    }
+
+    // Find the opening paren of the webidl call
+    const paren_pos = std.mem.indexOfScalarPos(u8, source, class_start.?, '(') orelse {
+        return try allocator.dupe(u8, "");
+    };
+
+    // Find the matching closing paren
+    var depth: i32 = 1;
+    var pos: usize = paren_pos + 1;
+    while (pos < source.len and depth > 0) : (pos += 1) {
+        if (source[pos] == '(') {
+            depth += 1;
+        } else if (source[pos] == ')') {
+            depth -= 1;
+        }
+    }
+
+    if (depth != 0) {
+        // Couldn't find matching paren
+        return try allocator.dupe(u8, "");
+    }
+
+    // pos is now after the closing paren
+    // Look for the semicolon that ends the class definition
+    const semicolon_pos = std.mem.indexOfScalarPos(u8, source, pos, ';') orelse {
+        return try allocator.dupe(u8, "");
+    };
+
+    // Everything after the semicolon is post-class definitions
+    if (semicolon_pos + 1 >= source.len) {
+        return try allocator.dupe(u8, "");
+    }
+
+    const post_class = source[semicolon_pos + 1 ..];
+    const trimmed = std.mem.trim(u8, post_class, " \t\r\n");
+    return try allocator.dupe(u8, trimmed);
+}
+
 /// Parse a single import statement
 /// Pattern: @import("module_path") or @import("module_path").TypeName
 fn parseImportStatement(
@@ -647,12 +722,19 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
         const line_end = std.mem.indexOfScalarPos(u8, struct_body, pos, '\n') orelse struct_body.len;
         const line = std.mem.trim(u8, struct_body[line_start..line_end], " \t\r");
 
-        // Stop at first pub const or pub fn
-        if (std.mem.startsWith(u8, line, "pub const") or
-            std.mem.startsWith(u8, line, "pub fn") or
+        // Stop at first pub const or pub fn (except extends/includes which are metadata)
+        if (std.mem.startsWith(u8, line, "pub fn") or
             std.mem.startsWith(u8, line, "pub inline fn"))
         {
             break;
+        }
+        if (std.mem.startsWith(u8, line, "pub const")) {
+            // Skip extends and includes - these are WebIDL metadata, not stopping points
+            if (!std.mem.startsWith(u8, line, "pub const extends") and
+                !std.mem.startsWith(u8, line, "pub const includes"))
+            {
+                break;
+            }
         }
 
         // Parse field: name: Type,

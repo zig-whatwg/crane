@@ -305,6 +305,10 @@ pub const FileIR = struct {
     /// This is raw source text that will be copied to the generated file
     module_definitions: []const u8,
 
+    /// Post-class definitions (types defined after the class)
+    /// This includes helper types like TeeState, AbortRequest, etc.
+    post_class_definitions: []const u8,
+
     pub fn deinit(self: *FileIR, allocator: Allocator) void {
         allocator.free(self.path);
 
@@ -324,6 +328,7 @@ pub const FileIR = struct {
         allocator.free(self.module_constants);
 
         allocator.free(self.module_definitions);
+        allocator.free(self.post_class_definitions);
     }
 };
 

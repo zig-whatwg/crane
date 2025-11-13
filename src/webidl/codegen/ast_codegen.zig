@@ -43,12 +43,14 @@ pub fn generateEnhancedFile(
 
     // Process each class
     for (file_ir.classes, 0..) |*class, idx| {
-        var enhanced = try optimizer.enhanceClass(allocator, class, registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants);
+        var enhanced = try optimizer.enhanceClass(allocator, class, registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants, file_ir.post_class_definitions);
         defer enhanced.deinit(allocator);
 
         // Include module definitions only for the first class in the file
         const module_defs = if (idx == 0) file_ir.module_definitions else null;
-        const class_code = try generator.generateCode(allocator, enhanced, module_defs);
+        // Include post-class definitions only for the last class in the file
+        const post_class_defs = if (idx == file_ir.classes.len - 1) file_ir.post_class_definitions else null;
+        const class_code = try generator.generateCode(allocator, enhanced, module_defs, post_class_defs);
         defer allocator.free(class_code);
 
         try writer.writeAll(class_code);
@@ -119,12 +121,14 @@ pub fn generateAllFiles(
 
         // Process each class in the file
         for (file_ir.classes, 0..) |*class, idx| {
-            var enhanced = try optimizer.enhanceClass(allocator, class, &registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants);
+            var enhanced = try optimizer.enhanceClass(allocator, class, &registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants, file_ir.post_class_definitions);
             defer enhanced.deinit(allocator);
 
             // Include module definitions only for the first class in the file
             const module_defs = if (idx == 0) file_ir.module_definitions else null;
-            const class_code = try generator.generateCode(allocator, enhanced, module_defs);
+            // Include post-class definitions only for the last class in the file
+            const post_class_defs = if (idx == file_ir.classes.len - 1) file_ir.post_class_definitions else null;
+            const class_code = try generator.generateCode(allocator, enhanced, module_defs, post_class_defs);
             defer allocator.free(class_code);
 
             try writer.writeAll(class_code);

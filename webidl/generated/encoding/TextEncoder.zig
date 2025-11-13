@@ -93,12 +93,11 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
 /// Note: TextEncoder offers no stream option (no buffering needed).
 
 pub const TextEncoder = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    encoding: []const u8,
+    allocator: std.mem.Allocator,
 
     // ========================================================================
     // Methods

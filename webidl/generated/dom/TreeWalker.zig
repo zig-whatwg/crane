@@ -23,7 +23,6 @@ const webidl = @import("webidl");
 /// and maintains a mutable currentNode pointer.
 
 pub const TreeWalker = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

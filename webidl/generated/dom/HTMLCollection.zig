@@ -31,7 +31,6 @@ pub const FilterFn = *const fn (*Element, *const anyopaque) bool;
 /// ```
 
 pub const HTMLCollection = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

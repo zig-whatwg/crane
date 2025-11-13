@@ -21,7 +21,6 @@ pub const QueuingStrategyInit = struct {
 };
 
 pub const ByteLengthQueuingStrategy = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

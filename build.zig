@@ -480,14 +480,19 @@ pub fn build(b: *std.Build) void {
     comment_mod.addImport("character_data", character_data_mod);
     comment_mod.addImport("dom_types", dom_types_mod);
     comment_mod.addImport("element", element_mod);
+    comment_mod.addImport("event_target", event_target_mod);
     processing_instruction_mod.addImport("character_data", character_data_mod);
     processing_instruction_mod.addImport("dom_types", dom_types_mod);
     processing_instruction_mod.addImport("element", element_mod);
+    processing_instruction_mod.addImport("event_target", event_target_mod);
     cdata_section_mod.addImport("text", text_mod);
+    cdata_section_mod.addImport("event_target", event_target_mod);
     document_type_mod.addImport("node", node_mod);
     document_type_mod.addImport("dom_types", dom_types_mod);
+    document_type_mod.addImport("event_target", event_target_mod);
     document_fragment_mod.addImport("node", node_mod);
     document_fragment_mod.addImport("element", element_mod);
+    document_fragment_mod.addImport("event_target", event_target_mod);
     document_fragment_mod.addImport("node_list", node_list_mod);
     document_fragment_mod.addImport("html_collection", html_collection_mod);
     document_fragment_mod.addImport("dom_types", dom_types_mod);
@@ -507,6 +512,7 @@ pub fn build(b: *std.Build) void {
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
+    attr_mod.addImport("event_target", event_target_mod);
     named_node_map_mod.addImport("attr", attr_mod);
     named_node_map_mod.addImport("element", element_mod);
     dom_implementation_mod.addImport("document", document_mod);

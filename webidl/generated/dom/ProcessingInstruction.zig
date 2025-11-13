@@ -27,6 +27,7 @@ const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types");
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -36,13 +37,11 @@ const webidl = @import("webidl");
 /// They extend CharacterData and have an associated target.
 
 pub const ProcessingInstruction = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    target: []const u8,
 
     // ========================================================================
     // Constants

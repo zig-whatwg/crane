@@ -15,10 +15,12 @@ const ir = @import("ir.zig");
 
 /// Generate Zig code from enhanced class IR
 /// If module_definitions is provided, they will be included after imports
+/// If post_class_definitions is provided, they will be included after the class
 pub fn generateCode(
     allocator: Allocator,
     enhanced: ir.EnhancedClassIR,
     module_definitions: ?[]const u8,
+    post_class_definitions: ?[]const u8,
 ) ![]const u8 {
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(allocator);
@@ -88,6 +90,15 @@ pub fn generateCode(
 
     // Class definition
     try writeClass(allocator, writer, enhanced);
+
+    // Post-class definitions (helper types defined after the class)
+    if (post_class_definitions) |post_defs| {
+        if (post_defs.len > 0) {
+            try writer.writeAll("\n\n");
+            try writer.writeAll(post_defs);
+            try writer.writeAll("\n");
+        }
+    }
 
     return output.toOwnedSlice(allocator);
 }
@@ -297,12 +308,12 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     try writer.print("pub const {s} = struct {{\n", .{class.name});
 
     // Fields
-    if (enhanced.all_fields.len > 0) {
-        try writer.writeAll("\n    // ========================================================================\n");
+    // Only write own fields - inherited fields come from parent struct embedding
+    if (class.own_fields.len > 0) {
+        try writer.writeAll("    // ========================================================================\n");
         try writer.writeAll("    // Fields\n");
         try writer.writeAll("    // ========================================================================\n\n");
-
-        for (enhanced.all_fields) |field| {
+        for (class.own_fields) |field| {
             if (field.doc_comment) |doc| {
                 try writer.print("    /// {s}\n", .{doc});
             }

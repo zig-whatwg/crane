@@ -35,15 +35,12 @@ const webidl = @import("webidl");
 /// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 
 pub const Range = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    start_container: *Node,
-    start_offset: u32,
-    end_container: *Node,
-    end_offset: u32,
+    allocator: Allocator,
+    owner_document: *Document,
 
     // ========================================================================
     // Constants

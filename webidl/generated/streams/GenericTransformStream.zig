@@ -57,7 +57,6 @@ const webidl = @import("webidl");
 /// ```zig
 
 pub const GenericTransformStream = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
@@ -81,5 +80,39 @@ pub const GenericTransformStream = struct {
     }
 
 };
+
+
+/// ```
+pub const GenericTransformStream = webidl.mixin(struct {
+    /// [[transform]]: The actual TransformStream backing this object
+    ///
+    /// Spec: "Any platform object that includes the GenericTransformStream
+    /// mixin has an associated transform, which is an actual TransformStream."
+    transform: *TransformStream,
+
+    // ============================================================================
+    // WebIDL Mixin Methods
+    // ============================================================================
+
+    /// readable attribute getter
+    ///
+    /// IDL: readonly attribute ReadableStream readable;
+    ///
+    /// Spec: § 6.4.3.3 "The readable getter steps are to return
+    /// this's transform.[[readable]]."
+    pub fn get_readable(self: *const GenericTransformStream) *ReadableStream {
+        return self.transform.readableStream;
+    }
+
+    /// writable attribute getter
+    ///
+    /// IDL: readonly attribute WritableStream writable;
+    ///
+    /// Spec: § 6.4.3.3 "The writable getter steps are to return
+    /// this's transform.[[writable]]."
+    pub fn get_writable(self: *const GenericTransformStream) *WritableStream {
+        return self.transform.writableStream;
+    }
+});
 
 

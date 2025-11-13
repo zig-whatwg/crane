@@ -23,7 +23,6 @@ const webidl = @import("webidl");
 /// A NamedNodeMap object's attribute list is its element's attribute list.
 
 pub const NamedNodeMap = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

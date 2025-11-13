@@ -24,7 +24,6 @@ const webidl = @import("webidl");
 /// Accessed via document.implementation getter.
 
 pub const DOMImplementation = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
@@ -203,5 +202,62 @@ pub const DOMImplementation = struct {
     }
 
 };
+
+
+/// Validates a doctype name per DOM spec
+///
+/// A string is a valid doctype name if it does not contain:
+/// - ASCII whitespace (U+0009 TAB, U+000A LF, U+000C FF, U+000D CR, U+0020 SPACE)
+/// - U+0000 NULL
+/// - U+003E (>)
+///
+/// The empty string is a valid doctype name.
+fn isValidDoctypeName(name: []const u8) bool {
+    for (name) |c| {
+        // Check for ASCII whitespace
+        if (c == 0x09 or c == 0x0A or c == 0x0C or c == 0x0D or c == 0x20) {
+            return false;
+        }
+        // Check for NULL
+        if (c == 0x00) {
+            return false;
+        }
+        // Check for >
+        if (c == 0x3E) {
+            return false;
+        }
+    }
+    return true;
+}
+
+test "isValidDoctypeName: empty string is valid" {
+    try std.testing.expect(isValidDoctypeName(""));
+}
+
+test "isValidDoctypeName: normal name is valid" {
+    try std.testing.expect(isValidDoctypeName("html"));
+    try std.testing.expect(isValidDoctypeName("HTML"));
+    try std.testing.expect(isValidDoctypeName("my-doctype"));
+}
+
+test "isValidDoctypeName: space is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html test"));
+}
+
+test "isValidDoctypeName: tab is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\ttest"));
+}
+
+test "isValidDoctypeName: newline is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\ntest"));
+}
+
+test "isValidDoctypeName: null is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html\x00test"));
+}
+
+test "isValidDoctypeName: > is invalid" {
+    try std.testing.expect(!isValidDoctypeName("html>test"));
+}
 
 

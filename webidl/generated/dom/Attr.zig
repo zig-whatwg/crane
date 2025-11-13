@@ -23,6 +23,7 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -32,13 +33,16 @@ const webidl = @import("webidl");
 /// Attributes have a namespace, namespace prefix, local name, value, and element.
 
 pub const Attr = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    allocator: std.mem.Allocator,
+    namespace_uri: ?[]const u8,
+    prefix: ?[]const u8,
+    local_name: []const u8,
+    value: []u8,
+    owner_element: ?*Element,
 
     // ========================================================================
     // Constants

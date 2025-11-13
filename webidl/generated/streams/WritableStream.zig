@@ -8,7 +8,6 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const AbortRequest = @import("abort_request").AbortRequest;
 const Allocator = std.mem.Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const Controller = @import("controller").Controller;
@@ -44,7 +43,6 @@ pub const Writer = union(enum) {
 };
 
 pub const WritableStream = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
@@ -573,6 +571,15 @@ pub const WritableStream = struct {
     
     }
 
+};
+
+
+/// Abort request record
+/// Spec: § 5.3.3 WritableStreamAbort step 10
+const AbortRequest = struct {
+    promise: *AsyncPromise(void),
+    reason: ?common.JSValue,
+    wasAlreadyErroring: bool,
 };
 
 

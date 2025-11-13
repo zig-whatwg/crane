@@ -212,3 +212,61 @@ pub const ChildNode = struct {
 };
 
 
+/// DOM §4.3.3 - convert nodes into a node
+/// Given nodes and document, run these steps:
+/// 1. Let node be null.
+/// 2. Replace each string in nodes with a new Text node whose data is the string and node document is document.
+/// 3. If nodes contains one node, then set node to nodes[0].
+/// 4. Otherwise, set node to a new DocumentFragment node whose node document is document,
+///    and then append each node in nodes, if any, to it.
+/// 5. Return node.
+pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_types.NodeOrDOMString, document: *@import("document").Document) !*@import("node").Node {
+    const NodeType = @import("node").Node;
+    const Text = @import("text").Text;
+    const DocumentFragment = @import("document_fragment").DocumentFragment;
+    const mutation = @import("dom").mutation;
+
+    // Step 1: Let node be null
+    // Step 2: Build array of actual nodes (converting strings to Text nodes)
+    var node_list = std.ArrayList(*NodeType).init(allocator);
+    defer node_list.deinit();
+
+    for (nodes) |item| {
+        switch (item) {
+            .node => |n| try node_list.append(n),
+            .string => |s| {
+                // Create Text node with the string data
+                const text = try Text.init(allocator, s);
+                // Cast Text to Node (Text extends Node)
+                const text_node = @as(*NodeType, @ptrCast(&text));
+                text_node.owner_document = document;
+                try node_list.append(text_node);
+            },
+        }
+    }
+
+    // Step 3: If nodes contains one node, return it
+    if (node_list.items.len == 1) {
+        return node_list.items[0];
+    }
+
+    // Step 4: Create DocumentFragment and append all nodes
+    var fragment = try DocumentFragment.init(allocator);
+    const fragment_node = @as(*NodeType, @ptrCast(&fragment));
+    fragment_node.owner_document = document;
+
+    for (node_list.items) |node| {
+        try mutation.append(node, fragment_node);
+    }
+
+    // Step 5: Return the fragment node
+    return fragment_node;
+}
+
+test "ChildNode mixin compiles" {
+    // Just verify the mixin structure compiles
+    const T = @TypeOf(ChildNode);
+    try std.testing.expect(T != void);
+}
+
+

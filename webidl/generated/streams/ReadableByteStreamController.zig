@@ -56,7 +56,6 @@ const ByteStreamQueueEntry = struct {
 };
 
 pub const ReadableByteStreamController = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

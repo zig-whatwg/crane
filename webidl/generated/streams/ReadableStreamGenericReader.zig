@@ -26,7 +26,6 @@ const webidl = @import("webidl");
 /// and ReadableStreamBYOBReader.
 
 pub const ReadableStreamGenericReader = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

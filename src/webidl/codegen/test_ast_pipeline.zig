@@ -43,7 +43,7 @@ pub fn main() !void {
 
     if (file_ir.classes.len > 0) {
         std.debug.print("\nEnhancing class...\n", .{});
-        var enhanced = try optimizer.enhanceClass(allocator, &file_ir.classes[0], &registry);
+        var enhanced = try optimizer.enhanceClass(allocator, &file_ir.classes[0], &registry, &.{}, "", &.{}, "");
         defer enhanced.deinit(allocator);
 
         std.debug.print("  All fields: {}\n", .{enhanced.all_fields.len});
@@ -52,7 +52,7 @@ pub fn main() !void {
 
         // Step 3: Generate
         std.debug.print("\nGenerating code...\n", .{});
-        const generated_code = try generator.generateCode(allocator, enhanced);
+        const generated_code = try generator.generateCode(allocator, enhanced, null, null);
         defer allocator.free(generated_code);
 
         std.debug.print("Generated {} bytes\n", .{generated_code.len});

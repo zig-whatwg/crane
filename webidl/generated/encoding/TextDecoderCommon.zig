@@ -48,7 +48,6 @@ const webidl = @import("webidl");
 /// The including interfaces must provide these readonly fields.
 
 pub const TextDecoderCommon = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

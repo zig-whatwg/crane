@@ -29,6 +29,7 @@ const TransientRegisteredObserver = @import("registered_observer").TransientRegi
 const dom = @import("dom");
 const dom_types = @import("dom_types");
 const infra = @import("infra");
+const node: *Node, copy: *Node, subtree: bool = @import("node: *_node, copy: *_node, subtree: bool");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -36,13 +37,11 @@ const webidl = @import("webidl");
 /// DOM Spec: interface DocumentFragment : Node
 
 pub const DocumentFragment = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
-    event_listener_list: ?*std.ArrayList(EventListener),
+    allocator: std.mem.Allocator,
 
     // ========================================================================
     // Constants

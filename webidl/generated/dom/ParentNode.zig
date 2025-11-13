@@ -253,3 +253,16 @@ pub const ParentNode = struct {
 };
 
 
+// ============================================================================
+// Helper Algorithms (DOM §4.3.2)
+// ============================================================================
+
+// NOTE: convertNodesIntoNode() is implemented in ChildNode.zig and shared by both mixins
+
+test "ParentNode mixin compiles" {
+    // Just verify the mixin structure compiles
+    const T = @TypeOf(ParentNode);
+    try std.testing.expect(T != void);
+}
+
+

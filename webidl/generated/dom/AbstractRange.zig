@@ -20,7 +20,6 @@ const webidl = @import("webidl");
 /// A range has two associated boundary points - a start and end.
 
 pub const AbstractRange = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================

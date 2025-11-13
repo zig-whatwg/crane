@@ -44,7 +44,6 @@ const webidl = @import("webidl");
 /// The including interfaces must provide this readonly field.
 
 pub const TextEncoderCommon = struct {
-
     // ========================================================================
     // Fields
     // ========================================================================
