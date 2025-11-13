@@ -550,14 +550,14 @@ fn addDescendants(allocator: std.mem.Allocator, node: *NodeBase, result: *NodeSe
     }
 }
 
-fn matchesNodeTest(_: std.mem.Allocator, node_test: *const ast.NodeTest, node: *Node, _: *const Context) !bool {
+fn matchesNodeTest(_: std.mem.Allocator, node_test: *const ast.NodeTest, node: *Node, ctx: *const Context) !bool {
     return switch (node_test.*) {
-        .name_test => |name_test| matchesNameTest(&name_test, node),
+        .name_test => |name_test| matchesNameTest(&name_test, node, ctx),
         .node_type => |node_type| matchesNodeType(&node_type, node),
     };
 }
 
-fn matchesNameTest(name_test: *const ast.NodeTest.NameTest, node: *Node) bool {
+fn matchesNameTest(name_test: *const ast.NodeTest.NameTest, node: *Node, ctx: *const Context) bool {
     return switch (name_test.*) {
         .wildcard => {
             // * matches any element node
@@ -575,10 +575,19 @@ fn matchesNameTest(name_test: *const ast.NodeTest.NameTest, node: *Node) bool {
                 return false;
             }
 
-            // If namespace prefix is specified, check namespace URI
+            // If namespace prefix is specified, resolve and check namespace URI
             if (qname.prefix) |prefix| {
-                // TODO: Resolve prefix to namespace URI using context
-                // For now, check if element has a namespace with matching prefix
+                // Resolve prefix to namespace URI using context
+                if (ctx.lookupNamespace(prefix)) |expected_uri| {
+                    // Compare element's namespace URI with expected URI
+                    if (element.namespace_uri) |elem_uri| {
+                        return std.mem.eql(u8, elem_uri, expected_uri);
+                    }
+                    return false;
+                }
+
+                // If prefix not bound in context, fall back to prefix comparison
+                // This handles cases where namespaces are declared on elements
                 if (element.prefix) |elem_prefix| {
                     return std.mem.eql(u8, elem_prefix, prefix);
                 }
@@ -594,13 +603,20 @@ fn matchesNameTest(name_test: *const ast.NodeTest.NameTest, node: *Node) bool {
 
             const element: *Element = @ptrCast(@alignCast(node));
 
-            // TODO: Resolve prefix to namespace URI using context namespace resolver
-            // For now, match elements that have the given prefix
+            // Resolve prefix to namespace URI using context
+            if (ctx.lookupNamespace(prefix)) |expected_uri| {
+                // Match elements in the resolved namespace
+                if (element.namespace_uri) |elem_uri| {
+                    return std.mem.eql(u8, elem_uri, expected_uri);
+                }
+                return false;
+            }
+
+            // If prefix not bound in context, fall back to prefix comparison
             if (element.prefix) |elem_prefix| {
                 return std.mem.eql(u8, elem_prefix, prefix);
             }
 
-            // If no prefix resolver, don't match
             return false;
         },
     };
