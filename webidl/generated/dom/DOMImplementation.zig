@@ -13,7 +13,7 @@ const Document = @import("document").Document;
 const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
 const Text = @import("text").Text;
-const dom = @import("dom").dom;
+const dom = @import("dom");
 const std = @import("std");
 const webidl = @import("webidl");
 

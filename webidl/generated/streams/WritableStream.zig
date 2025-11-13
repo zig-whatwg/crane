@@ -19,11 +19,11 @@ const Requests = @import("requests").Requests;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
-const common = @import("common").common;
-const dict_parsing = @import("dict_parsing").dict_parsing;
+const common = @import("common");
+const dict_parsing = @import("dict_parsing");
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
-const structured_clone = @import("structured_clone").structured_clone;
+const structured_clone = @import("structured_clone");
 const webidl = @import("webidl");
 
 

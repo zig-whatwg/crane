@@ -29,9 +29,9 @@ const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Slottable = @import("slottable").Slottable;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
-const dom = @import("dom").dom;
-const dom_types = @import("dom_types").dom_types;
-const infra = @import("infra").infra;
+const dom = @import("dom");
+const dom_types = @import("dom_types");
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

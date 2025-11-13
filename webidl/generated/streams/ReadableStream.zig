@@ -28,12 +28,12 @@ const TeeState = @import("tee_state").TeeState;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const WritableStream = @import("writable_stream").WritableStream;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
-const async_iterator = @import("async_iterator").async_iterator;
-const common = @import("common").common;
-const dict_parsing = @import("dict_parsing").dict_parsing;
+const async_iterator = @import("async_iterator");
+const common = @import("common");
+const dict_parsing = @import("dict_parsing");
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
-const structured_clone = @import("structured_clone").structured_clone;
+const structured_clone = @import("structured_clone");
 const webidl = @import("webidl");
 
 

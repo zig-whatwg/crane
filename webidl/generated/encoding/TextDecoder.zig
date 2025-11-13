@@ -13,7 +13,7 @@ const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 const encoding_mod = @import("encoding");
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

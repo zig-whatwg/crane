@@ -13,7 +13,7 @@ const GenericTransformStream = @import("../streams/GenericTransformStream.zig").
 const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
 const TransformStream = @import("transform_stream").TransformStream;
 const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

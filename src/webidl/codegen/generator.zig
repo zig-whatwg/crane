@@ -240,7 +240,14 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
     // Write sorted imports
     for (sorted_imports.items) |import| {
         const vis = if (import.visibility == .public) "pub " else "";
-        if (import.is_type) {
+
+        // Heuristic: if name equals module (both lowercase), it's likely a module import, not a type
+        // E.g., const common = @import("common") vs const Foo = @import("foo").Foo
+        const name_is_lowercase = import.name.len > 0 and import.name[0] >= 'a' and import.name[0] <= 'z';
+        const names_match = std.mem.eql(u8, import.name, import.module);
+        const is_module_import = !import.is_type or (name_is_lowercase and names_match);
+
+        if (!is_module_import and import.is_type) {
             // Type import: const Foo = @import("foo").Foo;
             try writer.print("{s}const {s} = @import(\"{s}\").{s};\n", .{
                 vis,

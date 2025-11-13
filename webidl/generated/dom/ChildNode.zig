@@ -9,7 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const dom_types = @import("dom_types").dom_types;
+const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");
 

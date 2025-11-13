@@ -11,7 +11,7 @@
 const Allocator = @import("std.mem").Allocator;
 const EventInit = @import("event_init").EventInit;
 const EventTarget = @import("event_target").EventTarget;
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

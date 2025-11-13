@@ -654,12 +654,26 @@ fn isPrimitiveType(type_name: []const u8) bool {
         "anyframe", "comptime_int", "comptime_float", "usize",        "isize",
         "c_short",  "c_ushort",     "c_int",          "c_uint",       "c_long",
         "c_ulong",  "c_longlong",   "c_ulonglong",    "c_longdouble",
-        "Allocator", // Common std.mem.Allocator alias
+    };
+
+    // Also check for common std library type aliases that don't need importing
+    // These should be used with their full qualified name (std.mem.Allocator)
+    // or defined as local aliases in the file
+    const std_aliases = [_][]const u8{
+        "Allocator", // std.mem.Allocator
+        "ArrayList", // std.ArrayList
+        "HashMap", // std.HashMap or std.StringHashMap
+        "StringHashMap", // std.StringHashMap
     };
 
     for (primitives) |prim| {
         if (std.mem.eql(u8, type_name, prim)) return true;
     }
+
+    for (std_aliases) |alias| {
+        if (std.mem.eql(u8, type_name, alias)) return true;
+    }
+
     return false;
 }
 

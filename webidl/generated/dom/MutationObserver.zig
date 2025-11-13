@@ -14,7 +14,7 @@ const MutationRecord = @import("mutation_record").MutationRecord;
 const Node = @import("node").Node;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

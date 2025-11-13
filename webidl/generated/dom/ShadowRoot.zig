@@ -27,9 +27,9 @@ const ParentNode = @import("parent_node").ParentNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
-const dom = @import("dom").dom;
+const dom = @import("dom");
 const dom_types = @import("dom_types");
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

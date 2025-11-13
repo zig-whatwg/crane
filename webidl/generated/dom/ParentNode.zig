@@ -12,8 +12,8 @@ const Allocator = @import("std.mem").Allocator;
 const Element = @import("element").Element;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const NodeList = @import("node_list").NodeList;
-const dom = @import("dom").dom;
-const dom_types = @import("dom_types").dom_types;
+const dom = @import("dom");
+const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");
 

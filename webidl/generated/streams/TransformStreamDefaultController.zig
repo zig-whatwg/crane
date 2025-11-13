@@ -15,7 +15,7 @@ const JSValue = @import("j_s_value").JSValue;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const Stream = @import("stream").Stream;
 const TransformStream = @import("transform_stream").TransformStream;
-const common = @import("common").common;
+const common = @import("common");
 const std = @import("std");
 const webidl = @import("webidl");
 

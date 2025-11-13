@@ -11,9 +11,9 @@
 const Allocator = @import("std.mem").Allocator;
 const URLRecord = @import("url_record").URLRecord;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
-const api_parser = @import("api_parser").api_parser;
+const api_parser = @import("api_parser");
 const std = @import("std");
-const url_serializer = @import("url_serializer").url_serializer;
+const url_serializer = @import("url_serializer");
 const webidl = @import("webidl");
 
 

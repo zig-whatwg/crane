@@ -21,7 +21,7 @@ const Node = @import("node").Node;
 const Parent = @import("parent").Parent;
 const Point = @import("point").Point;
 const Text = @import("text").Text;
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 

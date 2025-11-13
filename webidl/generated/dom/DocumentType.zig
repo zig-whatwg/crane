@@ -25,7 +25,7 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types");
-const infra = @import("infra").infra;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
