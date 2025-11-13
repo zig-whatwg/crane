@@ -452,14 +452,24 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("shadow_root", shadow_root_mod);
     element_mod.addImport("shadow_root_init", shadow_root_init_mod);
     element_mod.addImport("node_list", node_list_mod);
+    element_mod.addImport("dom_token_list", dom_token_list_mod);
+    element_mod.addImport("named_node_map", named_node_map_mod);
     // Note: dom -> element circular dependency is OK in Zig if handled carefully
     character_data_mod.addImport("node", node_mod);
     character_data_mod.addImport("event_target", event_target_mod);
     character_data_mod.addImport("dom_types", dom_types_mod);
     character_data_mod.addImport("element", element_mod);
+    character_data_mod.addImport("node_list", node_list_mod);
+    character_data_mod.addImport("registered_observer", registered_observer_mod);
+    character_data_mod.addImport("document", document_mod);
     text_mod.addImport("character_data", character_data_mod);
     text_mod.addImport("dom_types", dom_types_mod);
     text_mod.addImport("element", element_mod);
+    text_mod.addImport("event_target", event_target_mod);
+    text_mod.addImport("node_list", node_list_mod);
+    text_mod.addImport("node", node_mod);
+    text_mod.addImport("registered_observer", registered_observer_mod);
+    text_mod.addImport("document", document_mod);
     comment_mod.addImport("character_data", character_data_mod);
     comment_mod.addImport("dom_types", dom_types_mod);
     comment_mod.addImport("element", element_mod);
@@ -483,6 +493,10 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("cdata_section", cdata_section_mod);
     document_mod.addImport("document_type", document_type_mod);
     document_mod.addImport("dom_implementation", dom_implementation_mod);
+    document_mod.addImport("text", text_mod);
+    document_mod.addImport("comment", comment_mod);
+    document_mod.addImport("document_fragment", document_fragment_mod);
+    document_mod.addImport("range", range_mod);
     dom_token_list_mod.addImport("element", element_mod);
     attr_mod.addImport("node", node_mod);
     attr_mod.addImport("element", element_mod);
@@ -550,8 +564,10 @@ pub fn build(b: *std.Build) void {
     document_fragment_mod.addImport("dom", dom_mod); // Circular: dom -> document_fragment, document_fragment -> dom
     dom_implementation_mod.addImport("dom", dom_mod); // dom_implementation needs dom module
     node_mod.addImport("document", document_mod);
+    node_mod.addImport("dom", dom_mod); // node needs dom for mutation operations
     range_mod.addImport("node", node_mod);
     range_mod.addImport("document_fragment", document_fragment_mod);
+    range_mod.addImport("document", document_mod);
     range_mod.addImport("dom", dom_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)

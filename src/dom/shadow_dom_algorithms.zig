@@ -160,7 +160,7 @@ pub fn attachShadowRoot(
         // Step 4.3.1: Remove all of currentShadowRoot's children, in tree order
         // ShadowRoot extends DocumentFragment which extends Node, so it has child_nodes
         const shadow_node: *Node = @ptrCast(current_shadow_root);
-        const children = shadow_node.child_nodes.items;
+        const children = shadow_node.child_nodes.items();
 
         // Remove children in reverse order to avoid index shifting issues
         var i: usize = children.len;

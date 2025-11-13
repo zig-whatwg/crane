@@ -506,7 +506,7 @@ pub const EventTarget = struct {
     /// DOM §2.7 - remove an event listener
     /// To remove an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
-    fn removeAnEventListener(self: *EventTarget, listener: EventListener) void {
+    pub fn removeAnEventListener(self: *EventTarget, listener: EventListener) void {
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
         // Early exit if no listeners have been added yet

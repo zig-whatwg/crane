@@ -39,7 +39,7 @@ pub const ChildrenChangedCallback = *const fn (parent: *Node) void;
 
 /// Global registry for children changed steps callbacks
 /// This allows specifications (like HTML) to register their hooks
-var children_changed_callbacks = std.ArrayList(ChildrenChangedCallback).init(std.heap.page_allocator);
+var children_changed_callbacks : std.ArrayList(ChildrenChangedCallback) = .{};
 var callbacks_initialized = false;
 
 /// Register a callback to be invoked when children change
@@ -96,13 +96,13 @@ pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) vo
 pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
 
 /// Global registry for insertion steps callbacks
-var insertion_steps_callbacks = std.ArrayList(InsertionStepsCallback).init(std.heap.page_allocator);
+var insertion_steps_callbacks : std.ArrayList(InsertionStepsCallback) = .{};
 
 /// Global registry for removing steps callbacks
-var removing_steps_callbacks = std.ArrayList(RemovingStepsCallback).init(std.heap.page_allocator);
+var removing_steps_callbacks : std.ArrayList(RemovingStepsCallback) = .{};
 
 /// Global registry for post-connection steps callbacks
-var post_connection_steps_callbacks = std.ArrayList(PostConnectionStepsCallback).init(std.heap.page_allocator);
+var post_connection_steps_callbacks : std.ArrayList(PostConnectionStepsCallback) = .{};
 
 /// Register a callback for insertion steps
 pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
@@ -146,7 +146,7 @@ fn runPostConnectionSteps(node: *Node) void {
 /// Recursively run insertion steps for a node and all its descendants
 fn runInsertionStepsRecursive(node: *Node) void {
     runInsertionSteps(node);
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         runInsertionStepsRecursive(child);
     }
 }
@@ -154,7 +154,7 @@ fn runInsertionStepsRecursive(node: *Node) void {
 /// Recursively run post-connection steps for a node and all its descendants
 fn runPostConnectionStepsRecursive(node: *Node) void {
     runPostConnectionSteps(node);
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         runPostConnectionStepsRecursive(child);
     }
 }
@@ -162,7 +162,7 @@ fn runPostConnectionStepsRecursive(node: *Node) void {
 /// Recursively run removing steps for a node and all its descendants
 fn runRemovingStepsRecursive(node: *Node, old_parent: *Node) void {
     runRemovingSteps(node, old_parent);
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         runRemovingStepsRecursive(child, node);
     }
 }
@@ -209,7 +209,7 @@ fn isCharacterData(node: *Node) bool {
 /// Get child index in parent
 fn getChildIndex(child: *Node) ?usize {
     const parent = child.parent_node orelse return null;
-    for (parent.child_nodes.items, 0..) |node, i| {
+    for (parent.child_nodes.items(), 0..) |node, i| {
         if (node == child) return i;
     }
     return null;
@@ -222,7 +222,7 @@ fn isDoctypeFollowing(parent: *Node, child: ?*Node) bool {
     const child_idx = getChildIndex(child.?) orelse return false;
 
     // Check all siblings after child
-    for (parent.child_nodes.items[child_idx + 1 ..]) |sibling| {
+    for (parent.child_nodes.items()[child_idx + 1 ..]) |sibling| {
         if (isDocumentType(sibling)) return true;
     }
 
@@ -233,7 +233,7 @@ fn isDoctypeFollowing(parent: *Node, child: ?*Node) bool {
 fn isElementPreceding(parent: *Node, child: ?*Node) bool {
     if (child == null) {
         // If child is null, check if parent has any element children
-        for (parent.child_nodes.items) |node| {
+        for (parent.child_nodes.items()) |node| {
             if (isElement(node)) return true;
         }
         return false;
@@ -242,7 +242,7 @@ fn isElementPreceding(parent: *Node, child: ?*Node) bool {
     const child_idx = getChildIndex(child.?) orelse return false;
 
     // Check all siblings before child
-    for (parent.child_nodes.items[0..child_idx]) |sibling| {
+    for (parent.child_nodes.items()[0..child_idx]) |sibling| {
         if (isElement(sibling)) return true;
     }
 
@@ -252,7 +252,7 @@ fn isElementPreceding(parent: *Node, child: ?*Node) bool {
 /// Count element children of a node
 fn countElementChildren(node: *Node) usize {
     var count: usize = 0;
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         if (isElement(child)) count += 1;
     }
     return count;
@@ -260,7 +260,7 @@ fn countElementChildren(node: *Node) usize {
 
 /// Check if node has a Text child
 fn hasTextChild(node: *Node) bool {
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         if (isText(child)) return true;
     }
     return false;
@@ -268,7 +268,7 @@ fn hasTextChild(node: *Node) bool {
 
 /// Check if parent has a doctype child
 fn hasDoctypeChild(parent: *Node) bool {
-    for (parent.child_nodes.items) |child| {
+    for (parent.child_nodes.items()) |child| {
         if (isDocumentType(child)) return true;
     }
     return false;
@@ -276,7 +276,7 @@ fn hasDoctypeChild(parent: *Node) bool {
 
 /// Check if parent has an element child (optionally excluding one node)
 fn hasElementChild(parent: *Node, exclude: ?*Node) bool {
-    for (parent.child_nodes.items) |child| {
+    for (parent.child_nodes.items()) |child| {
         if (exclude) |ex| {
             if (child == ex) continue;
         }
@@ -395,8 +395,8 @@ pub fn preInsert(
         // Find node's next sibling
         if (node.parent_node) |node_parent| {
             const idx = getChildIndex(node) orelse return node;
-            if (idx + 1 < node_parent.child_nodes.items.len) {
-                referenceChild = node_parent.child_nodes.items[idx + 1];
+            if (idx + 1 < node_parent.child_nodes.size()) {
+                referenceChild = node_parent.child_nodes.items()[idx + 1];
             } else {
                 referenceChild = null;
             }
@@ -449,7 +449,7 @@ pub fn insert(
     // Step 4: If node is a DocumentFragment node:
     if (isDocumentFragment(node)) {
         // Step 4.1: Remove its children with suppress observers flag set
-        for (node.child_nodes.items) |child_node| {
+        for (node.child_nodes.items()) |child_node| {
             try remove(child_node, true);
         }
 
@@ -475,11 +475,11 @@ pub fn insert(
     if (child) |c| {
         const idx = getChildIndex(c) orelse 0;
         if (idx > 0) {
-            previousSibling = parent.child_nodes.items[idx - 1];
+            previousSibling = parent.child_nodes.items()[idx - 1];
         }
     } else {
-        if (parent.child_nodes.items.len > 0) {
-            previousSibling = parent.child_nodes.items[parent.child_nodes.items.len - 1];
+        if (parent.child_nodes.size() > 0) {
+            previousSibling = parent.child_nodes.items()[parent.child_nodes.size() - 1];
         }
     }
 
@@ -490,7 +490,7 @@ pub fn insert(
 
         // Step 7.2-3: Insert node into parent's children
         if (child) |c| {
-            const idx = getChildIndex(c) orelse parent.child_nodes.items.len;
+            const idx = getChildIndex(c) orelse parent.child_nodes.size();
             try parent.child_nodes.insert(idx, n);
         } else {
             try parent.child_nodes.append(n);
@@ -515,7 +515,7 @@ pub fn insert(
         for (nodes) |inserted_node| {
             runInsertionSteps(inserted_node);
             // Recursively run for all descendants
-            for (inserted_node.child_nodes.items) |descendant| {
+            for (inserted_node.child_nodes.items()) |descendant| {
                 runInsertionStepsRecursive(descendant);
             }
         }
@@ -540,7 +540,7 @@ pub fn insert(
     for (nodes) |inserted_node| {
         runPostConnectionSteps(inserted_node);
         // Recursively run for all descendants
-        for (inserted_node.child_nodes.items) |descendant| {
+        for (inserted_node.child_nodes.items()) |descendant| {
             runPostConnectionStepsRecursive(descendant);
         }
     }
@@ -623,8 +623,8 @@ pub fn replace(
     var referenceChild: ?*Node = null;
     const child_idx = getChildIndex(child);
     if (child_idx) |idx| {
-        if (idx + 1 < parent.child_nodes.items.len) {
-            referenceChild = parent.child_nodes.items[idx + 1];
+        if (idx + 1 < parent.child_nodes.size()) {
+            referenceChild = parent.child_nodes.items()[idx + 1];
         }
     }
 
@@ -633,8 +633,8 @@ pub fn replace(
         const node_idx = getChildIndex(node);
         if (node_idx) |idx| {
             if (node.parent_node) |node_parent| {
-                if (idx + 1 < node_parent.child_nodes.items.len) {
-                    referenceChild = node_parent.child_nodes.items[idx + 1];
+                if (idx + 1 < node_parent.child_nodes.size()) {
+                    referenceChild = node_parent.child_nodes.items()[idx + 1];
                 } else {
                     referenceChild = null;
                 }
@@ -646,7 +646,7 @@ pub fn replace(
     var previousSibling: ?*Node = null;
     if (child_idx) |idx| {
         if (idx > 0) {
-            previousSibling = parent.child_nodes.items[idx - 1];
+            previousSibling = parent.child_nodes.items()[idx - 1];
         }
     }
 
@@ -685,8 +685,8 @@ pub fn replaceAll(
     // (Both will be used for mutation observer - TODO)
 
     // Step 5: Remove all parent's children in tree order with suppress observers
-    while (parent.child_nodes.items.len > 0) {
-        const child_to_remove = parent.child_nodes.items[0];
+    while (parent.child_nodes.size() > 0) {
+        const child_to_remove = parent.child_nodes.items()[0];
         try remove(child_to_remove, true);
     }
 
@@ -754,21 +754,21 @@ pub fn remove(
     const node_idx = getChildIndex(node);
     if (node_idx) |idx| {
         if (idx > 0) {
-            oldPreviousSibling = parent.child_nodes.items[idx - 1];
+            oldPreviousSibling = parent.child_nodes.items()[idx - 1];
         }
     }
 
     // Step 6: Let oldNextSibling be node's next sibling
     var oldNextSibling: ?*Node = null;
     if (node_idx) |idx| {
-        if (idx + 1 < parent.child_nodes.items.len) {
-            oldNextSibling = parent.child_nodes.items[idx + 1];
+        if (idx + 1 < parent.child_nodes.size()) {
+            oldNextSibling = parent.child_nodes.items()[idx + 1];
         }
     }
 
     // Step 7: Remove node from its parent's children
     if (node_idx) |idx| {
-        _ = parent.child_nodes.orderedRemove(idx);
+        _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
     node.parent_node = null;
 
@@ -779,7 +779,7 @@ pub fn remove(
     // Spec: Specifications may define removing steps for all or some nodes
     runRemovingSteps(node, parent);
     // Recursively run for all descendants
-    for (node.child_nodes.items) |descendant| {
+    for (node.child_nodes.items()) |descendant| {
         runRemovingStepsRecursive(descendant, node);
     }
 
@@ -1066,10 +1066,10 @@ fn removeFromChildrenList(node: *Node, parent: *Node) void {
         prev.next_sibling = node.next_sibling;
     } else {
         // node was first child
-        const first = parent.child_nodes.items[0];
+        const first = parent.child_nodes.items()[0];
         if (first == node) {
             if (node.next_sibling) |next| {
-                parent.child_nodes.items[0] = next;
+                parent.child_nodes.items()[0] = next;
             } else {
                 // Was only child
                 parent.child_nodes.clearRetainingCapacity();
@@ -1084,7 +1084,7 @@ fn removeFromChildrenList(node: *Node, parent: *Node) void {
 
     // Remove from parent's children array
     if (getChildIndex(node)) |idx| {
-        _ = parent.child_nodes.orderedRemove(idx);
+        _ = parent.child_nodes.remove(idx) catch unreachable; // idx is guaranteed valid by getChildIndex
     }
 
     // Clear node's sibling pointers (but not parent - that stays for the move)
@@ -1146,10 +1146,10 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
     runMovingSteps(node, old_parent);
 
     // Run moving steps for all descendants with null
-    var stack = std.ArrayList(*Node).init(std.heap.page_allocator);
+    var stack : std.ArrayList(*Node) = .{};
     defer stack.deinit();
 
-    for (node.child_nodes.items) |child| {
+    for (node.child_nodes.items()) |child| {
         stack.append(child) catch continue;
     }
 
@@ -1158,7 +1158,7 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
         runMovingSteps(current, null);
 
         // Add children to stack
-        for (current.child_nodes.items) |child| {
+        for (current.child_nodes.items()) |child| {
             stack.append(child) catch continue;
         }
     }
@@ -1203,7 +1203,7 @@ pub fn adopt(
         node.owner_document = document;
 
         // Update all descendants
-        var stack = std.ArrayList(*Node).init(std.heap.page_allocator);
+        var stack : std.ArrayList(*Node) = .{};
         defer stack.deinit();
 
         try stack.append(node);
@@ -1213,7 +1213,7 @@ pub fn adopt(
             current.owner_document = document;
 
             // Add children to stack
-            for (current.child_nodes.items) |child| {
+            for (current.child_nodes.items()) |child| {
                 try stack.append(child);
             }
         }
