@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
 
 /// DOM §5 - interface AbstractRange
