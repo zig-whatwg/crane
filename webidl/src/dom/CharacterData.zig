@@ -177,12 +177,17 @@ pub const CharacterData = webidl.interface(struct {
 
         // Step 12 - Run children changed steps for parent
         // Per spec: "If node's parent is non-null, then run the children changed steps for node's parent"
-        // Note: Children changed steps are defined by specifications (e.g., HTML) as extension points
-        // This is where those hooks would be called (e.g., slot assignment, form-associated elements)
-        // For now, this is a no-op as we don't have HTML-specific hooks yet
-        if (self.base.parent_node) |_| {
-            // Extension point for specifications to define children changed behavior
-            // Example: HTML's slot assignment algorithm would run here
+        // Spec: https://dom.spec.whatwg.org/#concept-node-replace
+        //
+        // Children changed steps are extension points for other specifications (e.g., HTML)
+        // to define custom behavior when children change. Examples:
+        // - Shadow DOM slot assignment algorithm
+        // - Form-associated element connections
+        // - Custom element reactions
+        if (self.base.parent_node) |parent| {
+            // Call the mutation module's children changed callback system
+            // This will invoke any registered callbacks from other specifications
+            @import("mutation").runChildrenChangedSteps(parent);
         }
     }
 }, .{

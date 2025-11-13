@@ -23,6 +23,51 @@ pub const DOMException = error{
     NotSupportedError,
 };
 
+/// Children Changed Steps Callback
+/// Spec: https://dom.spec.whatwg.org/#concept-node-children-changed-ext
+///
+/// Specifications (like HTML) may define children changed steps for all or some nodes.
+/// The algorithm is passed the parent node and is called from insert, remove, and replace data.
+///
+/// Example usage (to be implemented by HTML spec):
+///   - Slot assignment algorithm (Shadow DOM)
+///   - Form-associated element connections
+///   - Custom element reactions
+///
+/// This is an extension point for specifications to hook into DOM mutations.
+pub const ChildrenChangedCallback = *const fn (parent: *Node) void;
+
+/// Global registry for children changed steps callbacks
+/// This allows specifications (like HTML) to register their hooks
+var children_changed_callbacks = std.ArrayList(ChildrenChangedCallback).init(std.heap.page_allocator);
+var callbacks_initialized = false;
+
+/// Register a callback to be invoked when children change
+/// This should be called during initialization by specifications that need to hook into mutations
+pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void {
+    if (!callbacks_initialized) {
+        callbacks_initialized = true;
+    }
+    try children_changed_callbacks.append(callback);
+}
+
+/// Run the children changed steps for a parent node
+/// Spec: https://dom.spec.whatwg.org/#concept-node-children-changed-ext
+///
+/// Called from:
+/// - insert (step 9)
+/// - remove (step 17)
+/// - replace data in CharacterData (step 12)
+pub fn runChildrenChangedSteps(parent: *Node) void {
+    // Call all registered callbacks
+    for (children_changed_callbacks.items) |callback| {
+        callback(parent);
+    }
+
+    // Note: If no callbacks are registered, this is a no-op
+    // This is expected until HTML or other specifications register their hooks
+}
+
 /// Helper to get node type from Node pointer
 fn getNodeType(node: *Node) u16 {
     return node.node_type;
@@ -381,7 +426,7 @@ pub fn insert(
     }
 
     // Step 9: Run the children changed steps for parent
-    // TODO: Implement children changed steps callback system
+    runChildrenChangedSteps(parent);
 
     // Steps 10-12: Post-connection steps
     // TODO: Implement post-connection steps callback system
@@ -632,7 +677,7 @@ pub fn remove(
     }
 
     // Step 17: Run the children changed steps for parent
-    // TODO: Implement children changed steps callback system
+    runChildrenChangedSteps(parent);
 }
 
 /// DOM §4.2.5 - Move
