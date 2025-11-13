@@ -46,6 +46,27 @@ pub fn generateCode(
     return output.toOwnedSlice(allocator);
 }
 
+/// Check if class needs Node constant aliases
+fn needsNodeConstantAliases(enhanced: ir.EnhancedClassIR) bool {
+    const class = enhanced.class;
+
+    // Node itself doesn't need aliases
+    if (std.mem.eql(u8, class.name, "Node")) return false;
+
+    // Check if any method uses Node constants
+    for (enhanced.all_methods) |method| {
+        if (std.mem.indexOf(u8, method.body, "ELEMENT_NODE") != null or
+            std.mem.indexOf(u8, method.body, "ATTRIBUTE_NODE") != null or
+            std.mem.indexOf(u8, method.body, "DOCUMENT_NODE") != null or
+            std.mem.indexOf(u8, method.body, "DOCUMENT_TYPE_NODE") != null)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /// Write file header
 fn writeHeader(writer: anytype) !void {
     try writer.writeAll(
@@ -140,17 +161,36 @@ fn writeClass(writer: anytype, enhanced: ir.EnhancedClassIR) !void {
     }
 
     // Constants
-    if (class.own_constants.len > 0) {
+    const has_constants = class.own_constants.len > 0;
+    const needs_node_constants = needsNodeConstantAliases(enhanced);
+
+    if (has_constants or needs_node_constants) {
         try writer.writeAll("\n    // ========================================================================\n");
         try writer.writeAll("    // Constants\n");
         try writer.writeAll("    // ========================================================================\n\n");
 
+        // Own constants
         for (class.own_constants) |constant| {
             try writer.print("    {s}const {s}", .{ constant.visibility.toString(), constant.name });
             if (constant.type_name) |type_name| {
                 try writer.print(": {s}", .{type_name});
             }
             try writer.print(" = {s};\n", .{constant.value});
+        }
+
+        // Node constant aliases (for classes inheriting from Node)
+        if (needs_node_constants and !std.mem.eql(u8, class.name, "Node")) {
+            if (has_constants) try writer.writeAll("\n");
+            try writer.writeAll("    // Node type constants (inherited)\n");
+            try writer.writeAll("    pub const ELEMENT_NODE: u16 = Node.ELEMENT_NODE;\n");
+            try writer.writeAll("    pub const ATTRIBUTE_NODE: u16 = Node.ATTRIBUTE_NODE;\n");
+            try writer.writeAll("    pub const TEXT_NODE: u16 = Node.TEXT_NODE;\n");
+            try writer.writeAll("    pub const CDATA_SECTION_NODE: u16 = Node.CDATA_SECTION_NODE;\n");
+            try writer.writeAll("    pub const PROCESSING_INSTRUCTION_NODE: u16 = Node.PROCESSING_INSTRUCTION_NODE;\n");
+            try writer.writeAll("    pub const COMMENT_NODE: u16 = Node.COMMENT_NODE;\n");
+            try writer.writeAll("    pub const DOCUMENT_NODE: u16 = Node.DOCUMENT_NODE;\n");
+            try writer.writeAll("    pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;\n");
+            try writer.writeAll("    pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;\n");
         }
     }
 

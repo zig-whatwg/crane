@@ -406,14 +406,17 @@ fn addEventTargetInheritanceImports(
     imports: *std.StringHashMap(ir.Import),
     class_name: []const u8,
 ) !void {
-    _ = class_name;
-
     const event_types = [_]struct { name: []const u8, module: []const u8 }{
+        .{ .name = "EventTarget", .module = "event_target" },
         .{ .name = "Event", .module = "event" },
         .{ .name = "EventListener", .module = "event_target" },
+        .{ .name = "AbortSignal", .module = "abort_signal" },
     };
 
     for (event_types) |type_info| {
+        // Don't import if this IS that type
+        if (std.mem.eql(u8, class_name, type_info.name)) continue;
+
         if (!imports.contains(type_info.name)) {
             try imports.put(type_info.name, ir.Import{
                 .name = try allocator.dupe(u8, type_info.name),

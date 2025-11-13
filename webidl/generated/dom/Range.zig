@@ -49,6 +49,17 @@ pub const Range = struct {
     pub const END_TO_END: u16 = 2;
     pub const END_TO_START: u16 = 3;
 
+    // Node type constants (inherited)
+    pub const ELEMENT_NODE: u16 = Node.ELEMENT_NODE;
+    pub const ATTRIBUTE_NODE: u16 = Node.ATTRIBUTE_NODE;
+    pub const TEXT_NODE: u16 = Node.TEXT_NODE;
+    pub const CDATA_SECTION_NODE: u16 = Node.CDATA_SECTION_NODE;
+    pub const PROCESSING_INSTRUCTION_NODE: u16 = Node.PROCESSING_INSTRUCTION_NODE;
+    pub const COMMENT_NODE: u16 = Node.COMMENT_NODE;
+    pub const DOCUMENT_NODE: u16 = Node.DOCUMENT_NODE;
+    pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;
+    pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;
+
     // ========================================================================
     // Methods
     // ========================================================================

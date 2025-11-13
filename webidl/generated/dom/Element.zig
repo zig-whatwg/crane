@@ -16,6 +16,7 @@ const ChildNode = @import("child_node").ChildNode;
 const Document = @import("document").Document;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
+const EventTarget = @import("event_target").EventTarget;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
@@ -48,6 +49,21 @@ pub const Element = struct {
     slottable_name: []const u8,
     assigned_slot: ?*anyopaque,
     manual_slot_assignment: ?*anyopaque,
+
+    // ========================================================================
+    // Constants
+    // ========================================================================
+
+    // Node type constants (inherited)
+    pub const ELEMENT_NODE: u16 = Node.ELEMENT_NODE;
+    pub const ATTRIBUTE_NODE: u16 = Node.ATTRIBUTE_NODE;
+    pub const TEXT_NODE: u16 = Node.TEXT_NODE;
+    pub const CDATA_SECTION_NODE: u16 = Node.CDATA_SECTION_NODE;
+    pub const PROCESSING_INSTRUCTION_NODE: u16 = Node.PROCESSING_INSTRUCTION_NODE;
+    pub const COMMENT_NODE: u16 = Node.COMMENT_NODE;
+    pub const DOCUMENT_NODE: u16 = Node.DOCUMENT_NODE;
+    pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;
+    pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;
 
     // ========================================================================
     // Methods
