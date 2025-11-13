@@ -8,6 +8,7 @@ const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
 const Node = @import("node").Node;
+const Element = @import("element").Element;
 const NodeBase = @import("../node_base.zig").NodeBase;
 const Expr = ast.Expr;
 const PrimaryExpr = ast.PrimaryExpr;
@@ -455,8 +456,19 @@ fn applyAxis(allocator: std.mem.Allocator, axis: Axis, node: *NodeBase) !NodeSet
             }
         },
         .namespace => {
-            // Namespace nodes
-            // TODO: Implement when namespace support is added
+            // Namespace axis: namespace nodes of the context node
+            // XPath 1.0: The namespace axis contains the namespace nodes of the context node
+            // In XPath 1.0, namespace nodes are distinct from attribute nodes
+
+            // TODO: Implement proper namespace node representation
+            // For now, skip namespace nodes as they require special handling
+            // Namespace nodes don't have a direct DOM representation - they're XPath-specific
+            // We would need to:
+            // 1. Enumerate all in-scope namespaces for the element
+            // 2. Create virtual namespace nodes for each prefix->URI mapping
+            // 3. Include xml namespace (always bound to http://www.w3.org/XML/1998/namespace)
+
+            // This is low priority as namespace axis is rarely used in practice
         },
         .self => {
             // Just the node itself
@@ -555,16 +567,41 @@ fn matchesNameTest(name_test: *const ast.NodeTest.NameTest, node: *Node) bool {
             // Match element nodes with specific name
             if (node.node_type != Node.ELEMENT_NODE) return false;
 
-            // For now, ignore namespace prefix and just match local name
-            // TODO: Implement proper namespace matching when namespace support is added
-            return std.mem.eql(u8, node.node_name, qname.local);
+            // Cast to Element to access namespace and local name
+            const element: *Element = @ptrCast(@alignCast(node));
+
+            // Match local name
+            if (!std.mem.eql(u8, element.local_name, qname.local)) {
+                return false;
+            }
+
+            // If namespace prefix is specified, check namespace URI
+            if (qname.prefix) |prefix| {
+                // TODO: Resolve prefix to namespace URI using context
+                // For now, check if element has a namespace with matching prefix
+                if (element.prefix) |elem_prefix| {
+                    return std.mem.eql(u8, elem_prefix, prefix);
+                }
+                return false;
+            }
+
+            // No namespace prefix specified - match elements in no namespace
+            return element.namespace_uri == null;
         },
         .namespace_wildcard => |prefix| {
             // prefix:* matches any element in that namespace
-            // For now, just match element nodes
-            // TODO: Implement proper namespace matching
-            _ = prefix;
-            return node.node_type == Node.ELEMENT_NODE;
+            if (node.node_type != Node.ELEMENT_NODE) return false;
+
+            const element: *Element = @ptrCast(@alignCast(node));
+
+            // TODO: Resolve prefix to namespace URI using context namespace resolver
+            // For now, match elements that have the given prefix
+            if (element.prefix) |elem_prefix| {
+                return std.mem.eql(u8, elem_prefix, prefix);
+            }
+
+            // If no prefix resolver, don't match
+            return false;
         },
     };
 }

@@ -11,6 +11,8 @@ const std = @import("std");
 const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
+const Node = @import("node").Node;
+const Element = @import("element").Element;
 
 // ============================================================================
 // Node Set Functions (§4.1)
@@ -70,9 +72,7 @@ fn getRootNode(node: *@import("node").Node) *@import("node").Node {
 }
 
 /// Find element by ID in tree
-fn findElementById(allocator: std.mem.Allocator, node: *@import("node").Node, id: []const u8, result: *NodeSet) !void {
-    const Node = @import("node").Node;
-    const Element = @import("element").Element;
+fn findElementById(allocator: std.mem.Allocator, node: *Node, id: []const u8, result: *NodeSet) !void {
 
     // Check if this is an element with matching ID
     if (node.node_type == Node.ELEMENT_NODE) {
@@ -143,9 +143,6 @@ pub fn fnNamespaceUri(allocator: std.mem.Allocator, ctx: *const Context, args: [
         }
         break :blk node_set.get(0).?;
     };
-
-    const Node = @import("node").Node;
-    const Element = @import("element").Element;
 
     // For elements, return namespace URI; for other nodes, return empty string
     if (node.node_type == Node.ELEMENT_NODE) {
@@ -431,10 +428,61 @@ pub fn fnFalse(_: std.mem.Allocator, _: *const Context, args: []const Value) !Va
 }
 
 /// lang(string) - Tests language
-pub fn fnLang(allocator: std.mem.Allocator, _: *const Context, args: []const Value) !Value {
+///
+/// XPath 1.0 §4.3: Returns true if the language of the context node
+/// (as specified by xml:lang attributes) is the same as or a sublanguage of
+/// the language specified by the argument string.
+pub fn fnLang(allocator: std.mem.Allocator, ctx: *const Context, args: []const Value) !Value {
     if (args.len != 1) return error.InvalidArgumentCount;
-    // TODO: Implement once we have xml:lang support
-    _ = allocator;
+
+    // Convert argument to string
+    const lang_arg = try args[0].toString(allocator);
+    defer if (args[0] != .string) allocator.free(lang_arg);
+
+    // Get context node
+    const node = ctx.context_node;
+
+    // Search for xml:lang attribute on this node or ancestors
+    var current: ?*Node = node;
+    while (current) |n| {
+        // Check if this is an element with xml:lang attribute
+        if (n.node_type == Node.ELEMENT_NODE) {
+            const element: *Element = @ptrCast(@alignCast(n));
+
+            // Look for xml:lang attribute
+            for (element.attributes.items) |attr| {
+                // Check for xml:lang (case-insensitive per XML spec)
+                const attr_name = attr.name;
+                if (std.ascii.eqlIgnoreCase(attr_name, "xml:lang")) {
+                    const lang_value = attr.value;
+
+                    // Check if lang_value matches or is sublanguage
+                    // Per XPath spec: case-insensitive comparison
+                    // Sublanguage: "en" matches "en-US", "en-GB", etc.
+                    if (std.ascii.eqlIgnoreCase(lang_value, lang_arg)) {
+                        return Value{ .boolean = true };
+                    }
+
+                    // Check sublanguage: lang_value starts with lang_arg + "-"
+                    if (lang_value.len > lang_arg.len + 1) {
+                        if (lang_value[lang_arg.len] == '-') {
+                            if (std.ascii.startsWithIgnoreCase(lang_value, lang_arg)) {
+                                return Value{ .boolean = true };
+                            }
+                        }
+                    }
+
+                    // Found xml:lang but doesn't match
+                    return Value{ .boolean = false };
+                }
+            }
+        }
+
+        // Move to parent
+        current = n.parent_node;
+    }
+
+    // No xml:lang attribute found in ancestors
     return Value{ .boolean = false };
 }
 
