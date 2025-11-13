@@ -8,6 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CDATASection = @import("cdata_section").CDATASection;
@@ -18,12 +19,19 @@ const DocumentFragment = @import("document_fragment").DocumentFragment;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
+const Event = @import("event").Event;
+const EventListener = @import("event_target").EventListener;
+const EventTarget = @import("event_target").EventTarget;
+const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const Node = @import("node").Node;
+const NodeList = @import("node_list").NodeList;
+const NodeType = @import("node_type").NodeType;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
 const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 const Range = @import("range").Range;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const anyopaque = @import("anyopaque").anyopaque;

@@ -341,13 +341,30 @@ fn addImportForType(
         base_type = base_type["const ".len..];
     }
 
-    // Skip if contains '.' (already qualified like infra.List)
-    if (std.mem.indexOfScalar(u8, base_type, '.') != null) {
+    // If contains '(' (generic like std.ArrayList(EventListener)), extract inner types
+    if (std.mem.indexOfScalar(u8, base_type, '(')) |paren_idx| {
+        // Find matching closing paren
+        var depth: usize = 0;
+        var start_idx: ?usize = null;
+        for (base_type[paren_idx..], 0..) |c, i| {
+            if (c == '(') {
+                depth += 1;
+                if (depth == 1) start_idx = paren_idx + i + 1;
+            } else if (c == ')') {
+                depth -= 1;
+                if (depth == 0 and start_idx != null) {
+                    const inner = base_type[start_idx.? .. paren_idx + i];
+                    // Recursively extract types from inner content
+                    try addImportForType(allocator, imports, inner, current_class);
+                    break;
+                }
+            }
+        }
         return;
     }
 
-    // Skip if contains '(' (generic instantiation like OrderedMap(...))
-    if (std.mem.indexOfScalar(u8, base_type, '(') != null) {
+    // Skip if contains '.' (already qualified like infra.List)
+    if (std.mem.indexOfScalar(u8, base_type, '.') != null) {
         return;
     }
 

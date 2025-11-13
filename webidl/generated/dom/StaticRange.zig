@@ -11,6 +11,7 @@
 const AbstractRange = @import("abstract_range").AbstractRange;
 const Allocator = @import("std.mem").Allocator;
 const Node = @import("node").Node;
+const StaticRangeInit = @import("static_range_init").StaticRangeInit;
 const std = @import("std");
 const webidl = @import("webidl");
 

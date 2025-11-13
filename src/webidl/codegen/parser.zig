@@ -896,25 +896,33 @@ fn findMatchingBrace(source: []const u8, open_pos: usize) ?usize {
 /// Automatically detects any capitalized identifier (type names in Zig)
 /// Only looks at actual code, not comments or strings
 fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []const u8) ![][]const u8 {
-    _ = signature; // Signature types are already captured by field parsing
-
     var types = std.StringHashMap(void).init(allocator);
     defer types.deinit();
 
-    // Only scan the body for type references
-    // This avoids extracting type names from comments in the body
+    // Extract types from BOTH signature and body
+    // Signature contains parameter types and return types
+    // Body contains type usage in the implementation
+
+    // Combine signature and body for unified scanning
+    const combined_len = signature.len + body.len + 1;
+    var combined = try allocator.alloc(u8, combined_len);
+    defer allocator.free(combined);
+
+    @memcpy(combined[0..signature.len], signature);
+    combined[signature.len] = ' ';
+    @memcpy(combined[signature.len + 1 ..], body);
 
     // Simple heuristic: look for patterns like "*TypeName" or "?TypeName" or ": TypeName"
     // These indicate actual type usage, not random capitalized words
     var pos: usize = 0;
 
-    while (pos < body.len) {
-        const c = body[pos];
+    while (pos < combined.len) {
+        const c = combined[pos];
 
         // Skip comment lines entirely
-        if (c == '/' and pos + 1 < body.len and body[pos + 1] == '/') {
+        if (c == '/' and pos + 1 < combined.len and combined[pos + 1] == '/') {
             // Skip to end of line
-            while (pos < body.len and body[pos] != '\n') {
+            while (pos < combined.len and combined[pos] != '\n') {
                 pos += 1;
             }
             continue;
@@ -923,8 +931,8 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
         // Skip string literals
         if (c == '"') {
             pos += 1;
-            while (pos < body.len) {
-                if (body[pos] == '"' and body[pos - 1] != '\\') break;
+            while (pos < combined.len) {
+                if (combined[pos] == '"' and combined[pos - 1] != '\\') break;
                 pos += 1;
             }
             pos += 1;
@@ -933,23 +941,23 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
 
         // Look for type indicators: *, ?, :, @as(
         const is_type_context = (c == '*' or c == '?' or c == ':' or
-            (c == '@' and pos + 3 < body.len and
-                std.mem.startsWith(u8, body[pos..], "@as")));
+            (c == '@' and pos + 3 < combined.len and
+                std.mem.startsWith(u8, combined[pos..], "@as")));
 
         if (is_type_context) {
             // Skip past the indicator and whitespace
             pos += 1;
-            while (pos < body.len and (body[pos] == ' ' or body[pos] == '\t')) {
+            while (pos < combined.len and (combined[pos] == ' ' or combined[pos] == '\t')) {
                 pos += 1;
             }
 
             // Check if next character is uppercase (start of type name)
-            if (pos < body.len and body[pos] >= 'A' and body[pos] <= 'Z') {
+            if (pos < combined.len and combined[pos] >= 'A' and combined[pos] <= 'Z') {
                 const start = pos;
 
                 // Extract the identifier
-                while (pos < body.len) {
-                    const ch = body[pos];
+                while (pos < combined.len) {
+                    const ch = combined[pos];
                     if ((ch >= 'a' and ch <= 'z') or
                         (ch >= 'A' and ch <= 'Z') or
                         (ch >= '0' and ch <= '9') or
@@ -961,7 +969,7 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
                     }
                 }
 
-                const type_name = body[start..pos];
+                const type_name = combined[start..pos];
 
                 // Filter out built-in types
                 if (!isBuiltinType(type_name)) {

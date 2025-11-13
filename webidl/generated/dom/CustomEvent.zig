@@ -9,7 +9,9 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const CustomEventInit = @import("custom_event_init").CustomEventInit;
 const Event = @import("event").Event;
+const EventPathItem = @import("event_path_item").EventPathItem;
 const EventTarget = @import("event_target").EventTarget;
 const ]const u8 = @import("]const u8").]const u8;
 const std = @import("std");

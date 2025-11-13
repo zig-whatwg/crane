@@ -9,6 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const QueuingStrategyInit = @import("queuing_strategy_init").QueuingStrategyInit;
 const std = @import("std");
 const webidl = @import("webidl");
 

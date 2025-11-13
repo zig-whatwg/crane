@@ -8,15 +8,25 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
+const DOMTokenList = @import("d_o_m_token_list").DOMTokenList;
+const Document = @import("document").Document;
+const Event = @import("event").Event;
+const EventListener = @import("event_target").EventListener;
+const EventTarget = @import("event_target").EventTarget;
+const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
+const HTMLCollection = @import("h_t_m_l_collection").HTMLCollection;
 const Node = @import("node").Node;
+const NodeList = @import("node_list").NodeList;
 const NodeType = @import("node_type").NodeType;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const PI = @import("p_i").PI;
 const ParentNode = @import("parent_node").ParentNode;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Slottable = @import("slottable").Slottable;

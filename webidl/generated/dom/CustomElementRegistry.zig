@@ -9,6 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const anyopaque = @import("anyopaque").anyopaque;
 const std = @import("std");
 const webidl = @import("webidl");
 

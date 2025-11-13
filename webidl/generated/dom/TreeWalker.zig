@@ -9,8 +9,10 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const ChildType = @import("child_type").ChildType;
 const Node = @import("node").Node;
 const NodeFilter = @import("node_filter").NodeFilter;
+const SiblingType = @import("sibling_type").SiblingType;
 const std = @import("std");
 const webidl = @import("webidl");
 

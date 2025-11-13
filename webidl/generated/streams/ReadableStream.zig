@@ -11,6 +11,7 @@
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const ByteTeeState = @import("byte_tee_state").ByteTeeState;
+const PipeOptions = @import("pipe_options").PipeOptions;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
 const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
@@ -19,6 +20,7 @@ const Reader = @import("reader").Reader;
 const StreamState = @import("stream_state").StreamState;
 const TeeState = @import("tee_state").TeeState;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
+const TransformPair = @import("transform_pair").TransformPair;
 const WritableStream = @import("writable_stream").WritableStream;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 const async_iterator = @import("async_iterator").async_iterator;

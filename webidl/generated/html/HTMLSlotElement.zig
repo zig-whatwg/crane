@@ -10,6 +10,7 @@
 
 const Allocator = @import("std.mem").Allocator;
 const ]const u8 = @import("]const u8").]const u8;
+const anyopaque = @import("anyopaque").anyopaque;
 const std = @import("std");
 const webidl = @import("webidl");
 

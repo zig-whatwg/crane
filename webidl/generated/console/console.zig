@@ -10,6 +10,8 @@
 
 const Allocator = @import("std.mem").Allocator;
 const CircularMessageBuffer = @import("circular_message_buffer").CircularMessageBuffer;
+const Group = @import("group").Group;
+const LogLevel = @import("log_level").LogLevel;
 const PrintFn = @import("print_fn").PrintFn;
 const format = @import("format");
 const infra = @import("infra");
