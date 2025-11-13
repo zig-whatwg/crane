@@ -915,7 +915,7 @@ fn createTestElement(allocator: Allocator, tag_name: []const u8) !*Element {
     return elem;
 }
 
-/// Helper to create element with attributes (workaround for ArrayList bug)
+/// Helper to create element with attributes
 fn createTestElementWithAttrs(
     allocator: Allocator,
     tag_name: []const u8,
@@ -924,19 +924,9 @@ fn createTestElementWithAttrs(
     const elem = try allocator.create(Element);
     elem.* = Element.init(allocator, tag_name);
 
-    // Manually populate attributes without using setAttribute (which triggers ArrayList bug)
+    // Use setAttribute to properly populate attributes and update bloom filter
     for (attributes) |attr| {
-        const attr_node = try allocator.create(AttrWithBase);
-        errdefer allocator.destroy(attr_node);
-
-        attr_node.* = try AttrWithBase.init(
-            allocator,
-            attr.name,
-            attr.value,
-            null, // namespace_uri
-            null, // prefix
-        );
-        try elem.attributes.append(attr_node);
+        try elem.setAttribute(attr.name, attr.value);
     }
 
     return elem;

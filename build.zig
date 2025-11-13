@@ -404,6 +404,8 @@ pub fn build(b: *std.Build) void {
     shadow_root_mod.addImport("event_target", event_target_mod);
     shadow_root_mod.addImport("node", node_mod);
     shadow_root_mod.addImport("document", document_mod);
+    shadow_root_mod.addImport("registered_observer", registered_observer_mod);
+    shadow_root_mod.addImport("node_list", node_list_mod);
 
     // Create ShadowRootInit module (plain dictionary, no codegen)
     const shadow_root_init_mod = b.createModule(.{
@@ -489,6 +491,7 @@ pub fn build(b: *std.Build) void {
     comment_mod.addImport("node", node_mod);
     comment_mod.addImport("document", document_mod);
     comment_mod.addImport("registered_observer", registered_observer_mod);
+    comment_mod.addImport("node_list", node_list_mod);
     processing_instruction_mod.addImport("character_data", character_data_mod);
     processing_instruction_mod.addImport("dom_types", dom_types_mod);
     processing_instruction_mod.addImport("element", element_mod);
@@ -496,11 +499,13 @@ pub fn build(b: *std.Build) void {
     processing_instruction_mod.addImport("node", node_mod);
     processing_instruction_mod.addImport("document", document_mod);
     processing_instruction_mod.addImport("registered_observer", registered_observer_mod);
+    processing_instruction_mod.addImport("node_list", node_list_mod);
     cdata_section_mod.addImport("text", text_mod);
     cdata_section_mod.addImport("event_target", event_target_mod);
     cdata_section_mod.addImport("node", node_mod);
     cdata_section_mod.addImport("document", document_mod);
     cdata_section_mod.addImport("registered_observer", registered_observer_mod);
+    cdata_section_mod.addImport("node_list", node_list_mod);
     document_type_mod.addImport("node", node_mod);
     document_type_mod.addImport("dom_types", dom_types_mod);
     document_type_mod.addImport("event_target", event_target_mod);

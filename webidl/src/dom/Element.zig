@@ -13,6 +13,7 @@ const ParentNode = @import("parent_node").ParentNode;
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
 const Allocator = std.mem.Allocator;
+const Attr = @import("attr").Attr;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 const Text = @import("text").Text;
@@ -62,6 +63,17 @@ pub const Element = webidl.interface(struct {
         // NOTE: Parent Node fields will be flattened by codegen
         // NOTE: Mixin fields (Slottable) are also flattened by codegen
         return .{
+            // Inherited from EventTarget (via Node)
+            .event_listener_list = null,
+            // Inherited from Node
+            .node_type = 1, // ELEMENT_NODE
+            .node_name = tag_name,
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             // Slottable mixin fields
             .slottable_name = "",
             .assigned_slot = null,
@@ -82,7 +94,15 @@ pub const Element = webidl.interface(struct {
     }
 
     pub fn deinit(self: *Element) void {
-        // NOTE: Parent Node cleanup is handled by codegen
+        // Clean up Node fields (inherited)
+        self.child_nodes.deinit();
+        self.registered_observers.deinit();
+        if (self.cached_child_nodes) |list| {
+            list.deinit();
+            self.allocator.destroy(list);
+        }
+
+        // Clean up Element fields
         self.attributes.deinit();
 
         // Free namespace_uri if allocated

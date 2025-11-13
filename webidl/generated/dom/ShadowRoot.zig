@@ -20,7 +20,7 @@ const Event = @import("event").Event;
 pub const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const HTMLCollection = @import("html_collection").HTMLCollection;
-pub const Node = @import("node").Node;
+const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
@@ -135,6 +135,20 @@ pub const ShadowRoot = struct {
     ) !ShadowRoot {
 
         return .{
+            // Inherited from EventTarget (via Node/DocumentFragment)
+            .event_listener_list = null,
+            // Inherited from Node (via DocumentFragment)
+            .node_type = 11, // DOCUMENT_FRAGMENT_NODE
+            .node_name = "#document-fragment",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // Mixin from DocumentOrShadowRoot
+            .custom_element_registry = null,
+            // ShadowRoot own fields
             .allocator = allocator,
             .host_element = host,
             .shadow_mode = mode,
@@ -145,15 +159,20 @@ pub const ShadowRoot = struct {
             .available_to_element_internals = false,
             .declarative_flag = false,
             .keep_custom_element_registry_null = false,
-            // custom_element_registry comes from DocumentOrShadowRoot mixin
+            .onslotchange = null,
         };
     
     }
 
     pub fn deinit(self: *ShadowRoot) void {
 
-        _ = self;
-        // NOTE: Parent DocumentFragment cleanup is handled by codegen
+        // Clean up inherited Node fields
+        self.child_nodes.deinit();
+        self.registered_observers.deinit();
+        if (self.cached_child_nodes) |list| {
+            list.deinit();
+            self.allocator.destroy(list);
+        }
     
     }
 
