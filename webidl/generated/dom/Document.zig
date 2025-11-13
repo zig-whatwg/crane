@@ -53,6 +53,15 @@ pub const Document = struct {
     // Fields
     // ========================================================================
 
+    event_listener_list: ?*std.ArrayList(EventListener),
+    node_type: u16,
+    node_name: []const u8,
+    parent_node: ?*Node,
+    child_nodes: infra.List(*Node),
+    owner_document: ?*Document,
+    registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    cached_child_nodes: ?*@import("node_list").NodeList,
     custom_element_registry: ?*anyopaque,
     allocator: Allocator,
     _implementation: ?DOMImplementation,

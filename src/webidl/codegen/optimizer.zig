@@ -63,8 +63,9 @@ pub fn enhanceClass(
         allocator.free(enhanced.all_fields);
     }
 
-    // Collect struct fields (mixin + own, no parent inherited)
-    enhanced.struct_fields = try collectStructFields(allocator, class, registry);
+    // Collect struct fields (parent + mixin + own, deduplicated)
+    // Use all_fields but deduplicate by name (child overrides parent)
+    enhanced.struct_fields = try deduplicateFields(allocator, enhanced.all_fields);
     errdefer {
         for (enhanced.struct_fields) |*field| field.deinit(allocator);
         allocator.free(enhanced.struct_fields);
@@ -173,6 +174,35 @@ fn collectStructFields(
     }
 
     return fields.toOwnedSlice();
+}
+
+/// Deduplicate fields by name (last occurrence wins - child overrides parent)
+fn deduplicateFields(allocator: Allocator, all_fields: []ir.Field) ![]ir.Field {
+    var seen_indices = std.StringHashMap(usize).init(allocator);
+    defer seen_indices.deinit();
+
+    // Build map of field name -> last index
+    for (all_fields, 0..) |field, i| {
+        try seen_indices.put(field.name, i);
+    }
+
+    // Collect unique fields (only the last occurrence of each name)
+    var result = infra.List(ir.Field).init(allocator);
+    errdefer {
+        for (result.toSliceMut()) |*field| field.deinit(allocator);
+        result.deinit();
+    }
+
+    for (all_fields, 0..) |field, i| {
+        if (seen_indices.get(field.name)) |last_idx| {
+            if (i == last_idx) {
+                // This is the last occurrence - keep it
+                try result.append(try cloneField(allocator, field));
+            }
+        }
+    }
+
+    return result.toOwnedSlice();
 }
 
 /// Collect all methods (own + inherited)

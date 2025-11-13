@@ -73,6 +73,8 @@ pub const Child = struct {
     // Fields
     // ========================================================================
 
+    mixin_field: u32,
+    parent_field: u32,
     child_field: u32,
 };
 
@@ -179,6 +181,9 @@ pub const ChildMulti = struct {
     // Fields
     // ========================================================================
 
+    field_a: u32,
+    field_b: u32,
+    parent_multi_field: u32,
     child_multi_field: u32,
 };
 
@@ -205,6 +210,10 @@ pub const GrandChild = struct {
     // Fields
     // ========================================================================
 
+    field_a: u32,
+    field_b: u32,
+    parent_multi_field: u32,
+    child_multi_field: u32,
     grandchild_field: u32,
 };
 

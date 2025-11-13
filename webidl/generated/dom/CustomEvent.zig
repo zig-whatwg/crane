@@ -23,6 +23,24 @@ pub const CustomEvent = struct {
     // Fields
     // ========================================================================
 
+    event_type: []const u8,
+    target: ?*EventTarget,
+    current_target: ?*EventTarget,
+    event_phase: u16,
+    bubbles: bool,
+    cancelable: bool,
+    composed: bool,
+    stop_propagation_flag: bool,
+    stop_immediate_propagation_flag: bool,
+    canceled_flag: bool,
+    in_passive_listener_flag: bool,
+    initialized_flag: bool,
+    dispatch_flag: bool,
+    is_trusted: bool,
+    time_stamp: f64,
+    path: std.ArrayList(EventPathItem),
+    related_target: ?*EventTarget,
+    touch_target_list: std.ArrayList(*EventTarget),
     allocator: std.mem.Allocator,
     detail: ?webidl.JSValue,
 

@@ -34,6 +34,7 @@ pub const Node = struct {
     // Fields
     // ========================================================================
 
+    event_listener_list: ?*std.ArrayList(EventListener),
     allocator: Allocator,
     node_type: u16,
     node_name: []const u8,
@@ -148,6 +149,7 @@ pub const Node = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     
     }

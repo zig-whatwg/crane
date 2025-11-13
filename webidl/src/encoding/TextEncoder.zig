@@ -121,8 +121,8 @@ const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
 
-// Import dictionary
-const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
+// Import and re-export dictionary for external use
+pub const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
 
 // Import mixin
 const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;

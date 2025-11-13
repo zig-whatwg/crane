@@ -1245,28 +1245,28 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
         for (doc.ranges.items) |range| {
             // Step 4: For each live range whose start node is an inclusive descendant of node,
             // set its start to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.base.start_container, node)) {
-                range.base.start_container = parent;
-                range.base.start_offset = @intCast(index);
+            if (tree_helpers.isInclusiveDescendant(range.start_container, node)) {
+                range.start_container = parent;
+                range.start_offset = @intCast(index);
             }
 
             // Step 5: For each live range whose end node is an inclusive descendant of node,
             // set its end to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.base.end_container, node)) {
-                range.base.end_container = parent;
-                range.base.end_offset = @intCast(index);
+            if (tree_helpers.isInclusiveDescendant(range.end_container, node)) {
+                range.end_container = parent;
+                range.end_offset = @intCast(index);
             }
 
             // Step 6: For each live range whose start node is parent and start offset is greater than index,
             // decrease its start offset by 1
-            if (range.base.start_container == parent and range.base.start_offset > index) {
-                range.base.start_offset -= 1;
+            if (range.start_container == parent and range.start_offset > index) {
+                range.start_offset -= 1;
             }
 
             // Step 7: For each live range whose end node is parent and end offset is greater than index,
             // decrease its end offset by 1
-            if (range.base.end_container == parent and range.base.end_offset > index) {
-                range.base.end_offset -= 1;
+            if (range.end_container == parent and range.end_offset > index) {
+                range.end_offset -= 1;
             }
         }
     }
@@ -1298,14 +1298,14 @@ fn updateRangesForInsertionWithCount(doc: *Document, parent: *Node, child_index:
     for (doc.ranges.items) |range| {
         // For each live range whose start node is parent and start offset is greater than child's index,
         // increase its start offset by count
-        if (range.base.start_container == parent and range.base.start_offset > child_index) {
-            range.base.start_offset += @intCast(count);
+        if (range.start_container == parent and range.start_offset > child_index) {
+            range.start_offset += @intCast(count);
         }
 
         // For each live range whose end node is parent and end offset is greater than child's index,
         // increase its end offset by count
-        if (range.base.end_container == parent and range.base.end_offset > child_index) {
-            range.base.end_offset += @intCast(count);
+        if (range.end_container == parent and range.end_offset > child_index) {
+            range.end_offset += @intCast(count);
         }
     }
 }

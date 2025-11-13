@@ -30,6 +30,14 @@ pub const StaticRangeInit = struct {
 /// This makes it more efficient for one-time range operations.
 
 pub const StaticRange = struct {
+    // ========================================================================
+    // Fields
+    // ========================================================================
+
+    start_container: *Node,
+    start_offset: u32,
+    end_container: *Node,
+    end_offset: u32,
 
     // ========================================================================
     // Constants

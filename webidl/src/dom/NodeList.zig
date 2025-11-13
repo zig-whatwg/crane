@@ -24,16 +24,13 @@ pub const NodeList = webidl.interface(struct {
     /// Returns the node at the given index, or null if out of bounds.
     /// The nodes are sorted in tree order.
     pub fn call_item(self: *const NodeList, index: u32) ?*Node {
-        if (index >= self.nodes.items.len) {
-            return null;
-        }
-        return self.nodes.items[index];
+        return self.nodes.get(index);
     }
 
     /// DOM §4.3.6 - NodeList.length
     /// Returns the number of nodes in the collection.
     pub fn get_length(self: *const NodeList) u32 {
-        return @intCast(self.nodes.items.len);
+        return @intCast(self.nodes.size());
     }
 
     /// Helper method to add a node to the list
@@ -45,7 +42,7 @@ pub const NodeList = webidl.interface(struct {
     /// Helper method to clear the list
     /// NOTE: This is internal API, not part of WebIDL spec
     pub fn clear(self: *NodeList) void {
-        self.nodes.clearRetainingCapacity();
+        self.nodes.clear();
     }
 }, .{
     .exposed = &.{.Window},

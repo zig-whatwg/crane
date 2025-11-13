@@ -37,6 +37,7 @@ pub const AbortSignal = struct {
     // Fields
     // ========================================================================
 
+    event_listener_list: ?*std.ArrayList(EventListener),
     allocator: std.mem.Allocator,
     aborted: bool,
     reason: ?webidl.Exception,

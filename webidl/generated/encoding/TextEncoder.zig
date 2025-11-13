@@ -10,7 +10,7 @@
 
 const Allocator = std.mem.Allocator;
 const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
-const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
+pub const TextEncoderEncodeIntoResult = @import("TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
 const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
