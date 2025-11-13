@@ -26,10 +26,10 @@ const Decoder = encoding_mod.Decoder;
 // ============================================================================
 /// Check if byte slice is ASCII-only (fast path optimization)
 fn isAscii(bytes: []const u8) bool {
-    for (bytes) |byte| {
-        if (byte > 0x7F) return false;
-    }
-    return true;
+for (bytes) |byte| {
+if (byte > 0x7F) return false;
+}
+return true;
 }
 /// TextDecoder errors map to WebIDL simple exceptions per WHATWG Encoding Standard
 ///
@@ -38,14 +38,14 @@ fn isAscii(bytes: []const u8) bool {
 /// - error.ReplacementEncoding → RangeError (replacement encoding not allowed)
 /// - error.DecodingError → TypeError (fatal mode encountered invalid sequence)
 pub const TextDecoderError = error{
-    /// Invalid encoding label → WebIDL RangeError
-    InvalidEncoding,
-    /// Replacement encoding not supported → WebIDL RangeError
-    ReplacementEncoding,
-    /// Fatal decoding error → WebIDL TypeError
-    DecodingError,
-    /// Out of memory
-    OutOfMemory,
+/// Invalid encoding label → WebIDL RangeError
+InvalidEncoding,
+/// Replacement encoding not supported → WebIDL RangeError
+ReplacementEncoding,
+/// Fatal decoding error → WebIDL TypeError
+DecodingError,
+/// Out of memory
+OutOfMemory,
 };
 /// TextDecoder - decodes bytes to strings using various character encodings
 ///

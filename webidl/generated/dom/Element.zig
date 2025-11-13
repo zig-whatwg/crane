@@ -34,13 +34,6 @@ const webidl = @import("webidl");
 
 /// Custom element state per HTML spec
 /// Spec: https://html.spec.whatwg.org/#custom-element-state
-pub const CustomElementState = enum {
-    undefined,
-    failed,
-    uncustomized,
-    precustomized,
-    custom,
-};
 /// Element WebIDL interface
 /// DOM Spec: interface Element : Node
 

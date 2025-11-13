@@ -32,6 +32,7 @@ const CircularMessageBuffer = types.CircularMessageBuffer;
 /// }
 /// ```
 pub const PrintFn = *const fn (message: []const u8) void;
+
 /// Default printer function that outputs to stderr.
 ///
 /// This is the default value for console.printFn.

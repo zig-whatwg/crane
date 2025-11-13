@@ -34,8 +34,10 @@ const webidl = @import("webidl");
 /// ## Attributes
 ///
 /// - `encoding`: The name of the encoding (lowercase ASCII, e.g., "utf-8", "windows-1252")
-/// - `fatal`: If true, throw on decoding errors; if false, use replacement character (U+FFFD)
-/// - `ignoreBOM`: If true, don't strip byte order mark (BOM); if false, strip BOM from output
+/// - `fatal`: If true, throw on decoding errors;
+if false, use replacement character (U+FFFD)
+/// - `ignoreBOM`: If true, don't strip byte order mark (BOM);
+if false, strip BOM from output
 ///
 /// ## Usage
 ///

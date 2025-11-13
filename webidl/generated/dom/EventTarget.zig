@@ -19,33 +19,8 @@ const webidl = @import("webidl");
 
 /// DOM §2.7 - Event listener structure
 /// An event listener can be used to observe a specific event and consists of:
-pub const EventListener = struct {
-    /// type (a string)
-    type: []const u8,
-    /// callback (null or an EventListener object)
-    callback: ?webidl.JSValue,
-    /// capture (a boolean, initially false)
-    capture: bool = false,
-    /// passive (null or a boolean, initially null)
-    passive: ?bool = null,
-    /// once (a boolean, initially false)
-    once: bool = false,
-    /// signal (null or an AbortSignal object)
-    signal: ?*AbortSignal = null,
-    /// removed (a boolean for bookkeeping purposes, initially false)
-    removed: bool = false,
-};
 /// DOM §2.7 - EventListenerOptions dictionary
-pub const EventListenerOptions = struct {
-    capture: bool = false,
-};
 /// DOM §2.7 - AddEventListenerOptions dictionary
-pub const AddEventListenerOptions = struct {
-    capture: bool = false,
-    passive: ?bool = null,
-    once: bool = false,
-    signal: ?*AbortSignal = null,
-};
 /// Compare two callbacks for equality
 /// Used when matching event listeners in addEventListener/removeEventListener
 /// In JavaScript, callbacks are compared by reference.
@@ -55,12 +30,15 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     if (a == null and b == null) return true;
     // If only one is null, not equal
     if (a == null or b == null) return false;
+
     const a_val = a.?;
     const b_val = b.?;
+
     // Must have same tag
     if (@as(std.meta.Tag(webidl.JSValue), a_val) != @as(std.meta.Tag(webidl.JSValue), b_val)) {
         return false;
     }
+
     // Compare based on type
     return switch (a_val) {
         .undefined, .null => true, // Both same type means equal

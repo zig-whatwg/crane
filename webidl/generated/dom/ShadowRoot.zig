@@ -29,29 +29,9 @@ const webidl = @import("webidl");
 /// DOM §4.8.1 - ShadowRootMode enum
 ///
 /// Defines the mode of a shadow root.
-pub const ShadowRootMode = enum {
-    open,
-    closed,
-    pub fn toString(self: ShadowRootMode) []const u8 {
-        return switch (self) {
-            .open => "open",
-            .closed => "closed",
-        };
-    }
-};
 /// DOM §4.8.1 - SlotAssignmentMode enum
 ///
 /// Defines how slottables are assigned to slots.
-pub const SlotAssignmentMode = enum {
-    manual,
-    named,
-    pub fn toString(self: SlotAssignmentMode) []const u8 {
-        return switch (self) {
-            .manual => "manual",
-            .named => "named",
-        };
-    }
-};
 /// DOM §4.8.1 - ShadowRoot interface
 ///
 /// Shadow roots are DocumentFragments that serve as the root of a shadow tree.

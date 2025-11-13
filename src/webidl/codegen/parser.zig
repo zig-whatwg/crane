@@ -211,28 +211,120 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
 
     const definitions_section = source[last_import_end..end_pos];
 
-    // Filter out lines that redefine default imports (Allocator, std, webidl)
-    // These are auto-generated so we don't want duplicates
+    // Parse module definitions and filter out struct/enum/union type definitions
+    // Keep: type aliases, helper functions, constants
+    // Skip: pub const Name = struct/enum/union { ... }
     var filtered: std.ArrayList(u8) = .empty;
     defer filtered.deinit(allocator);
 
-    var line_iter = std.mem.tokenizeScalar(u8, definitions_section, '\n');
-    while (line_iter.next()) |line| {
-        const trimmed_line = std.mem.trim(u8, line, " \t\r");
+    var filter_pos: usize = 0;
+    while (filter_pos < definitions_section.len) {
+        // Skip to next non-whitespace
+        while (filter_pos < definitions_section.len and
+            (definitions_section[filter_pos] == ' ' or
+                definitions_section[filter_pos] == '\t' or
+                definitions_section[filter_pos] == '\r'))
+        {
+            filter_pos += 1;
+        }
 
-        // Skip empty lines
-        if (trimmed_line.len == 0) continue;
+        if (filter_pos >= definitions_section.len) break;
 
-        // Skip lines that redefine default imports
-        if (std.mem.startsWith(u8, trimmed_line, "const Allocator ")) continue;
-        if (std.mem.startsWith(u8, trimmed_line, "const std ")) continue;
-        if (std.mem.startsWith(u8, trimmed_line, "const webidl ")) continue;
-        if (std.mem.startsWith(u8, trimmed_line, "pub const Allocator ")) continue;
-        if (std.mem.startsWith(u8, trimmed_line, "pub const std ")) continue;
-        if (std.mem.startsWith(u8, trimmed_line, "pub const webidl ")) continue;
+        // Check if this is a newline (empty line)
+        if (definitions_section[filter_pos] == '\n') {
+            filter_pos += 1;
+            continue;
+        }
 
-        try filtered.appendSlice(allocator, line);
-        try filtered.append(allocator, '\n');
+        const decl_start = filter_pos;
+
+        // Find end of current line to check what kind of declaration this is
+        var line_end = filter_pos;
+        while (line_end < definitions_section.len and definitions_section[line_end] != '\n') {
+            line_end += 1;
+        }
+        const first_line = definitions_section[decl_start..line_end];
+        const trimmed = std.mem.trim(u8, first_line, " \t\r");
+
+        // Skip default import redefinitions
+        if (std.mem.startsWith(u8, trimmed, "const Allocator =") or
+            std.mem.startsWith(u8, trimmed, "const std =") or
+            std.mem.startsWith(u8, trimmed, "const webidl =") or
+            std.mem.startsWith(u8, trimmed, "pub const Allocator =") or
+            std.mem.startsWith(u8, trimmed, "pub const std =") or
+            std.mem.startsWith(u8, trimmed, "pub const webidl ="))
+        {
+            filter_pos = line_end + 1;
+            continue;
+        }
+
+        // Check if this is a struct/enum/union type definition
+        const is_struct_def = std.mem.indexOf(u8, first_line, "pub const ") != null and
+            (std.mem.indexOf(u8, first_line, " = struct {") != null or
+                std.mem.indexOf(u8, first_line, " = enum {") != null or
+                std.mem.indexOf(u8, first_line, " = union(") != null);
+
+        if (is_struct_def) {
+            // Skip this entire struct/enum/union definition
+            var brace_depth: i32 = 0;
+            var found_opening = false;
+            while (filter_pos < definitions_section.len) {
+                if (definitions_section[filter_pos] == '{') {
+                    brace_depth += 1;
+                    found_opening = true;
+                } else if (definitions_section[filter_pos] == '}') {
+                    brace_depth -= 1;
+                    if (found_opening and brace_depth == 0) {
+                        // Found closing brace, skip to next line
+                        while (filter_pos < definitions_section.len and definitions_section[filter_pos] != '\n') {
+                            filter_pos += 1;
+                        }
+                        if (filter_pos < definitions_section.len) filter_pos += 1;
+                        break;
+                    }
+                }
+                filter_pos += 1;
+            }
+            continue;
+        }
+
+        // This is something we want to keep (function, type alias, const)
+        // Find the end of this declaration
+        var decl_end = decl_start;
+
+        // Check if it's a function (has "fn")
+        if (std.mem.indexOf(u8, first_line, " fn ") != null or std.mem.indexOf(u8, first_line, "pub fn ") != null) {
+            // Find the function body end
+            var brace_depth: i32 = 0;
+            var found_opening = false;
+            while (decl_end < definitions_section.len) {
+                if (definitions_section[decl_end] == '{') {
+                    brace_depth += 1;
+                    found_opening = true;
+                } else if (definitions_section[decl_end] == '}') {
+                    brace_depth -= 1;
+                    if (found_opening and brace_depth == 0) {
+                        decl_end += 1;
+                        break;
+                    }
+                }
+                decl_end += 1;
+            }
+        } else {
+            // It's a const/type alias - find the semicolon or newline
+            while (decl_end < definitions_section.len and definitions_section[decl_end] != ';' and definitions_section[decl_end] != '\n') {
+                decl_end += 1;
+            }
+            if (decl_end < definitions_section.len) decl_end += 1; // include semicolon or newline
+        }
+
+        // Append this declaration
+        try filtered.appendSlice(allocator, definitions_section[decl_start..decl_end]);
+        if (decl_end > 0 and definitions_section[decl_end - 1] != '\n') {
+            try filtered.append(allocator, '\n');
+        }
+
+        filter_pos = decl_end;
     }
 
     const result = try filtered.toOwnedSlice(allocator);

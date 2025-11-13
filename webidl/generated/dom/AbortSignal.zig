@@ -20,6 +20,7 @@ const webidl = @import("webidl");
 /// Algorithm function type for abort handlers
 /// Takes the abort reason as parameter
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
+
 /// Event listener removal context for abort signal
 /// Stores the target and listener to be removed when signal is aborted
 pub const EventListenerRemovalContext = struct {
@@ -27,7 +28,8 @@ pub const EventListenerRemovalContext = struct {
     listener_type: []const u8,
     listener_callback: ?webidl.JSValue,
     listener_capture: bool,
-};
+}
+;
 /// DOM Spec: interface AbortSignal : EventTarget
 
 pub const AbortSignal = struct {

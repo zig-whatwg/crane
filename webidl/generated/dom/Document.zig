@@ -38,10 +38,6 @@ const webidl = @import("webidl");
 
 
 /// Document format type enumeration
-pub const DocType = enum {
-    html,
-    xml,
-};
 /// DOM Spec: interface Document : Node
 
 pub const Document = struct {

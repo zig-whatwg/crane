@@ -16,12 +16,6 @@ const webidl = @import("webidl");
 
 
 /// StaticRangeInit dictionary
-pub const StaticRangeInit = struct {
-    startContainer: *Node,
-    startOffset: u32,
-    endContainer: *Node,
-    endOffset: u32,
-};
 /// DOM §5 - interface StaticRange : AbstractRange
 ///
 /// A StaticRange is a range object that does not update when the node tree mutates.
