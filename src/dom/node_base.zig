@@ -171,26 +171,18 @@ pub const NodeBase = struct {
 };
 
 // Forward declarations for concrete types we cast to
-// Using the WithBase variants until codegen is updated
+// Using the WithBase variants until codegen is updated for XPath/selectors
 const Element = @import("element_with_base.zig").ElementWithBase;
 const Text = @import("text_with_base.zig").TextWithBase;
 const Comment = @import("text_with_base.zig").CommentWithBase;
 const AttrWithBase = @import("attr_with_base.zig").AttrWithBase;
 
-// CharacterData is a base class for Text, Comment, etc.
-// For now, we'll define a minimal stub until it's generated
-// TODO: Replace with proper CharacterData once webidl codegen is updated
-pub const CharacterData = struct {
-    base: NodeBase,
-    data: []u8,
-    allocator: Allocator,
-
-    pub fn asNode(self: *CharacterData) *NodeBase {
-        return &self.base;
-    }
-};
+// CharacterData from generated WebIDL code
+// Has NodeBase as first field, enabling safe downcasting
+pub const CharacterData = @import("character_data").CharacterData;
 
 // ============================================================================
 // Tests
 // ============================================================================
-// TODO: Add proper tests once we have a complete test harness
+// NodeBase is tested via the concrete node types (Element, CharacterData, etc.)
+// See tests/dom/ for comprehensive node hierarchy tests
