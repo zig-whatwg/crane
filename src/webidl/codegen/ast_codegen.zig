@@ -43,7 +43,7 @@ pub fn generateEnhancedFile(
 
     // Process each class
     for (file_ir.classes, 0..) |*class, idx| {
-        var enhanced = try optimizer.enhanceClass(allocator, class, registry, file_ir.module_imports, file_ir.module_definitions);
+        var enhanced = try optimizer.enhanceClass(allocator, class, registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants);
         defer enhanced.deinit(allocator);
 
         // Include module definitions only for the first class in the file
@@ -119,7 +119,7 @@ pub fn generateAllFiles(
 
         // Process each class in the file
         for (file_ir.classes, 0..) |*class, idx| {
-            var enhanced = try optimizer.enhanceClass(allocator, class, &registry, file_ir.module_imports, file_ir.module_definitions);
+            var enhanced = try optimizer.enhanceClass(allocator, class, &registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants);
             defer enhanced.deinit(allocator);
 
             // Include module definitions only for the first class in the file

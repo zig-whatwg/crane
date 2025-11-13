@@ -8,6 +8,7 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const Allocator = @import("std.mem").Allocator;
 const Document = @import("document").Document;
 const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;

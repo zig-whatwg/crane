@@ -36,6 +36,13 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
         allocator.free(file_ir.module_imports);
     }
 
+    // Extract module-level constants (all const/pub const before first class)
+    file_ir.module_constants = try parseModuleConstants(allocator, source);
+    errdefer {
+        for (file_ir.module_constants) |*constant| constant.deinit(allocator);
+        allocator.free(file_ir.module_constants);
+    }
+
     // Extract module-level definitions (const, type, fn before first class)
     file_ir.module_definitions = try parseModuleDefinitions(allocator, source);
     errdefer allocator.free(file_ir.module_definitions);
@@ -116,9 +123,12 @@ fn parseModuleImports(allocator: Allocator, source: []const u8) ![]ir.Import {
             continue;
         }
 
-        // Look for const declarations
-        if (std.mem.startsWith(u8, module_section[pos..], "const ") or
-            std.mem.startsWith(u8, module_section[pos..], "pub const "))
+        // Look for const declarations (only at line start, not in the middle of expressions)
+        // Check if we're at the start of a line (pos == 0 or previous char is newline)
+        const is_line_start = (pos == 0 or module_section[pos - 1] == '\n');
+
+        if (is_line_start and (std.mem.startsWith(u8, module_section[pos..], "const ") or
+            std.mem.startsWith(u8, module_section[pos..], "pub const ")))
         {
             const is_public = std.mem.startsWith(u8, module_section[pos..], "pub const ");
             const const_start = if (is_public) pos + "pub const ".len else pos + "const ".len;
@@ -145,11 +155,115 @@ fn parseModuleImports(allocator: Allocator, source: []const u8) ![]ir.Import {
     return imports.toOwnedSlice();
 }
 
+/// Parse all module-level constants (const/pub const) before the first class
+/// This captures ALL constants including those between imports (like MutationCallback)
+fn parseModuleConstants(allocator: Allocator, source: []const u8) ![]ir.Constant {
+    var constants = infra.List(ir.Constant).init(allocator);
+    errdefer {
+        for (constants.toSliceMut()) |*constant| constant.deinit(allocator);
+        constants.deinit();
+    }
+
+    // Find the first class definition
+    const first_class_pos = blk: {
+        const interface_pos = std.mem.indexOf(u8, source, "webidl.interface(");
+        const namespace_pos = std.mem.indexOf(u8, source, "webidl.namespace(");
+        const mixin_pos = std.mem.indexOf(u8, source, "webidl.mixin(");
+
+        var min_pos: ?usize = null;
+        if (interface_pos) |pos| min_pos = pos;
+        if (namespace_pos) |pos| {
+            if (min_pos) |m| {
+                min_pos = @min(m, pos);
+            } else {
+                min_pos = pos;
+            }
+        }
+        if (mixin_pos) |pos| {
+            if (min_pos) |m| {
+                min_pos = @min(m, pos);
+            } else {
+                min_pos = pos;
+            }
+        }
+        break :blk min_pos;
+    };
+
+    const module_section = if (first_class_pos) |pos| source[0..pos] else source;
+
+    // Scan for all const declarations: (pub) const Name = value;
+    var pos: usize = 0;
+    var line_num: usize = 1;
+
+    while (pos < module_section.len) {
+        // Track line numbers
+        if (module_section[pos] == '\n') {
+            line_num += 1;
+            pos += 1;
+            continue;
+        }
+
+        // Skip whitespace
+        if (module_section[pos] == ' ' or module_section[pos] == '\t' or module_section[pos] == '\r') {
+            pos += 1;
+            continue;
+        }
+
+        // Look for const declarations (only at line start, not in the middle of expressions)
+        // Check if we're at the start of a line (pos == 0 or previous char is newline)
+        const is_line_start = (pos == 0 or module_section[pos - 1] == '\n');
+
+        if (is_line_start and (std.mem.startsWith(u8, module_section[pos..], "const ") or
+            std.mem.startsWith(u8, module_section[pos..], "pub const ")))
+        {
+            const is_public = std.mem.startsWith(u8, module_section[pos..], "pub const ");
+            const const_start = if (is_public) pos + "pub const ".len else pos + "const ".len;
+
+            // Extract name (before = or :)
+            const name_end_eq = std.mem.indexOfScalarPos(u8, module_section, const_start, '=');
+            const name_end_colon = std.mem.indexOfScalarPos(u8, module_section, const_start, ':');
+
+            var name_end: ?usize = null;
+            if (name_end_eq) |eq| {
+                if (name_end_colon) |col| {
+                    name_end = @min(eq, col);
+                } else {
+                    name_end = eq;
+                }
+            } else if (name_end_colon) |col| {
+                name_end = col;
+            }
+
+            if (name_end) |end| {
+                const name = std.mem.trim(u8, module_section[const_start..end], " \t\r\n");
+
+                // Find the semicolon to get the full declaration
+                const semicolon = std.mem.indexOfScalarPos(u8, module_section, pos, ';');
+
+                if (name.len > 0 and semicolon != null) {
+                    // Store just the name (we don't need the value for filtering)
+                    try constants.append(ir.Constant{
+                        .name = try allocator.dupe(u8, name),
+                        .type_name = null,
+                        .value = try allocator.dupe(u8, ""), // Empty value - we only need the name
+                        .visibility = if (is_public) .public else .private,
+                        .source_line = line_num,
+                    });
+                }
+            }
+        }
+
+        pos += 1;
+    }
+
+    return constants.toOwnedSlice();
+}
+
 /// Parse module-level definitions (const, type, fn) that appear after imports
 /// but before the first class definition. These are helpers, type aliases, etc.
 fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 {
     // Find the extent of the module section
-    // Start: after the last import statement
+    // Start: after the INITIAL consecutive import block (not including inline imports later)
     // End: before the first class definition (including the "pub const Name =" line)
 
     // Find the first class definition
@@ -191,13 +305,14 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
         end_pos = line_start;
     }
 
-    // Find the last import statement
-    // Look for lines that start with: const NAME = @import(...) or pub const NAME = @import(...)
-    // NOT lines where @import appears in the middle (like in a type definition)
-    var last_import_end: usize = 0;
+    // Find the end of the INITIAL consecutive import block
+    // Stop when we hit a non-import, non-comment, non-empty line
+    var initial_imports_end: usize = 0;
     var pos: usize = 0;
+    var found_first_import = false;
+    var consecutive_imports = true;
 
-    while (pos < end_pos) {
+    while (pos < end_pos and consecutive_imports) {
         // Check if this is start of a line (or start of file)
         if (pos == 0 or source[pos - 1] == '\n') {
             // Skip whitespace
@@ -206,8 +321,21 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
                 line_start += 1;
             }
 
+            const rest = source[line_start..end_pos];
+
+            // Check if empty line
+            if (rest.len == 0 or rest[0] == '\n') {
+                pos += 1;
+                continue;
+            }
+
+            // Check if comment line
+            if (rest.len >= 2 and rest[0] == '/' and rest[1] == '/') {
+                pos += 1;
+                continue;
+            }
+
             // Check if this line is an import: (pub) const NAME = @import
-            const rest = source[line_start..];
             const is_const_import = blk: {
                 if (std.mem.startsWith(u8, rest, "const ")) {
                     // Find the = sign
@@ -232,26 +360,25 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
             };
 
             if (is_const_import) {
-                // Found an import line, find the end
+                found_first_import = true;
+                // Find the end of this line
                 const line_end = std.mem.indexOfScalarPos(u8, source, pos, '\n') orelse end_pos;
-                last_import_end = line_end + 1;
+                initial_imports_end = line_end + 1;
+            } else if (found_first_import) {
+                // We hit a non-import line after seeing imports - end of initial import block
+                consecutive_imports = false;
             }
         }
         pos += 1;
     }
 
-    // Extract the section between last import and first class
-    if (last_import_end >= end_pos) {
+    // Extract the section between initial imports and first class
+    // This includes: module constants, inline imports (will be filtered), and re-exports
+    if (initial_imports_end >= end_pos) {
         return try allocator.dupe(u8, "");
     }
 
-    const definitions_section = source[last_import_end..end_pos];
-
-    // Return as-is for now - filtering causes issues with type aliases vs imports
-    // TODO: Implement smarter filtering that distinguishes between:
-    // - const X = @import(...) (should be filtered)
-    // - const X = Y.Z (type alias - may or may not need filtering depending on if Y is imported)
-    // - pub const X = struct/enum/union (should be kept)
+    const definitions_section = source[initial_imports_end..end_pos];
     const trimmed_section = std.mem.trim(u8, definitions_section, " \t\r\n");
     return try allocator.dupe(u8, trimmed_section);
 }

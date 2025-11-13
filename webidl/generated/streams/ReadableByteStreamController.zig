@@ -11,7 +11,6 @@
 const AbortController = @import("dom").AbortController;
 const Algorithm = @import("algorithm").Algorithm;
 const Allocator = @import("std.mem").Allocator;
-const ArrayBuffer = @import("array_buffer").ArrayBuffer;
 const AsyncPromise = @import("async_promise").AsyncPromise;
 const Controller = @import("controller").Controller;
 const Descriptor = @import("descriptor").Descriptor;
@@ -20,22 +19,28 @@ const IntoDescriptor = @import("into_descriptor").IntoDescriptor;
 const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
 const Offset = @import("offset").Offset;
-const PullIntoDescriptor = @import("pull_into_descriptor").PullIntoDescriptor;
 const PullIntoDescriptorModule = @import("pull_into_descriptor").PullIntoDescriptorModule;
 const PullIntos = @import("pull_intos").PullIntos;
 const Queue = @import("queue").Queue;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
-const ReadIntoRequest = @import("read_into_request").ReadIntoRequest;
 const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
 const Request = @import("request").Request;
 const ViewConstruction = @import("view_construction").ViewConstruction;
-const ViewConstructor = @import("view_constructor").ViewConstructor;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
+
+
+const PullIntoDescriptor = PullIntoDescriptorModule.PullIntoDescriptor;
+const ArrayBuffer = PullIntoDescriptorModule.ArrayBuffer;
+const ViewConstructor = PullIntoDescriptorModule.ViewConstructor;
+const ReaderType = PullIntoDescriptorModule.ReaderType;
+
+const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
+
 
 
 /// Byte stream queue entry per WHATWG Streams Standard § 4.7.2

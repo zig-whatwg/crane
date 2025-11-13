@@ -9,30 +9,23 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const MutationCallback = @import("mutation_callback").MutationCallback;
 const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
 const MutationRecord = @import("mutation_record").MutationRecord;
-const MutationRecord, observer: *MutationObserver) void;
-
-// Import types that are shared between Node and MutationObserver
-const MutationObserverInit = @import("mutation_observer_init").MutationRecord, observer: *MutationObserver) void;
-
-// Import types that are shared between Node and MutationObserver
-const MutationObserverInit;
 const Node = @import("node").Node;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
-const fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
-
-// Import types that are shared between Node and MutationObserver
-const MutationObserverInit = @import("mutation_observer_init").fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
-
-// Import types that are shared between Node and MutationObserver
-const MutationObserverInit;
 const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §7.1 - MutationCallback
+///
+/// Callback invoked when mutations are observed.
+/// Arguments: (mutations: sequence<MutationRecord>, observer: MutationObserver)
+pub const MutationCallback = *const fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
+
+// Import types that are shared between Node and MutationObserver
 
 // Re-export for convenience
 pub const Init = MutationObserverInit;

@@ -28,43 +28,34 @@ pub fn generateCode(
     // Header
     try writeHeader(writer);
 
-    // Imports (deduplicated, sorted, excluding class constants and module definitions)
-    const module_def_names = if (module_definitions) |defs|
-        try extractModuleDefinitionNames(allocator, defs)
+    // Filter module definitions first (to remove import aliases)
+    const filtered_module_defs = if (module_definitions) |defs| blk: {
+        if (defs.len > 0) {
+            break :blk try filterModuleDefinitions(allocator, defs, enhanced.all_imports);
+        } else {
+            break :blk try allocator.dupe(u8, "");
+        }
+    } else try allocator.dupe(u8, "");
+    defer allocator.free(filtered_module_defs);
+
+    // Extract names from FILTERED definitions (not unfiltered)
+    const module_def_names = if (filtered_module_defs.len > 0)
+        try extractModuleDefinitionNames(allocator, filtered_module_defs)
     else
         &[_][]const u8{};
     defer {
-        if (module_definitions != null) {
-            for (module_def_names) |name| allocator.free(name);
-            allocator.free(module_def_names);
-        }
+        for (module_def_names) |name| allocator.free(name);
+        if (module_def_names.len > 0) allocator.free(module_def_names);
     }
 
     try writeImports(writer, enhanced.all_imports, enhanced.class.own_constants, module_def_names);
 
     // Module-level definitions (if this is the first class in the file)
-    if (module_definitions) |defs| {
-        if (defs.len > 0) {
-            // Debug: Check if this is MutationObserver
-            const is_mutation_observer = std.mem.indexOf(u8, defs, "MutationObserver") != null;
-            if (is_mutation_observer) {
-                std.debug.print("\n=== MutationObserver Module Defs (BEFORE filter) ===\n{s}\n=== END ===\n", .{defs});
-            }
-
-            // Filter out type aliases that duplicate top-level imports
-            const filtered_defs = try filterModuleDefinitions(allocator, defs, enhanced.all_imports);
-            defer allocator.free(filtered_defs);
-
-            if (is_mutation_observer) {
-                std.debug.print("\n=== MutationObserver Module Defs (AFTER filter) ===\n{s}\n=== END ===\n", .{filtered_defs});
-            }
-
-            if (filtered_defs.len > 0) {
-                try writer.writeAll("\n");
-                try writer.writeAll(filtered_defs);
-                try writer.writeAll("\n");
-            }
-        }
+    // Note: filtered_module_defs was already computed and filtered earlier
+    if (filtered_module_defs.len > 0) {
+        try writer.writeAll("\n");
+        try writer.writeAll(filtered_module_defs);
+        try writer.writeAll("\n");
     }
 
     // Add helper functions needed by inherited methods
@@ -190,19 +181,23 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
     // Debug: Check if this is MutationObserver
     const is_mutation_observer = blk: {
         for (imports) |import| {
-            if (std.mem.eql(u8, import.name, "MutationObserver")) break :blk true;
-            if (std.mem.eql(u8, import.name, "MutationCallback")) break :blk true;
+            if (std.mem.indexOf(u8, import.name, "MutationObserver")) |_| break :blk true;
         }
         break :blk false;
     };
 
     if (is_mutation_observer) {
-        std.debug.print("\n=== MutationObserver Imports (BEFORE filter) ===\n", .{});
-        for (imports) |import| {
-            std.debug.print("  {s} from {s} (is_type: {any})\n", .{ import.name, import.module, import.is_type });
+        std.debug.print("\n=== MutationObserver Imports List ===\n", .{});
+        for (imports, 0..) |import, i| {
+            std.debug.print("[{d}] name=[{s}] module=[{s}]\n", .{ i, import.name, import.module });
+        }
+        std.debug.print("module_def_names.len={d}\n", .{module_def_names.len});
+        for (module_def_names, 0..) |name, i| {
+            std.debug.print("  [{d}] {s}\n", .{ i, name });
         }
         std.debug.print("=== END ===\n", .{});
     }
+
     // Build set of names to exclude from imports
     var excluded_names = std.StringHashMap(void).init(std.heap.page_allocator);
     defer excluded_names.deinit();

@@ -21,6 +21,7 @@ const streams = @import("streams");
 const webidl = @import("webidl");
 
 
+// Import encoding infrastructure
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
 

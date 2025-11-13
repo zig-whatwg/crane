@@ -17,7 +17,6 @@ const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
 const Promise = @import("promise").Promise;
 const Ptr = @import("ptr").Ptr;
-const ReadIntoRequest = @import("read_into_request").ReadIntoRequest;
 const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
 const ReadableStream = @import("readable_stream").ReadableStream;
@@ -27,6 +26,8 @@ const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+const ReadIntoRequest = ReadIntoRequestModule.ReadIntoRequest;
 
 pub const ReadableStreamBYOBReader = struct {
 
