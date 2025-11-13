@@ -68,6 +68,105 @@ pub fn runChildrenChangedSteps(parent: *Node) void {
     // This is expected until HTML or other specifications register their hooks
 }
 
+/// Insertion Steps Callback
+/// Spec: Specifications may define insertion steps for all or some nodes.
+/// The algorithm is passed the inserted node.
+///
+/// Examples:
+///   - HTML: iframe loading, form-associated element connections
+///   - Custom elements: connectedCallback
+pub const InsertionStepsCallback = *const fn (node: *Node) void;
+
+/// Removing Steps Callback
+/// Spec: Specifications may define removing steps for all or some nodes.
+/// The algorithm is passed the removed node and optionally the old parent.
+///
+/// Examples:
+///   - HTML: iframe unloading, form-associated element disconnections
+///   - Custom elements: disconnectedCallback
+pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) void;
+
+/// Post-connection Steps Callback
+/// Spec: The post-connection steps are run after a batch of nodes is inserted.
+/// This allows JavaScript to run after all mutations are complete.
+///
+/// Examples:
+///   - HTML: iframe loading after all tree mutations
+///   - Custom elements: batch reactions after insertion
+pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
+
+/// Global registry for insertion steps callbacks
+var insertion_steps_callbacks = std.ArrayList(InsertionStepsCallback).init(std.heap.page_allocator);
+
+/// Global registry for removing steps callbacks
+var removing_steps_callbacks = std.ArrayList(RemovingStepsCallback).init(std.heap.page_allocator);
+
+/// Global registry for post-connection steps callbacks
+var post_connection_steps_callbacks = std.ArrayList(PostConnectionStepsCallback).init(std.heap.page_allocator);
+
+/// Register a callback for insertion steps
+pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
+    try insertion_steps_callbacks.append(callback);
+}
+
+/// Register a callback for removing steps
+pub fn registerRemovingStepsCallback(callback: RemovingStepsCallback) !void {
+    try removing_steps_callbacks.append(callback);
+}
+
+/// Register a callback for post-connection steps
+pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback) !void {
+    try post_connection_steps_callbacks.append(callback);
+}
+
+/// Run the insertion steps for a node
+/// Called during the insert algorithm for each shadow-including descendant
+fn runInsertionSteps(node: *Node) void {
+    for (insertion_steps_callbacks.items) |callback| {
+        callback(node);
+    }
+}
+
+/// Run the removing steps for a node
+/// Called during the remove algorithm
+fn runRemovingSteps(node: *Node, old_parent: ?*Node) void {
+    for (removing_steps_callbacks.items) |callback| {
+        callback(node, old_parent);
+    }
+}
+
+/// Run the post-connection steps for a node
+/// Called after a batch of insertions complete
+fn runPostConnectionSteps(node: *Node) void {
+    for (post_connection_steps_callbacks.items) |callback| {
+        callback(node);
+    }
+}
+
+/// Recursively run insertion steps for a node and all its descendants
+fn runInsertionStepsRecursive(node: *Node) void {
+    runInsertionSteps(node);
+    for (node.child_nodes.items) |child| {
+        runInsertionStepsRecursive(child);
+    }
+}
+
+/// Recursively run post-connection steps for a node and all its descendants
+fn runPostConnectionStepsRecursive(node: *Node) void {
+    runPostConnectionSteps(node);
+    for (node.child_nodes.items) |child| {
+        runPostConnectionStepsRecursive(child);
+    }
+}
+
+/// Recursively run removing steps for a node and all its descendants
+fn runRemovingStepsRecursive(node: *Node, old_parent: *Node) void {
+    runRemovingSteps(node, old_parent);
+    for (node.child_nodes.items) |child| {
+        runRemovingStepsRecursive(child, node);
+    }
+}
+
 /// Helper to get node type from Node pointer
 fn getNodeType(node: *Node) u16 {
     return node.node_type;
@@ -411,12 +510,18 @@ pub fn insert(
         // TODO: Implement when shadow DOM is fully integrated
 
         // Step 7.7: For each shadow-including inclusive descendant
-        // TODO: Implement insertion steps callback system
+        // Run insertion steps for each node
+        // Spec: Specifications may define insertion steps for all or some nodes
+        for (nodes) |inserted_node| {
+            runInsertionSteps(inserted_node);
+            // Recursively run for all descendants
+            for (inserted_node.child_nodes.items) |descendant| {
+                runInsertionStepsRecursive(descendant);
+            }
+        }
+
         // TODO: Implement custom element reactions
-        // For now, this is where we would:
-        // - Run insertion steps
-        // - Handle custom elements
-        // - Set custom element registry
+        // For now, this is where we would handle custom elements
     }
 
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
@@ -429,7 +534,16 @@ pub fn insert(
     runChildrenChangedSteps(parent);
 
     // Steps 10-12: Post-connection steps
-    // TODO: Implement post-connection steps callback system
+    // Spec: The post-connection steps are run after a batch of nodes is inserted
+    // This allows specifications to execute JavaScript or perform connection-related
+    // operations after all tree mutations are complete
+    for (nodes) |inserted_node| {
+        runPostConnectionSteps(inserted_node);
+        // Recursively run for all descendants
+        for (inserted_node.child_nodes.items) |descendant| {
+            runPostConnectionStepsRecursive(descendant);
+        }
+    }
 }
 
 /// DOM §4.2.5 - Append
@@ -662,7 +776,12 @@ pub fn remove(
     // TODO: Implement when shadow DOM is fully integrated
 
     // Step 11: Run the removing steps with node and parent
-    // TODO: Implement removing steps callback system
+    // Spec: Specifications may define removing steps for all or some nodes
+    runRemovingSteps(node, parent);
+    // Recursively run for all descendants
+    for (node.child_nodes.items) |descendant| {
+        runRemovingStepsRecursive(descendant, node);
+    }
 
     // Step 12-14: Custom element disconnection
     // TODO: Implement when custom elements are fully integrated
