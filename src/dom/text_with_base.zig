@@ -40,7 +40,7 @@ pub const TextWithBase = struct {
                 .parent_node = null,
                 .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(@TypeOf(node_base.RegisteredObserverType)).init(allocator),
+                .registered_observers = @import("infra").List(node_base.RegisteredObserverType).init(allocator),
             },
             .data = try allocator.dupe(u8, data),
         };
@@ -114,7 +114,7 @@ pub const CommentWithBase = struct {
                 .parent_node = null,
                 .child_nodes = @import("infra").List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(@TypeOf(node_base.RegisteredObserverType)).init(allocator),
+                .registered_observers = @import("infra").List(node_base.RegisteredObserverType).init(allocator),
             },
             .data = try allocator.dupe(u8, data),
         };

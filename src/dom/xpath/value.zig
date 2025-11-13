@@ -536,9 +536,10 @@ test "node-set - union" {
         .parent_node = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+        .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
     };
     defer node1.child_nodes.deinit();
+    defer node1.registered_observers.deinit();
 
     var node2 = NodeBase{
         .allocator = allocator,
@@ -547,9 +548,10 @@ test "node-set - union" {
         .parent_node = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+        .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
     };
     defer node2.child_nodes.deinit();
+    defer node2.registered_observers.deinit();
 
     var node3 = NodeBase{
         .allocator = allocator,
@@ -558,9 +560,10 @@ test "node-set - union" {
         .parent_node = null,
         .child_nodes = infra.List(*NodeBase).init(allocator),
         .owner_document = null,
-        .registered_observers = std.ArrayList(@import("registered_observer").RegisteredObserver){},
+        .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
     };
     defer node3.child_nodes.deinit();
+    defer node3.registered_observers.deinit();
 
     var ns1 = NodeSet.init(allocator);
     defer ns1.deinit();

@@ -46,7 +46,7 @@ pub const ElementWithBase = struct {
                 .parent_node = null,
                 .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(node_base.RegisteredObserverType){},
+                .registered_observers = infra.List(node_base.RegisteredObserverType).init(allocator),
             },
             .tag_name = tag_name,
             .namespace_uri = null,
@@ -57,7 +57,7 @@ pub const ElementWithBase = struct {
     /// Clean up resources
     pub fn deinit(self: *ElementWithBase) void {
         self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit(self.base.allocator);
+        self.base.registered_observers.deinit();
 
         // Clean up attributes (they're heap-allocated)
         for (0..self.attributes.size()) |i| {

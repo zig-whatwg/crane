@@ -34,7 +34,7 @@ pub const NodeBase = struct {
 
     /// DOM §7.1 - Registered observer list
     /// List of registered mutation observers watching this node
-    registered_observers: std.ArrayList(RegisteredObserverType),
+    registered_observers: infra.List(RegisteredObserverType),
 
     // ========================================================================
     // Node Type Constants (DOM Spec §5.1)
