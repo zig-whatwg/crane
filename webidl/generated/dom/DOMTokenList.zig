@@ -10,7 +10,6 @@
 
 const Allocator = @import("std.mem").Allocator;
 const Element = @import("element").Element;
-const ]const u8 = @import("]const u8").]const u8;
 const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");

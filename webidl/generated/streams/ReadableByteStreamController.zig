@@ -19,7 +19,6 @@ const ReadIntoRequest = @import("read_into_request").ReadIntoRequest;
 const ReadIntoRequestModule = @import("read_into_request").ReadIntoRequestModule;
 const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
 const ViewConstruction = @import("view_construction").ViewConstruction;
-const anyopaque = @import("anyopaque").anyopaque;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");

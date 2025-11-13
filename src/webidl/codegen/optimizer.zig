@@ -345,6 +345,16 @@ fn addImportForType(
         base_type = base_type["const ".len..];
     }
 
+    // Skip if empty or starts with invalid characters
+    if (base_type.len == 0 or base_type[0] == ']' or base_type[0] == ')' or base_type[0] == '}') {
+        return;
+    }
+
+    // Skip if starts with lowercase (likely a primitive like u8, i32, bool, etc.)
+    if (base_type.len > 0 and base_type[0] >= 'a' and base_type[0] <= 'z') {
+        return;
+    }
+
     // Skip if type is locally defined in module_definitions
     // e.g., "const Group = types.Group;" means Group is already available
     // Simple heuristic: check if "const TypeName =" appears in the definitions

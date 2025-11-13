@@ -12,7 +12,6 @@ const Allocator = @import("std.mem").Allocator;
 const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
-const ]const u8 = @import("]const u8").]const u8;
 const encoding_mod = @import("encoding");
 const infra = @import("infra").infra;
 const std = @import("std");

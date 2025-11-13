@@ -23,8 +23,6 @@ const NodeList = @import("node_list").NodeList;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
-const ]const u8 = @import("]const u8").]const u8;
-const anyopaque = @import("anyopaque").anyopaque;
 const std = @import("std");
 const webidl = @import("webidl");
 

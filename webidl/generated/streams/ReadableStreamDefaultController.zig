@@ -15,7 +15,6 @@ const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
 const Value = @import("queue_with_sizes").Value;
-const anyopaque = @import("anyopaque").anyopaque;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
