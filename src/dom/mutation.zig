@@ -604,19 +604,37 @@ pub fn insert(
         // Step 7.6: Run assign slottables for a tree with node's root
         // TODO: Implement when shadow DOM is fully integrated
 
-        // Step 7.7: For each shadow-including inclusive descendant
-        // Run insertion steps for each node
-        // Spec: Specifications may define insertion steps for all or some nodes
+        // Step 7.7: For each shadow-including inclusive descendant of node,
+        // in shadow-including tree order, run the insertion steps
+        // Spec: DOM §4.2.5 step 7.7
         for (nodes) |inserted_node| {
-            runInsertionSteps(inserted_node);
-            // Recursively run for all descendants
-            for (inserted_node.child_nodes.items()) |descendant| {
-                runInsertionStepsRecursive(descendant);
+            // Get all shadow-including inclusive descendants in tree order
+            var descendants = tree_helpers.getShadowIncludingInclusiveDescendants(
+                parent.allocator,
+                inserted_node,
+            ) catch {
+                // If we can't allocate, fall back to non-shadow traversal
+                runInsertionSteps(inserted_node);
+                for (inserted_node.child_nodes.items()) |descendant| {
+                    runInsertionStepsRecursive(descendant);
+                }
+                continue;
+            };
+            defer descendants.deinit();
+
+            // Run insertion steps for each shadow-including inclusive descendant
+            for (descendants.items) |inclusive_descendant| {
+                runInsertionSteps(inclusive_descendant);
+
+                // TODO: Step 7.7.2-4 - Custom element reactions
+                // If inclusiveDescendant is not connected, then continue
+                // If inclusiveDescendant is an element, handle custom element registry
+                // If inclusiveDescendant is custom, enqueue connectedCallback
             }
         }
 
-        // TODO: Implement custom element reactions
-        // For now, this is where we would handle custom elements
+        // TODO: Step 10-12 - Post-connection steps
+        // Collect all nodes in staticNodeList before calling post-connection steps
     }
 
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
@@ -965,15 +983,36 @@ pub fn remove(
     // TODO: Implement when shadow DOM is fully integrated
 
     // Step 11: Run the removing steps with node and parent
-    // Spec: Specifications may define removing steps for all or some nodes
+    // Spec: DOM §4.2.5 - Specifications may define removing steps
     runRemovingSteps(node, parent);
-    // Recursively run for all descendants
-    for (node.child_nodes.items()) |descendant| {
-        runRemovingStepsRecursive(descendant, node);
-    }
 
-    // Step 12-14: Custom element disconnection
-    // TODO: Implement when custom elements are fully integrated
+    // Step 12: Let isParentConnected be parent's connected
+    // const isParentConnected = parent.isConnected();
+
+    // TODO: Step 13 - If node is custom and isParentConnected is true,
+    // enqueue disconnectedCallback
+
+    // Step 14: For each shadow-including descendant of node,
+    // in shadow-including tree order, run removing steps
+    // Spec: DOM §4.2.5 step 14
+    if (tree_helpers.getShadowIncludingDescendants(parent.allocator, node)) |descendants| {
+        defer descendants.deinit();
+
+        // Step 14.1: Run the removing steps with descendant and null
+        // Step 14.2: Custom element disconnectedCallback
+        for (descendants.items) |descendant| {
+            runRemovingSteps(descendant, null);
+
+            // TODO: If descendant is custom and isParentConnected is true,
+            // enqueue disconnectedCallback reaction
+        }
+    } else |_| {
+        // If we can't allocate for shadow-including traversal,
+        // fall back to regular descendant traversal
+        for (node.child_nodes.items()) |descendant| {
+            runRemovingStepsRecursive(descendant, node);
+        }
+    }
 
     // Step 15: Transient registered observers
     // For each inclusive ancestor of parent that has registered observers with subtree=true,
