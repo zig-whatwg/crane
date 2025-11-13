@@ -25,7 +25,6 @@ const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocu
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Slottable = @import("slottable").Slottable;
-const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom_types = @import("dom_types").dom_types;
 const infra = @import("infra").infra;

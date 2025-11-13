@@ -26,7 +26,6 @@ const NodeList = @import("node_list").NodeList;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootMode = @import("shadow_root_mode").ShadowRootMode;
 const SlotAssignmentMode = @import("slot_assignment_mode").SlotAssignmentMode;
 const Text = @import("text").Text;

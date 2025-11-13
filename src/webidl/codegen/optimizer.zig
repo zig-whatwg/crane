@@ -369,6 +369,9 @@ fn resolveImports(
         // Skip if already present (e.g., std, webidl already added above)
         if (imports.contains(inherited_import.name)) continue;
 
+        // Skip self-imports (class importing itself)
+        if (std.mem.eql(u8, inherited_import.name, class.name)) continue;
+
         try imports.put(inherited_import.name, ir.Import{
             .name = try allocator.dupe(u8, inherited_import.name),
             .module = try allocator.dupe(u8, inherited_import.module),
@@ -382,6 +385,9 @@ fn resolveImports(
     for (module_imports) |module_import| {
         // Skip if already present
         if (imports.contains(module_import.name)) continue;
+
+        // Skip self-imports (class importing itself)
+        if (std.mem.eql(u8, module_import.name, class.name)) continue;
 
         try imports.put(module_import.name, ir.Import{
             .name = try allocator.dupe(u8, module_import.name),

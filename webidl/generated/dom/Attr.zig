@@ -10,7 +10,6 @@
 
 const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
-const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
 const Element = @import("element").Element;

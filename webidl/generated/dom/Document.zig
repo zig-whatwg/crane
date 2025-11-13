@@ -15,7 +15,6 @@ const CDATASection = @import("cdata_section").CDATASection;
 const CharacterData = @import("character_data").CharacterData;
 const Comment = @import("comment").Comment;
 const DOMImplementation = @import("dom_implementation").DOMImplementation;
-const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
 const DocumentType = @import("document_type").DocumentType;

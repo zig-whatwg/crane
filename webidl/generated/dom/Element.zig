@@ -15,7 +15,6 @@ const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
 const DOMTokenList = @import("d_o_m_token_list").DOMTokenList;
 const Document = @import("document").Document;
-const Element = @import("element").Element;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
