@@ -16,6 +16,83 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// ============================================================================
+// Helper Functions (Module-Level)
+// ============================================================================
+
+/// Check if byte slice is ASCII-only (fast path optimization)
+fn isAscii(bytes: []const u8) bool {
+    for (bytes) |byte| {
+        if (byte > 0x7F) return false;
+    }
+    return true;
+}
+
+/// Replace invalid UTF-8 sequences with U+FFFD REPLACEMENT CHARACTER
+fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
+    // Allocate output buffer (worst case: 3 bytes per input byte for U+FFFD)
+    var output = std.ArrayList(u8).init(allocator);
+    errdefer output.deinit();
+
+    const replacement = "\u{FFFD}"; // U+FFFD in UTF-8 (3 bytes: EF BF BD)
+
+    var i: usize = 0;
+    while (i < input.len) {
+        const cp_len = std.unicode.utf8ByteSequenceLength(input[i]) catch {
+            // Invalid start byte - replace with U+FFFD
+            try output.appendSlice(replacement);
+            i += 1;
+            continue;
+        };
+
+        if (i + cp_len > input.len) {
+            // Incomplete code point at end - replace with U+FFFD
+            try output.appendSlice(replacement);
+            break;
+        }
+
+        // Validate code point
+        const cp = std.unicode.utf8Decode(input[i .. i + cp_len]) catch {
+            // Invalid code point - replace with U+FFFD
+            try output.appendSlice(replacement);
+            i += cp_len;
+            continue;
+        };
+
+        // Valid code point - encode back to UTF-8
+        var buf: [4]u8 = undefined;
+        const out_len = std.unicode.utf8Encode(cp, &buf) catch unreachable;
+        try output.appendSlice(buf[0..out_len]);
+        i += cp_len;
+    }
+
+    return output.toOwnedSlice();
+}
+
+/// TextEncoder - encodes strings to UTF-8 bytes
+///
+/// WHATWG Encoding Standard § 5.2
+/// https://encoding.spec.whatwg.org/#interface-textencoder
+///
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextEncoder {
+///   constructor();
+///   [NewObject] Uint8Array encode(optional USVString input = "");
+///   TextEncoderEncodeIntoResult encodeInto(USVString source, [AllowShared] Uint8Array destination);
+/// };
+/// TextEncoder includes TextEncoderCommon;
+///
+/// interface mixin TextEncoderCommon {
+///   readonly attribute DOMString encoding;
+/// };
+/// ```
+///
+/// Note: TextEncoder only supports UTF-8 encoding (no label argument).
+/// Note: TextEncoder offers no stream option (no buffering needed).
+
 pub const TextEncoder = struct {
 
     // ========================================================================

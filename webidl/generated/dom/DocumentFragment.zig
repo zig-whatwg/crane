@@ -28,6 +28,9 @@ const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM Spec: interface DocumentFragment : Node
+
 pub const DocumentFragment = struct {
 
     // ========================================================================

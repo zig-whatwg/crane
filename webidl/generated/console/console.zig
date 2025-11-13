@@ -9,12 +9,95 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const console = @import("console").console;
 const format = @import("format");
 const infra = @import("infra");
 const std = @import("std");
 const types = @import("types");
 const webidl = @import("webidl");
+
+
+const Allocator = std.mem.Allocator;
+const Group = types.Group;
+const LogLevel = types.LogLevel;
+const Message = types.Message;
+const CircularMessageBuffer = types.CircularMessageBuffer;
+
+/// Printer function signature for console output.
+///
+/// Takes a pre-formatted message string and outputs it.
+/// This is called by the Printer operation after formatting.
+///
+/// Example:
+/// ```zig
+/// fn customPrinter(message: []const u8) void {
+///     std.log.info("[CONSOLE] {s}", .{message});
+/// }
+/// ```
+pub const PrintFn = *const fn (message: []const u8) void;
+
+/// Default printer function that outputs to stderr.
+///
+/// This is the default value for console.printFn.
+/// Outputs messages using std.debug.print with newline.
+fn defaultPrinter(message: []const u8) void {
+    std.debug.print("{s}\n", .{message});
+}
+
+/// console namespace object per WHATWG console Standard
+///
+/// WHATWG console Standard lines 8-39 (WebIDL):
+/// ```webidl
+/// [Exposed=*]
+/// namespace console {
+///   // Logging (11 methods)
+///   undefined assert(optional boolean condition = false, any... data);
+///   undefined clear();
+///   undefined debug(any... data);
+///   undefined error(any... data);
+///   undefined info(any... data);
+///   undefined log(any... data);
+///   undefined table(optional any tabularData, optional sequence<DOMString> properties);
+///   undefined trace(any... data);
+///   undefined warn(any... data);
+///   undefined dir(optional any item, optional object? options);
+///   undefined dirxml(any... data);
+///
+///   // Counting (2 methods)
+///   undefined count(optional DOMString label = "default");
+///   undefined countReset(optional DOMString label = "default");
+///
+///   // Grouping (3 methods)
+///   undefined group(any... data);
+///   undefined groupCollapsed(any... data);
+///   undefined groupEnd();
+///
+///   // Timing (3 methods)
+///   undefined time(optional DOMString label = "default");
+///   undefined timeLog(optional DOMString label = "default", any... data);
+///   undefined timeEnd(optional DOMString label = "default");
+/// };
+/// ```
+///
+/// # State Management
+///
+/// Each console namespace object has associated state:
+/// - **countMap**: Map of labels to counts (for count/countReset)
+/// - **timerTable**: Map of labels to start times (for time/timeLog/timeEnd)
+/// - **groupStack**: Stack of active groups (for group/groupCollapsed/groupEnd)
+/// - **messageBuffer**: Circular buffer of messages (for history/DevTools)
+/// - **labelPool**: Interned strings for performance
+///
+/// # Fields
+///
+/// - `allocator`: Memory allocator for all operations
+/// - `enabled`: Fast disable path (set to false to disable all output)
+/// - `printFn`: Optional custom printer function (default: stderr)
+/// - `runtime`: Optional JavaScript runtime for ECMAScript type conversions
+/// - `countMap`: Label→count mapping for count() operations
+/// - `timerTable`: Label→timestamp mapping for timing operations
+/// - `groupStack`: Stack of active groups for indentation
+/// - `messageBuffer`: Circular buffer for message history (default 1000)
+/// - `labelPool`: Interned label strings for performance
 
 pub const console = struct {
 

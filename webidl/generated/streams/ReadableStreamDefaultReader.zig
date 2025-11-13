@@ -19,6 +19,25 @@ const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// ReadableStreamDefaultReader WebIDL interface
+///
+/// IDL:
+/// ```webidl
+/// [Exposed=*]
+/// interface ReadableStreamDefaultReader {
+///   constructor(ReadableStream stream);
+///
+///   Promise<ReadableStreamReadResult> read();
+///   undefined releaseLock();
+/// };
+/// ReadableStreamDefaultReader includes ReadableStreamGenericReader;
+/// ```
+///
+/// This interface includes the ReadableStreamGenericReader mixin, which provides:
+/// - readonly attribute Promise<undefined> closed;
+/// - Promise<undefined> cancel(optional any reason);
+
 pub const ReadableStreamDefaultReader = struct {
 
     // ========================================================================

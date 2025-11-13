@@ -23,6 +23,11 @@ const Text = @import("text").Text;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.12 - CDATASection interface
+/// CDATASection extends Text but adds no additional members.
+/// It's used to represent CDATA sections in XML documents.
+
 pub const CDATASection = struct {
 
     // ========================================================================

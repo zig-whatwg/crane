@@ -25,6 +25,9 @@ const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM Spec: interface CharacterData : Node
+
 pub const CharacterData = struct {
 
     // ========================================================================

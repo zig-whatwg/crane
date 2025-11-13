@@ -13,6 +13,12 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.4 - DocumentOrShadowRoot mixin
+///
+/// This mixin defines APIs shared between Document and ShadowRoot.
+/// It's expected to be used by other standards as well.
+
 pub const DocumentOrShadowRoot = struct {
 
     // ========================================================================

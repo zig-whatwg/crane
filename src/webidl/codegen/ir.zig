@@ -290,6 +290,10 @@ pub const FileIR = struct {
     /// Module-level constants and declarations
     module_constants: []Constant,
 
+    /// Module-level definitions (const, type, fn) that aren't classes
+    /// This is raw source text that will be copied to the generated file
+    module_definitions: []const u8,
+
     pub fn deinit(self: *FileIR, allocator: Allocator) void {
         allocator.free(self.path);
 
@@ -307,6 +311,8 @@ pub const FileIR = struct {
             constant.deinit(allocator);
         }
         allocator.free(self.module_constants);
+
+        allocator.free(self.module_definitions);
     }
 };
 

@@ -15,6 +15,24 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOMTokenList represents a set of space-separated tokens.
+/// Commonly used for Element.classList.
+///
+/// WebIDL Definition:
+/// ```
+/// interface DOMTokenList {
+///   readonly attribute unsigned long length;
+///   getter DOMString? item(unsigned long index);
+///   boolean contains(DOMString token);
+///   [CEReactions] undefined add(DOMString... tokens);
+///   [CEReactions] undefined remove(DOMString... tokens);
+///   [CEReactions] boolean toggle(DOMString token, optional boolean force);
+///   [CEReactions] boolean replace(DOMString token, DOMString newToken);
+///   [CEReactions] stringifier attribute DOMString value;
+/// };
+/// ```
+
 pub const DOMTokenList = struct {
 
     // ========================================================================

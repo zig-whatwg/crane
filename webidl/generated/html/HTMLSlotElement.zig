@@ -12,6 +12,20 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// HTMLSlotElement - Represents a <slot> element in shadow DOM
+///
+/// TODO: This is a mock implementation. Replace with full HTML spec implementation
+/// when available. The full implementation will extend HTMLElement and include:
+/// - Full HTML element attributes and methods
+/// - Integration with HTML parsing
+/// - Complete event handling
+///
+/// Current mock provides ONLY the minimal interface needed for shadow DOM:
+/// - name attribute (slot name)
+/// - assigned_nodes list (slottables assigned to this slot)
+/// - manually_assigned_nodes list (for manual slot assignment mode)
+
 pub const HTMLSlotElement = struct {
 
     // ========================================================================

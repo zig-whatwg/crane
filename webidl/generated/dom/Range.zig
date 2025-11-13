@@ -19,6 +19,15 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM Spec: interface Range : AbstractRange
+///
+/// A Range object represents a sequence of content within the node tree.
+/// Each range has a start and an end which are boundary points.
+/// A boundary point is a tuple consisting of a node and an offset.
+///
+/// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
+
 pub const Range = struct {
 
     // ========================================================================

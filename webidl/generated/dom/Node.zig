@@ -25,6 +25,10 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// Node WebIDL interface
+/// DOM Spec: interface Node : EventTarget
+
 pub const Node = struct {
 
     // ========================================================================

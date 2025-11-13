@@ -15,6 +15,13 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §7.2 - MutationRecord interface
+///
+/// MutationRecord objects represent individual DOM mutations.
+/// They are created by the MutationObserver API and contain information
+/// about what changed in the tree.
+
 pub const MutationRecord = struct {
 
     // ========================================================================

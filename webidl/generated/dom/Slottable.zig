@@ -12,6 +12,17 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.3.7 - Slottable mixin
+///
+/// Element and Text nodes are slottables. They can be assigned to slots
+/// in shadow trees.
+///
+/// A slottable has:
+/// - An associated name (a string, empty string by default)
+/// - An associated assigned slot (null or a slot)
+/// - An associated manual slot assignment (null or a slot)
+
 pub const Slottable = struct {
 
     // ========================================================================

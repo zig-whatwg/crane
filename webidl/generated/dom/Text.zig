@@ -26,6 +26,15 @@ const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+const Allocator = std.mem.Allocator;
+
+/// DOM Spec: interface Text : CharacterData
+/// Text extends CharacterData (fields/methods inherited)
+/// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+/// Text also includes: Slottable
+
 pub const Text = struct {
 
     // ========================================================================

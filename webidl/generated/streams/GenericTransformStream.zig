@@ -15,6 +15,16 @@ const WritableStream = @import("writable_stream").WritableStream;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// GenericTransformStream mixin
+///
+/// This mixin provides the standard readable/writable property pair for
+/// transform streams. Any platform object that includes this mixin has an
+/// associated [[transform]] internal slot containing an actual TransformStream.
+///
+/// Usage pattern (in another spec):
+/// ```zig
+
 pub const CompressionStream = struct {
 };
 

@@ -22,6 +22,11 @@ const Text = @import("text").Text;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.9 - Attr interface
+/// Attr nodes represent attributes.
+/// Attributes have a namespace, namespace prefix, local name, value, and element.
+
 pub const Attr = struct {
 
     // ========================================================================

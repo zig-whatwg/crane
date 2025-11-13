@@ -16,6 +16,13 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.9 - NamedNodeMap interface
+/// A NamedNodeMap is a live collection of attributes.
+///
+/// A NamedNodeMap has an associated element (an element).
+/// A NamedNodeMap object's attribute list is its element's attribute list.
+
 pub const NamedNodeMap = struct {
 
     // ========================================================================

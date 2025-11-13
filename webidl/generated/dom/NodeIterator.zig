@@ -14,6 +14,13 @@ const NodeFilter = @import("node_filter").NodeFilter;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §6.2 - NodeIterator interface
+///
+/// NodeIterator objects can be used to filter and traverse node trees.
+/// They maintain a reference pointer that moves through the tree as you
+/// call nextNode() and previousNode().
+
 pub const NodeIterator = struct {
 
     // ========================================================================

@@ -32,6 +32,16 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Re-export for convenience
+pub const Init = MutationObserverInit;
+pub const Registered = RegisteredObserver;
+pub const TransientRegistered = TransientRegisteredObserver;
+
+/// DOM §7.1 - MutationObserver interface
+///
+/// MutationObservers can be used to observe mutations to the tree of nodes.
+
 pub const MutationObserver = struct {
 
     // ========================================================================

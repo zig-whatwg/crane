@@ -12,6 +12,37 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// TextEncoderCommon interface mixin
+///
+/// WHATWG Encoding Standard § 5.2.1
+/// https://encoding.spec.whatwg.org/#interface-mixin-textencodercommon
+///
+/// IDL:
+/// ```
+/// interface mixin TextEncoderCommon {
+///   readonly attribute DOMString encoding;
+/// };
+/// ```
+///
+/// This mixin defines the readonly attribute that is shared by TextEncoder
+/// and TextEncoderStream interfaces. It provides access to the encoding name,
+/// which is always "utf-8" for these encoders.
+///
+/// ## Attributes
+///
+/// - `encoding`: The name of the encoding (always "utf-8" for TextEncoder/TextEncoderStream)
+///
+/// ## Usage
+///
+/// This mixin is included by TextEncoder and TextEncoderStream:
+/// ```
+/// TextEncoder includes TextEncoderCommon;
+/// TextEncoderStream includes TextEncoderCommon;
+/// ```
+///
+/// The including interfaces must provide this readonly field.
+
 pub const TextEncoderCommon = struct {
 
     // ========================================================================

@@ -26,6 +26,51 @@ const std = @import("std");
 const structured_clone = @import("structured_clone").structured_clone;
 const webidl = @import("webidl");
 
+
+/// Stream state enumeration
+///
+/// Spec: § 4.1 "Internal slots" - [[state]]
+pub const StreamState = enum {
+    readable,
+    closed,
+    errored,
+};
+
+/// Reader union type
+///
+/// Spec: § 4.1 [[reader]] slot can be ReadableStreamDefaultReader, ReadableStreamBYOBReader, or undefined
+pub const Reader = union(enum) {
+    none: void,
+    default: *ReadableStreamDefaultReader,
+    byob: *ReadableStreamBYOBReader,
+};
+
+/// Pipe options for pipeTo() method
+///
+/// Spec: § 4.1.5 StreamPipeOptions dictionary
+pub const PipeOptions = struct {
+    preventClose: bool = false,
+    preventAbort: bool = false,
+    preventCancel: bool = false,
+    signal: ?*anyopaque = null,
+};
+
+/// Transform pair for pipeThrough() method
+///
+/// Spec: § 4.1.6 ReadableWritablePair dictionary
+pub const TransformPair = struct {
+    readable: *ReadableStream,
+    writable: *WritableStream,
+};
+
+/// Return type for tee() method
+///
+/// Spec: § 4.1.7 tee() returns two branches
+pub const TeeBranches = struct {
+    branch1: *ReadableStream,
+    branch2: *ReadableStream,
+};
+
 pub const ReadableStream = struct {
 
     // ========================================================================

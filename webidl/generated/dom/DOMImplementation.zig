@@ -18,6 +18,14 @@ const dom = @import("dom").dom;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+const Allocator = std.mem.Allocator;
+
+/// DOM Spec: interface DOMImplementation
+///
+/// Factory interface for creating documents and document types.
+/// Accessed via document.implementation getter.
+
 pub const DOMImplementation = struct {
 
     // ========================================================================

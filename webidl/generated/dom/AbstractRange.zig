@@ -13,6 +13,12 @@ const Node = @import("node").Node;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §5 - interface AbstractRange
+///
+/// Objects implementing AbstractRange are known as ranges.
+/// A range has two associated boundary points - a start and end.
+
 pub const AbstractRange = struct {
 
     // ========================================================================

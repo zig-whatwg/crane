@@ -14,6 +14,17 @@ const Node = @import("node").Node;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// NonElementParentNode mixin provides getElementById for Document and DocumentFragment.
+/// Included by: Document, DocumentFragment
+///
+/// WebIDL Definition:
+/// ```
+/// interface mixin NonElementParentNode {
+///   Element? getElementById(DOMString elementId);
+/// };
+/// ```
+
 pub const NonElementParentNode = struct {
 
     // ========================================================================

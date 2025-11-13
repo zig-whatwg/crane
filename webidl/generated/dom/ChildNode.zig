@@ -15,6 +15,20 @@ const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// ChildNode mixin provides methods for manipulating nodes relative to their siblings.
+/// Included by: DocumentType, Element, CharacterData
+///
+/// WebIDL Definition:
+/// ```
+/// interface mixin ChildNode {
+///   [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined remove();
+/// };
+/// ```
+
 pub const ChildNode = struct {
 
     // ========================================================================

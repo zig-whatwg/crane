@@ -18,6 +18,22 @@ const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// TextEncoderStream - encodes a stream of strings to a stream of UTF-8 bytes
+///
+/// WHATWG Encoding Standard § 5.3
+/// https://encoding.spec.whatwg.org/#interface-textencoderstream
+///
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextEncoderStream {
+///   constructor();
+/// };
+/// TextEncoderStream includes TextEncoderCommon;
+/// TextEncoderStream includes GenericTransformStream;
+/// ```
+
 pub const TextEncoderStream = struct {
 
     // ========================================================================

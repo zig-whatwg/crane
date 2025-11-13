@@ -14,6 +14,14 @@ const NodeFilter = @import("node_filter").NodeFilter;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §6.3 - TreeWalker interface
+///
+/// TreeWalker objects can be used to filter and traverse node trees.
+/// Unlike NodeIterator, TreeWalker provides rich navigation methods
+/// (parentNode, firstChild, lastChild, previousSibling, nextSibling)
+/// and maintains a mutable currentNode pointer.
+
 pub const TreeWalker = struct {
 
     // ========================================================================

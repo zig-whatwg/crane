@@ -16,6 +16,12 @@ const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// ReadableStreamGenericReader mixin
+///
+/// This mixin defines the shared interface between ReadableStreamDefaultReader
+/// and ReadableStreamBYOBReader.
+
 pub const ReadableStreamGenericReader = struct {
 
     // ========================================================================

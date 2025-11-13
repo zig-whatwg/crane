@@ -14,12 +14,63 @@ const TextDecodeOptions = @import("TextDecodeOptions.zig").TextDecodeOptions;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
 const encoding_mod = @import("encoding");
-pub const includes' declaration)
-const TextDecoderCommon = @import("TextDecoderCommon.zig").includes' declaration)
-const TextDecoderCommon;
 const infra = @import("infra").infra;
 const std = @import("std");
 const webidl = @import("webidl");
+
+
+const Encoding = encoding_mod.Encoding;
+const Decoder = encoding_mod.Decoder;
+
+// ============================================================================
+// Helper Functions (Module-Level)
+// ============================================================================
+
+/// Check if byte slice is ASCII-only (fast path optimization)
+fn isAscii(bytes: []const u8) bool {
+    for (bytes) |byte| {
+        if (byte > 0x7F) return false;
+    }
+    return true;
+}
+
+/// TextDecoder errors map to WebIDL simple exceptions per WHATWG Encoding Standard
+///
+/// Error Mapping (for JavaScript bindings):
+/// - error.InvalidEncoding → RangeError (invalid encoding label)
+/// - error.ReplacementEncoding → RangeError (replacement encoding not allowed)
+/// - error.DecodingError → TypeError (fatal mode encountered invalid sequence)
+pub const TextDecoderError = error{
+    /// Invalid encoding label → WebIDL RangeError
+    InvalidEncoding,
+    /// Replacement encoding not supported → WebIDL RangeError
+    ReplacementEncoding,
+    /// Fatal decoding error → WebIDL TypeError
+    DecodingError,
+    /// Out of memory
+    OutOfMemory,
+};
+
+/// TextDecoder - decodes bytes to strings using various character encodings
+///
+/// WHATWG Encoding Standard § 5
+/// https://encoding.spec.whatwg.org/#interface-textdecoder
+///
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextDecoder {
+///   constructor(optional DOMString label = "utf-8", optional TextDecoderOptions options = {});
+///   USVString decode(optional AllowSharedBufferSource input, optional TextDecodeOptions options = {});
+/// };
+/// TextDecoder includes TextDecoderCommon;
+///
+/// interface mixin TextDecoderCommon {
+///   readonly attribute DOMString encoding;
+///   readonly attribute boolean fatal;
+///   readonly attribute boolean ignoreBOM;
+/// };
+/// ```
 
 pub const TextDecoder = struct {
 

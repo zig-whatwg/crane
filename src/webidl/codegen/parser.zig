@@ -23,6 +23,7 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
         .module_imports = &.{},
         .classes = &.{},
         .module_constants = &.{},
+        .module_definitions = &.{},
     };
     errdefer file_ir.deinit(allocator);
 
@@ -34,6 +35,10 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
         }
         allocator.free(file_ir.module_imports);
     }
+
+    // Extract module-level definitions (const, type, fn before first class)
+    file_ir.module_definitions = try parseModuleDefinitions(allocator, source);
+    errdefer allocator.free(file_ir.module_definitions);
 
     // Extract class definitions
     file_ir.classes = try parseClasses(allocator, source, file_path);
@@ -96,6 +101,21 @@ fn parseModuleImports(allocator: Allocator, source: []const u8) ![]ir.Import {
             continue;
         }
 
+        // Skip whitespace
+        if (module_section[pos] == ' ' or module_section[pos] == '\t' or module_section[pos] == '\r') {
+            pos += 1;
+            continue;
+        }
+
+        // Skip comment lines (both // and //! and ///)
+        if (pos + 1 < module_section.len and module_section[pos] == '/' and module_section[pos + 1] == '/') {
+            // Skip to end of line
+            while (pos < module_section.len and module_section[pos] != '\n') {
+                pos += 1;
+            }
+            continue;
+        }
+
         // Look for const declarations
         if (std.mem.startsWith(u8, module_section[pos..], "const ") or
             std.mem.startsWith(u8, module_section[pos..], "pub const "))
@@ -123,6 +143,78 @@ fn parseModuleImports(allocator: Allocator, source: []const u8) ![]ir.Import {
     }
 
     return imports.toOwnedSlice();
+}
+
+/// Parse module-level definitions (const, type, fn) that appear after imports
+/// but before the first class definition. These are helpers, type aliases, etc.
+fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 {
+    // Find the extent of the module section
+    // Start: after the last import statement
+    // End: before the first class definition (including the "pub const Name =" line)
+
+    // Find the first class definition
+    const first_class_pos = blk: {
+        const interface_pos = std.mem.indexOf(u8, source, "webidl.interface(");
+        const namespace_pos = std.mem.indexOf(u8, source, "webidl.namespace(");
+        const mixin_pos = std.mem.indexOf(u8, source, "webidl.mixin(");
+
+        var min_pos: ?usize = null;
+        if (interface_pos) |pos| min_pos = pos;
+        if (namespace_pos) |pos| {
+            if (min_pos) |m| {
+                min_pos = @min(m, pos);
+            } else {
+                min_pos = pos;
+            }
+        }
+        if (mixin_pos) |pos| {
+            if (min_pos) |m| {
+                min_pos = @min(m, pos);
+            } else {
+                min_pos = pos;
+            }
+        }
+        break :blk min_pos;
+    };
+
+    // If no class found, everything is module definitions
+    var end_pos = first_class_pos orelse source.len;
+
+    // If we found a class, go back to the start of that line
+    // to exclude the "pub const Name = webidl.xxx" declaration
+    if (first_class_pos) |pos| {
+        // Search backwards to find the start of the line
+        var line_start = pos;
+        while (line_start > 0 and source[line_start - 1] != '\n') {
+            line_start -= 1;
+        }
+        end_pos = line_start;
+    }
+
+    // Find the last import statement
+    // Scan backwards from first_class_pos to find last line with @import
+    var last_import_end: usize = 0;
+    var pos: usize = 0;
+    while (pos < end_pos) {
+        if (std.mem.startsWith(u8, source[pos..], "@import(")) {
+            // Found an import, find the end of this line
+            const line_end = std.mem.indexOfScalarPos(u8, source, pos, '\n') orelse end_pos;
+            last_import_end = line_end + 1;
+        }
+        pos += 1;
+    }
+
+    // Extract the section between last import and first class
+    if (last_import_end >= end_pos) {
+        return try allocator.dupe(u8, "");
+    }
+
+    const definitions_section = source[last_import_end..end_pos];
+
+    // Clean up: remove leading/trailing whitespace but keep internal structure
+    const trimmed = std.mem.trim(u8, definitions_section, " \t\r\n");
+
+    return try allocator.dupe(u8, trimmed);
 }
 
 /// Parse a single import statement

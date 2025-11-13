@@ -24,6 +24,11 @@ const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM §4.13 - ProcessingInstruction interface
+/// ProcessingInstruction nodes represent processing instructions.
+/// They extend CharacterData and have an associated target.
+
 pub const ProcessingInstruction = struct {
 
     // ========================================================================

@@ -21,6 +21,21 @@ const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// ReadableStreamDefaultController WebIDL interface
+///
+/// IDL:
+/// ```webidl
+/// [Exposed=*]
+/// interface ReadableStreamDefaultController {
+///   readonly attribute unrestricted double? desiredSize;
+///
+///   undefined close();
+///   undefined enqueue(optional any chunk);
+///   undefined error(optional any e);
+/// };
+/// ```
+
 pub const ReadableStreamDefaultController = struct {
 
     // ========================================================================

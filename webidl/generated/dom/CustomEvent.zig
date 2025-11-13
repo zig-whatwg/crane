@@ -14,6 +14,9 @@ const EventTarget = @import("event_target").EventTarget;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM Spec: interface CustomEvent : Event
+
 pub const CustomEvent = struct {
 
     // ========================================================================

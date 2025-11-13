@@ -12,6 +12,9 @@ const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+// Test Case 1: Single mixin with field
+
 pub const TestMixin = struct {
 
     // ========================================================================

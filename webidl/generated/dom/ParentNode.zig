@@ -19,6 +19,29 @@ const dom_types = @import("dom_types").dom_types;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// ParentNode mixin provides methods for manipulating child elements.
+/// Included by: Document, DocumentFragment, Element
+///
+/// WebIDL Definition:
+/// ```
+/// interface mixin ParentNode {
+///   [SameObject] readonly attribute HTMLCollection children;
+///   readonly attribute Element? firstElementChild;
+///   readonly attribute Element? lastElementChild;
+///   readonly attribute unsigned long childElementCount;
+///
+///   [CEReactions, Unscopable] undefined prepend((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined append((Node or DOMString)... nodes);
+///   [CEReactions, Unscopable] undefined replaceChildren((Node or DOMString)... nodes);
+///
+///   [CEReactions] undefined moveBefore(Node node, Node? child);
+///
+///   Element? querySelector(DOMString selectors);
+///   [NewObject] NodeList querySelectorAll(DOMString selectors);
+/// };
+/// ```
+
 pub const ParentNode = struct {
 
     // ========================================================================

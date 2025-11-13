@@ -14,9 +14,11 @@ const infra = @import("infra");
 const ir = @import("ir.zig");
 
 /// Generate Zig code from enhanced class IR
+/// If module_definitions is provided, they will be included after imports
 pub fn generateCode(
     allocator: Allocator,
     enhanced: ir.EnhancedClassIR,
+    module_definitions: ?[]const u8,
 ) ![]const u8 {
     var output: std.ArrayList(u8) = .empty;
     errdefer output.deinit(allocator);
@@ -28,6 +30,15 @@ pub fn generateCode(
 
     // Imports (deduplicated, sorted)
     try writeImports(writer, enhanced.all_imports);
+
+    // Module-level definitions (if this is the first class in the file)
+    if (module_definitions) |defs| {
+        if (defs.len > 0) {
+            try writer.writeAll("\n");
+            try writer.writeAll(defs);
+            try writer.writeAll("\n\n");
+        }
+    }
 
     // Class definition
     try writeClass(writer, enhanced);

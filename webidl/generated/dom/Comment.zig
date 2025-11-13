@@ -26,6 +26,12 @@ const dom_types = @import("dom_types");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// DOM Spec: interface Comment : CharacterData
+/// Comment extends CharacterData (fields/methods inherited)
+/// Comment must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+
 pub const Comment = struct {
 
     // ========================================================================

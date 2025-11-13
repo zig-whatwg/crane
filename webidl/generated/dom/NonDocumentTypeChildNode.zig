@@ -14,6 +14,20 @@ const Node = @import("node").Node;
 const std = @import("std");
 const webidl = @import("webidl");
 
+
+/// NonDocumentTypeChildNode mixin provides element sibling navigation.
+/// Included by: Element, CharacterData
+///
+/// Web compatibility prevents these attributes from being exposed on DocumentType.
+///
+/// WebIDL Definition:
+/// ```
+/// interface mixin NonDocumentTypeChildNode {
+///   readonly attribute Element? previousElementSibling;
+///   readonly attribute Element? nextElementSibling;
+/// };
+/// ```
+
 pub const NonDocumentTypeChildNode = struct {
 
     // ========================================================================

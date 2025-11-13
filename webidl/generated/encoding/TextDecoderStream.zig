@@ -18,6 +18,25 @@ const std = @import("std");
 const streams = @import("streams");
 const webidl = @import("webidl");
 
+
+const Encoding = encoding_mod.Encoding;
+const Decoder = encoding_mod.Decoder;
+
+/// TextDecoderStream - decodes a stream of bytes to a stream of strings
+///
+/// WHATWG Encoding Standard § 6.3
+/// https://encoding.spec.whatwg.org/#interface-textdecoderstream
+///
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextDecoderStream {
+///   constructor(optional DOMString label = "utf-8", optional TextDecoderOptions options = {});
+/// };
+/// TextDecoderStream includes TextDecoderCommon;
+/// TextDecoderStream includes GenericTransformStream;
+/// ```
+
 pub const TextDecoderStream = struct {
 
     // ========================================================================
