@@ -257,7 +257,6 @@ pub const NodeBase = struct {
         };
     }
 
-
     // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
@@ -273,7 +272,7 @@ pub const NodeBase = struct {
 
     /// Type-safe downcast to any derived type.
     /// Returns null if type_tag doesn't match the requested type.
-    /// 
+    ///
     /// Example:
     ///   if (base.tryCast(Element)) |elem| {
     ///       // elem is *Element
@@ -410,14 +409,13 @@ pub const Node = struct {
             list.deinit();
             self.allocator.destroy(list);
         }
-    
-        
+
         // Clean up base fields
         if (self.base.event_listener_list) |list| {
             list.deinit(self.allocator);
             self.allocator.destroy(list);
         }
-}
+    }
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to EventTargetBase for type-generic code.
@@ -471,11 +469,12 @@ pub const Node = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     }
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
-    /// 
+    ///
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Node, options: ?GetRootNodeOptions) *Node {
@@ -1022,7 +1021,7 @@ pub const Node = struct {
     }
     /// DOM §4.4 - Node.baseURI getter
     /// Returns this's node document's document base URL, serialized.
-    /// 
+    ///
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const Node) []const u8 {
@@ -1372,7 +1371,7 @@ pub const Node = struct {
         }
     }
     /// Get the list of registered observers for this node
-    pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
+    pub fn getRegisteredObservers(self: *Node) *infra.List(RegisteredObserver) {
         return &self.registered_observers;
     }
     /// Add a registered observer to this node's list
@@ -1382,9 +1381,13 @@ pub const Node = struct {
     /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Node, observer: *const @import("mutation_observer").MutationObserver) void {
         var i: usize = 0;
-        while (i < self.registered_observers.items.len) {
-            if (self.registered_observers.items[i].observer == observer) {
-                _ = self.registered_observers.orderedRemove(i);
+        while (i < self.registered_observers.len) {
+            const registered = self.registered_observers.get(i) orelse {
+                i += 1;
+                continue;
+            };
+            if (registered.observer == observer) {
+                _ = self.registered_observers.remove(i) catch unreachable;
                 // Don't increment i, we just shifted everything down
             } else {
                 i += 1;
@@ -1392,21 +1395,25 @@ pub const Node = struct {
         }
     }
     /// Remove all transient registered observers whose source matches the given registered observer
-    /// 
+    ///
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
-    pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
-        // Note: In our current implementation, we don't have a way to distinguish
-        // transient observers from regular ones in the registered_observers list.
-        // This would require either:
-        // 1. A separate transient_observers list, OR
-        // 2. Wrapping RegisteredObserver in a tagged union
-        //
-        // For now, this is a no-op. Transient observers are not yet fully implemented.
-        // When they are, they should be stored separately or tagged so we can identify
-        // and remove them here.
-        _ = self;
-        _ = source;
+    pub fn removeTransientObservers(self: *Node, source: RegisteredObserver) void {
+        // Remove all transient registered observers whose source matches
+        // Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe step 7.1
+        // Match by observer + options since pointers into lists are unstable
+        var i: usize = self.registered_observers.len;
+        while (i > 0) {
+            i -= 1;
+            const registered = self.registered_observers.get(i) orelse continue;
+            if (registered.is_transient and
+                registered.source_observer == source.observer)
+            {
+                // Found a transient observer with matching source
+                // TODO: Also compare options for exact match
+                _ = self.registered_observers.remove(i) catch unreachable;
+            }
+        }
     }
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
@@ -1594,7 +1601,6 @@ pub const Node = struct {
         .cross_origin_isolated = false,
     };
 };
-
 
 /// GetRootNodeOptions dictionary
 /// Spec: https://dom.spec.whatwg.org/#dictdef-getrootnodeoptions

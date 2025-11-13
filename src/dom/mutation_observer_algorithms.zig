@@ -98,8 +98,8 @@ pub fn queueMutationRecord(
 
     // Step 3: For each node in nodes, and then for each registered of node's registered observer list
     for (nodes.items) |node| {
-        const registered_observers = node.getRegisteredObservers();
-        for (registered_observers.items) |*registered| {
+        for (0..node.registered_observers.len) |i| {
+            const registered = node.registered_observers.get(i) orelse continue;
             const options = registered.options;
 
             // Step 3.2: If none of the following are true, then:
@@ -296,17 +296,7 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
         // Step 6.3: For each node of mo's node list, remove all transient registered observers
         // whose observer is mo from node's registered observer list
         for (mo.getNodeList()) |node| {
-            // Remove all registered observers whose observer matches mo
-            // Note: This implementation removes both regular and transient observers
-            // for this MutationObserver. A full implementation would distinguish
-            // between them and only remove transient ones here.
-            //
-            // Since we don't currently track which observers are transient vs regular,
-            // we keep all observers. This is safe but may keep some transient observers
-            // longer than spec requires.
-            //
-            // TODO: Distinguish transient from regular observers for proper cleanup
-            _ = node;
+            removeTransientObservers(node, mo);
         }
 
         // Step 6.4: If records is not empty, then invoke mo's callback with « records, mo »
@@ -318,6 +308,21 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 
     // Step 7: For each slot of signalSet, fire an event named slotchange...
     // TODO: Implement slot change events when we have slots/shadow DOM
+}
+
+/// Remove transient registered observers for a specific MutationObserver from a node
+/// Spec: https://dom.spec.whatwg.org/#notify-mutation-observers step 6.3
+fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
+    // Remove all transient observers whose observer matches
+    // We iterate backwards to safely remove items during iteration
+    var i: usize = node.registered_observers.len;
+    while (i > 0) {
+        i -= 1;
+        const registered = node.registered_observers.get(i) orelse continue;
+        if (registered.is_transient and registered.observer == observer) {
+            _ = node.registered_observers.remove(i) catch unreachable;
+        }
+    }
 }
 
 // Tests

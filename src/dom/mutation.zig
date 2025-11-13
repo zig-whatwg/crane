@@ -13,6 +13,7 @@ const Element = @import("element").Element;
 const DocumentType = @import("document_type").DocumentType;
 const CharacterData = @import("character_data").CharacterData;
 const Text = @import("text").Text;
+const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
 
@@ -164,6 +165,46 @@ fn runRemovingStepsRecursive(node: *Node, old_parent: *Node) void {
     runRemovingSteps(node, old_parent);
     for (node.child_nodes.items()) |child| {
         runRemovingStepsRecursive(child, node);
+    }
+}
+
+/// Create transient registered observers for a removed node
+/// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
+fn createTransientObserversForRemovedNode(node: *Node, parent: *Node) !void {
+    // For each inclusive ancestor inclusiveAncestor of parent
+    var current_ancestor: ?*Node = parent;
+    while (current_ancestor) |ancestor| {
+        // For each registered observer obs in inclusiveAncestor's registered observer list
+        for (0..ancestor.registered_observers.len) |i| {
+            const source_obs = ancestor.registered_observers.get(i) orelse continue;
+            // If obs's options["subtree"] is true
+            if (source_obs.options.subtree) {
+                // For each node inclusiveDescendant of node's inclusive descendants
+                // (node itself and all its descendants)
+                try createTransientObserverForNodeAndDescendants(node, source_obs);
+            }
+        }
+
+        // Move to next ancestor
+        current_ancestor = ancestor.parent_node;
+    }
+}
+
+/// Helper: Create transient observer for a node and all its descendants
+fn createTransientObserverForNodeAndDescendants(node: *Node, source: RegisteredObserver) !void {
+    // Add transient observer to this node
+    try node.registered_observers.append(.{
+        .observer = source.observer,
+        .options = source.options,
+        .is_transient = true,
+        .source_observer = source.observer,
+        .source_options = source.options,
+    });
+
+    // Recursively add to all descendants
+    for (0..node.child_nodes.len) |i| {
+        const child = node.child_nodes.get(i) orelse continue;
+        try createTransientObserverForNodeAndDescendants(child, source);
     }
 }
 
@@ -708,7 +749,7 @@ pub fn replaceAll(
 pub fn preRemove(
     child: *Node,
     parent: *Node,
-) DOMException!*Node {
+) (DOMException || error{OutOfMemory})!*Node {
     // Step 1: If child's parent is not parent, throw NotFoundError
     if (child.parent_node != parent) {
         return error.NotFoundError;
@@ -734,7 +775,7 @@ pub fn preRemove(
 pub fn remove(
     node: *Node,
     suppress_observers: bool,
-) DOMException!void {
+) (DOMException || error{OutOfMemory})!void {
     // Step 1: Let parent be node's parent
     const parent = node.parent_node orelse {
         // Step 2: Assert parent is non-null
@@ -786,7 +827,9 @@ pub fn remove(
     // TODO: Implement when custom elements are fully integrated
 
     // Step 15: Transient registered observers
-    // TODO: Implement when mutation observers are fully integrated
+    // For each inclusive ancestor of parent that has registered observers with subtree=true,
+    // create transient observers on node and its inclusive descendants
+    try createTransientObserversForRemovedNode(node, parent);
 
     // Step 16: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
