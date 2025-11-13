@@ -635,6 +635,382 @@ pub fn remove(
     // TODO: Implement children changed steps callback system
 }
 
+/// DOM §4.2.5 - Move
+/// Spec: https://dom.spec.whatwg.org/#concept-node-move
+///
+/// To move a node into a node newParent before a node-or-null child:
+///
+/// This is distinct from remove + insert. It preserves state and is more efficient.
+/// The move algorithm is used by ParentNode.moveBefore().
+///
+/// Steps:
+/// 1. If newParent's shadow-including root is not the same as node's shadow-including root, throw HierarchyRequestError
+/// 2. If node is a host-including inclusive ancestor of newParent, throw HierarchyRequestError
+/// 3. If child is non-null and its parent is not newParent, throw NotFoundError
+/// 4. If node is not an Element or CharacterData node, throw HierarchyRequestError
+/// 5. If node is a Text node and newParent is a document, throw HierarchyRequestError
+/// 6. If newParent is a document, validate element constraints
+/// 7. Let oldParent be node's parent
+/// 8. Assert: oldParent is non-null
+/// 9. Run the live range pre-remove steps
+/// 10. Run NodeIterator pre-remove steps for all iterators
+/// 11-12. Capture old siblings
+/// 13. Remove node from oldParent's children
+/// 14-16. Shadow DOM slot assignment
+/// 17. Update live ranges in newParent (if child is non-null)
+/// 18. Determine newPreviousSibling
+/// 19-20. Insert node into newParent's children
+/// 21-22. Shadow DOM slot assignment for newParent
+/// 23. Run assign slottables for tree
+/// 24. Run moving steps for all shadow-including inclusive descendants
+/// 25-26. Queue tree mutation records
+pub fn move(
+    node: *Node,
+    new_parent: *Node,
+    child: ?*Node,
+) DOMException!void {
+    // Step 1: If newParent's shadow-including root is not the same as node's shadow-including root,
+    // throw HierarchyRequestError
+    const node_root = getShadowIncludingRoot(node);
+    const new_parent_root = getShadowIncludingRoot(new_parent);
+    if (node_root != new_parent_root) {
+        return DOMException.HierarchyRequestError;
+    }
+
+    // Step 2: If node is a host-including inclusive ancestor of newParent, throw HierarchyRequestError
+    if (isHostIncludingInclusiveAncestor(node, new_parent)) {
+        return DOMException.HierarchyRequestError;
+    }
+
+    // Step 3: If child is non-null and its parent is not newParent, throw NotFoundError
+    if (child) |c| {
+        if (c.parent_node != new_parent) {
+            return DOMException.NotFoundError;
+        }
+    }
+
+    // Step 4: If node is not an Element or CharacterData node, throw HierarchyRequestError
+    if (!isElement(node) and !isCharacterData(node)) {
+        return DOMException.HierarchyRequestError;
+    }
+
+    // Step 5: If node is a Text node and newParent is a document, throw HierarchyRequestError
+    if (isText(node) and isDocument(new_parent)) {
+        return DOMException.HierarchyRequestError;
+    }
+
+    // Step 6: If newParent is a document, validate element constraints
+    if (isDocument(new_parent)) {
+        if (isElement(node)) {
+            // Check if newParent has an element child
+            if (hasElementChild(new_parent)) {
+                return DOMException.HierarchyRequestError;
+            }
+
+            // Check if child is a doctype
+            if (child) |c| {
+                if (isDocumentType(c)) {
+                    return DOMException.HierarchyRequestError;
+                }
+
+                // Check if a doctype is following child
+                if (isDoctypeFollowing(new_parent, child)) {
+                    return DOMException.HierarchyRequestError;
+                }
+            }
+        }
+    }
+
+    // Step 7: Let oldParent be node's parent
+    const old_parent = node.parent_node orelse {
+        // If node has no parent, this is an error (move requires node to already be in tree)
+        return DOMException.HierarchyRequestError;
+    };
+
+    // Step 8: Assert: oldParent is non-null (checked above)
+
+    // Step 9: Run the live range pre-remove steps, given node
+    runLiveRangePreRemoveSteps(node);
+
+    // Step 10: For each NodeIterator object iterator whose root's node document is node's node document,
+    // run the NodeIterator pre-remove steps given node and iterator
+    runNodeIteratorPreRemoveSteps(node);
+
+    // Step 11: Let oldPreviousSibling be node's previous sibling
+    const old_previous_sibling = tree_helpers.getPreviousSibling(node);
+
+    // Step 12: Let oldNextSibling be node's next sibling
+    const old_next_sibling = tree_helpers.getNextSibling(node);
+
+    // Step 13: Remove node from oldParent's children
+    removeFromChildrenList(node, old_parent);
+
+    // Step 14: If node is assigned, then run assign slottables for node's assigned slot
+    // TODO: Shadow DOM - check if node is assigned and run assign slottables
+
+    // Step 15: If oldParent's root is a shadow root, and oldParent is a slot whose assigned nodes is empty,
+    // then run signal a slot change for oldParent
+    // TODO: Shadow DOM - implement slot change signaling
+
+    // Step 16: If node has an inclusive descendant that is a slot:
+    // TODO: Shadow DOM - run assign slottables for tree
+
+    // Step 17: If child is non-null:
+    if (child) |c| {
+        const child_index = getChildIndex(c) orelse 0;
+
+        // Get the document for range tracking
+        if (new_parent.owner_document) |owner_doc_node| {
+            if (Document.fromNode(owner_doc_node)) |doc| {
+                // Step 17.1: For each live range whose start node is newParent and start offset
+                // is greater than child's index, increase its start offset by 1
+                updateRangesForInsertion(doc, new_parent, child_index);
+            } else |_| {}
+        }
+    }
+
+    // Step 18: Let newPreviousSibling be child's previous sibling if child is non-null,
+    // and newParent's last child otherwise
+    const new_previous_sibling = if (child) |c|
+        tree_helpers.getPreviousSibling(c)
+    else
+        tree_helpers.getLastChild(new_parent);
+
+    // Step 19: If child is null, then append node to newParent's children
+    // Step 20: Otherwise, insert node into newParent's children before child's index
+    insertIntoChildrenList(node, new_parent, child);
+
+    // Step 21: If newParent is a shadow host whose shadow root's slot assignment is "named"
+    // and node is a slottable, then assign a slot for node
+    // TODO: Shadow DOM - implement slot assignment
+
+    // Step 22: If newParent's root is a shadow root, and newParent is a slot whose assigned nodes is empty,
+    // then run signal a slot change for newParent
+    // TODO: Shadow DOM - implement slot change signaling
+
+    // Step 23: Run assign slottables for a tree with node's root
+    // TODO: Shadow DOM - implement assign slottables for tree
+
+    // Step 24: For each shadow-including inclusive descendant inclusiveDescendant of node, in shadow-including tree order:
+    // For now, just iterate tree descendants (shadow DOM TODO)
+    runMovingStepsForTree(node, old_parent);
+
+    // Step 25: Queue a tree mutation record for oldParent
+    // TODO: Implement mutation observer record queuing
+    // Would use: oldPreviousSibling, oldNextSibling
+
+    // Step 26: Queue a tree mutation record for newParent
+    // TODO: Implement mutation observer record queuing
+    // Would use: newPreviousSibling, child
+    _ = old_previous_sibling;
+    _ = old_next_sibling;
+    _ = new_previous_sibling;
+}
+
+/// Helper: Get shadow-including root of a node
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-root
+fn getShadowIncludingRoot(node: *Node) *Node {
+    // For now, just return regular root (shadow DOM TODO)
+    return tree_helpers.getRoot(node);
+}
+
+/// Helper: Check if node is a host-including inclusive ancestor of other
+/// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
+fn isHostIncludingInclusiveAncestor(node: *Node, other: *Node) bool {
+    // For now, just check inclusive ancestor (shadow DOM TODO)
+    return tree_helpers.isInclusiveAncestor(node, other);
+}
+
+/// Helper: Run live range pre-remove steps
+/// Spec: https://dom.spec.whatwg.org/#live-range-pre-remove-steps
+fn runLiveRangePreRemoveSteps(node: *Node) void {
+    const parent = node.parent_node orelse return;
+    const index = getChildIndex(node) orelse return;
+
+    // Get the document for range tracking
+    if (parent.owner_document) |owner_doc_node| {
+        if (Document.fromNode(owner_doc_node)) |doc| {
+            doc.ranges_mutex.lock();
+            defer doc.ranges_mutex.unlock();
+
+            for (doc.ranges.items) |range| {
+                // Step 4: For each live range whose start node is an inclusive descendant of node,
+                // set its start to (parent, index)
+                if (tree_helpers.isInclusiveDescendant(range.start_container, node)) {
+                    range.start_container = parent;
+                    range.start_offset = @intCast(index);
+                }
+
+                // Step 5: For each live range whose end node is an inclusive descendant of node,
+                // set its end to (parent, index)
+                if (tree_helpers.isInclusiveDescendant(range.end_container, node)) {
+                    range.end_container = parent;
+                    range.end_offset = @intCast(index);
+                }
+
+                // Step 6: For each live range whose start node is parent and start offset is greater than index,
+                // decrease its start offset by 1
+                if (range.start_container == parent and range.start_offset > index) {
+                    range.start_offset -= 1;
+                }
+
+                // Step 7: For each live range whose end node is parent and end offset is greater than index,
+                // decrease its end offset by 1
+                if (range.end_container == parent and range.end_offset > index) {
+                    range.end_offset -= 1;
+                }
+            }
+        } else |_| {}
+    }
+}
+
+/// Helper: Run NodeIterator pre-remove steps for all iterators
+/// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
+fn runNodeIteratorPreRemoveSteps(node: *Node) void {
+    // Get node's document
+    const doc_node = node.owner_document orelse return;
+
+    // TODO: Track NodeIterators per document and call preRemoveSteps on each
+    // For now, this is a no-op until we implement document-level iterator tracking
+    _ = doc_node;
+}
+
+/// Helper: Update ranges when inserting before child
+fn updateRangesForInsertion(doc: *Document, parent: *Node, child_index: usize) void {
+    doc.ranges_mutex.lock();
+    defer doc.ranges_mutex.unlock();
+
+    for (doc.ranges.items) |range| {
+        // For each live range whose start node is newParent and start offset is greater than child's index,
+        // increase its start offset by 1
+        if (range.start_container == parent and range.start_offset > child_index) {
+            range.start_offset += 1;
+        }
+
+        // For each live range whose end node is newParent and end offset is greater than child's index,
+        // increase its end offset by 1
+        if (range.end_container == parent and range.end_offset > child_index) {
+            range.end_offset += 1;
+        }
+    }
+}
+
+/// Helper: Remove node from parent's children list (without updating parent pointer)
+fn removeFromChildrenList(node: *Node, parent: *Node) void {
+    // Update sibling pointers
+    if (node.previous_sibling) |prev| {
+        prev.next_sibling = node.next_sibling;
+    } else {
+        // node was first child
+        const first = parent.child_nodes.items[0];
+        if (first == node) {
+            if (node.next_sibling) |next| {
+                parent.child_nodes.items[0] = next;
+            } else {
+                // Was only child
+                parent.child_nodes.clearRetainingCapacity();
+                return;
+            }
+        }
+    }
+
+    if (node.next_sibling) |next| {
+        next.previous_sibling = node.previous_sibling;
+    }
+
+    // Remove from parent's children array
+    if (getChildIndex(node)) |idx| {
+        _ = parent.child_nodes.orderedRemove(idx);
+    }
+
+    // Clear node's sibling pointers (but not parent - that stays for the move)
+    node.previous_sibling = null;
+    node.next_sibling = null;
+}
+
+/// Helper: Insert node into parent's children list (updates parent pointer)
+fn insertIntoChildrenList(node: *Node, parent: *Node, child: ?*Node) void {
+    if (child) |c| {
+        // Insert before child
+        const child_idx = getChildIndex(c) orelse {
+            // Child not found, append to end
+            parent.child_nodes.append(node) catch return;
+            node.parent_node = parent;
+            node.previous_sibling = tree_helpers.getLastChild(parent);
+            node.next_sibling = null;
+            if (node.previous_sibling) |prev| {
+                prev.next_sibling = node;
+            }
+            return;
+        };
+
+        // Insert at child_idx
+        parent.child_nodes.insert(child_idx, node) catch return;
+
+        // Update pointers
+        node.parent_node = parent;
+        node.next_sibling = c;
+        node.previous_sibling = tree_helpers.getPreviousSibling(c);
+
+        c.previous_sibling = node;
+        if (node.previous_sibling) |prev| {
+            prev.next_sibling = node;
+        }
+    } else {
+        // Append to end
+        parent.child_nodes.append(node) catch return;
+
+        node.parent_node = parent;
+        const last = tree_helpers.getLastChild(parent);
+        node.previous_sibling = if (last == node) null else last;
+        node.next_sibling = null;
+
+        if (node.previous_sibling) |prev| {
+            prev.next_sibling = node;
+        }
+    }
+}
+
+/// Helper: Run moving steps for node and all descendants
+/// Spec: Step 24 of move algorithm
+fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
+    // Step 24.1: If inclusiveDescendant is node, then run the moving steps with
+    // inclusiveDescendant and oldParent. Otherwise, run the moving steps with
+    // inclusiveDescendant and null.
+
+    // Run moving steps for node itself with oldParent
+    runMovingSteps(node, old_parent);
+
+    // Run moving steps for all descendants with null
+    var stack = std.ArrayList(*Node).init(std.heap.page_allocator);
+    defer stack.deinit();
+
+    for (node.child_nodes.items) |child| {
+        stack.append(child) catch continue;
+    }
+
+    while (stack.items.len > 0) {
+        const current = stack.pop();
+        runMovingSteps(current, null);
+
+        // Add children to stack
+        for (current.child_nodes.items) |child| {
+            stack.append(child) catch continue;
+        }
+    }
+}
+
+/// Helper: Run moving steps hook for a node
+/// Spec: Moving steps are defined by specifications
+/// For now, this is a placeholder for future custom element support
+fn runMovingSteps(node: *Node, old_parent: ?*Node) void {
+    // TODO: Implement moving steps callback system
+    // This is where specifications define custom behavior for moved nodes
+    // For example, custom elements would enqueue connectedMoveCallback here
+    _ = node;
+    _ = old_parent;
+}
+
 /// DOM §4.6 - Adopt
 /// Spec: https://dom.spec.whatwg.org/#concept-node-adopt
 ///
