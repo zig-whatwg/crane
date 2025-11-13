@@ -18,6 +18,12 @@ pub const dom_types = @import("dom_types");
 /// ProcessingInstruction nodes represent processing instructions.
 /// They extend CharacterData and have an associated target.
 const CharacterDataBase = @import("character_data").CharacterDataBase;
+const EventListener = @import("event_target").EventListener;
+const Event = @import("event").Event;
+const flattenOptions = @import("event_target").flattenOptions;
+const flattenMoreOptions = @import("event_target").flattenMoreOptions;
+const defaultPassiveValue = @import("event_target").defaultPassiveValue;
+const callbackEquals = @import("event_target").callbackEquals;
 const Node = @import("node").Node;
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
@@ -27,6 +33,7 @@ const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
 const TEXT_NODE = @import("node").TEXT_NODE;
@@ -67,10 +74,9 @@ pub const ProcessingInstruction = struct {
 
     pub fn init(allocator: std.mem.Allocator, target: []const u8) !ProcessingInstruction {
 
-        // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
-            .data = try allocator.dupe(u8, ""),
+            .event_listener_list = null, // Lazy allocation - created on first addEventListener,
             .target = try allocator.dupe(u8, target)};
         }
     // ========================================================================
@@ -230,6 +236,725 @@ pub const ProcessingInstruction = struct {
             // This will invoke any registered callbacks from other specifications
             @import("mutation").runChildrenChangedSteps(parent);
         }
+    }
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
+    pub fn call_insertBefore(self: *ProcessingInstruction, node: *ProcessingInstruction, child: ?*ProcessingInstruction) !*ProcessingInstruction {
+        // Call mutation.preInsert algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preInsert(node, self, child) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    }
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
+    pub fn call_appendChild(self: *ProcessingInstruction, node: *ProcessingInstruction) !*ProcessingInstruction {
+        // Call mutation.append algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.append(node, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    }
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
+    pub fn call_replaceChild(self: *ProcessingInstruction, node: *ProcessingInstruction, child: *ProcessingInstruction) !*ProcessingInstruction {
+        // Call mutation.replace algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.replace(child, node, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    }
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
+    pub fn call_removeChild(self: *ProcessingInstruction, child: *ProcessingInstruction) !*ProcessingInstruction {
+        // Call mutation.preRemove algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preRemove(child, self) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    }
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
+    pub fn call_getRootNode(self: *ProcessingInstruction, options: ?GetRootNodeOptions) *ProcessingInstruction {
+        const tree = @import("dom").tree;
+
+        // Check if we need shadow-including root
+        const composed = if (options) |opts| opts.composed else false;
+
+        if (composed) {
+            // Return shadow-including root
+            // TODO: Implement shadow-including root traversal when Shadow DOM is fully integrated
+            // For now, shadow-including root falls back to regular root
+            // Shadow-including root algorithm:
+            // - Get node's root
+            // - If root is shadow root, recursively get root's host's shadow-including root
+            // - Otherwise return root
+            return tree.root(self);
+        } else {
+            // Return regular root
+            return tree.root(self);
+        }
+    }
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
+    pub fn call_contains(self: *const ProcessingInstruction, other: ?*const ProcessingInstruction) bool {
+        if (other == null) return false;
+        // Check if other is an inclusive descendant of this
+        const tree = @import("dom").tree;
+        const other_node = other.?;
+        return tree.isInclusiveDescendant(other_node, self);
+    }
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
+    pub fn call_compareDocumentPosition(self: *const ProcessingInstruction, other: *const ProcessingInstruction) u16 {
+        const tree = @import("dom").tree;
+
+        // Step 1: If this is other, then return zero
+        if (self == other) {
+            return 0;
+        }
+
+        // Step 2: Let node1 be other and node2 be this
+        const node1 = other;
+        const node2 = self;
+
+        // Step 3: Let attr1 and attr2 be null
+        // Step 4-5: Handle attributes (not implemented yet - attributes don't participate in tree)
+        // For now, we skip attribute handling as Attr nodes are handled separately
+
+        // Step 6: If node1 or node2 is null, or node1's root is not node2's root
+        // Check if nodes are in the same tree by comparing roots
+        const root1 = tree.root(@constCast(node1));
+        const root2 = tree.root(@constCast(node2));
+
+        if (root1 != root2) {
+            // Return disconnected + implementation specific + preceding/following
+            // Use pointer comparison for consistent ordering
+            const ptr1 = @intFromPtr(node1);
+            const ptr2 = @intFromPtr(node2);
+            const ordering = if (ptr1 < ptr2) ProcessingInstruction.DOCUMENT_POSITION_PRECEDING else ProcessingInstruction.DOCUMENT_POSITION_FOLLOWING;
+            return ProcessingInstruction.DOCUMENT_POSITION_DISCONNECTED | ProcessingInstruction.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC | ordering;
+        }
+
+        // Step 7: If node1 is an ancestor of node2
+        if (tree.isAncestor(node1, node2)) {
+            return ProcessingInstruction.DOCUMENT_POSITION_CONTAINS | ProcessingInstruction.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 8: If node1 is a descendant of node2
+        if (tree.isDescendant(node1, node2)) {
+            return ProcessingInstruction.DOCUMENT_POSITION_CONTAINED_BY | ProcessingInstruction.DOCUMENT_POSITION_FOLLOWING;
+        }
+
+        // Step 9: If node1 is preceding node2
+        if (tree.isPreceding(node1, node2)) {
+            return ProcessingInstruction.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 10: Return DOCUMENT_POSITION_FOLLOWING
+        return ProcessingInstruction.DOCUMENT_POSITION_FOLLOWING;
+    }
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
+    pub fn call_isEqualNode(self: *const ProcessingInstruction, other_node: ?*const ProcessingInstruction) bool {
+        // Step 1: Return true if otherNode is non-null and this equals otherNode
+        if (other_node == null) return false;
+        return ProcessingInstruction.nodeEquals(self, other_node.?);
+    }
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
+    pub fn call_isSameNode(self: *const ProcessingInstruction, other_node: ?*const ProcessingInstruction) bool {
+        // Legacy alias of === (pointer equality)
+        if (other_node == null) return false;
+        return self == other_node.?;
+    }
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
+    pub fn call_hasChildNodes(self: *const ProcessingInstruction) bool {
+        return self.child_nodes.len > 0;
+    }
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
+    pub fn call_cloneNode(self: *ProcessingInstruction, deep: bool) !*ProcessingInstruction {
+        // Step 1: If this is a shadow root, throw NotSupportedError
+        if (self.node_type == ProcessingInstruction.DOCUMENT_FRAGMENT_NODE) {
+            // Check if this is specifically a ShadowRoot
+            // ShadowRoot inherits from DocumentFragment, so we need to check the type tag
+            const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
+
+            // Try to access as DocumentFragmentBase to check type tag
+            // This is safe because DocumentFragment/ShadowRoot have base as first field
+            const frag_base: *const DocumentFragmentBase = @ptrCast(@alignCast(self));
+            if (frag_base.type_tag == .ShadowRoot) {
+                return error.NotSupportedError;
+            }
+        }
+
+        // Step 2: Return the result of cloning this node with subtree set to deep
+        return try ProcessingInstruction.cloneNodeInternal(self, self.owner_document, deep, null, null);
+    }
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    pub fn call_normalize(self: *ProcessingInstruction) void {
+        _ = self;
+        // Normalize adjacent text nodes
+    }
+    /// Getters
+    pub fn get_nodeType(self: *const ProcessingInstruction) u16 {
+        return self.node_type;
+    }
+    pub fn get_nodeName(self: *const ProcessingInstruction) []const u8 {
+        return self.node_name;
+    }
+    pub fn get_parentNode(self: *const ProcessingInstruction) ?*ProcessingInstruction {
+        return self.parent_node;
+    }
+    pub fn get_parentElement(self: *const ProcessingInstruction) ?*Element {
+        // Returns parent if it's an Element, null otherwise
+        const parent = self.parent_node orelse return null;
+        if (parent.node_type == ELEMENT_NODE) {
+            // Cast to Element - safe because we checked node_type
+            return @ptrCast(@alignCast(parent));
+        }
+        return null;
+    }
+    pub fn get_childNodes(self: *ProcessingInstruction) !*@import("node_list").NodeList {
+        // [SameObject] - Return the same NodeList object each time
+        // The NodeList is a live view of this node's children
+
+        if (self.cached_child_nodes) |list| {
+            return list;
+        }
+
+        // Create new NodeList on first access
+        const list = try self.allocator.create(NodeList);
+        list.* = try NodeList.init(self.allocator);
+
+        // Populate with current children (live view will track changes)
+        for (self.child_nodes.items) |child| {
+            try list.addNode(child);
+        }
+
+        self.cached_child_nodes = list;
+        return list;
+    }
+    pub fn get_firstChild(self: *const ProcessingInstruction) ?*ProcessingInstruction {
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(0);
+        }
+        return null;
+    }
+    pub fn get_lastChild(self: *const ProcessingInstruction) ?*ProcessingInstruction {
+        if (self.child_nodes.len > 0) {
+            return self.child_nodes.get(self.child_nodes.len - 1);
+        }
+        return null;
+    }
+    pub fn get_ownerDocument(self: *const ProcessingInstruction) ?*Document {
+        return self.owner_document;
+    }
+    pub fn get_previousSibling(self: *const ProcessingInstruction) ?*ProcessingInstruction {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i == 0) return null;
+                return parent.child_nodes.items[i - 1];
+            }
+        }
+        return null;
+    }
+    pub fn get_nextSibling(self: *const ProcessingInstruction) ?*ProcessingInstruction {
+        const parent = self.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self) {
+                if (i + 1 >= parent.child_nodes.items.len) return null;
+                return parent.child_nodes.items[i + 1];
+            }
+        }
+        return null;
+    }
+    pub fn get_isConnected(self: *const ProcessingInstruction) bool {
+        // A node is connected if its root is a document
+        const tree = @import("dom").tree;
+        // tree.root requires mutable pointer but doesn't actually mutate
+        // Cast to mutable for the algorithm (safe for read-only root traversal)
+        const mutable_self = @constCast(self);
+        const root_node = tree.root(mutable_self);
+        // Check if root is a document (node_type == DOCUMENT_NODE)
+        return root_node.node_type == DOCUMENT_NODE;
+    }
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
+    pub fn get_baseURI(self: *const ProcessingInstruction) []const u8 {
+        // Get owner document
+        const doc = self.owner_document orelse {
+            // If no owner document, return empty string (should not happen in normal DOM)
+            return "about:blank";
+        };
+
+        // Return document's base URI
+        return doc.base_uri;
+    }
+    pub fn get_nodeValue(self: *const ProcessingInstruction) ?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // The nodeValue getter steps are to return the following, switching on the interface:
+        // - Attr: this's value
+        // - CharacterData: this's data
+        // - Otherwise: null
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node
+                const attr: *const Attr = @ptrCast(@alignCast(self));
+                return attr.value;
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes (Text, Comment, ProcessingInstruction, CDATASection)
+                const char_data: *const CharacterData = @ptrCast(@alignCast(self));
+                return char_data.data;
+            },
+            else => {
+                // All other node types return null
+                return null;
+            },
+        }
+    }
+    pub fn set_nodeValue(self: *ProcessingInstruction, value: ?[]const u8) !void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // The nodeValue setter steps are to, if given value is null, act as if it was empty string
+        // Then:
+        // - Attr: Set an existing attribute value with this and the given value
+        // - CharacterData: Replace data with node this, offset 0, count this's length, data given value
+        // - Otherwise: Do nothing
+
+        const str_value = value orelse "";
+
+        switch (self.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node - set an existing attribute value
+                const attr: *Attr = @ptrCast(@alignCast(self));
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, str_value);
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes - replace data
+                const char_data: *CharacterData = @ptrCast(@alignCast(self));
+                // Replace data: offset 0, count = length, data = str_value
+                try char_data.call_replaceData(0, @intCast(char_data.data.len), str_value);
+            },
+            else => {
+                // All other node types do nothing
+            },
+        }
+    }
+    pub fn get_textContent(self: *const ProcessingInstruction) !?[]const u8 {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // Return the result of running get text content with this
+        return ProcessingInstruction.getTextContent(self, self.allocator);
+    }
+    pub fn set_textContent(self: *ProcessingInstruction, value: ?[]const u8) !void {
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // If the given value is null, act as if it was the empty string instead
+        const str_value = value orelse "";
+        try ProcessingInstruction.setTextContent(self, str_value);
+    }
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
+    pub fn call_lookupPrefix(self: *const ProcessingInstruction, namespace_param: ?[]const u8) ?[]const u8 {
+        // Spec step 1: If namespace is null or empty, return null
+        const namespace = namespace_param orelse return null;
+        if (namespace.len == 0) return null;
+
+        // Spec step 2: Switch on node type
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                // Return result of locating a namespace prefix
+                return self.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_NODE => {
+                // If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+                return doc_elem.base.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            else => {
+                // For other node types, use parent element if exists
+                const parent = self.parent_element orelse return null;
+                return parent.base.locateNamespacePrefix(namespace);
+            },
+        }
+    }
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
+    pub fn call_lookupNamespaceURI(self: *const ProcessingInstruction, prefix_param: ?[]const u8) ?[]const u8 {
+        // Spec step 1: If prefix is empty string, set to null
+        const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
+
+        // Spec step 2: Return result of locating a namespace
+        return self.locateNamespace(prefix);
+    }
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
+    pub fn call_isDefaultNamespace(self: *const ProcessingInstruction, namespace_param: ?[]const u8) bool {
+        // Spec step 1: If namespace is empty string, set to null
+        const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
+
+        // Spec step 2: Let defaultNamespace be result of locating namespace using null prefix
+        const default_namespace = self.locateNamespace(null);
+
+        // Spec step 3: Return true if defaultNamespace equals namespace
+        if (default_namespace == null and namespace == null) return true;
+        if (default_namespace == null or namespace == null) return false;
+        return std.mem.eql(u8, default_namespace.?, namespace.?);
+    }
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
+    fn locateNamespacePrefix(self: *const ProcessingInstruction, namespace: []const u8) ?[]const u8 {
+        if (self.node_type != ELEMENT_NODE) return null;
+
+        const elem: *const Element = @ptrCast(@alignCast(self));
+
+        // Step 1: If element's namespace is namespace and prefix is non-null, return prefix
+        if (elem.namespace_uri) |ns| {
+            if (std.mem.eql(u8, ns, namespace)) {
+                if (elem.prefix) |p| return p;
+            }
+        }
+
+        // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
+        for (elem.attributes.items) |attr| {
+            if (attr.prefix) |attr_prefix| {
+                if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
+                    return attr.local_name;
+                }
+            }
+        }
+
+        // Step 3: If parent element exists, recurse
+        if (self.parent_element) |parent| {
+            return parent.base.locateNamespacePrefix(namespace);
+        }
+
+        // Step 4: Return null
+        return null;
+    }
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
+    fn locateNamespace(self: *const ProcessingInstruction, prefix: ?[]const u8) ?[]const u8 {
+        switch (self.node_type) {
+            ELEMENT_NODE => {
+                const elem: *const Element = @ptrCast(@alignCast(self));
+
+                // Step 1: If prefix is "xml", return XML namespace
+                if (prefix) |p| {
+                    if (std.mem.eql(u8, p, "xml")) {
+                        return "http://www.w3.org/XML/1998/namespace";
+                    }
+                    // Step 2: If prefix is "xmlns", return XMLNS namespace
+                    if (std.mem.eql(u8, p, "xmlns")) {
+                        return "http://www.w3.org/2000/xmlns/";
+                    }
+                }
+
+                // Step 3: If namespace is non-null and prefix matches, return namespace
+                if (elem.namespace_uri) |ns| {
+                    if ((prefix == null and elem.prefix == null) or
+                        (prefix != null and elem.prefix != null and std.mem.eql(u8, prefix.?, elem.prefix.?)))
+                    {
+                        return ns;
+                    }
+                }
+
+                // Step 4: Check for xmlns attributes
+                // If it has an attribute whose namespace is XMLNS namespace, prefix is "xmlns",
+                // and local name is prefix, return its value if not empty string, else null.
+                // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
+                // prefix is null, and local name is "xmlns", return its value if not empty, else null.
+                for (elem.attributes.items) |attr| {
+                    const xmlns_ns = "http://www.w3.org/2000/xmlns/";
+
+                    if (attr.namespace_uri) |attr_ns| {
+                        if (std.mem.eql(u8, attr_ns, xmlns_ns)) {
+                            // Check if this matches our prefix
+                            if (prefix) |p| {
+                                // Looking for xmlns:prefix attribute
+                                if (attr.prefix) |attr_prefix| {
+                                    if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.local_name, p)) {
+                                        return if (attr.value.len > 0) attr.value else null;
+                                    }
+                                }
+                            } else {
+                                // Looking for xmlns attribute (default namespace)
+                                if (attr.prefix == null and std.mem.eql(u8, attr.local_name, "xmlns")) {
+                                    return if (attr.value.len > 0) attr.value else null;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Step 5: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 6: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+            DOCUMENT_NODE => {
+                // Step 1: If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self));
+                const doc_elem = doc.documentElement() orelse return null;
+
+                // Step 2: Return result of locating namespace on document element
+                return doc_elem.base.locateNamespace(prefix);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            ATTRIBUTE_NODE => {
+                // Step 1: If element is null, return null
+                const AttributeType = @import("attr").Attr;
+                const attr: *const AttributeType = @ptrCast(@alignCast(self));
+                const element = attr.owner_element orelse return null;
+
+                // Step 2: Return result of locating namespace on element
+                return element.base.locateNamespace(prefix);
+            },
+            else => {
+                // Step 1: If parent element is null, return null
+                const parent = self.parent_element orelse return null;
+
+                // Step 2: Return result of locating namespace on parent
+                return parent.base.locateNamespace(prefix);
+            },
+        }
+    }
+    /// Get the list of registered observers for this node
+    pub fn getRegisteredObservers(self: *ProcessingInstruction) *std.ArrayList(RegisteredObserver) {
+        return &self.registered_observers;
+    }
+    /// Add a registered observer to this node's list
+    pub fn addRegisteredObserver(self: *ProcessingInstruction, registered: RegisteredObserver) !void {
+        try self.registered_observers.append(registered);
+    }
+    /// Remove all registered observers for a specific MutationObserver
+    pub fn removeRegisteredObserver(self: *ProcessingInstruction, observer: *const @import("mutation_observer").MutationObserver) void {
+        var i: usize = 0;
+        while (i < self.registered_observers.items.len) {
+            if (self.registered_observers.items[i].observer == observer) {
+                _ = self.registered_observers.orderedRemove(i);
+                // Don't increment i, we just shifted everything down
+            } else {
+                i += 1;
+            }
+        }
+    }
+    /// Remove all transient registered observers whose source matches the given registered observer
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
+    pub fn removeTransientObservers(self: *ProcessingInstruction, source: *const RegisteredObserver) void {
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
+        _ = self;
+        _ = source;
+    }
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
+    fn ensureEventListenerList(self: *ProcessingInstruction) !*std.ArrayList(EventListener) {
+        if (self.event_listener_list) |list| {
+            return list;
+        }
+
+        // First time adding a listener - allocate the list
+        const list = try self.allocator.create(std.ArrayList(EventListener));
+        list.* = std.ArrayList(EventListener).init(self.allocator);
+        self.event_listener_list = list;
+        return list;
+    }
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
+    fn getEventListenerList(self: *const ProcessingInstruction) []const EventListener {
+        if (self.event_listener_list) |list| {
+            return list.items;
+        }
+        return &[_]EventListener{};
+    }
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
+    fn addAnEventListener(self: *ProcessingInstruction, listener: EventListener) !void {
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Step 2: If listener's signal is not null and is aborted, then return
+        if (listener.signal) |signal| {
+            if (signal.aborted) return;
+        }
+
+        // Step 3: If listener's callback is null, then return
+        if (listener.callback == null) return;
+
+        // Step 4: If listener's passive is null, set it to default passive value
+        var updated_listener = listener;
+        if (updated_listener.passive == null) {
+            updated_listener.passive = defaultPassiveValue(listener.type, self);
+        }
+
+        // Step 5: If event listener list does not contain matching listener, append it
+        const list = try self.ensureEventListenerList();
+
+        const already_exists = for (list.items) |existing| {
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                break true;
+            }
+        } else false;
+
+        if (!already_exists) {
+            try list.append(updated_listener);
+        }
+
+        // Step 6: If listener's signal is not null, add abort steps
+        // Spec: "If listener's signal is not null, then add the following abort steps to it:
+        // Remove an event listener with eventTarget and listener."
+        // https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+        if (listener.signal) |signal| {
+            const AbortSignalType = @import("abort_signal").AbortSignal;
+            const removal_context = AbortSignalType.EventListenerRemovalContext{
+                .target = self,
+                .listener_type = updated_listener.type,
+                .listener_callback = updated_listener.callback,
+                .listener_capture = updated_listener.capture,
+            };
+            try signal.addEventListenerRemoval(removal_context);
+        }
+    }
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
+    pub fn call_addEventListener(
+        self: *ProcessingInstruction,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) !void {
+        // Step 1: Flatten more options
+        const flattened = flattenMoreOptions(options);
+
+        // Step 2: Add an event listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = flattened.capture,
+            .passive = flattened.passive,
+            .once = flattened.once,
+            .signal = flattened.signal,
+        };
+
+        try self.addAnEventListener(listener);
+    }
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
+    fn removeAnEventListener(self: *ProcessingInstruction, listener: EventListener) void {
+        // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
+
+        // Early exit if no listeners have been added yet
+        const list = self.event_listener_list orelse return;
+
+        // Step 2: Set listener's removed to true and remove listener from event listener list
+        var i: usize = 0;
+        while (i < list.items.len) {
+            const existing = &list.items[i];
+
+            // Match on type, callback, and capture
+            if (std.mem.eql(u8, existing.type, listener.type) and
+                existing.capture == listener.capture and
+                callbackEquals(existing.callback, listener.callback))
+            {
+                existing.removed = true;
+                _ = list.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    }
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
+    pub fn call_removeEventListener(
+        self: *ProcessingInstruction,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) void {
+        // Step 1: Flatten options
+        const capture = flattenOptions(options);
+
+        // Step 2: Remove matching listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = capture,
+        };
+
+        self.removeAnEventListener(listener);
+    }
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
+    pub fn call_dispatchEvent(self: *ProcessingInstruction, event: *Event) !bool {
+        // Step 1: Check flags
+        if (event.dispatch_flag or !event.initialized_flag) {
+            return error.InvalidStateError;
+        }
+
+        // Step 2: Initialize isTrusted to false
+        event.is_trusted = false;
+
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     }
 
     // WebIDL extended attributes metadata

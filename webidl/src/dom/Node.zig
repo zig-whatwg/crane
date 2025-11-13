@@ -14,6 +14,7 @@ const CharacterData = @import("character_data").CharacterData;
 const Text = @import("text").Text;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
+const NodeList = @import("node_list").NodeList;
 
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
@@ -618,7 +619,6 @@ pub const Node = webidl.interface(struct {
         }
 
         // Create new NodeList on first access
-        const NodeList = @import("node_list").NodeList;
         const list = try self.allocator.create(NodeList);
         list.* = try NodeList.init(self.allocator);
 

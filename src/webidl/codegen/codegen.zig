@@ -215,6 +215,9 @@ const ImportSet = struct {
             try self.addPackageType("CharacterData", "character_data");
         }
 
+        // Add NodeList (used by Node.childNodes getter)
+        try self.addPackageType("NodeList", "node_list");
+
         // Add all Node type constants
         try self.addPackageConst("ELEMENT_NODE", "node");
         try self.addPackageConst("ATTRIBUTE_NODE", "node");
@@ -3842,8 +3845,11 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
     const after_return_brace = return_start + "return .{".len;
 
     // Add .base = BaseTypeName.initForClassName(allocator) in the struct literal
-    // Passes allocator to properly initialize collections
-    const base_init = try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(allocator),", .{ base_type_name, class_name });
+    // Passes allocator to properly initialize collections (except for AbstractRange which has no allocator)
+    const base_init = if (std.mem.eql(u8, base_type_name, "AbstractRange"))
+        try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(),", .{ base_type_name, class_name })
+    else
+        try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(allocator),", .{ base_type_name, class_name });
     defer allocator.free(base_init);
 
     var result: std.ArrayList(u8) = .empty;
@@ -4047,7 +4053,7 @@ fn generateBaseInitHelper(
             \\    /// Create a base struct initialized for {s}.
             \\    /// Use this in {s}.init() to properly initialize the base field.
             \\    /// All collection fields are properly initialized with the provided allocator.
-            \\    pub fn initFor{s}(allocator: Allocator) NodeBase {{
+            \\    pub fn initFor{s}(allocator: std.mem.Allocator) NodeBase {{
             \\        return .{{
             \\            .type_tag = .{s},
             \\            .event_listener_list = null,
@@ -4068,7 +4074,7 @@ fn generateBaseInitHelper(
         try writer.print(
             \\    /// Create a base struct initialized for {s}.
             \\    /// Use this in {s}.init() to properly initialize the base field.
-            \\    pub fn initFor{s}(allocator: Allocator) EventTargetBase {{
+            \\    pub fn initFor{s}(allocator: std.mem.Allocator) EventTargetBase {{
             \\        return .{{
             \\            .type_tag = .{s},
             \\            .event_listener_list = null,
@@ -4078,12 +4084,25 @@ fn generateBaseInitHelper(
             \\
             \\
         , .{ child_name, child_name, child_name, child_name });
+    } else if (std.mem.eql(u8, base_type_name, "AbstractRange")) {
+        // AbstractRange base only has type_tag and boundary points (no allocator)
+        try writer.print(
+            \\    /// Create a base struct initialized for {s}.
+            \\    /// Use this in {s}.init() to properly initialize the base field.
+            \\    pub fn initFor{s}() {s}Base {{
+            \\        return .{{
+            \\            .type_tag = .{s},
+            \\        }};
+            \\    }}
+            \\
+            \\
+        , .{ child_name, child_name, child_name, base_type_name, child_name });
     } else {
         // Other base types (e.g., DocumentFragment which extends Node)
         try writer.print(
             \\    /// Create a base struct initialized for {s}.
             \\    /// Use this in {s}.init() to properly initialize the base field.
-            \\    pub fn initFor{s}(allocator: Allocator) {s}Base {{
+            \\    pub fn initFor{s}(allocator: std.mem.Allocator) {s}Base {{
             \\        return .{{
             \\            .type_tag = .{s},
             \\            .allocator = allocator,

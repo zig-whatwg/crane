@@ -8,7 +8,6 @@ const Node = @import("node").Node;
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
-const NodeList = @import("node_list").NodeList;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const dom_types = @import("dom_types");
 const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
@@ -20,8 +19,13 @@ const Element = @import("element").Element;
 const Text = @import("text").Text;
 const Comment = @import("comment").Comment;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const Attr = @import("attr").Attr;
 const Range = @import("range").Range;
+
+/// Document format type enumeration
+pub const DocType = enum {
+    html,
+    xml,
+};
 
 /// DOM Spec: interface Document : Node
 pub const Document = webidl.interface(struct {
@@ -39,7 +43,7 @@ pub const Document = webidl.interface(struct {
     /// Document content type (e.g., "text/html", "application/xml")
     content_type: []const u8,
     /// Document type: html or xml
-    document_type: enum { html, xml },
+    doc_type: DocType,
     /// Document origin (opaque for now)
     origin: ?*anyopaque,
     /// Live ranges associated with this document
@@ -54,7 +58,7 @@ pub const Document = webidl.interface(struct {
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
             .content_type = "application/xml",
-            .document_type = .xml,
+            .doc_type = .xml,
             .origin = null,
             .base_uri = "about:blank",
             .ranges = std.ArrayList(*Range).init(allocator),

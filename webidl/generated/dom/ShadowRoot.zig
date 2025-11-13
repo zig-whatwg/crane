@@ -58,6 +58,7 @@ const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
 const TEXT_NODE = @import("node").TEXT_NODE;

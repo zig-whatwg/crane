@@ -84,12 +84,17 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
 /// Used for safe downcasting from EventTargetBase to derived types.
 pub const EventTargetTypeTag = enum {
     EventTarget,
+    CDATASection,
     Element,
     DocumentType,
+    CharacterData,
     Node,
     Document,
+    Comment,
     AbortSignal,
+    Text,
     Attr,
+    ProcessingInstruction,
 };
 
 /// Base struct for EventTarget hierarchy polymorphism.
@@ -117,9 +122,19 @@ pub const EventTargetBase = struct {
     // All collection fields (lists) are properly initialized with allocator.
     //
 
+    /// Create a base struct initialized for CDATASection.
+    /// Use this in CDATASection.init() to properly initialize the base field.
+    pub fn initForCDATASection(allocator: std.mem.Allocator) EventTargetBase {
+        return .{
+            .type_tag = .CDATASection,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
+    }
+
     /// Create a base struct initialized for Element.
     /// Use this in Element.init() to properly initialize the base field.
-    pub fn initForElement(allocator: Allocator) EventTargetBase {
+    pub fn initForElement(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .Element,
             .event_listener_list = null,
@@ -129,7 +144,7 @@ pub const EventTargetBase = struct {
 
     /// Create a base struct initialized for DocumentType.
     /// Use this in DocumentType.init() to properly initialize the base field.
-    pub fn initForDocumentType(allocator: Allocator) EventTargetBase {
+    pub fn initForDocumentType(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .DocumentType,
             .event_listener_list = null,
@@ -137,9 +152,19 @@ pub const EventTargetBase = struct {
         };
     }
 
+    /// Create a base struct initialized for CharacterData.
+    /// Use this in CharacterData.init() to properly initialize the base field.
+    pub fn initForCharacterData(allocator: std.mem.Allocator) EventTargetBase {
+        return .{
+            .type_tag = .CharacterData,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
+    }
+
     /// Create a base struct initialized for Node.
     /// Use this in Node.init() to properly initialize the base field.
-    pub fn initForNode(allocator: Allocator) EventTargetBase {
+    pub fn initForNode(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .Node,
             .event_listener_list = null,
@@ -149,7 +174,7 @@ pub const EventTargetBase = struct {
 
     /// Create a base struct initialized for Document.
     /// Use this in Document.init() to properly initialize the base field.
-    pub fn initForDocument(allocator: Allocator) EventTargetBase {
+    pub fn initForDocument(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .Document,
             .event_listener_list = null,
@@ -157,9 +182,19 @@ pub const EventTargetBase = struct {
         };
     }
 
+    /// Create a base struct initialized for Comment.
+    /// Use this in Comment.init() to properly initialize the base field.
+    pub fn initForComment(allocator: std.mem.Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Comment,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
+    }
+
     /// Create a base struct initialized for AbortSignal.
     /// Use this in AbortSignal.init() to properly initialize the base field.
-    pub fn initForAbortSignal(allocator: Allocator) EventTargetBase {
+    pub fn initForAbortSignal(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .AbortSignal,
             .event_listener_list = null,
@@ -167,11 +202,31 @@ pub const EventTargetBase = struct {
         };
     }
 
+    /// Create a base struct initialized for Text.
+    /// Use this in Text.init() to properly initialize the base field.
+    pub fn initForText(allocator: std.mem.Allocator) EventTargetBase {
+        return .{
+            .type_tag = .Text,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
+    }
+
     /// Create a base struct initialized for Attr.
     /// Use this in Attr.init() to properly initialize the base field.
-    pub fn initForAttr(allocator: Allocator) EventTargetBase {
+    pub fn initForAttr(allocator: std.mem.Allocator) EventTargetBase {
         return .{
             .type_tag = .Attr,
+            .event_listener_list = null,
+            .allocator = allocator,
+        };
+    }
+
+    /// Create a base struct initialized for ProcessingInstruction.
+    /// Use this in ProcessingInstruction.init() to properly initialize the base field.
+    pub fn initForProcessingInstruction(allocator: std.mem.Allocator) EventTargetBase {
+        return .{
+            .type_tag = .ProcessingInstruction,
             .event_listener_list = null,
             .allocator = allocator,
         };
@@ -229,12 +284,17 @@ pub const EventTargetBase = struct {
     }
     //
     // Available types for tryCast() in EventTarget hierarchy:
+    //   - CDATASection
     //   - Element
     //   - DocumentType
+    //   - CharacterData
     //   - Node
     //   - Document
+    //   - Comment
     //   - AbortSignal
+    //   - Text
     //   - Attr
+    //   - ProcessingInstruction
     //
 
 };

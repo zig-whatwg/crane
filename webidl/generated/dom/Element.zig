@@ -14,7 +14,6 @@ const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
 
-pub const NodeList = @import("node_list").NodeList;
 pub const dom_types = @import("dom_types");
 pub const ShadowRoot = @import("shadow_root").ShadowRoot;
 pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
@@ -45,6 +44,7 @@ const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
 const TEXT_NODE = @import("node").TEXT_NODE;
@@ -1376,7 +1376,6 @@ pub const Element = struct {
         }
 
         // Create new NodeList on first access
-        const NodeList = @import("node_list").NodeList;
         const list = try self.allocator.create(NodeList);
         list.* = try NodeList.init(self.allocator);
 

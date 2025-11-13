@@ -50,19 +50,17 @@ pub const AbstractRangeBase = struct {
 
     /// Create a base struct initialized for Range.
     /// Use this in Range.init() to properly initialize the base field.
-    pub fn initForRange(allocator: Allocator) AbstractRangeBase {
+    pub fn initForRange() AbstractRangeBase {
         return .{
             .type_tag = .Range,
-            .allocator = allocator,
         };
     }
 
     /// Create a base struct initialized for StaticRange.
     /// Use this in StaticRange.init() to properly initialize the base field.
-    pub fn initForStaticRange(allocator: Allocator) AbstractRangeBase {
+    pub fn initForStaticRange() AbstractRangeBase {
         return .{
             .type_tag = .StaticRange,
-            .allocator = allocator,
         };
     }
 

@@ -5,7 +5,6 @@ const webidl = @import("webidl");
 const dom = @import("dom");
 const ParentNode = @import("parent_node").ParentNode;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
-const NodeList = @import("node_list").NodeList;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const dom_types = @import("dom_types");
 

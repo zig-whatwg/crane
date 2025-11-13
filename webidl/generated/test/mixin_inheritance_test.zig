@@ -57,7 +57,7 @@ pub const ParentBase = struct {
 
     /// Create a base struct initialized for Child.
     /// Use this in Child.init() to properly initialize the base field.
-    pub fn initForChild(allocator: Allocator) ParentBase {
+    pub fn initForChild(allocator: std.mem.Allocator) ParentBase {
         return .{
             .type_tag = .Child,
             .allocator = allocator,
@@ -269,7 +269,7 @@ pub const ParentMultiBase = struct {
 
     /// Create a base struct initialized for ChildMulti.
     /// Use this in ChildMulti.init() to properly initialize the base field.
-    pub fn initForChildMulti(allocator: Allocator) ParentMultiBase {
+    pub fn initForChildMulti(allocator: std.mem.Allocator) ParentMultiBase {
         return .{
             .type_tag = .ChildMulti,
             .allocator = allocator,
@@ -278,7 +278,7 @@ pub const ParentMultiBase = struct {
 
     /// Create a base struct initialized for GrandChild.
     /// Use this in GrandChild.init() to properly initialize the base field.
-    pub fn initForGrandChild(allocator: Allocator) ParentMultiBase {
+    pub fn initForGrandChild(allocator: std.mem.Allocator) ParentMultiBase {
         return .{
             .type_tag = .GrandChild,
             .allocator = allocator,
@@ -422,7 +422,7 @@ pub const ChildMultiBase = struct {
 
     /// Create a base struct initialized for GrandChild.
     /// Use this in GrandChild.init() to properly initialize the base field.
-    pub fn initForGrandChild(allocator: Allocator) ChildMultiBase {
+    pub fn initForGrandChild(allocator: std.mem.Allocator) ChildMultiBase {
         return .{
             .type_tag = .GrandChild,
             .allocator = allocator,

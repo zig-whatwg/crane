@@ -13,7 +13,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
-pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
 pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
@@ -22,8 +21,13 @@ pub const DocumentType = @import("document_type").DocumentType;
 pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
 pub const Comment = @import("comment").Comment;
 pub const DocumentFragment = @import("document_fragment").DocumentFragment;
-pub const Attr = @import("attr").Attr;
 pub const Range = @import("range").Range;
+
+/// Document format type enumeration
+pub const DocType = enum {
+    html,
+    xml,
+};
 /// DOM Spec: interface Document : Node
 const NodeBase = @import("node").NodeBase;
 const EventListener = @import("event_target").EventListener;
@@ -40,6 +44,7 @@ const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
 const TEXT_NODE = @import("node").TEXT_NODE;
@@ -80,7 +85,7 @@ pub const Document = struct {
     /// Document content type (e.g., "text/html", "application/xml")
     content_type: []const u8,
     /// Document type: html or xml
-    document_type: enum { html,
+    doc_type: DocType,
     /// Document origin (opaque for now)
     origin: ?*anyopaque,
     /// Live ranges associated with this document
@@ -98,7 +103,7 @@ pub const Document = struct {
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
             .content_type = "application/xml",
-            .document_type = .xml,
+            .doc_type = .xml,
             .origin = null,
             .base_uri = "about:blank",
             .ranges = std.ArrayList(*Range).init(allocator),
@@ -1026,7 +1031,6 @@ pub const Document = struct {
         }
 
         // Create new NodeList on first access
-        const NodeList = @import("node_list").NodeList;
         const list = try self.allocator.create(NodeList);
         list.* = try NodeList.init(self.allocator);
 

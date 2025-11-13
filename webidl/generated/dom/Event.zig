@@ -71,7 +71,7 @@ pub const EventBase = struct {
 
     /// Create a base struct initialized for CustomEvent.
     /// Use this in CustomEvent.init() to properly initialize the base field.
-    pub fn initForCustomEvent(allocator: Allocator) EventBase {
+    pub fn initForCustomEvent(allocator: std.mem.Allocator) EventBase {
         return .{
             .type_tag = .CustomEvent,
             .allocator = allocator,

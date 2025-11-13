@@ -16,6 +16,7 @@ const webidl = @import("webidl");
 pub const EventTarget = @import("event_target").EventTarget;
 pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 pub const Attr = @import("attr").Attr;
+pub const NodeList = @import("node_list").NodeList;
 /// Runtime type tag for Node hierarchy.
 /// Used for safe downcasting from NodeBase to derived types.
 pub const NodeTypeTag = enum {
@@ -72,7 +73,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for CDATASection.
     /// Use this in CDATASection.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForCDATASection(allocator: Allocator) NodeBase {
+    pub fn initForCDATASection(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .CDATASection,
             .event_listener_list = null,
@@ -89,7 +90,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for ShadowRoot.
     /// Use this in ShadowRoot.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForShadowRoot(allocator: Allocator) NodeBase {
+    pub fn initForShadowRoot(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .ShadowRoot,
             .event_listener_list = null,
@@ -106,7 +107,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for Element.
     /// Use this in Element.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForElement(allocator: Allocator) NodeBase {
+    pub fn initForElement(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .Element,
             .event_listener_list = null,
@@ -123,7 +124,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for DocumentType.
     /// Use this in DocumentType.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForDocumentType(allocator: Allocator) NodeBase {
+    pub fn initForDocumentType(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .DocumentType,
             .event_listener_list = null,
@@ -140,7 +141,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for CharacterData.
     /// Use this in CharacterData.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForCharacterData(allocator: Allocator) NodeBase {
+    pub fn initForCharacterData(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .CharacterData,
             .event_listener_list = null,
@@ -157,7 +158,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for Document.
     /// Use this in Document.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForDocument(allocator: Allocator) NodeBase {
+    pub fn initForDocument(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .Document,
             .event_listener_list = null,
@@ -174,7 +175,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for Comment.
     /// Use this in Comment.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForComment(allocator: Allocator) NodeBase {
+    pub fn initForComment(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .Comment,
             .event_listener_list = null,
@@ -191,7 +192,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for DocumentFragment.
     /// Use this in DocumentFragment.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForDocumentFragment(allocator: Allocator) NodeBase {
+    pub fn initForDocumentFragment(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .DocumentFragment,
             .event_listener_list = null,
@@ -208,7 +209,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for Text.
     /// Use this in Text.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForText(allocator: Allocator) NodeBase {
+    pub fn initForText(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .Text,
             .event_listener_list = null,
@@ -225,7 +226,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for Attr.
     /// Use this in Attr.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForAttr(allocator: Allocator) NodeBase {
+    pub fn initForAttr(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .Attr,
             .event_listener_list = null,
@@ -242,7 +243,7 @@ pub const NodeBase = struct {
     /// Create a base struct initialized for ProcessingInstruction.
     /// Use this in ProcessingInstruction.init() to properly initialize the base field.
     /// All collection fields are properly initialized with the provided allocator.
-    pub fn initForProcessingInstruction(allocator: Allocator) NodeBase {
+    pub fn initForProcessingInstruction(allocator: std.mem.Allocator) NodeBase {
         return .{
             .type_tag = .ProcessingInstruction,
             .event_listener_list = null,
@@ -936,7 +937,6 @@ pub const Node = struct {
         }
 
         // Create new NodeList on first access
-        const NodeList = @import("node_list").NodeList;
         const list = try self.allocator.create(NodeList);
         list.* = try NodeList.init(self.allocator);
 

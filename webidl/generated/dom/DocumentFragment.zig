@@ -12,7 +12,6 @@
 const std = @import("std");
 const webidl = @import("webidl");
 pub const dom = @import("dom");
-pub const NodeList = @import("node_list").NodeList;
 pub const HTMLCollection = @import("html_collection").HTMLCollection;
 pub const dom_types = @import("dom_types");
 /// Runtime type tag for DocumentFragment hierarchy.
@@ -42,7 +41,7 @@ pub const DocumentFragmentBase = struct {
 
     /// Create a base struct initialized for ShadowRoot.
     /// Use this in ShadowRoot.init() to properly initialize the base field.
-    pub fn initForShadowRoot(allocator: Allocator) DocumentFragmentBase {
+    pub fn initForShadowRoot(allocator: std.mem.Allocator) DocumentFragmentBase {
         return .{
             .type_tag = .ShadowRoot,
             .allocator = allocator,
@@ -117,6 +116,7 @@ const Document = @import("document").Document;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
 const TEXT_NODE = @import("node").TEXT_NODE;

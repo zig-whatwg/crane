@@ -235,7 +235,6 @@ pub const AbortSignal = struct {
         // Remove all event listeners registered with this signal
         // Spec: Step 6 of "add an event listener" - remove listener when signal is aborted
         for (self.event_listener_removals.items) |removal| {
-            const EventListener = @import("event_target").EventListener;
             const listener = EventListener{
                 .type = removal.listener_type,
                 .callback = removal.listener_callback,

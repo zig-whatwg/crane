@@ -8,7 +8,7 @@ const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocu
 const dom_types = @import("dom_types");
 
 const Allocator = std.mem.Allocator;
-const Node = dom_types.Node;
+const Node = @import("node").Node;
 const Document = @import("document").Document;
 
 /// DOM Spec: interface CharacterData : Node

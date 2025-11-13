@@ -57,7 +57,7 @@ pub const StaticRange = struct {
 
         // Step 2: Set start and end boundary points
         return .{
-            .base = AbstractRangeBase.initForStaticRange(allocator),
+            .base = AbstractRangeBase.initForStaticRange(),
             .start_container = options.startContainer,
             .start_offset = options.startOffset,
             .end_container = options.endContainer,
