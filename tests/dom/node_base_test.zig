@@ -231,3 +231,37 @@ test "NodeBase - memory layout validation" {
     // They must be identical for safe casting
     try testing.expectEqual(element_addr, base_addr);
 }
+
+test "NodeBase - real CharacterData integration" {
+    // Validates that the real generated CharacterData works with NodeBase downcasting
+    // This ensures removing the stub didn't break anything
+
+    const allocator = testing.allocator;
+    const CharacterData = @import("character_data").CharacterData;
+
+    // Create a real CharacterData node
+    var char_data = try CharacterData.init(allocator);
+    defer char_data.deinit();
+
+    // Set initial data
+    char_data.base.data = try allocator.dupe(u8, "Hello, world!");
+
+    // Update node_type to TEXT_NODE for this test
+    char_data.base.node_type = NodeBase.TEXT_NODE;
+    char_data.base.node_name = "#text";
+
+    // Get NodeBase pointer (CharacterData has `base: NodeBase`)
+    const node: *NodeBase = &char_data.base;
+
+    // Verify node type
+    try testing.expectEqual(NodeBase.TEXT_NODE, node.node_type);
+
+    // Downcast using asCharacterData (this is what we're testing!)
+    const downcasted = NodeBase.asCharacterData(node);
+    try testing.expect(downcasted != null);
+
+    // Verify we can access CharacterData fields
+    const cd = downcasted.?;
+    try testing.expectEqualStrings("Hello, world!", cd.data);
+    try testing.expectEqual(@as(u32, 13), cd.get_length());
+}
