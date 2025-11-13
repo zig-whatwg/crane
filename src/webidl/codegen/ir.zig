@@ -72,6 +72,17 @@ pub const Import = struct {
         allocator.free(self.name);
         allocator.free(self.module);
     }
+
+    /// Create a deep copy of this import
+    pub fn duplicate(self: Import, allocator: Allocator) !Import {
+        return Import{
+            .name = try allocator.dupe(u8, self.name),
+            .module = try allocator.dupe(u8, self.module),
+            .is_type = self.is_type,
+            .visibility = self.visibility,
+            .source_line = self.source_line,
+        };
+    }
 };
 
 /// A type reference found in code (fields, parameters, return types)

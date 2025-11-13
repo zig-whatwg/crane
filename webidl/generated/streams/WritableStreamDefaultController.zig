@@ -17,7 +17,6 @@ const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
 const QueueWithSizes = @import("queue_with_sizes").QueueWithSizes;
 const WritableStream = @import("writable_stream").WritableStream;
-const anyopaque = @import("anyopaque");
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");

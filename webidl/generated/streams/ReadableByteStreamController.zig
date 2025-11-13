@@ -32,7 +32,6 @@ const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").Readab
 const Request = @import("request").Request;
 const ViewConstruction = @import("view_construction").ViewConstruction;
 const ViewConstructor = @import("view_constructor").ViewConstructor;
-const anyopaque = @import("anyopaque");
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");

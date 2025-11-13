@@ -496,10 +496,14 @@ fn cloneImport(allocator: Allocator, import: ir.Import) !ir.Import {
 
 fn isPrimitiveType(type_name: []const u8) bool {
     const primitives = [_][]const u8{
-        "u8",    "u16",   "u32",       "u64",
-        "i8",    "i16",   "i32",       "i64",
-        "f32",   "f64",   "bool",      "void",
-        "usize", "isize", "Allocator", "anyerror",
+        "u8",       "u16",          "u32",            "u64",          "u128",
+        "i8",       "i16",          "i32",            "i64",          "i128",
+        "f32",      "f64",          "f80",            "f128",         "bool",
+        "void",     "noreturn",     "type",           "anyerror",     "anyopaque",
+        "anyframe", "comptime_int", "comptime_float", "usize",        "isize",
+        "c_short",  "c_ushort",     "c_int",          "c_uint",       "c_long",
+        "c_ulong",  "c_longlong",   "c_ulonglong",    "c_longdouble",
+        "Allocator", // Common std.mem.Allocator alias
     };
 
     for (primitives) |prim| {

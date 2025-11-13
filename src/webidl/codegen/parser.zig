@@ -41,7 +41,7 @@ pub fn parseFile(allocator: Allocator, source: []const u8, file_path: []const u8
     errdefer allocator.free(file_ir.module_definitions);
 
     // Extract class definitions
-    file_ir.classes = try parseClasses(allocator, source, file_path);
+    file_ir.classes = try parseClasses(allocator, source, file_path, file_ir.module_imports);
     errdefer {
         for (file_ir.classes) |*class| {
             class.deinit(allocator);
@@ -364,7 +364,7 @@ fn parseImportStatement(
 }
 
 /// Parse all class definitions in source
-fn parseClasses(allocator: Allocator, source: []const u8, file_path: []const u8) ![]ir.ClassDef {
+fn parseClasses(allocator: Allocator, source: []const u8, file_path: []const u8, module_imports: []const ir.Import) ![]ir.ClassDef {
     var classes = infra.List(ir.ClassDef).init(allocator);
     errdefer {
         for (classes.toSliceMut()) |*class| {
@@ -380,7 +380,7 @@ fn parseClasses(allocator: Allocator, source: []const u8, file_path: []const u8)
         const class_start = findNextClassDefinition(source, pos) orelse break;
 
         // Parse the class
-        const class_def = try parseClassDefinition(allocator, source, class_start, file_path);
+        const class_def = try parseClassDefinition(allocator, source, class_start, file_path, module_imports);
         try classes.append(class_def);
 
         pos = class_start + 1;
@@ -420,6 +420,7 @@ fn parseClassDefinition(
     source: []const u8,
     class_start: usize,
     file_path: []const u8,
+    module_imports: []const ir.Import,
 ) !ir.ClassDef {
     // Determine class kind
     const kind: ir.ClassDef.Kind = blk: {
@@ -483,11 +484,15 @@ fn parseClassDefinition(
         allocator.free(constants);
     }
 
-    // Extract type references from methods and fields
-    const required_imports = try extractRequiredImports(allocator, fields, methods, properties);
+    // Copy module imports from the source file
+    // (these are the ACTUAL imports, not inferred from types)
+    const required_imports = try allocator.alloc(ir.Import, module_imports.len);
+    errdefer allocator.free(required_imports);
+    for (module_imports, 0..) |import, i| {
+        required_imports[i] = try import.duplicate(allocator);
+    }
     errdefer {
         for (required_imports) |*import| import.deinit(allocator);
-        allocator.free(required_imports);
     }
 
     return ir.ClassDef{

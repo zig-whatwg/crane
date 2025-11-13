@@ -22,7 +22,6 @@ const ReadableStreamDefaultReader = @import("readable_stream_default_reader").Re
 const Requests = @import("requests").Requests;
 const SizeAlgorithm = @import("size_algorithm").SizeAlgorithm;
 const Value = @import("queue_with_sizes").Value;
-const anyopaque = @import("anyopaque");
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
 const std = @import("std");

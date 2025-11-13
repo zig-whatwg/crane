@@ -27,7 +27,6 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRootMode = @import("shadow_root_mode").ShadowRootMode;
 const SlotAssignmentMode = @import("slot_assignment_mode").SlotAssignmentMode;
 const Text = @import("text").Text;
-const anyopaque = @import("anyopaque");
 const std = @import("std");
 const webidl = @import("webidl");
 
