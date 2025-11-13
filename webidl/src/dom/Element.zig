@@ -132,6 +132,122 @@ pub const Element = webidl.interface(struct {
     // DOM §4.10.3-4.10.4 - Attribute Helper Algorithms
     // ========================================================================
 
+    /// Append an attribute - DOM §4.10.3
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-append
+    ///
+    /// To append an attribute to element:
+    /// 1. Append attribute to element's attribute list
+    /// 2. Set attribute's element to element
+    /// 3. Set attribute's node document to element's node document
+    /// 4. Handle attribute changes for attribute with element, null, and attribute's value
+    fn appendAttribute(self: *Element, attribute: *Attr) !void {
+        // Step 1: Append to attribute list
+        try self.attributes.append(attribute.*);
+
+        // Get pointer to the appended attribute
+        const appended_attr = &self.attributes.items[self.attributes.len - 1];
+
+        // Step 2: Set attribute's element
+        appended_attr.owner_element = self;
+
+        // Step 3: Set attribute's node document
+        // TODO: Set node_document when Attr has that field
+
+        // Step 4: Handle attribute changes
+        try Attr.handleAttributeChanges(appended_attr, self, null, appended_attr.value);
+    }
+
+    /// Remove an attribute - DOM §4.10.3
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
+    ///
+    /// To remove an attribute:
+    /// 1. Let element be attribute's element
+    /// 2. Remove attribute from element's attribute list
+    /// 3. Set attribute's element to null
+    /// 4. Handle attribute changes for attribute with element, attribute's value, and null
+    fn removeAttributeInternal(self: *Element, attr_to_remove: *Attr) !void {
+        // Step 1: element is self
+        const old_value = attr_to_remove.value;
+
+        // Step 2: Remove from attribute list
+        for (self.attributes.items, 0..) |*attr, i| {
+            if (attr == attr_to_remove) {
+                _ = self.attributes.orderedRemove(i);
+                break;
+            }
+        }
+
+        // Step 3: Set attribute's element to null
+        attr_to_remove.owner_element = null;
+
+        // Step 4: Handle attribute changes
+        // Note: Pass empty string for new_value since attribute is being removed
+        try Attr.handleAttributeChanges(attr_to_remove, self, old_value, "");
+    }
+
+    /// Set an attribute value - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
+    ///
+    /// To set an attribute value given element, localName, value, and optionally prefix and namespace:
+    /// 1. Let attribute be result of getting attribute given namespace, localName, and element
+    /// 2. If attribute is null, create attribute and append to element, then return
+    /// 3. Change attribute to value
+    fn setAttributeValue(
+        self: *Element,
+        local_name: []const u8,
+        value: []const u8,
+        prefix: ?[]const u8,
+        namespace: ?[]const u8,
+    ) !void {
+        // Step 1: Get existing attribute
+        const existing = self.getAttributeByNamespaceAndLocalName(namespace, local_name);
+
+        if (existing) |attr| {
+            // Step 3: Change attribute to value
+            try Attr.changeAttribute(attr, value);
+        } else {
+            // Step 2: Create new attribute and append
+            const new_attr = try Attr.init(
+                self.allocator,
+                namespace,
+                prefix,
+                local_name,
+                value,
+            );
+            try self.appendAttribute(&new_attr);
+        }
+    }
+
+    /// Remove an attribute by name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-name
+    ///
+    /// To remove an attribute by name given qualifiedName and element:
+    /// 1. Let attr be result of getting attribute given qualifiedName and element
+    /// 2. If attr is non-null, then remove attr
+    /// 3. Return attr
+    fn removeAttributeByName(self: *Element, qualified_name: []const u8) !void {
+        if (self.getAttributeByName(qualified_name)) |attr| {
+            try self.removeAttributeInternal(attr);
+        }
+    }
+
+    /// Remove an attribute by namespace and local name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
+    ///
+    /// To remove an attribute by namespace and local name given namespace, localName, and element:
+    /// 1. Let attr be result of getting attribute given namespace, localName, and element
+    /// 2. If attr is non-null, then remove attr
+    /// 3. Return attr
+    fn removeAttributeByNamespaceAndLocalName(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !void {
+        if (self.getAttributeByNamespaceAndLocalName(namespace, local_name)) |attr| {
+            try self.removeAttributeInternal(attr);
+        }
+    }
+
     /// Get an attribute by name - DOM §4.10.4
     /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-name
     ///
@@ -263,28 +379,100 @@ pub const Element = webidl.interface(struct {
 
     /// setAttribute(qualifiedName, value)
     /// Spec: https://dom.spec.whatwg.org/#dom-element-setattribute
+    ///
+    /// The setAttribute(qualifiedName, value) method steps are:
+    /// 1. If qualifiedName is not valid attribute local name, throw InvalidCharacterError
+    /// 2. If this is in HTML namespace and node document is HTML document,
+    ///    set qualifiedName to qualifiedName in ASCII lowercase
+    /// 3. Let attribute be first attribute in this's attribute list whose qualified name
+    ///    is qualifiedName, and null otherwise
+    /// 4. If attribute is null, create attribute and append to this, then return
+    /// 5. Change attribute to value
     pub fn call_setAttribute(self: *Element, qualified_name: []const u8, value: []const u8) !void {
-        for (self.attributes.items) |*attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                attr.value = value;
-                return;
-            }
+        // Step 1: Validate qualified name (simplified - check not empty and valid chars)
+        if (qualified_name.len == 0) {
+            return error.InvalidCharacterError;
         }
-        try self.attributes.append(Attr{
-            .name = qualified_name,
-            .value = value,
-        });
+
+        // Step 2: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const normalized_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            if (qualified_name.len > lowercased_buf.len) {
+                break :blk qualified_name; // Edge case: name too long
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 3: Find existing attribute
+        const existing = self.getAttributeByName(normalized_name);
+
+        if (existing) |attr| {
+            // Step 5: Change attribute to value
+            try Attr.changeAttribute(attr, value);
+        } else {
+            // Step 4: Create new attribute and append
+            // For setAttribute, we create with null namespace and prefix
+            const new_attr = try Attr.init(
+                self.allocator,
+                null, // namespace
+                null, // prefix
+                normalized_name,
+                value,
+            );
+            try self.appendAttribute(&new_attr);
+        }
+    }
+
+    /// setAttributeNS(namespace, qualifiedName, value)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
+    ///
+    /// The setAttributeNS(namespace, qualifiedName, value) method steps are:
+    /// 1. Let (namespace, prefix, localName) = result of validating and extracting
+    ///    namespace and qualifiedName given "element"
+    /// 2. Set an attribute value for this using localName, value, and also prefix and namespace
+    pub fn call_setAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        qualified_name: []const u8,
+        value: []const u8,
+    ) !void {
+        // Step 1: Validate and extract namespace/qualifiedName
+        // For now, simplified: split on ':' if present
+        var prefix: ?[]const u8 = null;
+        var local_name: []const u8 = qualified_name;
+
+        if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx| {
+            prefix = qualified_name[0..colon_idx];
+            local_name = qualified_name[colon_idx + 1 ..];
+        }
+
+        // Step 2: Set attribute value
+        try self.setAttributeValue(local_name, value, prefix, namespace);
     }
 
     /// removeAttribute(qualifiedName)
     /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattribute
-    pub fn call_removeAttribute(self: *Element, qualified_name: []const u8) void {
-        for (self.attributes.items, 0..) |attr, i| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                _ = self.attributes.orderedRemove(i);
-                return;
-            }
-        }
+    ///
+    /// The removeAttribute(qualifiedName) method steps are to remove an attribute
+    /// given qualifiedName and this, and then return undefined.
+    pub fn call_removeAttribute(self: *Element, qualified_name: []const u8) !void {
+        try self.removeAttributeByName(qualified_name);
+    }
+
+    /// removeAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
+    ///
+    /// The removeAttributeNS(namespace, localName) method steps are to remove an attribute
+    /// given namespace, localName, and this, and then return undefined.
+    pub fn call_removeAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !void {
+        try self.removeAttributeByNamespaceAndLocalName(namespace, local_name);
     }
 
     /// hasAttribute(qualifiedName)
