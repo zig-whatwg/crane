@@ -211,9 +211,8 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
 
     const definitions_section = source[last_import_end..end_pos];
 
-    // Parse module definitions and filter out struct/enum/union type definitions
-    // Keep: type aliases, helper functions, constants
-    // Skip: pub const Name = struct/enum/union { ... }
+    // Parse module definitions
+    // Keep everything except re-definitions of std, webidl, Allocator
     var filtered: std.ArrayList(u8) = .empty;
     defer filtered.deinit(allocator);
 
@@ -258,35 +257,9 @@ fn parseModuleDefinitions(allocator: Allocator, source: []const u8) ![]const u8 
             continue;
         }
 
-        // Check if this is a struct/enum/union type definition
-        const is_struct_def = std.mem.indexOf(u8, first_line, "pub const ") != null and
-            (std.mem.indexOf(u8, first_line, " = struct {") != null or
-                std.mem.indexOf(u8, first_line, " = enum {") != null or
-                std.mem.indexOf(u8, first_line, " = union(") != null);
-
-        if (is_struct_def) {
-            // Skip this entire struct/enum/union definition
-            var brace_depth: i32 = 0;
-            var found_opening = false;
-            while (filter_pos < definitions_section.len) {
-                if (definitions_section[filter_pos] == '{') {
-                    brace_depth += 1;
-                    found_opening = true;
-                } else if (definitions_section[filter_pos] == '}') {
-                    brace_depth -= 1;
-                    if (found_opening and brace_depth == 0) {
-                        // Found closing brace, skip to next line
-                        while (filter_pos < definitions_section.len and definitions_section[filter_pos] != '\n') {
-                            filter_pos += 1;
-                        }
-                        if (filter_pos < definitions_section.len) filter_pos += 1;
-                        break;
-                    }
-                }
-                filter_pos += 1;
-            }
-            continue;
-        }
+        // NOTE: We now include struct/enum/union definitions since they may be
+        // used as return types or parameters in methods (e.g., TeeBranches in ReadableStream)
+        // The old filtering logic was too aggressive and caused missing type errors.
 
         // This is something we want to keep (function, type alias, const)
         // Find the end of this declaration

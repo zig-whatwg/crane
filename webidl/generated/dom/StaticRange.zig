@@ -12,12 +12,17 @@ const AbstractRange = @import("abstract_range").AbstractRange;
 const Allocator = @import("std.mem").Allocator;
 const Container = @import("container").Container;
 const Node = @import("node").Node;
-const StaticRangeInit = @import("static_range_init").StaticRangeInit;
 const std = @import("std");
 const webidl = @import("webidl");
 
 
 /// StaticRangeInit dictionary
+pub const StaticRangeInit = struct {
+startContainer: *Node,
+startOffset: u32,
+endContainer: *Node,
+endOffset: u32,
+};
 /// DOM §5 - interface StaticRange : AbstractRange
 ///
 /// A StaticRange is a range object that does not update when the node tree mutates.

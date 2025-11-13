@@ -26,8 +26,6 @@ const NodeList = @import("node_list").NodeList;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-const ShadowRootMode = @import("shadow_root_mode").ShadowRootMode;
-const SlotAssignmentMode = @import("slot_assignment_mode").SlotAssignmentMode;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom = @import("dom").dom;
@@ -40,9 +38,29 @@ const webidl = @import("webidl");
 /// DOM §4.8.1 - ShadowRootMode enum
 ///
 /// Defines the mode of a shadow root.
+pub const ShadowRootMode = enum {
+open,
+closed,
+pub fn toString(self: ShadowRootMode) []const u8 {
+        return switch (self) {
+            .open => "open",
+            .closed => "closed",
+        };
+    }
+};
 /// DOM §4.8.1 - SlotAssignmentMode enum
 ///
 /// Defines how slottables are assigned to slots.
+pub const SlotAssignmentMode = enum {
+manual,
+named,
+pub fn toString(self: SlotAssignmentMode) []const u8 {
+        return switch (self) {
+            .manual => "manual",
+            .named => "named",
+        };
+    }
+};
 /// DOM §4.8.1 - ShadowRoot interface
 ///
 /// Shadow roots are DocumentFragments that serve as the root of a shadow tree.

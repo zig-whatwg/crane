@@ -16,11 +16,9 @@ const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
 const Promise = @import("promise").Promise;
 const Requests = @import("requests").Requests;
-const StreamState = @import("stream_state").StreamState;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
 const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
-const Writer = @import("writer").Writer;
 const common = @import("common").common;
 const dict_parsing = @import("dict_parsing").dict_parsing;
 const eventLoop = @import("event_loop").eventLoop;
@@ -32,7 +30,17 @@ const webidl = @import("webidl");
 /// Stream state enumeration
 ///
 /// Spec: § 5.1 "Internal slots" - [[state]]
+pub const StreamState = enum {
+writable,
+closed,
+erroring,
+errored,
+};
 /// Writer type for a writable stream (optional)
+pub const Writer = union(enum) {
+none: void,
+default: *WritableStreamDefaultWriter,
+};
 
 pub const WritableStream = struct {
 

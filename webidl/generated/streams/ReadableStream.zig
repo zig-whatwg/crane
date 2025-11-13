@@ -15,7 +15,6 @@ const FromIterableState = @import("from_iterable_state").FromIterableState;
 const IntoRequests = @import("into_requests").IntoRequests;
 const JSValue = @import("j_s_value").JSValue;
 const Loop = @import("loop").Loop;
-const PipeOptions = @import("pipe_options").PipeOptions;
 const PipeState = @import("pipe_state").PipeState;
 const Promise = @import("promise").Promise;
 const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
@@ -23,13 +22,10 @@ const ReadableStreamAsyncIterator = @import("readable_stream_async_iterator").Re
 const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
 const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
 const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
-const Reader = @import("reader").Reader;
 const Requests = @import("requests").Requests;
 const State = @import("state").State;
-const StreamState = @import("stream_state").StreamState;
 const TeeState = @import("tee_state").TeeState;
 const TestEventLoop = @import("test_event_loop").TestEventLoop;
-const TransformPair = @import("transform_pair").TransformPair;
 const WritableStream = @import("writable_stream").WritableStream;
 const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
 const async_iterator = @import("async_iterator").async_iterator;
@@ -44,18 +40,42 @@ const webidl = @import("webidl");
 /// Stream state enumeration
 ///
 /// Spec: § 4.1 "Internal slots" - [[state]]
+pub const StreamState = enum {
+readable,
+closed,
+errored,
+};
 /// Reader union type
 ///
 /// Spec: § 4.1 [[reader]] slot can be ReadableStreamDefaultReader, ReadableStreamBYOBReader, or undefined
+pub const Reader = union(enum) {
+none: void,
+default: *ReadableStreamDefaultReader,
+byob: *ReadableStreamBYOBReader,
+};
 /// Pipe options for pipeTo() method
 ///
 /// Spec: § 4.1.5 StreamPipeOptions dictionary
+pub const PipeOptions = struct {
+preventClose: bool = false,
+preventAbort: bool = false,
+preventCancel: bool = false,
+signal: ?*anyopaque = null,
+};
 /// Transform pair for pipeThrough() method
 ///
 /// Spec: § 4.1.6 ReadableWritablePair dictionary
+pub const TransformPair = struct {
+readable: *ReadableStream,
+writable: *WritableStream,
+};
 /// Return type for tee() method
 ///
 /// Spec: § 4.1.7 tee() returns two branches
+pub const TeeBranches = struct {
+branch1: *ReadableStream,
+branch2: *ReadableStream,
+};
 
 pub const ReadableStream = struct {
 

@@ -10,7 +10,6 @@
 
 const Allocator = @import("std.mem").Allocator;
 const EventInit = @import("event_init").EventInit;
-const EventPathItem = @import("event_path_item").EventPathItem;
 const EventTarget = @import("event_target").EventTarget;
 const infra = @import("infra").infra;
 const std = @import("std");
@@ -19,6 +18,15 @@ const webidl = @import("webidl");
 
 /// EventPath struct - used by event dispatch algorithm
 /// DOM §2.9.1: Each path struct consists of:
+pub const EventPathItem = struct {
+invocation_target: *EventTarget,
+invocation_target_in_shadow_tree: bool,
+shadow_adjusted_target: ?*EventTarget,
+related_target: ?*EventTarget,
+touch_target_list: std.ArrayList(*EventTarget),
+root_of_closed_tree: bool,
+slot_in_closed_tree: bool,
+};
 /// Event WebIDL interface
 
 pub const Event = struct {

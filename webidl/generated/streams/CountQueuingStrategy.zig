@@ -10,13 +10,15 @@
 
 const Allocator = @import("std.mem").Allocator;
 const Dict = @import("dict").Dict;
-const QueuingStrategyInit = @import("queuing_strategy_init").QueuingStrategyInit;
 const std = @import("std");
 const webidl = @import("webidl");
 
 
 /// QueuingStrategyInit dictionary
 /// Spec: https://streams.spec.whatwg.org/#dictdef-queuingstrategyinit
+pub const QueuingStrategyInit = struct {
+highWaterMark: f64,
+};
 
 pub const CountQueuingStrategy = struct {
 

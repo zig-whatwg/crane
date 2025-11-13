@@ -42,11 +42,13 @@ pub fn generateEnhancedFile(
     );
 
     // Process each class
-    for (file_ir.classes) |*class| {
-        var enhanced = try optimizer.enhanceClass(allocator, class, registry);
+    for (file_ir.classes, 0..) |*class, idx| {
+        var enhanced = try optimizer.enhanceClass(allocator, class, registry, file_ir.module_imports, file_ir.module_definitions);
         defer enhanced.deinit(allocator);
 
-        const class_code = try generator.generateCode(allocator, enhanced);
+        // Include module definitions only for the first class in the file
+        const module_defs = if (idx == 0) file_ir.module_definitions else null;
+        const class_code = try generator.generateCode(allocator, enhanced, module_defs);
         defer allocator.free(class_code);
 
         try writer.writeAll(class_code);
@@ -116,11 +118,13 @@ pub fn generateAllFiles(
         );
 
         // Process each class in the file
-        for (file_ir.classes) |*class| {
-            var enhanced = try optimizer.enhanceClass(allocator, class, &registry);
+        for (file_ir.classes, 0..) |*class, idx| {
+            var enhanced = try optimizer.enhanceClass(allocator, class, &registry, file_ir.module_imports, file_ir.module_definitions);
             defer enhanced.deinit(allocator);
 
-            const class_code = try generator.generateCode(allocator, enhanced);
+            // Include module definitions only for the first class in the file
+            const module_defs = if (idx == 0) file_ir.module_definitions else null;
+            const class_code = try generator.generateCode(allocator, enhanced, module_defs);
             defer allocator.free(class_code);
 
             try writer.writeAll(class_code);
