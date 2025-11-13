@@ -2,6 +2,7 @@
 // https://dom.spec.whatwg.org/#dispatching-events
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 const Event = @import("event").Event;
 const EventTarget = @import("event_target").EventTarget;
@@ -20,7 +21,7 @@ pub fn appendToEventPath(
     invocation_target: *EventTarget,
     shadow_adjusted_target: ?*EventTarget,
     related_target: ?*EventTarget,
-    touch_targets: std.ArrayList(*EventTarget),
+    touch_targets: infra.List(*EventTarget),
     slot_in_closed_tree: bool,
 ) !void {
     // Step 1: Let invocationTargetInShadowTree be false
@@ -121,11 +122,11 @@ pub fn dispatch(
     // Step 6: If target is not relatedTarget or target is event's relatedTarget
     if (target != related_target or target == event.related_target) {
         // Step 6.1: Let touchTargets be a new list
-        var touch_targets = std.ArrayList(*EventTarget).init(event.allocator);
+        var touch_targets = infra.List(*EventTarget).init(event.allocator);
 
         // Step 6.2: For each touchTarget of event's touch target list,
         // append the result of retargeting touchTarget against target to touchTargets
-        for (event.touch_target_list.items) |touch_target| {
+        for (event.touch_target_list.items()) |touch_target| {
             const retargeted = retarget(touch_target, target);
             if (retargeted) |t| {
                 try touch_targets.append(t);
@@ -219,12 +220,12 @@ pub fn dispatch(
             const parent_related_target = retarget(event.related_target, p);
 
             // Step 6.9.5: Let touchTargets be a new list
-            var parent_touch_targets = std.ArrayList(*EventTarget).init(event.allocator);
+            var parent_touch_targets = infra.List(*EventTarget).init(event.allocator);
             defer parent_touch_targets.deinit();
 
             // Step 6.9.6: For each touchTarget of event's touch target list,
             // append the result of retargeting touchTarget against parent to touchTargets
-            for (event.touch_target_list.items) |touch_target| {
+            for (event.touch_target_list.items()) |touch_target| {
                 const retargeted_touch = retarget(touch_target, p);
                 if (retargeted_touch) |t| {
                     try parent_touch_targets.append(t);
@@ -477,12 +478,12 @@ fn invoke(
     // Clone to avoid issues with listeners added/removed during dispatch
     const current_target = event.current_target.?;
 
-    var listeners = std.ArrayList(EventListener).init(event.allocator);
+    var listeners = infra.List(EventListener).init(event.allocator);
     defer listeners.deinit();
 
     // Get the event_listener_list from EventTarget
     if (current_target.event_listener_list) |list| {
-        try listeners.appendSlice(list.items);
+        try listeners.appendSlice(list.items());
     }
 
     // Step 7: Let invocationTargetInShadowTree be struct's invocation-target-in-shadow-tree
@@ -491,7 +492,7 @@ fn invoke(
     // Step 8: Let found be the result of running inner invoke
     const found = try innerInvoke(
         event,
-        listeners.items,
+        listeners.items(),
         phase,
         invocation_target_in_shadow_tree,
         legacy_output_did_listeners_throw_flag,
