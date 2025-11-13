@@ -246,7 +246,7 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         try writer.writeAll("    // ========================================================================\n\n");
 
         for (enhanced.all_methods) |method| {
-            try writeMethod(allocator, writer, method, enhanced.all_imports);
+            try writeMethod(allocator, writer, method, enhanced.all_imports, class.name);
             try writer.writeAll("\n");
         }
     }
@@ -255,7 +255,7 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
 }
 
 /// Write a single method
-fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_level_imports: []ir.Import) !void {
+fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_level_imports: []ir.Import, class_name: []const u8) !void {
     // Doc comment
     if (method.doc_comment) |doc| {
         var lines = std.mem.splitScalar(u8, doc, '\n');
@@ -275,18 +275,18 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         method.signature,
     });
 
-    // Method body - strip local imports that shadow top-level imports
-    const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports);
+    // Method body - strip local imports that shadow top-level imports or the current class
+    const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
     defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
     try writer.writeAll(cleaned_body);
 
     try writer.writeAll("\n    }\n");
 }
 
-/// Remove local imports from method body if they shadow top-level imports
+/// Remove local imports from method body if they shadow top-level imports or the current class
 /// Example: removes `const DocumentType = @import("document_type").DocumentType;`
-/// if DocumentType is already imported at file level
-fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_imports: []ir.Import) ![]const u8 {
+/// if DocumentType is already imported at file level OR if it's the current class name
+fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_imports: []ir.Import, class_name: []const u8) ![]const u8 {
     // Build set of imported names
     var imported_names = std.StringHashMap(void).init(allocator);
     defer imported_names.deinit();
@@ -294,6 +294,9 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
     for (top_level_imports) |import| {
         try imported_names.put(import.name, {});
     }
+
+    // Also add the current class name to prevent self-reference shadowing
+    try imported_names.put(class_name, {});
 
     // Scan for local imports: `const Name = @import("...")`
     var result: std.ArrayList(u8) = .empty;
