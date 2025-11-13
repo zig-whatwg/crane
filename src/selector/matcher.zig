@@ -304,9 +304,19 @@ pub const Matcher = struct {
     }
 
     /// Match class selector
+    /// Uses bloom filter for fast negative lookups before checking actual class list
     fn matchesClass(self: *const Matcher, element: *Element, class_name: []const u8) bool {
         _ = self;
-        // TODO: Add bloom filter optimization when available on ElementWithBase
+
+        // Fast path: Check bloom filter first
+        // If bloom filter says "definitely not present", we can return false immediately
+        // without parsing the class attribute string
+        if (!element.class_bloom_filter.contains(class_name)) {
+            return false;
+        }
+
+        // Bloom filter says "possibly present" - verify with actual class list
+        // Small chance of false positive, but no false negatives
         const class_attr = element.getAttribute("class") orelse return false;
         return hasClass(class_attr, class_name);
     }

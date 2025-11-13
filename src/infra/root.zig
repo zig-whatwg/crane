@@ -22,6 +22,7 @@ pub const json = @import("json.zig");
 pub const base64 = @import("base64.zig");
 pub const namespaces = @import("namespaces.zig");
 pub const time = @import("time.zig");
+pub const bloom_filter = @import("bloom_filter.zig");
 
 pub const String = string.String;
 pub const CodePoint = code_point.CodePoint;
@@ -36,6 +37,7 @@ pub const InfraValue = json.InfraValue;
 pub const InfraError = string.InfraError;
 pub const Moment = time.Moment;
 pub const Duration = time.Duration;
+pub const BloomFilter = bloom_filter.BloomFilter;
 
 // Numeric type aliases for clarity
 // WHATWG Infra Standard §4.3

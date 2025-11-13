@@ -36,6 +36,11 @@ pub const ElementWithBase = struct {
     namespace_uri: ?[]const u8,
     attributes: infra.List(*AttrWithBase),
 
+    /// Bloom filter for fast class membership testing
+    /// Optimizes selector matching by providing O(1) negative lookups
+    /// Updated automatically when class attribute changes
+    class_bloom_filter: infra.BloomFilter,
+
     /// Initialize a new Element
     pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
         return .{
@@ -51,6 +56,7 @@ pub const ElementWithBase = struct {
             .tag_name = tag_name,
             .namespace_uri = null,
             .attributes = infra.List(*AttrWithBase).init(allocator),
+            .class_bloom_filter = infra.BloomFilter.init(),
         };
     }
 
@@ -136,6 +142,10 @@ pub const ElementWithBase = struct {
             if (self.attributes.get(i)) |attr| {
                 if (std.mem.eql(u8, attr.local_name, name)) {
                     try attr.setValue(value);
+                    // Update bloom filter if class attribute changed
+                    if (std.mem.eql(u8, name, "class")) {
+                        self.rebuildClassBloomFilter();
+                    }
                     return;
                 }
             }
@@ -153,5 +163,24 @@ pub const ElementWithBase = struct {
             null, // prefix
         );
         try self.attributes.append(attr);
+
+        // Update bloom filter if class attribute was added
+        if (std.mem.eql(u8, name, "class")) {
+            self.rebuildClassBloomFilter();
+        }
+    }
+
+    /// Rebuild the class bloom filter from the current class attribute
+    /// Called automatically when class attribute changes
+    fn rebuildClassBloomFilter(self: *ElementWithBase) void {
+        self.class_bloom_filter.clear();
+
+        const class_attr = self.getAttribute("class") orelse return;
+
+        // Split class attribute on whitespace and add each class to bloom filter
+        var iter = std.mem.tokenizeAny(u8, class_attr, " \t\n\r");
+        while (iter.next()) |class_name| {
+            self.class_bloom_filter.add(class_name);
+        }
     }
 };
