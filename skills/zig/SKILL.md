@@ -81,9 +81,11 @@ pub fn parse(
 ### defer and errdefer
 
 ```zig
+const infra = @import("infra");
+
 // defer: ALWAYS runs when scope exits
 pub fn process(allocator: Allocator) !Result {
-    var list = std.ArrayList(u8).init(allocator);
+    var list = infra.List(u8).init(allocator);
     defer list.deinit(); // Runs even on error
     
     try list.append(42);
@@ -125,8 +127,10 @@ defer allocator.free(result); // Caller frees
 
 ```zig
 // ✅ GOOD: defer right after allocation
+const infra = @import("infra");
+
 pub fn example(allocator: Allocator) !void {
-    var list = std.ArrayList(u8).init(allocator);
+    var list = infra.List(u8).init(allocator);
     defer list.deinit(); // Declare cleanup immediately
     
     try list.append(42);
@@ -135,7 +139,7 @@ pub fn example(allocator: Allocator) !void {
 
 // ❌ BAD: Forgetting defer
 pub fn example(allocator: Allocator) !void {
-    var list = std.ArrayList(u8).init(allocator);
+    var list = infra.List(u8).init(allocator);
     try list.append(42);
     // Memory leak! list.deinit() never called
 }
@@ -161,6 +165,85 @@ pub fn algorithm(allocator: Allocator, input: []const u8) !Result {
     return result;
 }
 ```
+
+---
+
+## Data Structures: Prefer infra.List
+
+### ⚠️ CRITICAL: Use infra.List Instead of std.ArrayList
+
+**In WHATWG codebase, ALWAYS use `infra.List` instead of `std.ArrayList`.**
+
+This avoids Zig version compatibility issues and provides consistent API across the codebase.
+
+```zig
+// ✅ GOOD: Use infra.List
+const infra = @import("infra");
+
+pub fn operation(allocator: Allocator) !void {
+    var list = infra.List(*Node).init(allocator);
+    defer list.deinit(); // No allocator parameter needed
+    
+    try list.append(node);
+    
+    // Access elements with index-based iteration
+    for (0..list.len) |i| {
+        const item = list.get(i) orelse continue;
+        // Process item
+    }
+}
+
+// ❌ BAD: Don't use std.ArrayList (Zig 0.15 breaking changes)
+pub fn operation(allocator: Allocator) !void {
+    var list = std.ArrayList(*Node).init(allocator); // ❌ API changed in 0.15
+    defer list.deinit(allocator); // ❌ Requires allocator in 0.15
+    
+    try list.append(node);
+    for (list.items) |item| { // ❌ Don't use .items pattern
+        // ...
+    }
+}
+```
+
+### infra.List API
+
+```zig
+const infra = @import("infra");
+
+// Initialization
+var list = infra.List(T).init(allocator);
+defer list.deinit(); // No allocator parameter
+
+// Adding items
+try list.append(item);
+try list.prepend(item);
+try list.insert(index, item);
+
+// Accessing items
+const item = list.get(index); // Returns ?T
+const len = list.len; // Field, not method
+
+// Iteration - Use index-based access
+for (0..list.len) |i| {
+    const item = list.get(i) orelse continue;
+    // Process item
+}
+
+// Removing items
+const removed = try list.remove(index); // Returns T
+list.clear(); // Clear all items
+
+// ⚠️ NOTE: infra.List does NOT have .items field
+// Use index-based iteration instead
+```
+
+### When You Must Use std.ArrayList
+
+Only use `std.ArrayList` when:
+1. Interfacing with external Zig code that requires it
+2. You need ArrayList-specific methods not in infra.List
+
+If you must use ArrayList, be aware of Zig 0.15 API changes.
 
 ---
 

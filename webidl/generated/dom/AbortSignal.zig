@@ -56,9 +56,6 @@ pub const AbortSignal = struct {
     /// Dependent signals: weak set of AbortSignals that depend on this signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
     dependent_signals: infra.List(*AbortSignal),
-    /// Event handler for abort event
-    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-onabort
-    onabort: ?*anyopaque = null,
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -78,13 +75,14 @@ pub const AbortSignal = struct {
         self.source_signals.deinit();
         self.dependent_signals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
-
+    
+        
         // Clean up base fields
         if (self.base.event_listener_list) |list| {
             list.deinit(self.allocator);
             self.allocator.destroy(list);
         }
-    }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to EventTargetBase for type-generic code.
@@ -102,17 +100,6 @@ pub const AbortSignal = struct {
     pub fn get_reason(self: *const AbortSignal) ?webidl.Exception {
         return self.reason;
     }
-    /// DOM - AbortSignal.onabort
-    ///
-    /// Event handler IDL attribute for the abort event.
-    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-onabort
-    pub fn get_onabort(self: *const AbortSignal) ?*anyopaque {
-        return self.onabort;
-    }
-
-    pub fn set_onabort(self: *AbortSignal, handler: ?*anyopaque) void {
-        self.onabort = handler;
-    }
     pub fn call_throwIfAborted(self: *const AbortSignal) !void {
         if (self.aborted) {
             return error.Aborted;
@@ -127,7 +114,7 @@ pub const AbortSignal = struct {
     }
     /// Create a dependent abort signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
-    ///
+    /// 
     /// Steps:
     /// 1. Let resultSignal be a new object implementing signalInterface using realm
     /// 2. For each signal of signals:
@@ -179,7 +166,7 @@ pub const AbortSignal = struct {
     }
     /// Signal abort algorithm
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-signal-abort
-    ///
+    /// 
     /// Steps:
     /// 1. If signal is aborted, then return
     /// 2. Set signal's abort reason to reason if given, otherwise to new "AbortError" DOMException
@@ -190,7 +177,7 @@ pub const AbortSignal = struct {
     /// - Append dependentSignal to dependentSignalsToAbort
     /// 5. Run the abort steps for signal
     /// 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal
-    ///
+    /// 
     /// TODO: Fire 'abort' event (requires full event loop integration)
     pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
         // Spec step 1: If signal is aborted, then return
@@ -207,8 +194,7 @@ pub const AbortSignal = struct {
         defer dependent_signals_to_abort.deinit();
 
         // Spec step 4: For each dependentSignal of signal's dependent signals
-        for (0..self.dependent_signals.len) |i| {
-            const dependent_signal = self.dependent_signals.get(i) orelse continue;
+        for (self.dependent_signals.items()) |dependent_signal| {
             // If dependentSignal is not aborted
             if (!dependent_signal.aborted) {
                 // Set dependentSignal's abort reason to signal's abort reason
@@ -223,8 +209,7 @@ pub const AbortSignal = struct {
         self.runAbortSteps();
 
         // Spec step 6: For each dependentSignal of dependentSignalsToAbort, run the abort steps
-        for (0..dependent_signals_to_abort.len) |i| {
-            const dependent_signal = dependent_signals_to_abort.get(i) orelse continue;
+        for (dependent_signals_to_abort.items()) |dependent_signal| {
             dependent_signal.runAbortSteps();
         }
     }
@@ -249,14 +234,13 @@ pub const AbortSignal = struct {
 
         // Remove all event listeners registered with this signal
         // Spec: Step 6 of "add an event listener" - remove listener when signal is aborted
-        for (0..self.event_listener_removals.len) |i| {
-            const removal = self.event_listener_removals.get(i) orelse continue;
-            // Use the public removeEventListener API
-            removal.target.call_removeEventListener(
-                removal.listener_type,
-                removal.listener_callback,
-                removal.listener_capture,
-            );
+        for (self.event_listener_removals.items()) |removal| {
+            const listener = EventListener{
+                .type = removal.listener_type,
+                .callback = removal.listener_callback,
+                .capture = removal.listener_capture,
+            };
+            removal.target.call_removeEventListener(listener.type, listener.callback, listener.capture);
         }
         self.event_listener_removals.clear();
 
@@ -450,23 +434,3 @@ pub const AbortSignal = struct {
     };
 };
 
-// Tests
-
-test "AbortSignal - onabort event handler" {
-    const allocator = std.testing.allocator;
-
-    var signal = try AbortSignal.init(allocator);
-    defer signal.deinit();
-
-    // Test initial value is null
-    try std.testing.expectEqual(@as(?*anyopaque, null), signal.get_onabort());
-
-    // Test setting a handler (using arbitrary pointer as placeholder)
-    const dummy_handler: *const u32 = &42;
-    signal.set_onabort(@ptrCast(@constCast(dummy_handler)));
-    try std.testing.expectEqual(@as(?*anyopaque, @ptrCast(@constCast(dummy_handler))), signal.get_onabort());
-
-    // Test setting back to null
-    signal.set_onabort(null);
-    try std.testing.expectEqual(@as(?*anyopaque, null), signal.get_onabort());
-}

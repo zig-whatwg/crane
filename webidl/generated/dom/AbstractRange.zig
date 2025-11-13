@@ -64,6 +64,7 @@ pub const AbstractRangeBase = struct {
         };
     }
 
+
     // ========================================================================
     // Type-safe downcasting helpers
     // ========================================================================
@@ -79,7 +80,7 @@ pub const AbstractRangeBase = struct {
 
     /// Type-safe downcast to any derived type.
     /// Returns null if type_tag doesn't match the requested type.
-    ///
+    /// 
     /// Example:
     ///   if (base.tryCast(Element)) |elem| {
     ///       // elem is *Element
@@ -122,7 +123,7 @@ pub const AbstractRangeBase = struct {
 };
 
 /// DOM §5 - interface AbstractRange
-///
+/// 
 /// Objects implementing AbstractRange are known as ranges.
 /// A range has two associated boundary points - a start and end.
 const Node = @import("node").Node;
@@ -139,6 +140,7 @@ pub const AbstractRange = struct {
     /// End boundary point - offset
     end_offset: u32,
 
+
     pub fn init(allocator: std.mem.Allocator, start_container: *Node, start_offset: u32, end_container: *Node, end_offset: u32) !AbstractRange {
         return try AbstractRange.initFields(allocator, &.{
             .start_container = start_container,
@@ -147,12 +149,7 @@ pub const AbstractRange = struct {
             .end_offset = end_offset,
         });
     }
-    fn initFields(_: std.mem.Allocator, fields: *const struct {
-        start_container: *Node,
-        start_offset: u32,
-        end_container: *Node,
-        end_offset: u32,
-    }) !AbstractRange {
+    fn initFields(allocator: std.mem.Allocator, fields: *const struct { start_container: *Node, start_offset: u32, end_container: *Node, end_offset: u32, }) !AbstractRange {
         return .{
             .start_container = fields.start_container,
             .start_offset = fields.start_offset,
@@ -202,3 +199,4 @@ pub const AbstractRange = struct {
         .cross_origin_isolated = false,
     };
 };
+

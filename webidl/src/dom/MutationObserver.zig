@@ -165,7 +165,7 @@ pub const MutationObserver = webidl.interface(struct {
         // Step 8.2: Append a weak reference to target to this's node list.
         // TODO: Implement proper weak references
         // For now, just append the pointer
-        try self.node_list.append(target);
+        try self.node_list.append(self.allocator, target);
     }
 
     /// DOM §7.1 - MutationObserver.disconnect()
@@ -213,7 +213,7 @@ pub const MutationObserver = webidl.interface(struct {
     /// Called by mutation observation algorithms when mutations occur.
     /// This is an internal method, not exposed in the WebIDL.
     pub fn enqueueRecord(self: *MutationObserver, record: MutationRecord) !void {
-        try self.record_queue.append(record);
+        try self.record_queue.append(self.allocator, record);
     }
 
     /// Get the callback for this observer

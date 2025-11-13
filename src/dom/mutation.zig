@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const Node = @import("node").Node;
+const NodeList = @import("node_list").NodeList;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Element = @import("element").Element;
@@ -16,6 +17,7 @@ const Text = @import("text").Text;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const tree_helpers = @import("tree_helpers.zig");
 const shadow_dom_algorithms = @import("shadow_dom_algorithms.zig");
+const mutation_observer = @import("mutation_observer_algorithms.zig");
 
 /// DOM Exception types as defined in WebIDL
 pub const DOMException = error{
@@ -236,6 +238,20 @@ fn isDocumentType(node: *Node) bool {
 /// Helper to check if node is a Text node
 fn isText(node: *Node) bool {
     return getNodeType(node) == Node.TEXT_NODE;
+}
+
+/// Helper to create a NodeList from an array of nodes
+/// The returned NodeList must be deinit'd by the caller
+fn createNodeList(allocator: std.mem.Allocator, nodes: []const *Node) !*NodeList {
+    const list = try allocator.create(NodeList);
+    errdefer allocator.destroy(list);
+    list.* = try NodeList.init(allocator);
+
+    for (nodes) |node| {
+        try list.addNode(node);
+    }
+
+    return list;
 }
 
 /// Helper to check if node is a CharacterData node
@@ -495,8 +511,26 @@ pub fn insert(
         }
 
         // Step 4.2: Queue a tree mutation record for node
-        // TODO: Implement mutation observer record queuing
-        // queueTreeMutationRecord(node, &[_]*Node{}, nodes, null, null);
+        // addedNodes is empty, removedNodes is the children that were removed
+        const allocator = parent.allocator;
+        const empty_list = try createNodeList(allocator, &[_]*Node{});
+        defer {
+            empty_list.deinit();
+            allocator.destroy(empty_list);
+        }
+        const removed_list = try createNodeList(allocator, nodes[0..nodes_count]);
+        defer {
+            removed_list.deinit();
+            allocator.destroy(removed_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            node,
+            empty_list,
+            removed_list,
+            null,
+            null,
+        );
     }
 
     // Step 5: If child is non-null, update live ranges
@@ -566,8 +600,25 @@ pub fn insert(
 
     // Step 8: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
-        // TODO: Implement mutation observer record queuing
-        // queueTreeMutationRecord(parent, nodes, &[_]*Node{}, previousSibling, child);
+        const allocator = parent.allocator;
+        const added_list = try createNodeList(allocator, nodes[0..nodes_count]);
+        defer {
+            added_list.deinit();
+            allocator.destroy(added_list);
+        }
+        const empty_list = try createNodeList(allocator, &[_]*Node{});
+        defer {
+            empty_list.deinit();
+            allocator.destroy(empty_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            parent,
+            added_list,
+            empty_list,
+            previousSibling,
+            child,
+        );
     }
 
     // Step 9: Run the children changed steps for parent
@@ -701,12 +752,42 @@ pub fn replace(
     }
 
     // Step 12: Let nodes be node's children if DocumentFragment, otherwise « node »
+    var added_nodes: []*Node = undefined;
+    var added_nodes_buf: [256]*Node = undefined;
+    var added_count: usize = 0;
+
+    if (isDocumentFragment(node)) {
+        added_nodes = node.child_nodes.items();
+        added_count = added_nodes.len;
+    } else {
+        added_nodes_buf[0] = node;
+        added_nodes = added_nodes_buf[0..1];
+        added_count = 1;
+    }
+
     // Step 13: Insert node into parent before referenceChild with suppress observers
     try insert(node, parent, referenceChild, true);
 
     // Step 14: Queue a tree mutation record
-    // TODO: Implement mutation observer record queuing
-    // Would use: previousSibling, removedNodes[0..removed_count], referenceChild
+    const allocator = parent.allocator;
+    const added_list = try createNodeList(allocator, added_nodes[0..added_count]);
+    defer {
+        added_list.deinit();
+        allocator.destroy(added_list);
+    }
+    const removed_list = try createNodeList(allocator, removedNodes[0..removed_count]);
+    defer {
+        removed_list.deinit();
+        allocator.destroy(removed_list);
+    }
+    try mutation_observer.queueTreeMutationRecord(
+        allocator,
+        parent,
+        added_list,
+        removed_list,
+        previousSibling,
+        referenceChild,
+    );
 
     // Step 15: Return child
     return child;
@@ -720,9 +801,37 @@ pub fn replaceAll(
     node: ?*Node,
     parent: *Node,
 ) DOMException!void {
+    const allocator = parent.allocator;
+
     // Step 1: Let removedNodes be parent's children
+    const removed_count = parent.child_nodes.size();
+    var removed_nodes_buf: [256]*Node = undefined;
+    var removed_nodes: []const *Node = &[_]*Node{};
+
+    if (removed_count > 0) {
+        if (removed_count <= removed_nodes_buf.len) {
+            for (parent.child_nodes.items(), 0..) |child, i| {
+                removed_nodes_buf[i] = child;
+            }
+            removed_nodes = removed_nodes_buf[0..removed_count];
+        }
+    }
+
     // Step 2-4: Determine addedNodes
-    // (Both will be used for mutation observer - TODO)
+    var added_nodes: []const *Node = &[_]*Node{};
+    var added_nodes_buf: [256]*Node = undefined;
+    var added_count: usize = 0;
+
+    if (node) |n| {
+        if (isDocumentFragment(n)) {
+            added_nodes = n.child_nodes.items();
+            added_count = added_nodes.len;
+        } else {
+            added_nodes_buf[0] = n;
+            added_nodes = added_nodes_buf[0..1];
+            added_count = 1;
+        }
+    }
 
     // Step 5: Remove all parent's children in tree order with suppress observers
     while (parent.child_nodes.size() > 0) {
@@ -736,7 +845,26 @@ pub fn replaceAll(
     }
 
     // Step 7: Queue a tree mutation record if addedNodes or removedNodes is not empty
-    // TODO: Implement mutation observer record queuing
+    if (added_count > 0 or removed_count > 0) {
+        const added_list = try createNodeList(allocator, added_nodes[0..added_count]);
+        defer {
+            added_list.deinit();
+            allocator.destroy(added_list);
+        }
+        const removed_list = try createNodeList(allocator, removed_nodes[0..removed_count]);
+        defer {
+            removed_list.deinit();
+            allocator.destroy(removed_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            parent,
+            added_list,
+            removed_list,
+            null,
+            null,
+        );
+    }
 }
 
 /// DOM §4.2.5 - Pre-remove
@@ -833,8 +961,27 @@ pub fn remove(
 
     // Step 16: If suppress observers flag is unset, queue a tree mutation record
     if (!suppress_observers) {
-        // TODO: Implement mutation observer record queuing
-        // Would use: oldPreviousSibling, oldNextSibling
+        const allocator = parent.allocator;
+        const empty_list = try createNodeList(allocator, &[_]*Node{});
+        defer {
+            empty_list.deinit();
+            allocator.destroy(empty_list);
+        }
+        var removed_nodes_buf: [1]*Node = undefined;
+        removed_nodes_buf[0] = node;
+        const removed_list = try createNodeList(allocator, removed_nodes_buf[0..1]);
+        defer {
+            removed_list.deinit();
+            allocator.destroy(removed_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            parent,
+            empty_list,
+            removed_list,
+            oldPreviousSibling,
+            oldNextSibling,
+        );
     }
 
     // Step 17: Run the children changed steps for parent
@@ -1000,15 +1147,53 @@ pub fn move(
     runMovingStepsForTree(node, old_parent);
 
     // Step 25: Queue a tree mutation record for oldParent
-    // TODO: Implement mutation observer record queuing
-    // Would use: oldPreviousSibling, oldNextSibling
+    const allocator = new_parent.allocator;
+    {
+        const empty_list = try createNodeList(allocator, &[_]*Node{});
+        defer {
+            empty_list.deinit();
+            allocator.destroy(empty_list);
+        }
+        var removed_nodes_buf: [1]*Node = undefined;
+        removed_nodes_buf[0] = node;
+        const removed_list = try createNodeList(allocator, removed_nodes_buf[0..1]);
+        defer {
+            removed_list.deinit();
+            allocator.destroy(removed_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            old_parent,
+            empty_list,
+            removed_list,
+            old_previous_sibling,
+            old_next_sibling,
+        );
+    }
 
     // Step 26: Queue a tree mutation record for newParent
-    // TODO: Implement mutation observer record queuing
-    // Would use: newPreviousSibling, child
-    _ = old_previous_sibling;
-    _ = old_next_sibling;
-    _ = new_previous_sibling;
+    {
+        var added_nodes_buf: [1]*Node = undefined;
+        added_nodes_buf[0] = node;
+        const added_list = try createNodeList(allocator, added_nodes_buf[0..1]);
+        defer {
+            added_list.deinit();
+            allocator.destroy(added_list);
+        }
+        const empty_list = try createNodeList(allocator, &[_]*Node{});
+        defer {
+            empty_list.deinit();
+            allocator.destroy(empty_list);
+        }
+        try mutation_observer.queueTreeMutationRecord(
+            allocator,
+            new_parent,
+            added_list,
+            empty_list,
+            new_previous_sibling,
+            child,
+        );
+    }
 }
 
 /// Helper: Get shadow-including root of a node

@@ -31,13 +31,13 @@ pub const AbortSignal = webidl.interface(struct {
     abort_algorithms: infra.List(AbortAlgorithm),
     /// Event listeners to remove when signal is aborted
     /// Spec: Step 6 of "add an event listener" algorithm
-    event_listener_removals: std.ArrayList(EventListenerRemovalContext),
+    event_listener_removals: infra.List(EventListenerRemovalContext),
     /// Source signals: weak set of AbortSignals this signal depends on
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-source-signals
-    source_signals: std.ArrayList(*AbortSignal),
+    source_signals: infra.List(*AbortSignal),
     /// Dependent signals: weak set of AbortSignals that depend on this signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
-    dependent_signals: std.ArrayList(*AbortSignal),
+    dependent_signals: infra.List(*AbortSignal),
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -45,9 +45,9 @@ pub const AbortSignal = webidl.interface(struct {
             .aborted = false,
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
-            .event_listener_removals = std.ArrayList(EventListenerRemovalContext).init(allocator),
-            .source_signals = std.ArrayList(*AbortSignal).init(allocator),
-            .dependent_signals = std.ArrayList(*AbortSignal).init(allocator),
+            .event_listener_removals = infra.List(EventListenerRemovalContext).init(allocator),
+            .source_signals = infra.List(*AbortSignal).init(allocator),
+            .dependent_signals = infra.List(*AbortSignal).init(allocator),
         };
     }
 
@@ -162,11 +162,11 @@ pub const AbortSignal = webidl.interface(struct {
         self.aborted = true;
 
         // Spec step 3: Let dependentSignalsToAbort be a new list
-        var dependent_signals_to_abort = std.ArrayList(*AbortSignal).init(self.allocator);
+        var dependent_signals_to_abort = infra.List(*AbortSignal).init(self.allocator);
         defer dependent_signals_to_abort.deinit();
 
         // Spec step 4: For each dependentSignal of signal's dependent signals
-        for (self.dependent_signals.items) |dependent_signal| {
+        for (self.dependent_signals.items()) |dependent_signal| {
             // If dependentSignal is not aborted
             if (!dependent_signal.aborted) {
                 // Set dependentSignal's abort reason to signal's abort reason
@@ -181,7 +181,7 @@ pub const AbortSignal = webidl.interface(struct {
         self.runAbortSteps();
 
         // Spec step 6: For each dependentSignal of dependentSignalsToAbort, run the abort steps
-        for (dependent_signals_to_abort.items) |dependent_signal| {
+        for (dependent_signals_to_abort.items()) |dependent_signal| {
             dependent_signal.runAbortSteps();
         }
     }
@@ -208,15 +208,15 @@ pub const AbortSignal = webidl.interface(struct {
 
         // Remove all event listeners registered with this signal
         // Spec: Step 6 of "add an event listener" - remove listener when signal is aborted
-        for (self.event_listener_removals.items) |removal| {
+        for (self.event_listener_removals.items()) |removal| {
             const listener = EventListener{
                 .type = removal.listener_type,
                 .callback = removal.listener_callback,
                 .capture = removal.listener_capture,
             };
-            removal.target.removeAnEventListener(listener);
+            removal.target.call_removeEventListener(listener.type, listener.callback, listener.capture);
         }
-        self.event_listener_removals.clearRetainingCapacity();
+        self.event_listener_removals.clear();
 
         // Spec step 3: Fire an event named 'abort' at signal
         // TODO: Implement when event firing infrastructure is available

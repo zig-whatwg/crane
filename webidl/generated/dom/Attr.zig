@@ -87,7 +87,8 @@ pub const Attr = struct {
         self.allocator.free(self.local_name);
         self.allocator.free(self.value);
         // NOTE: Parent Node cleanup is handled by codegen
-
+    
+        
         // Clean up base fields
         if (self.base.event_listener_list) |list| {
             list.deinit(self.allocator);
@@ -95,7 +96,7 @@ pub const Attr = struct {
         }
         self.base.child_nodes.deinit();
         self.base.registered_observers.deinit();
-    }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to NodeBase for type-generic code.
@@ -205,6 +206,7 @@ pub const Attr = struct {
         // Step 3: Run the attribute change steps
         // Extension point for HTML, SVG, etc. to define attribute-specific behavior
         // Currently no attribute change steps defined for base DOM
+        _ = attribute;
     }
     /// DOM §4.9 - ownerElement getter
     /// Returns this's element.
@@ -263,7 +265,7 @@ pub const Attr = struct {
     }
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
-    ///
+    /// 
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Attr, options: ?GetRootNodeOptions) *Attr {
@@ -490,7 +492,7 @@ pub const Attr = struct {
     }
     /// DOM §4.4 - Node.baseURI getter
     /// Returns this's node document's document base URL, serialized.
-    ///
+    /// 
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const Attr) []const u8 {
@@ -760,7 +762,7 @@ pub const Attr = struct {
         }
     }
     /// Remove all transient registered observers whose source matches the given registered observer
-    ///
+    /// 
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Attr, source: *const RegisteredObserver) void {
@@ -962,3 +964,4 @@ pub const Attr = struct {
         .cross_origin_isolated = false,
     };
 };
+

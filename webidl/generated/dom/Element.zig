@@ -145,7 +145,8 @@ pub const Element = struct {
             attrs.deinit();
             self.allocator.destroy(attrs);
         }
-
+    
+        
         // Clean up base fields
         if (self.base.event_listener_list) |list| {
             list.deinit(self.allocator);
@@ -153,7 +154,7 @@ pub const Element = struct {
         }
         self.base.child_nodes.deinit();
         self.base.registered_observers.deinit();
-    }
+}
 
     /// Helper to get base struct for polymorphic operations.
     /// This enables safe upcasting to NodeBase for type-generic code.
@@ -161,13 +162,14 @@ pub const Element = struct {
         return &self.base;
     }
 
+
     // ========================================================================
     // Methods from ChildNode mixin
     // ========================================================================
 
     /// DOM §4.3.4 - ChildNode.before()
     /// Inserts nodes just before this node, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let parent be this's parent.
     /// 2. If parent is null, then return.
@@ -175,7 +177,7 @@ pub const Element = struct {
     /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
     /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
     /// 6. Pre-insert node into parent before viablePreviousSibling.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_before(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -232,14 +234,14 @@ pub const Element = struct {
     }
     /// DOM §4.3.4 - ChildNode.after()
     /// Inserts nodes just after this node, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let parent be this's parent.
     /// 2. If parent is null, then return.
     /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
     /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
     /// 5. Pre-insert node into parent before viableNextSibling.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_after(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -289,7 +291,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.4 - ChildNode.replaceWith()
     /// Replaces this node with nodes, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let parent be this's parent.
     /// 2. If parent is null, then return.
@@ -297,7 +299,7 @@ pub const Element = struct {
     /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
     /// 5. If this's parent is parent, replace this with node within parent.
     /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ChildNode mixin)
     pub fn call_replaceWith(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -354,7 +356,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.4 - ChildNode.remove()
     /// Removes this node from its parent.
-    ///
+    /// 
     /// Steps:
     /// 1. If this's parent is null, then return.
     /// 2. Remove this.
@@ -380,7 +382,7 @@ pub const Element = struct {
 
     /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
     /// Returns the first preceding sibling that is an element; otherwise null.
-    ///
+    /// 
     /// The previousElementSibling getter steps are to return the first preceding
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
@@ -411,7 +413,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
     /// Returns the first following sibling that is an element; otherwise null.
-    ///
+    /// 
     /// The nextElementSibling getter steps are to return the first following
     /// sibling that is an element; otherwise null.
     /// (Included from NonDocumentTypeChildNode mixin)
@@ -442,10 +444,10 @@ pub const Element = struct {
 
     /// DOM §4.3.2 - ParentNode.children
     /// Returns the child elements.
-    ///
+    /// 
     /// The children getter steps are to return an HTMLCollection collection rooted
     /// at this matching only element children.
-    ///
+    /// 
     /// NOTE: This is a simplified implementation that returns a static snapshot.
     /// A full implementation would return a live HTMLCollection that updates
     /// automatically when the DOM changes.
@@ -470,7 +472,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.firstElementChild
     /// Returns the first child that is an element; otherwise null.
-    ///
+    /// 
     /// The firstElementChild getter steps are to return the first child that is
     /// an element; otherwise null.
     /// (Included from ParentNode mixin)
@@ -489,7 +491,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.lastElementChild
     /// Returns the last child that is an element; otherwise null.
-    ///
+    /// 
     /// The lastElementChild getter steps are to return the last child that is
     /// an element; otherwise null.
     /// (Included from ParentNode mixin)
@@ -511,7 +513,7 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.childElementCount
     /// Returns the number of children that are elements.
-    ///
+    /// 
     /// The childElementCount getter steps are to return the number of children
     /// of this that are elements.
     /// (Included from ParentNode mixin)
@@ -531,11 +533,11 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.prepend()
     /// Inserts nodes before the first child, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
     /// 2. Pre-insert node into this before this's first child.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_prepend(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -556,11 +558,11 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.append()
     /// Inserts nodes after the last child, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
     /// 2. Append node to this.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_append(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -580,12 +582,12 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.replaceChildren()
     /// Replaces all children with nodes, while replacing strings with Text nodes.
-    ///
+    /// 
     /// Steps:
     /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
     /// 2. Ensure pre-insert validity of node into this before null.
     /// 3. Replace all with node within this.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated.
     /// (Included from ParentNode mixin)
     pub fn call_replaceChildren(self: anytype, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -609,14 +611,14 @@ pub const Element = struct {
     /// DOM §4.3.2 - ParentNode.moveBefore()
     /// Moves, without first removing, movedNode into this after child.
     /// This method preserves state associated with movedNode.
-    ///
+    /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
-    ///
+    /// 
     /// Steps:
     /// 1. Let referenceChild be child.
     /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
     /// 3. Move node into this before referenceChild.
-    ///
+    /// 
     /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     /// (Included from ParentNode mixin)
     pub fn call_moveBefore(self: anytype, node: anytype, child: anytype) !void {
@@ -640,11 +642,11 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.querySelector()
     /// Returns the first element that is a descendant of this that matches selectors.
-    ///
+    /// 
     /// The querySelector(selectors) method steps are to return the first result of
     /// running scope-match a selectors string selectors against this, if the result
     /// is not an empty list; otherwise null.
-    ///
+    /// 
     /// Uses Selectors mock (basic support only).
     /// (Included from ParentNode mixin)
     pub fn call_querySelector(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
@@ -661,10 +663,10 @@ pub const Element = struct {
     }
     /// DOM §4.3.2 - ParentNode.querySelectorAll()
     /// Returns all element descendants of this that match selectors.
-    ///
+    /// 
     /// The querySelectorAll(selectors) method steps are to return the static result
     /// of running scope-match a selectors string selectors against this.
-    ///
+    /// 
     /// Uses Selectors mock (basic support only).
     /// (Included from ParentNode mixin)
     pub fn call_querySelectorAll(self: anytype, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
@@ -690,10 +692,10 @@ pub const Element = struct {
     // ========================================================================
 
     /// DOM §4.3.7 - Slottable.assignedSlot
-    ///
+    /// 
     /// Returns the slot element this slottable is assigned to, if any.
     /// Returns null if not assigned or if the shadow root is closed.
-    ///
+    /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
     /// (Included from Slottable mixin)
     pub fn get_assignedSlot(self: *const @This()) ?*anyopaque {
@@ -805,7 +807,7 @@ pub const Element = struct {
     /// DOM §4.10.1 - Element.classList
     /// The classList getter steps are to return a DOMTokenList object whose associated element
     /// is this and whose associated attribute's local name is class.
-    ///
+    /// 
     /// Returns a DOMTokenList representing the class attribute.
     /// The DOMTokenList is [SameObject] - returns same instance on repeated calls.
     pub fn get_classList(self: *Element) !*DOMTokenList {
@@ -999,7 +1001,7 @@ pub const Element = struct {
     }
     /// DOM §4.10.4 - Element.matches(selectors)
     /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
-    ///
+    /// 
     /// Spec steps:
     /// 1. Let s be the result of parse a selector from selectors.
     /// 2. If s is failure, throw a "SyntaxError" DOMException.
@@ -1023,7 +1025,7 @@ pub const Element = struct {
     /// DOM §4.10.4 - Element.closest(selectors)
     /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
     /// Returns null if no such element exists.
-    ///
+    /// 
     /// Spec steps:
     /// 1. Let s be the result of parse a selector from selectors.
     /// 2. If s is failure, throw a "SyntaxError" DOMException.
@@ -1125,9 +1127,9 @@ pub const Element = struct {
         _ = try insertAdjacent(self, where, @ptrCast(text));
     }
     /// DOM §4.10.2 - Element.attachShadow(init)
-    ///
+    /// 
     /// Creates a shadow root for this element and returns it.
-    ///
+    /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
     pub fn call_attachShadow(self: *Element, shadow_init: ShadowRootInit) !*ShadowRoot {
         // Step 1: Let registry be this's node document's custom element registry
@@ -1157,9 +1159,9 @@ pub const Element = struct {
         return self.shadow_root.?;
     }
     /// DOM §4.10.2 - Element.shadowRoot getter
-    ///
+    /// 
     /// Returns element's shadow root, if any, and if shadow root's mode is "open"; otherwise null.
-    ///
+    /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-element-shadowroot
     pub fn get_shadowRoot(self: *const Element) ?*ShadowRoot {
         // Step 1: Let shadow be this's shadow root
@@ -1219,7 +1221,7 @@ pub const Element = struct {
     }
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
-    ///
+    /// 
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Element, options: ?GetRootNodeOptions) *Element {
@@ -1237,6 +1239,7 @@ pub const Element = struct {
             var root = tree.root(self);
 
             // Check if root is a ShadowRoot by checking type_tag
+            const ShadowRoot = @import("shadow_root").ShadowRoot;
             while (root.base.type_tag == .ShadowRoot) {
                 // Cast to ShadowRoot to access host
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
@@ -1445,7 +1448,7 @@ pub const Element = struct {
     }
     /// DOM §4.4 - Node.baseURI getter
     /// Returns this's node document's document base URL, serialized.
-    ///
+    /// 
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const Element) []const u8 {
@@ -1715,7 +1718,7 @@ pub const Element = struct {
         }
     }
     /// Remove all transient registered observers whose source matches the given registered observer
-    ///
+    /// 
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Element, source: *const RegisteredObserver) void {
@@ -1917,3 +1920,4 @@ pub const Element = struct {
         .cross_origin_isolated = false,
     };
 };
+

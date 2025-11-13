@@ -31,20 +31,20 @@ pub const MutationObserverAgent = struct {
     microtask_queued: bool = false,
 
     /// Set of mutation observers with pending records
-    pending_observers: std.ArrayList(*MutationObserver),
+    pending_observers: infra.List(*MutationObserver),
 
     allocator: Allocator,
 
     pub fn init(allocator: Allocator) MutationObserverAgent {
         return .{
             .microtask_queued = false,
-            .pending_observers = std.ArrayList(*MutationObserver).init(allocator),
+            .pending_observers = infra.List(*MutationObserver).init(allocator),
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *MutationObserverAgent) void {
-        self.pending_observers.deinit(self.allocator);
+        self.pending_observers.deinit();
     }
 };
 
@@ -97,7 +97,7 @@ pub fn queueMutationRecord(
     defer nodes.deinit();
 
     // Step 3: For each node in nodes, and then for each registered of node's registered observer list
-    for (nodes.items) |node| {
+    for (nodes.items()) |node| {
         for (0..node.registered_observers.len) |i| {
             const registered = node.registered_observers.get(i) orelse continue;
             const options = registered.options;
@@ -150,7 +150,8 @@ pub fn queueMutationRecord(
             if (should_skip) continue;
 
             // Step 3.2.1: Let mo be registered's observer
-            const mo = registered.observer;
+            // Cast from opaque type to concrete MutationObserver struct
+            const mo: *MutationObserver = @ptrCast(@alignCast(registered.observer));
 
             // Step 3.2.2: If interestedObservers[mo] does not exist, then set interestedObservers[mo] to null
             if (!interested_observers.contains(mo)) {
@@ -195,7 +196,7 @@ pub fn queueMutationRecord(
         const agent = try getAgent(allocator);
         // Check if observer is already in pending list
         var already_pending = false;
-        for (agent.pending_observers.items) |pending| {
+        for (agent.pending_observers.items()) |pending| {
             if (pending == observer) {
                 already_pending = true;
                 break;
@@ -225,7 +226,7 @@ pub fn queueTreeMutationRecord(
     next_sibling: ?*Node,
 ) !void {
     // Step 1: Assert: either addedNodes or removedNodes is not empty
-    std.debug.assert(added_nodes.getLength() > 0 or removed_nodes.getLength() > 0);
+    std.debug.assert(added_nodes.get_length() > 0 or removed_nodes.get_length() > 0);
 
     // Step 2: Queue a mutation record of "childList" for target with null, null, null,
     // addedNodes, removedNodes, previousSibling, and nextSibling
@@ -276,17 +277,17 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     agent.microtask_queued = false;
 
     // Step 2: Let notifySet be a clone of the surrounding agent's pending mutation observers
-    var notify_set = std.ArrayList(*MutationObserver).init(allocator);
-    defer notify_set.deinit(allocator);
-    try notify_set.appendSlice(agent.pending_observers.items);
+    var notify_set = infra.List(*MutationObserver).init(allocator);
+    defer notify_set.deinit();
+    try notify_set.appendSlice(agent.pending_observers.items());
 
     // Step 3: Empty the surrounding agent's pending mutation observers
-    agent.pending_observers.clearRetainingCapacity();
+    agent.pending_observers.clear();
 
     // Step 4: (signal slots - not implemented yet, skip)
 
     // Step 6: For each mo of notifySet
-    for (notify_set.items) |mo| {
+    for (notify_set.items()) |mo| {
         // Step 6.1: Let records be a clone of mo's record queue
         const records = try mo.takeRecords();
         defer allocator.free(records);
@@ -315,11 +316,13 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
 fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
     // Remove all transient observers whose observer matches
     // We iterate backwards to safely remove items during iteration
+    // Cast observer to opaque type for comparison with registered.observer
+    const observer_opaque: *opaque {} = @ptrCast(observer);
     var i: usize = node.registered_observers.len;
     while (i > 0) {
         i -= 1;
         const registered = node.registered_observers.get(i) orelse continue;
-        if (registered.is_transient and registered.observer == observer) {
+        if (registered.is_transient and registered.observer == observer_opaque) {
             _ = node.registered_observers.remove(i) catch unreachable;
         }
     }

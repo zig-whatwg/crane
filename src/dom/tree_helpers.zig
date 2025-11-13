@@ -10,6 +10,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 
 // Import DOM types from the dom root module
 // This works because tree_helpers.zig is part of src/dom/root.zig
@@ -154,8 +155,8 @@ pub fn isAncestor(node: *const Node, other: *const Node) bool {
 /// Returns a list of all ancestors including the node itself, from node up to root.
 /// The list is ordered from the node to the root (node is first, root is last).
 /// Caller owns the returned list and must call deinit().
-pub fn getInclusiveAncestors(allocator: Allocator, node: *const Node) !std.ArrayList(*Node) {
-    var ancestors = std.ArrayList(*Node).init(allocator);
+pub fn getInclusiveAncestors(allocator: Allocator, node: *const Node) !infra.List(*Node) {
+    var ancestors = infra.List(*Node).init(allocator);
     errdefer ancestors.deinit();
 
     // Add the node itself
