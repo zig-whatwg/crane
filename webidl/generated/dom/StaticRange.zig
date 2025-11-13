@@ -8,9 +8,19 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const ATTRIBUTE_NODE = @import("a_t_t_r_i_b_u_t_e__n_o_d_e").ATTRIBUTE_NODE;
 const AbstractRange = @import("abstract_range").AbstractRange;
 const Allocator = @import("std.mem").Allocator;
+const Check = @import("check").Check;
+const Container = @import("container").Container;
+const DOCUMENT_TYPE_NODE = @import("d_o_c_u_m_e_n_t__t_y_p_e__n_o_d_e").DOCUMENT_TYPE_NODE;
+const InvalidNodeTypeError = @import("invalid_node_type_error").InvalidNodeTypeError;
 const Node = @import("node").Node;
+const NodeType = @import("node_type").NodeType;
+const Offset = @import("offset").Offset;
+const Set = @import("set").Set;
+const StaticRangeInit = @import("static_range_init").StaticRangeInit;
+const Step = @import("step").Step;
 const std = @import("std");
 const webidl = @import("webidl");
 

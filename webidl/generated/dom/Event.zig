@@ -8,11 +8,52 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const All = @import("all").All;
 const Allocator = @import("std.mem").Allocator;
+const Append = @import("append").Append;
+const Assert = @import("assert").Assert;
+const Bubble = @import("bubble").Bubble;
+const CanceledFlag = @import("canceled_flag").CanceledFlag;
+const Cast = @import("cast").Cast;
+const DOM = @import("d_o_m").DOM;
+const Decrease = @import("decrease").Decrease;
 const Element = @import("element").Element;
+const EventInit = @import("event_init").EventInit;
+const EventPathItem = @import("event_path_item").EventPathItem;
 const EventTarget = @import("event_target").EventTarget;
+const Getters = @import("getters").Getters;
+const HiddenLevel = @import("hidden_level").HiddenLevel;
+const If = @import("if").If;
+const ImmediatePropagation = @import("immediate_propagation").ImmediatePropagation;
+const Initialize = @import("initialize").Initialize;
+const Let = @import("let").Let;
+const NONE = @import("n_o_n_e").NONE;
+const Path = @import("path").Path;
+const Phase = @import("phase").Phase;
+const Prevented = @import("prevented").Prevented;
+const Propagation = @import("propagation").Propagation;
+const Related = @import("related").Related;
+const Return = @import("return").Return;
+const Returns = @import("returns").Returns;
+const Set = @import("set").Set;
+const Spec = @import("spec").Spec;
+const Stamp = @import("stamp").Stamp;
+const Step = @import("step").Step;
+const Target = @import("target").Target;
+const TargetHiddenSubtreeLevel = @import("target_hidden_subtree_level").TargetHiddenSubtreeLevel;
+const TargetIndex = @import("target_index").TargetIndex;
+const The = @import("the").The;
+const To = @import("to").To;
+const Touch = @import("touch").Touch;
+const Trusted = @import("trusted").Trusted;
+const Unset = @import("unset").Unset;
+const Value = @import("value").Value;
+const While = @import("while").While;
+const ]const u8 = @import("]const u8").]const u8;
 const infra = @import("infra").infra;
 const std = @import("std");
+const std.ArrayList(*EventTarget) = @import("std._array_list(*_event_target)").std.ArrayList(*EventTarget);
+const std.ArrayList(EventPathItem) = @import("std._array_list(_event_path_item)").std.ArrayList(EventPathItem);
 const webidl = @import("webidl");
 
 

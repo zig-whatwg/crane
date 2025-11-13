@@ -8,9 +8,36 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const Additional = @import("additional").Additional;
 const Allocator = @import("std.mem").Allocator;
+const ArrayBufferView = @import("array_buffer_view").ArrayBufferView;
+const Cast = @import("cast").Cast;
+const Detached = @import("detached").Detached;
+const For = @import("for").For;
+const Get = @import("get").Get;
+const If = @import("if").If;
+const Interface = @import("interface").Interface;
+const IsDetachedBuffer = @import("is_detached_buffer").IsDetachedBuffer;
+const Mark = @import("mark").Mark;
+const Methods = @import("methods").Methods;
+const Perform = @import("perform").Perform;
+const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+const ReadableByteStreamControllerRespond = @import("readable_byte_stream_controller_respond").ReadableByteStreamControllerRespond;
+const ReadableByteStreamControllerRespondWithNewView = @import("readable_byte_stream_controller_respond_with_new_view").ReadableByteStreamControllerRespondWithNewView;
+const Respond = @import("respond").Respond;
+const Return = @import("return").Return;
+const Spec = @import("spec").Spec;
+const The = @import("the").The;
+const TypeError = @import("type_error").TypeError;
+const ViewedArrayBuffer = @import("viewed_array_buffer").ViewedArrayBuffer;
+const WebIDL = @import("web_i_d_l").WebIDL;
+const WithNewView = @import("with_new_view").WithNewView;
+const Written = @import("written").Written;
+const anyopaque = @import("anyopaque").anyopaque;
 const std = @import("std");
+const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
+const webidl.ArrayBufferView = @import("webidl._array_buffer_view").webidl.ArrayBufferView;
 
 
 pub const ReadableStreamBYOBRequest = struct {

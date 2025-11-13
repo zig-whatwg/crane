@@ -8,15 +8,26 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const Algorithm = @import("algorithm").Algorithm;
 const Allocator = @import("std.mem").Allocator;
+const BOM = @import("b_o_m").BOM;
+const Create = @import("create").Create;
+const Decoder = @import("decoder").Decoder;
+const Encoding = @import("encoding").Encoding;
 const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
-const Text = @import("text").Text;
+const Get = @import("get").Get;
+const InvalidEncoding = @import("invalid_encoding").InvalidEncoding;
+const Reject = @import("reject").Reject;
+const ReplacementEncoding = @import("replacement_encoding").ReplacementEncoding;
 const TextDecoderCommon = @import("TextDecoderCommon.zig").TextDecoderCommon;
 const TextDecoderOptions = @import("TextDecoderOptions.zig").TextDecoderOptions;
+const TransformStream = @import("transform_stream").TransformStream;
+const ]const u8 = @import("]const u8").]const u8;
 const encoding_mod = @import("encoding");
 const std = @import("std");
 const streams = @import("streams");
 const webidl = @import("webidl");
+const webidl.boolean = @import("webidl.boolean").webidl.boolean;
 
 
 const Encoding = encoding_mod.Encoding;

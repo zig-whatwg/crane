@@ -9,11 +9,46 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
+const Already = @import("already").Already;
+const Assert = @import("assert").Assert;
+const Assertion = @import("assertion").Assertion;
 const AsyncPromise = @import("async_promise").AsyncPromise;
+const AsyncPromise(void) = @import("async_promise(void)").AsyncPromise(void);
+const Cancel = @import("cancel").Cancel;
+const Exception = @import("exception").Exception;
+const Fulfilled = @import("fulfilled").Fulfilled;
+const Generic = @import("generic").Generic;
+const If = @import("if").If;
+const Internal = @import("internal").Internal;
+const JSValue = @import("j_s_value").JSValue;
+const Let = @import("let").Let;
+const Loop = @import("loop").Loop;
+const Not = @import("not").Not;
+const Otherwise = @import("otherwise").Otherwise;
+const Perform = @import("perform").Perform;
+const Promise = @import("promise").Promise;
+const PromiseIsHandled = @import("promise_is_handled").PromiseIsHandled;
 const ReadableStream = @import("readable_stream").ReadableStream;
+const ReadableStreamCancel = @import("readable_stream_cancel").ReadableStreamCancel;
+const ReadableStreamReaderGenericCancel = @import("readable_stream_reader_generic_cancel").ReadableStreamReaderGenericCancel;
+const ReadableStreamReaderGenericRelease = @import("readable_stream_reader_generic_release").ReadableStreamReaderGenericRelease;
+const Reader = @import("reader").Reader;
+const Rejected = @import("rejected").Rejected;
+const Release = @import("release").Release;
+const ReleaseSteps = @import("release_steps").ReleaseSteps;
+const Return = @import("return").Return;
+const Set = @import("set").Set;
+const Spec = @import("spec").Spec;
+const Step = @import("step").Step;
+const Steps = @import("steps").Steps;
+const TypeError = @import("type_error").TypeError;
+const We = @import("we").We;
+const WebIDL = @import("web_i_d_l").WebIDL;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
+const eventLoop.EventLoop = @import("event_loop._event_loop").eventLoop.EventLoop;
 const std = @import("std");
+const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
 
 

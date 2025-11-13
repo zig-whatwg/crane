@@ -11,6 +11,7 @@
 const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
+const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
 
 

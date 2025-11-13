@@ -8,10 +8,44 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const ASCII = @import("a_s_c_i_i").ASCII;
+const Add = @import("add").Add;
+const Allocate = @import("allocate").Allocate;
 const Allocator = @import("std.mem").Allocator;
-const Attr = @import("attr").Attr;
+const Attribute = @import("attribute").Attribute;
+const Build = @import("build").Build;
+const C = @import("c").C;
+const Calculate = @import("calculate").Calculate;
+const Cast = @import("cast").Cast;
+const DOM = @import("d_o_m").DOM;
 const Element = @import("element").Element;
+const Find = @import("find").Find;
+const Free = @import("free").Free;
+const If = @import("if").If;
+const InvalidCharacterError = @import("invalid_character_error").InvalidCharacterError;
+const List = @import("list").List;
+const Otherwise = @import("otherwise").Otherwise;
+const Re = @import("re").Re;
+const Remove = @import("remove").Remove;
+const Replace = @import("replace").Replace;
+const RetainingCapacity = @import("retaining_capacity").RetainingCapacity;
+const Return = @import("return").Return;
+const Returns = @import("returns").Returns;
+const Run = @import("run").Run;
+const Scalar = @import("scalar").Scalar;
+const Serialize = @import("serialize").Serialize;
+const Set = @import("set").Set;
+const Skip = @import("skip").Skip;
+const Step = @import("step").Step;
+const SyntaxError = @import("syntax_error").SyntaxError;
+const Token = @import("token").Token;
+const TokenSet = @import("token_set").TokenSet;
+const UpdateSteps = @import("update_steps").UpdateSteps;
+const Use = @import("use").Use;
+const Validate = @import("validate").Validate;
+const ]const u8 = @import("]const u8").]const u8;
 const infra = @import("infra").infra;
+const infra.List([]const u8) = @import("infra._list([]const u8)").infra.List([]const u8);
 const std = @import("std");
 const webidl = @import("webidl");
 

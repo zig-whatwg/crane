@@ -9,8 +9,8 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Element = @import("element").Element;
 const std = @import("std");
+const std.ArrayList(*anyopaque) = @import("std._array_list(*anyopaque)").std.ArrayList(*anyopaque);
 const webidl = @import("webidl");
 
 

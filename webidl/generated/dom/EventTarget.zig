@@ -8,12 +8,53 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
+const AND = @import("a_n_d").AND;
 const AbortSignal = @import("abort_signal").AbortSignal;
+const AbortSignalType = @import("abort_signal_type").AbortSignalType;
+const Add = @import("add").Add;
+const AddEventListenerOptions = @import("add_event_listener_options").AddEventListenerOptions;
 const Allocator = @import("std.mem").Allocator;
+const AnEventListener = @import("an_event_listener").AnEventListener;
+const Check = @import("check").Check;
+const Default = @import("default").Default;
+const Dispatch = @import("dispatch").Dispatch;
+const Early = @import("early").Early;
+const Equals = @import("equals").Equals;
 const Event = @import("event").Event;
 const EventListener = @import("event_target").EventListener;
+const EventListenerList = @import("event_listener_list").EventListenerList;
+const EventListenerOptions = @import("event_listener_options").EventListenerOptions;
+const EventListenerRemoval = @import("event_listener_removal").EventListenerRemoval;
+const EventListenerRemovalContext = @import("event_listener_removal_context").EventListenerRemovalContext;
+const Field = @import("field").Field;
+const First = @import("first").First;
+const Flatten = @import("flatten").Flatten;
+const For = @import("for").For;
+const Handle = @import("handle").Handle;
+const If = @import("if").If;
+const Initialize = @import("initialize").Initialize;
+const InvalidStateError = @import("invalid_state_error").InvalidStateError;
+const JSValue = @import("j_s_value").JSValue;
+const Lazy = @import("lazy").Lazy;
+const Match = @import("match").Match;
+const MoreOptions = @import("more_options").MoreOptions;
+const Options = @import("options").Options;
+const OptionsType = @import("options_type").OptionsType;
+const PassiveValue = @import("passive_value").PassiveValue;
+const Remove = @import("remove").Remove;
+const Return = @import("return").Return;
+const ServiceWorkerGlobalScope = @import("service_worker_global_scope").ServiceWorkerGlobalScope;
+const Set = @import("set").Set;
+const Spec = @import("spec").Spec;
+const Step = @import("step").Step;
+const TODO = @import("t_o_d_o").TODO;
+const Target = @import("target").Target;
+const Trusted = @import("trusted").Trusted;
+const TypeOf = @import("type_of").TypeOf;
+const Window = @import("window").Window;
 const infra = @import("infra").infra;
 const std = @import("std");
+const std.ArrayList(EventListener) = @import("std._array_list(_event_listener)").std.ArrayList(EventListener);
 const webidl = @import("webidl");
 
 

@@ -893,33 +893,47 @@ fn findMatchingBrace(source: []const u8, open_pos: usize) ?usize {
 }
 
 /// Extract type names referenced in code
+/// Automatically detects any capitalized identifier (type names in Zig)
 fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []const u8) ![][]const u8 {
     var types = std.StringHashMap(void).init(allocator);
     defer types.deinit();
 
-    // Simple heuristic: look for *TypeName, ?*TypeName, []TypeName patterns
     const combined = try std.fmt.allocPrint(allocator, "{s} {s}", .{ signature, body });
     defer allocator.free(combined);
 
-    // Common type patterns to look for
-    const patterns = [_][]const u8{
-        "ShadowRoot",
-        "Node",
-        "Element",
-        "Document",
-        "CharacterData",
-        "Text",
-        "Attr",
-        "NodeList",
-        "RegisteredObserver",
-        "Event",
-        "EventListener",
-        "AbortSignal",
-    };
+    // Scan for capitalized identifiers (type names)
+    var pos: usize = 0;
+    while (pos < combined.len) {
+        const c = combined[pos];
 
-    for (patterns) |pattern| {
-        if (std.mem.indexOf(u8, combined, pattern)) |_| {
-            try types.put(pattern, {});
+        // Look for start of identifier (uppercase letter)
+        if (c >= 'A' and c <= 'Z') {
+            // Found potential type name, extract it
+            const start = pos;
+            pos += 1;
+
+            // Continue while we have valid identifier characters
+            while (pos < combined.len) : (pos += 1) {
+                const ch = combined[pos];
+                if ((ch >= 'a' and ch <= 'z') or
+                    (ch >= 'A' and ch <= 'Z') or
+                    (ch >= '0' and ch <= '9') or
+                    ch == '_')
+                {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            const type_name = combined[start..pos];
+
+            // Filter out common keywords and built-in types
+            if (!isBuiltinType(type_name)) {
+                try types.put(type_name, {});
+            }
+        } else {
+            pos += 1;
         }
     }
 
@@ -1093,6 +1107,23 @@ fn isPrimitiveType(type_name: []const u8) bool {
     for (primitives) |prim| {
         if (std.mem.eql(u8, type_name, prim)) return true;
     }
+    return false;
+}
+
+/// Check if a type name is a built-in type that shouldn't be imported
+fn isBuiltinType(type_name: []const u8) bool {
+    // Common Zig built-ins and keywords
+    const builtins = [_][]const u8{
+        "ArrayList", "HashMap",  "StringHashMap",
+        "Allocator", "Error",    "Result",
+        "Type",      "TypeInfo", "Self",
+        "String",    "Iterator",
+    };
+
+    for (builtins) |builtin| {
+        if (std.mem.eql(u8, type_name, builtin)) return true;
+    }
+
     return false;
 }
 

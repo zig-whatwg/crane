@@ -302,14 +302,9 @@ fn resolveImports(
         try addImportForType(allocator, &imports, prop.type_name, class.name);
     }
 
-    // Add inheritance-based imports
-    if (inheritsFromNode(class, registry)) {
-        try addNodeInheritanceImports(allocator, &imports, class.name);
-    }
-
-    if (inheritsFromEventTarget(class, registry)) {
-        try addEventTargetInheritanceImports(allocator, &imports, class.name);
-    }
+    // Note: No hardcoded inheritance-based imports
+    // All types are detected automatically from method bodies via extractTypesFromCode
+    _ = registry;
 
     // Convert to array
     var result = infra.List(ir.Import).init(allocator);
@@ -352,7 +347,33 @@ fn addImportForType(
     }
 
     // Map type to module
-    const module = typeToModule(base_type);
+    var module_name_buf: std.ArrayList(u8) = .empty;
+    defer module_name_buf.deinit(allocator);
+
+    const special_case = typeToModule(base_type);
+    const module: []const u8 = if (special_case.len > 0 and !std.mem.eql(u8, special_case, base_type))
+        special_case
+    else blk: {
+        // Convert PascalCase to snake_case
+        // E.g., "EventTarget" -> "event_target", "HTMLCollection" -> "html_collection"
+        for (base_type, 0..) |c, i| {
+            if (c >= 'A' and c <= 'Z') {
+                // Uppercase letter
+                if (i > 0) {
+                    // Add underscore before uppercase (except first letter)
+                    try module_name_buf.append(allocator, '_');
+                }
+                // Convert to lowercase
+                try module_name_buf.append(allocator, c + 32);
+            } else {
+                // Lowercase or other character
+                try module_name_buf.append(allocator, c);
+            }
+        }
+        break :blk try module_name_buf.toOwnedSlice(allocator);
+    };
+    defer if (!std.mem.eql(u8, module, special_case)) allocator.free(module);
+
     if (module.len == 0) return;
 
     // Add to imports (deduplicated by map)
@@ -365,102 +386,6 @@ fn addImportForType(
             .source_line = 0,
         });
     }
-}
-
-/// Add imports needed for Node inheritance
-fn addNodeInheritanceImports(
-    allocator: Allocator,
-    imports: *std.StringHashMap(ir.Import),
-    class_name: []const u8,
-) !void {
-    const node_types = [_]struct { name: []const u8, module: []const u8 }{
-        .{ .name = "Node", .module = "node" },
-        .{ .name = "ShadowRoot", .module = "shadow_root" },
-        .{ .name = "Document", .module = "document" },
-        .{ .name = "Element", .module = "element" },
-        .{ .name = "Attr", .module = "attr" },
-        .{ .name = "CharacterData", .module = "character_data" },
-        .{ .name = "NodeList", .module = "node_list" },
-        .{ .name = "RegisteredObserver", .module = "registered_observer" },
-    };
-
-    for (node_types) |type_info| {
-        // Don't import if this IS that type
-        if (std.mem.eql(u8, class_name, type_info.name)) continue;
-
-        if (!imports.contains(type_info.name)) {
-            try imports.put(type_info.name, ir.Import{
-                .name = try allocator.dupe(u8, type_info.name),
-                .module = try allocator.dupe(u8, type_info.module),
-                .is_type = true,
-                .visibility = .private,
-                .source_line = 0,
-            });
-        }
-    }
-}
-
-/// Add imports needed for EventTarget inheritance
-fn addEventTargetInheritanceImports(
-    allocator: Allocator,
-    imports: *std.StringHashMap(ir.Import),
-    class_name: []const u8,
-) !void {
-    const event_types = [_]struct { name: []const u8, module: []const u8 }{
-        .{ .name = "EventTarget", .module = "event_target" },
-        .{ .name = "Event", .module = "event" },
-        .{ .name = "EventListener", .module = "event_target" },
-        .{ .name = "AbortSignal", .module = "abort_signal" },
-    };
-
-    for (event_types) |type_info| {
-        // Don't import if this IS that type
-        if (std.mem.eql(u8, class_name, type_info.name)) continue;
-
-        if (!imports.contains(type_info.name)) {
-            try imports.put(type_info.name, ir.Import{
-                .name = try allocator.dupe(u8, type_info.name),
-                .module = try allocator.dupe(u8, type_info.module),
-                .is_type = true,
-                .visibility = .private,
-                .source_line = 0,
-            });
-        }
-    }
-}
-
-/// Check if class inherits from Node
-fn inheritsFromNode(class: *ir.ClassDef, registry: *ClassRegistry) bool {
-    var current: ?*ir.ClassDef = class;
-
-    while (current) |c| {
-        if (std.mem.eql(u8, c.name, "Node")) return true;
-
-        if (c.parent) |parent_name| {
-            current = registry.get(parent_name);
-        } else {
-            break;
-        }
-    }
-
-    return false;
-}
-
-/// Check if class inherits from EventTarget
-fn inheritsFromEventTarget(class: *ir.ClassDef, registry: *ClassRegistry) bool {
-    var current: ?*ir.ClassDef = class;
-
-    while (current) |c| {
-        if (std.mem.eql(u8, c.name, "EventTarget")) return true;
-
-        if (c.parent) |parent_name| {
-            current = registry.get(parent_name);
-        } else {
-            break;
-        }
-    }
-
-    return false;
 }
 
 // Helper functions
@@ -527,29 +452,27 @@ fn isPrimitiveType(type_name: []const u8) bool {
     return false;
 }
 
+/// Convert PascalCase type name to snake_case module name
+/// Returns empty string if type should not be imported (not a real module)
 fn typeToModule(type_name: []const u8) []const u8 {
-    // Comprehensive type-to-module mapping
-    const mapping = std.StaticStringMap([]const u8).initComptime(.{
-        .{ "ShadowRoot", "shadow_root" },
-        .{ "Node", "node" },
-        .{ "Element", "element" },
-        .{ "Document", "document" },
-        .{ "CharacterData", "character_data" },
-        .{ "Text", "text" },
-        .{ "Comment", "comment" },
-        .{ "CDATASection", "cdata_section" },
-        .{ "ProcessingInstruction", "processing_instruction" },
-        .{ "DocumentType", "document_type" },
-        .{ "DocumentFragment", "document_fragment" },
-        .{ "Attr", "attr" },
-        .{ "NodeList", "node_list" },
-        .{ "RegisteredObserver", "registered_observer" },
-        .{ "Event", "event" },
-        .{ "EventTarget", "event_target" },
-        .{ "EventListener", "event_target" },
-        .{ "AbortSignal", "abort_signal" },
-        .{ "AbortController", "abort_controller" },
-    });
+    // Special cases where type name != module name
+    if (std.mem.eql(u8, type_name, "EventListener")) return "event_target";
 
-    return mapping.get(type_name) orelse "";
+    // Skip types that aren't real modules (dictionaries, options, etc.)
+    // These end with common suffixes
+    if (std.mem.endsWith(u8, type_name, "Options") or
+        std.mem.endsWith(u8, type_name, "Init") or
+        std.mem.endsWith(u8, type_name, "Dict"))
+    {
+        return "";
+    }
+
+    // For most types, the module name is the snake_case version of the type
+    // But since we can't allocate here, we'll use a heuristic:
+    // The module is likely the lowercase version with underscores
+    // However, we can't transform it here without allocation
+
+    // Instead, return the type name itself and let the caller handle it
+    // The caller (addImportForType) will need to do the conversion
+    return type_name;
 }

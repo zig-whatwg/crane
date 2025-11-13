@@ -10,12 +10,31 @@
 
 const Allocator = @import("std.mem").Allocator;
 const AsyncPromise = @import("async_promise").AsyncPromise;
-const Attr = @import("attr").Attr;
-const Event = @import("event").Event;
+const AsyncPromise(void) = @import("async_promise(void)").AsyncPromise(void);
+const Attributes = @import("attributes").Attributes;
+const DesiredSizeInternal = @import("desired_size_internal").DesiredSizeInternal;
+const EventLoop = @import("event_loop").EventLoop;
+const Exception = @import("exception").Exception;
+const Fulfilled = @import("fulfilled").Fulfilled;
+const Interface = @import("interface").Interface;
+const Internal = @import("internal").Internal;
+const JSValue = @import("j_s_value").JSValue;
+const Loop = @import("loop").Loop;
+const Placeholder = @import("placeholder").Placeholder;
+const Promise = @import("promise").Promise;
+const Readonly = @import("readonly").Readonly;
+const Rejected = @import("rejected").Rejected;
+const Spec = @import("spec").Spec;
+const TypeError = @import("type_error").TypeError;
+const Value = @import("value").Value;
+const WebIDL = @import("web_i_d_l").WebIDL;
 const WritableStream = @import("writable_stream").WritableStream;
+const Writer = @import("writer").Writer;
 const common = @import("common").common;
 const eventLoop = @import("event_loop").eventLoop;
+const eventLoop.EventLoop = @import("event_loop._event_loop").eventLoop.EventLoop;
 const std = @import("std");
+const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
 
 
