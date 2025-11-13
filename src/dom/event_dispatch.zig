@@ -8,6 +8,7 @@ const EventTarget = @import("event_target").EventTarget;
 const EventListener = @import("event_target").EventListener;
 const EventPathItem = Event.EventPathItem;
 const Node = @import("node").Node;
+const Element = @import("element").Element;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootMode = @import("shadow_root").ShadowRootMode;
 
@@ -141,9 +142,26 @@ pub fn dispatch(
         }
 
         // Step 6.6: Let slottable be target, if target is a slottable and is assigned
-        // TODO: Shadow DOM - check if target is a slottable and is assigned
-        // For now: No shadow DOM support, so slottable is always null
-        const slottable: ?*EventTarget = null;
+        // A slottable is an Element or Text node that can be assigned to a slot
+        var slottable: ?*EventTarget = null;
+
+        // Check if target is an Element or Text (slottables)
+        if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+            // It's a Node - check if it's Element or Text
+            const node: *Node = @ptrCast(@alignCast(target));
+            if (node.base.type_tag == .Element) {
+                const element: *const Element = @ptrCast(@alignCast(node));
+                if (element.isAssigned()) {
+                    slottable = target;
+                }
+            } else if (node.base.type_tag == .Text) {
+                // Text nodes are also slottable
+                // They have an assigned_slot field too (from Slottable mixin)
+                // For now, we'll treat them similarly to elements
+                // TODO: Verify Text has assigned_slot field when Text.zig is generated with Slottable
+                // For safety, only handle Element for now until Text Slottable is confirmed
+            }
+        }
 
         // Step 6.7: Let slot-in-closed-tree be false
         var slot_in_closed_tree = false;
@@ -155,14 +173,37 @@ pub fn dispatch(
         while (parent) |p| {
             // Step 6.9.1-2: Handle slottable
             if (slottable != null) {
-                // Assert: parent is a slot
-                // Set slottable to null
-                // If parent's root is a shadow root whose mode is "closed", set slot-in-closed-tree to true
-                // (Shadow DOM not implemented yet, so this branch never executes)
+                // Step 6.9.1: Assert: parent is a slot (HTMLSlotElement)
+                // We don't have HTMLSlotElement yet, so we can't verify this
+
+                // Step 6.9.2: Set slottable to null
+                slottable = null;
+
+                // Step 6.9.2 continued: If parent's root is a shadow root whose mode is "closed",
+                // set slot-in-closed-tree to true
+                if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+                    const parent_node: *Node = @ptrCast(@alignCast(p));
+                    const parent_root = parent_node.call_getRootNode(.{});
+                    const NodeTypeTag = @import("node").NodeTypeTag;
+                    if (parent_root.base.type_tag == NodeTypeTag.ShadowRoot) {
+                        const shadow: *ShadowRoot = @ptrCast(@alignCast(parent_root));
+                        if (shadow.getMode() == ShadowRootMode.closed) {
+                            slot_in_closed_tree = true;
+                        }
+                    }
+                }
             }
 
             // Step 6.9.3: If parent is a slottable and is assigned, set slottable to parent
-            // (Shadow DOM not implemented yet)
+            if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+                const parent_node: *Node = @ptrCast(@alignCast(p));
+                if (parent_node.base.type_tag == .Element) {
+                    const parent_element: *const Element = @ptrCast(@alignCast(parent_node));
+                    if (parent_element.isAssigned()) {
+                        slottable = p;
+                    }
+                }
+            }
 
             // Step 6.9.4: Let relatedTarget be result of retargeting event's relatedTarget against parent
             const parent_related_target = retarget(event.related_target, p);
@@ -297,21 +338,44 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 /// Each EventTarget has an associated "get the parent" algorithm.
 /// Nodes, shadow roots, and documents override this algorithm.
 fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
-    _ = event; // TODO: Use event.composed for shadow DOM traversal
+    // Per spec (DOM §2.9): Each EventTarget has a "get the parent" algorithm
+    // For Node: return parent, unless event.composed is false and node is a shadow root, then return null
+    // For ShadowRoot: if event.composed is false, return null; otherwise return host
 
-    // Simplified version: Try to cast to Node and get parent
-    // Full version would handle ShadowRoot, Document, and Window
+    // Check if this is a Node
+    if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+        const node: *Node = @ptrCast(@alignCast(target));
 
-    // Try to cast EventTarget to Node
-    // This works because Node extends EventTarget
-    const node = Node.fromEventTarget(target) catch return null;
+        // Check if this is a ShadowRoot
+        const NodeTypeTag = @import("node").NodeTypeTag;
+        if (node.base.type_tag == NodeTypeTag.ShadowRoot) {
+            // This is a ShadowRoot
+            // If event.composed is false, return null (don't cross shadow boundary)
+            if (!event.composed) {
+                return null;
+            }
 
-    // Check if node is assigned to a slot (Shadow DOM feature)
-    // For now, skip this check as slots aren't fully implemented
+            // If composed is true, return the host
+            const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
+            const host_element = shadow.host_element;
+            return @ptrCast(@alignCast(&host_element.base));
+        }
 
-    // Return parent_node
-    if (node.parent_node) |parent| {
-        return &parent.base;
+        // Regular Node - check if assigned to a slot
+        // Per spec: If node is assigned, return node's assigned slot
+        if (node.base.type_tag == .Element) {
+            const element: *const Element = @ptrCast(@alignCast(node));
+            if (element.assigned_slot) |slot| {
+                // Return the assigned slot as EventTarget
+                return @ptrCast(@alignCast(slot));
+            }
+        }
+        // TODO: Text nodes can also be assigned to slots
+
+        // Return parent_node
+        if (node.parent_node) |parent| {
+            return &parent.base;
+        }
     }
 
     return null;
