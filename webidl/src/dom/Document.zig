@@ -20,6 +20,7 @@ const Text = @import("text").Text;
 const Comment = @import("comment").Comment;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Range = @import("range").Range;
+const Attr = @import("attr").Attr;
 
 /// Document format type enumeration
 pub const DocType = enum {
@@ -474,6 +475,78 @@ pub const Document = webidl.interface(struct {
 
         // Step 5: Return node
         return node;
+    }
+
+    /// createEvent(interface)
+    /// DOM §4.6.1 - Creates a legacy event object
+    /// Spec: https://dom.spec.whatwg.org/#dom-document-createevent
+    ///
+    /// This is a legacy API for creating events. New code should use event constructors instead.
+    ///
+    /// Spec steps:
+    /// 1. Let constructor be null
+    /// 2. If interface is ASCII case-insensitive match for strings in table, set constructor
+    /// 3. If constructor is null, throw "NotSupportedError"
+    /// 4. If interface not exposed on relevant global object, throw "NotSupportedError"
+    /// 5. Return result of creating an event given constructor
+    pub fn call_createEvent(self: *Document, interface: []const u8) !*@import("event").Event {
+
+        // Step 2: Check ASCII case-insensitive match against known event types
+        // Convert to lowercase for comparison
+        var lowercase_buf: [64]u8 = undefined;
+        if (interface.len > lowercase_buf.len) {
+            return error.NotSupportedError;
+        }
+
+        for (interface, 0..) |c, i| {
+            lowercase_buf[i] = std.ascii.toLower(c);
+        }
+        const lowercase_interface = lowercase_buf[0..interface.len];
+
+        // Step 2: Match against known event type strings
+        // For now, we only support basic Event type
+        // Full spec requires: BeforeUnloadEvent, CompositionEvent, CustomEvent,
+        // DeviceMotionEvent, DeviceOrientationEvent, DragEvent, Event, FocusEvent,
+        // HashChangeEvent, KeyboardEvent, MessageEvent, MouseEvent, StorageEvent,
+        // TextEvent, TouchEvent, UIEvent
+
+        const is_event = std.mem.eql(u8, lowercase_interface, "event") or
+            std.mem.eql(u8, lowercase_interface, "events") or
+            std.mem.eql(u8, lowercase_interface, "htmlevents") or
+            std.mem.eql(u8, lowercase_interface, "svgevents");
+
+        const is_uievent = std.mem.eql(u8, lowercase_interface, "uievent") or
+            std.mem.eql(u8, lowercase_interface, "uievents");
+
+        const is_mouseevent = std.mem.eql(u8, lowercase_interface, "mouseevent") or
+            std.mem.eql(u8, lowercase_interface, "mouseevents");
+
+        const is_customevent = std.mem.eql(u8, lowercase_interface, "customevent");
+
+        // TODO: Add support for other event types when they're implemented:
+        // - KeyboardEvent, FocusEvent, TouchEvent, etc.
+
+        // Step 3: If constructor is null, throw "NotSupportedError"
+        if (!is_event and !is_uievent and !is_mouseevent and !is_customevent) {
+            return error.NotSupportedError;
+        }
+
+        // Step 4: Interface exposure check (skipped for now - all Event types are exposed)
+
+        // Step 5: Create an event
+        // For now, we create a basic Event for all types
+        // Proper implementation would create specific event subtypes
+        const Event = @import("event").Event;
+        const event = try self.allocator.create(Event);
+        errdefer self.allocator.destroy(event);
+
+        event.* = try Event.init(self.allocator);
+
+        // Note: The created event will be in uninitialized state
+        // The caller must call initEvent() or similar to initialize it
+        // This matches legacy behavior per spec
+
+        return event;
     }
 }, .{
     .exposed = &.{.Window},
