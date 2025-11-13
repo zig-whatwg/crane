@@ -31,6 +31,7 @@ const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Element = @import("element").Element;
 const CharacterData = @import("character_data").CharacterData;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
 const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
@@ -206,7 +207,7 @@ pub const Attr = struct {
         // Step 3: Run the attribute change steps
         // Extension point for HTML, SVG, etc. to define attribute-specific behavior
         // Currently no attribute change steps defined for base DOM
-        _ = attribute;
+        // Note: attribute parameter is used above (lines 144-145), no discard needed
     }
     /// DOM §4.9 - ownerElement getter
     /// Returns this's element.
@@ -283,7 +284,6 @@ pub const Attr = struct {
             var root = tree.root(self);
 
             // Check if root is a ShadowRoot by checking type_tag
-            const ShadowRoot = @import("shadow_root").ShadowRoot;
             while (root.base.type_tag == .ShadowRoot) {
                 // Cast to ShadowRoot to access host
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));

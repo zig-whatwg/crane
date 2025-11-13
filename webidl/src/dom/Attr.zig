@@ -6,6 +6,7 @@ const std = @import("std");
 const webidl = @import("webidl");
 const Node = @import("node").Node;
 const Element = @import("element").Element;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
 
 /// DOM §4.9 - Attr interface
 /// Attr nodes represent attributes.
@@ -157,7 +158,7 @@ pub const Attr = webidl.interface(struct {
         // Step 3: Run the attribute change steps
         // Extension point for HTML, SVG, etc. to define attribute-specific behavior
         // Currently no attribute change steps defined for base DOM
-        _ = attribute;
+        // Note: attribute parameter is used above (lines 144-145), no discard needed
     }
 
     /// DOM §4.9 - ownerElement getter

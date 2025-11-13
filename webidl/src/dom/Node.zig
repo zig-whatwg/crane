@@ -15,6 +15,7 @@ const Text = @import("text").Text;
 const Element = @import("element").Element;
 const Attr = @import("attr").Attr;
 const NodeList = @import("node_list").NodeList;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
 
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
@@ -159,7 +160,6 @@ pub const Node = webidl.interface(struct {
             var root = tree.root(self);
 
             // Check if root is a ShadowRoot by checking type_tag
-            const ShadowRoot = @import("shadow_root").ShadowRoot;
             while (root.base.type_tag == .ShadowRoot) {
                 // Cast to ShadowRoot to access host
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
@@ -448,7 +448,6 @@ pub const Node = webidl.interface(struct {
                 // Check if shadow root is clonable
                 if (shadow.clonable_flag) {
                     // Clone the shadow root per spec
-                    const ShadowRoot = @import("shadow_root").ShadowRoot;
                     const copy_elem: *Element = @ptrCast(@alignCast(copy));
 
                     // Assert: copy is not a shadow host (should be true since we just created it)

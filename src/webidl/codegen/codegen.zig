@@ -215,6 +215,11 @@ const ImportSet = struct {
             try self.addPackageType("CharacterData", "character_data");
         }
 
+        // Add ShadowRoot (used by Node.getRootNode method)
+        if (!std.mem.eql(u8, class_name, "ShadowRoot")) {
+            try self.addPackageType("ShadowRoot", "shadow_root");
+        }
+
         // Add NodeList (used by Node.childNodes getter)
         try self.addPackageType("NodeList", "node_list");
 
@@ -1862,6 +1867,7 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
                 "const AbortSignal = @import(\"abort_signal\").AbortSignal;",
                 "const CharacterData = @import(\"character_data\").CharacterData;",
                 "const Text = @import(\"text\").Text;",
+                "const ShadowRoot = @import(\"shadow_root\").ShadowRoot;",
                 "const ELEMENT_NODE = @import(\"node\").ELEMENT_NODE;",
                 "const DOCUMENT_NODE = @import(\"node\").DOCUMENT_NODE;",
                 "const DOCUMENT_POSITION_DISCONNECTED = @import(\"node\").DOCUMENT_POSITION_DISCONNECTED;",
@@ -3628,6 +3634,33 @@ fn generateSmartInit(
         }
 
         try writer.print(" }}) !{s} {{\n", .{class_name});
+
+        // Check if allocator is actually used
+        var allocator_used = false;
+        for (all_fields) |field| {
+            const needs_alloc = std.mem.eql(u8, field.type_name, "[]const u8") or
+                std.mem.eql(u8, field.type_name, "[]u8");
+            if (needs_alloc) {
+                allocator_used = true;
+                break;
+            }
+        }
+        if (!allocator_used) {
+            for (all_properties) |prop| {
+                const needs_alloc = std.mem.eql(u8, prop.type_name, "[]const u8") or
+                    std.mem.eql(u8, prop.type_name, "[]u8");
+                if (needs_alloc) {
+                    allocator_used = true;
+                    break;
+                }
+            }
+        }
+
+        // If allocator not used, silence the warning
+        if (!allocator_used) {
+            try writer.writeAll("        _ = allocator;\n");
+        }
+
         try writer.print("        return {s}{{\n", .{class_name});
         try writer.writeAll("            .allocator = allocator,\n");
 
@@ -4608,6 +4641,9 @@ fn generateEnhancedClassWithRegistry(
         if (std.mem.indexOf(u8, type_code, "RegisteredObserver") != null) {
             try imports.addPackageType("RegisteredObserver", "registered_observer");
         }
+        if (std.mem.indexOf(u8, type_code, "ShadowRoot") != null and !std.mem.eql(u8, parsed.name, "ShadowRoot")) {
+            try imports.addPackageType("ShadowRoot", "shadow_root");
+        }
         if (std.mem.indexOf(u8, type_code, "AbortSignal") != null and !std.mem.eql(u8, parsed.name, "AbortSignal")) {
             try imports.addPackageType("AbortSignal", "abort_signal");
         }
@@ -5215,10 +5251,42 @@ fn generateEnhancedClassWithRegistry(
                 }
 
                 try writer.print(" }}) !{s} {{\n", .{parsed.name});
-                // If no fields, suppress unused parameter warning
+
+                // Check if allocator is actually used
+                var allocator_used = false;
+                if (!has_allocator_field and needs_allocator) {
+                    allocator_used = true; // Will be used for allocator field
+                } else {
+                    // Check if any field/property needs allocation
+                    for (all_fields_for_init.items) |field| {
+                        const needs_alloc = std.mem.eql(u8, field.type_name, "[]const u8") or
+                            std.mem.eql(u8, field.type_name, "[]u8");
+                        if (needs_alloc) {
+                            allocator_used = true;
+                            break;
+                        }
+                    }
+                    if (!allocator_used) {
+                        for (all_props_for_init.items) |prop| {
+                            const is_string_type = std.mem.eql(u8, prop.type_name, "[]const u8") or
+                                std.mem.eql(u8, prop.type_name, "[]u8");
+                            const needs_alloc = is_string_type and prop.access == .read_write;
+                            if (needs_alloc) {
+                                allocator_used = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Suppress unused parameter warnings
+                if (!allocator_used) {
+                    try writer.writeAll("        _ = allocator;\n");
+                }
                 if (all_fields_for_init.items.len == 0 and all_props_for_init.items.len == 0) {
                     try writer.writeAll("        _ = fields;\n");
                 }
+
                 try writer.print("        return .{{\n", .{});
 
                 // Only add allocator field if struct actually has one

@@ -337,6 +337,7 @@ const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 const Document = @import("document").Document;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Element = @import("element").Element;
 const CharacterData = @import("character_data").CharacterData;
 const Text = @import("text").Text;
@@ -493,7 +494,6 @@ pub const Node = struct {
             var root = tree.root(self);
 
             // Check if root is a ShadowRoot by checking type_tag
-            const ShadowRoot = @import("shadow_root").ShadowRoot;
             while (root.base.type_tag == .ShadowRoot) {
                 // Cast to ShadowRoot to access host
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
@@ -773,7 +773,6 @@ pub const Node = struct {
                 // Check if shadow root is clonable
                 if (shadow.clonable_flag) {
                     // Clone the shadow root per spec
-                    const ShadowRoot = @import("shadow_root").ShadowRoot;
                     const copy_elem: *Element = @ptrCast(@alignCast(copy));
 
                     // Assert: copy is not a shadow host (should be true since we just created it)

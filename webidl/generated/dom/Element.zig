@@ -15,7 +15,6 @@ const webidl = @import("webidl");
 pub const dom = @import("dom");
 
 pub const dom_types = @import("dom_types");
-pub const ShadowRoot = @import("shadow_root").ShadowRoot;
 pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
 
 /// Custom element state per HTML spec
@@ -44,6 +43,7 @@ const GetRootNodeOptions = @import("node").GetRootNodeOptions;
 const Document = @import("document").Document;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
+const ShadowRoot = @import("shadow_root").ShadowRoot;
 const NodeList = @import("node_list").NodeList;
 const ELEMENT_NODE = @import("node").ELEMENT_NODE;
 const ATTRIBUTE_NODE = @import("node").ATTRIBUTE_NODE;
@@ -1239,7 +1239,6 @@ pub const Element = struct {
             var root = tree.root(self);
 
             // Check if root is a ShadowRoot by checking type_tag
-            const ShadowRoot = @import("shadow_root").ShadowRoot;
             while (root.base.type_tag == .ShadowRoot) {
                 // Cast to ShadowRoot to access host
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));

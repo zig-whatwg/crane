@@ -141,6 +141,7 @@ pub const Parent = struct {
         });
     }
     fn initFields(allocator: std.mem.Allocator, fields: *const struct { mixin_field: u32, parent_field: u32, }) !Parent {
+        _ = allocator;
         return .{
             .mixin_field = fields.mixin_field,
             .parent_field = fields.parent_field,
@@ -184,6 +185,7 @@ pub const Child = struct {
         });
     }
     fn initFields(allocator: std.mem.Allocator, fields: *const struct { parent_field: u32, mixin_field: u32, child_field: u32, }) !Child {
+        _ = allocator;
         return .{
             .parent_field = fields.parent_field,
             .mixin_field = fields.mixin_field,
@@ -370,6 +372,7 @@ pub const ParentMulti = struct {
         });
     }
     fn initFields(allocator: std.mem.Allocator, fields: *const struct { field_a: u32, field_b: u32, parent_multi_field: u32, }) !ParentMulti {
+        _ = allocator;
         return .{
             .field_a = fields.field_a,
             .field_b = fields.field_b,
@@ -509,6 +512,7 @@ pub const ChildMulti = struct {
         });
     }
     fn initFields(allocator: std.mem.Allocator, fields: *const struct { parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, }) !ChildMulti {
+        _ = allocator;
         return .{
             .parent_multi_field = fields.parent_multi_field,
             .field_b = fields.field_b,
@@ -557,6 +561,7 @@ pub const GrandChild = struct {
         });
     }
     fn initFields(allocator: std.mem.Allocator, fields: *const struct { parent_multi_field: u32, field_b: u32, field_a: u32, child_multi_field: u32, grandchild_field: u32, }) !GrandChild {
+        _ = allocator;
         return .{
             .parent_multi_field = fields.parent_multi_field,
             .field_b = fields.field_b,
