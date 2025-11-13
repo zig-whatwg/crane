@@ -393,20 +393,59 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
         }
 
         // Parse field: name: Type,
-        if (std.mem.indexOf(u8, line, ":")) |colon_pos| {
+        if (std.mem.indexOf(u8, line, ":")) |colon_pos_in_line| {
             if (!std.mem.startsWith(u8, line, "//")) { // Skip comments
-                const name = std.mem.trim(u8, line[0..colon_pos], " \t");
-                const after_colon = line[colon_pos + 1 ..];
-                const comma_pos = std.mem.indexOfScalar(u8, after_colon, ',') orelse after_colon.len;
-                const eq_pos = std.mem.indexOfScalar(u8, after_colon, '=');
+                const name = std.mem.trim(u8, line[0..colon_pos_in_line], " \t");
 
-                const type_end = if (eq_pos) |eq| @min(eq, comma_pos) else comma_pos;
-                const type_name = std.mem.trim(u8, after_colon[0..type_end], " \t");
+                // For multi-line types, find colon in struct_body and search from there
+                // The colon is at line_start + the position in the untrimmed line
+                const untrimmed_line = struct_body[line_start..line_end];
+                const colon_in_untrimmed = std.mem.indexOf(u8, untrimmed_line, ":") orelse continue;
+                const field_start = line_start + colon_in_untrimmed + 1;
+
+                // Find the end of the type, accounting for nested parentheses in generics
+                var paren_depth: i32 = 0;
+                var type_end_pos: usize = field_start;
+                while (type_end_pos < struct_body.len) : (type_end_pos += 1) {
+                    const c = struct_body[type_end_pos];
+                    if (c == '(') {
+                        paren_depth += 1;
+                    } else if (c == ')') {
+                        paren_depth -= 1;
+                    } else if (c == ',' and paren_depth == 0) {
+                        break;
+                    } else if (c == '=' and paren_depth == 0) {
+                        break;
+                    }
+                }
+                const type_end = type_end_pos;
+                const type_text = struct_body[field_start..type_end];
+
+                // Normalize whitespace: collapse newlines/multiple spaces to single space
+                var type_name_buf: std.ArrayList(u8) = .empty;
+                defer type_name_buf.deinit(allocator);
+                var last_was_space = false;
+                for (type_text) |c| {
+                    if (c == ' ' or c == '\t' or c == '\n' or c == '\r') {
+                        if (!last_was_space) {
+                            try type_name_buf.append(allocator, ' ');
+                            last_was_space = true;
+                        }
+                    } else {
+                        try type_name_buf.append(allocator, c);
+                        last_was_space = false;
+                    }
+                }
+                const type_name_raw = try type_name_buf.toOwnedSlice(allocator);
+                const type_name_trimmed = std.mem.trim(u8, type_name_raw, " \t");
+                const type_name = try allocator.dupe(u8, type_name_trimmed);
+                allocator.free(type_name_raw);
+                errdefer allocator.free(type_name);
 
                 if (name.len > 0 and type_name.len > 0) {
                     try fields.append(ir.Field{
                         .name = try allocator.dupe(u8, name),
-                        .type_name = try allocator.dupe(u8, type_name),
+                        .type_name = type_name,
                         .doc_comment = null,
                         .source_line = line_num,
                     });
