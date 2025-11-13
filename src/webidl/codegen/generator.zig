@@ -69,7 +69,7 @@ pub fn generateCode(
     try writer.writeAll("\n");
 
     // Class definition
-    try writeClass(writer, enhanced);
+    try writeClass(allocator, writer, enhanced);
 
     return output.toOwnedSlice(allocator);
 }
@@ -177,7 +177,7 @@ fn writeImports(writer: anytype, imports: []ir.Import) !void {
 }
 
 /// Write class definition
-fn writeClass(writer: anytype, enhanced: ir.EnhancedClassIR) !void {
+fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR) !void {
     const class = enhanced.class;
 
     // Class doc comment
@@ -246,7 +246,7 @@ fn writeClass(writer: anytype, enhanced: ir.EnhancedClassIR) !void {
         try writer.writeAll("    // ========================================================================\n\n");
 
         for (enhanced.all_methods) |method| {
-            try writeMethod(writer, method);
+            try writeMethod(allocator, writer, method, enhanced.all_imports);
             try writer.writeAll("\n");
         }
     }
@@ -255,7 +255,7 @@ fn writeClass(writer: anytype, enhanced: ir.EnhancedClassIR) !void {
 }
 
 /// Write a single method
-fn writeMethod(writer: anytype, method: ir.Method) !void {
+fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_level_imports: []ir.Import) !void {
     // Doc comment
     if (method.doc_comment) |doc| {
         var lines = std.mem.splitScalar(u8, doc, '\n');
@@ -275,8 +275,91 @@ fn writeMethod(writer: anytype, method: ir.Method) !void {
         method.signature,
     });
 
-    // Method body
-    try writer.writeAll(method.body);
+    // Method body - strip local imports that shadow top-level imports
+    const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports);
+    defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
+    try writer.writeAll(cleaned_body);
 
     try writer.writeAll("\n    }\n");
+}
+
+/// Remove local imports from method body if they shadow top-level imports
+/// Example: removes `const DocumentType = @import("document_type").DocumentType;`
+/// if DocumentType is already imported at file level
+fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_imports: []ir.Import) ![]const u8 {
+    // Build set of imported names
+    var imported_names = std.StringHashMap(void).init(allocator);
+    defer imported_names.deinit();
+
+    for (top_level_imports) |import| {
+        try imported_names.put(import.name, {});
+    }
+
+    // Scan for local imports: `const Name = @import("...")`
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var pos: usize = 0;
+    while (pos < body.len) {
+        // Look for pattern: const Name = @import(
+        const const_pos = std.mem.indexOfPos(u8, body, pos, "const ") orelse {
+            // No more consts, append rest
+            try result.appendSlice(allocator, body[pos..]);
+            break;
+        };
+
+        // Append everything before this const
+        try result.appendSlice(allocator, body[pos..const_pos]);
+
+        // Check if this is an import statement
+        const after_const = const_pos + "const ".len;
+        const eq_pos = std.mem.indexOfScalarPos(u8, body, after_const, '=') orelse {
+            // No = sign, not an import, keep it
+            try result.appendSlice(allocator, "const ");
+            pos = after_const;
+            continue;
+        };
+
+        const name_end = eq_pos;
+        // Trim whitespace
+        var name_start = after_const;
+        while (name_start < name_end and std.ascii.isWhitespace(body[name_start])) : (name_start += 1) {}
+        var name_end_trimmed = name_end;
+        while (name_end_trimmed > name_start and std.ascii.isWhitespace(body[name_end_trimmed - 1])) : (name_end_trimmed -= 1) {}
+
+        const name = body[name_start..name_end_trimmed];
+
+        // Check if this is an @import statement
+        const after_eq = eq_pos + 1;
+        const import_pos = std.mem.indexOfPos(u8, body, after_eq, "@import(") orelse {
+            // Not an import, keep it
+            try result.appendSlice(allocator, body[const_pos..after_eq]);
+            pos = after_eq;
+            continue;
+        };
+
+        // This is a const Name = @import(...); statement
+        // Find the semicolon
+        const semicolon_pos = std.mem.indexOfScalarPos(u8, body, import_pos, ';') orelse {
+            // No semicolon found, keep it
+            try result.appendSlice(allocator, body[const_pos..]);
+            pos = body.len;
+            break;
+        };
+
+        // Check if this name is already imported at top level
+        if (imported_names.contains(name)) {
+            // Skip this entire line (it shadows a top-level import)
+            // Find the end of the line
+            const newline_pos = std.mem.indexOfScalarPos(u8, body, semicolon_pos, '\n') orelse body.len;
+            pos = newline_pos;
+            if (pos < body.len and body[pos] == '\n') pos += 1; // Skip the newline
+        } else {
+            // Keep this import (not shadowing)
+            try result.appendSlice(allocator, body[const_pos .. semicolon_pos + 1]);
+            pos = semicolon_pos + 1;
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
 }
