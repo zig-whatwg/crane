@@ -20,6 +20,7 @@ const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const Node = @import("node").Node;
+const NodeList = @import("node_list").NodeList;
 const NodeType = @import("node_type").NodeType;
 const PI = @import("p_i").PI;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;

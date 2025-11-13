@@ -981,6 +981,71 @@ fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []con
         }
     }
 
+    // Additional pass: look for type names used as values
+    // Pattern: create(Type) or allocator.create(Type) - common allocation pattern
+    pos = 0;
+    while (pos < combined.len) {
+        const c = combined[pos];
+
+        // Skip comments and strings (same as before)
+        if (c == '/' and pos + 1 < combined.len and combined[pos + 1] == '/') {
+            while (pos < combined.len and combined[pos] != '\n') pos += 1;
+            continue;
+        }
+        if (c == '"') {
+            pos += 1;
+            while (pos < combined.len) {
+                if (combined[pos] == '"' and combined[pos - 1] != '\\') break;
+                pos += 1;
+            }
+            pos += 1;
+            continue;
+        }
+
+        // Look for pattern: create(Type) or cast(Type)
+        if (c == 'c' and pos + 6 < combined.len) {
+            if (std.mem.startsWith(u8, combined[pos..], "create(") or
+                std.mem.startsWith(u8, combined[pos..], "cast("))
+            {
+                // Find the opening paren
+                var paren_pos = pos;
+                while (paren_pos < combined.len and combined[paren_pos] != '(') paren_pos += 1;
+                paren_pos += 1; // Skip '('
+
+                // Skip whitespace
+                while (paren_pos < combined.len and (combined[paren_pos] == ' ' or combined[paren_pos] == '\t')) {
+                    paren_pos += 1;
+                }
+
+                // Check for uppercase letter (type name)
+                if (paren_pos < combined.len and combined[paren_pos] >= 'A' and combined[paren_pos] <= 'Z') {
+                    const start = paren_pos;
+                    while (paren_pos < combined.len) {
+                        const ch = combined[paren_pos];
+                        if ((ch >= 'a' and ch <= 'z') or
+                            (ch >= 'A' and ch <= 'Z') or
+                            (ch >= '0' and ch <= '9') or
+                            ch == '_')
+                        {
+                            paren_pos += 1;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    const type_name = combined[start..paren_pos];
+                    if (!isBuiltinType(type_name)) {
+                        try types.put(type_name, {});
+                    }
+                    pos = paren_pos;
+                    continue;
+                }
+            }
+        }
+
+        pos += 1;
+    }
+
     // Convert to array
     var result = infra.List([]const u8).init(allocator);
     errdefer {
