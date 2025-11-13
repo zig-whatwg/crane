@@ -111,6 +111,15 @@ fn collectAllFields(
         }
     }
 
+    // Add mixin fields (before own fields)
+    for (class.mixins) |mixin_name| {
+        if (registry.get(mixin_name)) |mixin| {
+            for (mixin.own_fields) |field| {
+                try fields.append(try cloneField(allocator, field));
+            }
+        }
+    }
+
     // Add own fields
     for (class.own_fields) |field| {
         try fields.append(try cloneField(allocator, field));
@@ -138,6 +147,18 @@ fn collectAllMethods(
     for (class.own_methods) |method| {
         try methods.append(try cloneMethod(allocator, method));
         try seen_methods.put(method.name, {});
+    }
+
+    // Add mixin methods (skip if overridden by own methods)
+    for (class.mixins) |mixin_name| {
+        if (registry.get(mixin_name)) |mixin| {
+            for (mixin.own_methods) |method| {
+                if (!seen_methods.contains(method.name)) {
+                    try methods.append(try cloneMethod(allocator, method));
+                    try seen_methods.put(method.name, {});
+                }
+            }
+        }
     }
 
     // Add inherited methods (skip if overridden)
@@ -181,6 +202,15 @@ fn collectAllProperties(
                 allocator.free(parent_props);
             }
             for (parent_props) |prop| {
+                try properties.append(try cloneProperty(allocator, prop));
+            }
+        }
+    }
+
+    // Add mixin properties (before own properties)
+    for (class.mixins) |mixin_name| {
+        if (registry.get(mixin_name)) |mixin| {
+            for (mixin.own_properties) |prop| {
                 try properties.append(try cloneProperty(allocator, prop));
             }
         }
