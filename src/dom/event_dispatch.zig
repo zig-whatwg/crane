@@ -95,7 +95,17 @@ pub fn dispatch(
     // Step 2: Let targetOverride be target, if legacy target override flag is not given,
     // and target's associated Document otherwise
     const target_override = if (!legacy_target_override_flag) target else blk: {
-        // TODO: Get target's associated Document
+        // Get target's associated Document
+        // Per DOM spec: Every Node has an owner_document
+        if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+            const node: *Node = @ptrCast(@alignCast(target));
+            if (node.owner_document) |doc| {
+                // Return the document as EventTarget
+                const doc_node: *Node = @ptrCast(@alignCast(doc));
+                break :blk &doc_node.base;
+            }
+        }
+        // Fallback: if not a node or has no document, use target itself
         break :blk target;
     };
 
@@ -223,13 +233,37 @@ pub fn dispatch(
 
             // Step 6.9.7: If parent is a Window object, or parent is a node and target's root
             // is a shadow-including inclusive ancestor of parent
-            // TODO: Check Window and shadow tree conditions
-            // For now, assume this condition is true (append to path)
-            try appendToEventPath(event, p, null, parent_related_target, parent_touch_targets, slot_in_closed_tree);
+            var should_append = false;
 
+            // Check if parent is a Window object (HTML spec - not implemented)
+            // For now, Window is not implemented, so this is always false
+
+            // Check if parent is a node AND target's root is shadow-including inclusive ancestor
+            if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+                // Parent is a Node
+                // Get target's shadow-including root
+                const target_node: *Node = @ptrCast(@alignCast(target));
+                const target_root = target_node.call_getRootNode(.{ .composed = true }); // shadow-including
+
+                // Check if target_root is shadow-including inclusive ancestor of parent
+                const parent_node: *Node = @ptrCast(@alignCast(p));
+                if (isShadowIncludingInclusiveAncestor(target_root, parent_node)) {
+                    should_append = true;
+                }
+            }
+
+            if (should_append) {
+                // Step 6.9.7 continued: Append to event path
+                try appendToEventPath(event, p, null, parent_related_target, parent_touch_targets, slot_in_closed_tree);
+            }
             // Step 6.9.8: Otherwise, if parent is relatedTarget, set parent to null
-            // Step 6.9.9: Otherwise, append to event path with different parameters
-            // (Simplified for now - always append in step 6.9.7)
+            else if (p == parent_related_target) {
+                parent = null;
+            }
+            // Step 6.9.9: Otherwise, append to event path with event target set to target
+            else {
+                try appendToEventPath(event, p, target, parent_related_target, parent_touch_targets, slot_in_closed_tree);
+            }
 
             // Step 6.9.10: If parent is non-null, set parent to result of invoking parent's get the parent
             parent = getTheParent(p, event);
@@ -330,6 +364,33 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
     // Full algorithm involves shadow tree traversal
     _ = b;
     return a;
+}
+
+/// Check if ancestor is a shadow-including inclusive ancestor of node
+/// DOM §4.2.2.4: A is a shadow-including inclusive ancestor of B if:
+/// - A is an inclusive ancestor of B, OR
+/// - B's root is a shadow root and A is a shadow-including inclusive ancestor of B's host
+fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
+    // Check if ancestor is an inclusive ancestor of node (tree.zig)
+    const tree = @import("dom").tree;
+    if (tree.isInclusiveAncestor(ancestor, node)) {
+        return true;
+    }
+
+    // Check if node's root is a shadow root
+    const node_root = node.call_getRootNode(.{});
+    const NodeTypeTag = @import("node").NodeTypeTag;
+    if (node_root.base.type_tag == NodeTypeTag.ShadowRoot) {
+        // Get shadow root's host
+        const shadow: *ShadowRoot = @ptrCast(@alignCast(node_root));
+        const host_element = shadow.host_element;
+        const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
+
+        // Recursively check if ancestor is shadow-including inclusive ancestor of host
+        return isShadowIncludingInclusiveAncestor(ancestor, host_node);
+    }
+
+    return false;
 }
 
 /// DOM §2.9 - get the parent
