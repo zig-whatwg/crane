@@ -41,10 +41,12 @@ pub const CountQueuingStrategy = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) CountQueuingStrategy {
+
         _ = allocator; // Not needed for this simple structure
         return .{
             ._highWaterMark = initDict.highWaterMark,
         };
+    
     }
 
     pub fn deinit(_: *CountQueuingStrategy) void {

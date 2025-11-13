@@ -71,16 +71,17 @@ pub const ParentNode = struct {
     // ========================================================================
 
     pub fn get_children(self: ParentNode) !*HTMLCollection {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
-        const allocator = self.allocator;
+        const allocator = self_parent.allocator;
 
         // Create HTMLCollection
         const collection = try allocator.create(HTMLCollection);
         collection.* = try HTMLCollection.init(allocator);
 
         // Filter child_nodes for elements only (ELEMENT_NODE = 1)
-        for (self.child_nodes.items) |child| {
+        for (self_parent.child_nodes.items) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 const element: *Element = @ptrCast(child);
                 try collection.addElement(element);
@@ -92,12 +93,13 @@ pub const ParentNode = struct {
     }
 
     pub fn get_firstElementChild(self: ParentNode) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
 
         // Iterate through children in tree order
-        for (self.child_nodes.items) |child| {
+        for (self_parent.child_nodes.items) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
@@ -108,15 +110,16 @@ pub const ParentNode = struct {
     }
 
     pub fn get_lastElementChild(self: ParentNode) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
 
         // Iterate through children in reverse tree order
-        var i: usize = self.child_nodes.items.len;
+        var i: usize = self_parent.child_nodes.items.len;
         while (i > 0) {
             i -= 1;
-            const child = self.child_nodes.items[i];
+            const child = self_parent.child_nodes.items[i];
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
@@ -127,13 +130,14 @@ pub const ParentNode = struct {
     }
 
     pub fn get_childElementCount(self: ParentNode) u32 {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
 
         // Count children that are Elements
         var count: u32 = 0;
-        for (self.child_nodes.items) |child| {
+        for (self_parent.child_nodes.items) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 count += 1;
             }
@@ -144,13 +148,14 @@ pub const ParentNode = struct {
     }
 
     pub fn call_prepend(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let node be the result of converting nodes into a node
         const document = this_node.owner_document orelse return error.NoDocument;
@@ -163,13 +168,14 @@ pub const ParentNode = struct {
     }
 
     pub fn call_append(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let node be the result of converting nodes into a node
         const document = this_node.owner_document orelse return error.NoDocument;
@@ -181,13 +187,14 @@ pub const ParentNode = struct {
     }
 
     pub fn call_replaceChildren(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
         const ChildNodeMixin = @import("child_node").ChildNode;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let node be the result of converting nodes into a node
         const document = this_node.owner_document orelse return error.NoDocument;
@@ -202,11 +209,12 @@ pub const ParentNode = struct {
     }
 
     pub fn call_moveBefore(self: ParentNode, node: anytype, child: anytype) !void {
+        const self_parent = self;
 
         const mutation = @import("dom").mutation;
 
         // Get Node pointers from the anytype parameters
-        const parent_node = @as(*@import("node").Node, @ptrCast(self));
+        const parent_node = @as(*@import("node").Node, @ptrCast(self_parent));
         const moved_node = @as(*@import("node").Node, @ptrCast(node));
         const child_node = if (child) |c| @as(?*@import("node").Node, @ptrCast(c)) else null;
 
@@ -224,9 +232,10 @@ pub const ParentNode = struct {
     }
 
     pub fn call_querySelector(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
+        const self_parent = self;
 
         // Run scope-match a selectors string against this
-        const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        const matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self_parent);
         defer matches.deinit();
 
         // Return first result if not empty; otherwise null
@@ -239,9 +248,10 @@ pub const ParentNode = struct {
     }
 
     pub fn call_querySelectorAll(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
+        const self_parent = self;
 
         // Run scope-match a selectors string against this
-        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self);
+        var matches = try dom.selectors.scopeMatchSelectorsString(allocator, selectors, self_parent);
         defer matches.deinit();
 
         // Create NodeList and populate with matches (static snapshot)

@@ -17,6 +17,7 @@ const Element = @import("element").Element;
 const Event = @import("event").Event;
 pub const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
+pub const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
@@ -231,12 +232,13 @@ pub const CharacterData = struct {
     }
 
     pub fn call_before(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -286,12 +288,13 @@ pub const CharacterData = struct {
     }
 
     pub fn call_after(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -334,12 +337,13 @@ pub const CharacterData = struct {
     }
 
     pub fn call_replaceWith(self: CharacterData, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -389,12 +393,13 @@ pub const CharacterData = struct {
     }
 
     pub fn call_remove(self: CharacterData) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: If this's parent is null, then return
         if (node.parent_node == null) {
@@ -407,10 +412,11 @@ pub const CharacterData = struct {
     }
 
     pub fn previousElementSibling(self: CharacterData) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
-        const parent = self.parent_node orelse return null;
+        const parent = self_parent.parent_node orelse return null;
 
         // Find our index in parent's children
         var found_self = false;
@@ -419,7 +425,7 @@ pub const CharacterData = struct {
             i -= 1;
             const sibling = parent.child_nodes.items[i];
 
-            if (sibling == @as(*NodeType, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self_parent))) {
                 found_self = true;
                 continue;
             }
@@ -435,15 +441,16 @@ pub const CharacterData = struct {
     }
 
     pub fn nextElementSibling(self: CharacterData) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
-        const parent = self.parent_node orelse return null;
+        const parent = self_parent.parent_node orelse return null;
 
         // Find our index in parent's children
         var found_self = false;
         for (parent.child_nodes.items) |sibling| {
-            if (sibling == @as(*NodeType, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self_parent))) {
                 found_self = true;
                 continue;
             }
@@ -455,6 +462,168 @@ pub const CharacterData = struct {
         }
 
         return null;
+    
+    }
+
+    pub fn call_insertBefore(self: *CharacterData, node: *Node, child: ?*Node) !*Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Call mutation.preInsert algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preInsert(node, self_parent, child) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    
+    }
+
+    pub fn call_appendChild(self: *CharacterData, node: *Node) !*Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Call mutation.append algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.append(node, self_parent) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    
+    }
+
+    pub fn call_replaceChild(self: *CharacterData, node: *Node, child: *Node) !*Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Call mutation.replace algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.replace(child, node, self_parent) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+        };
+    
+    }
+
+    pub fn call_removeChild(self: *CharacterData, child: *Node) !*Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Call mutation.preRemove algorithm from src/dom/mutation.zig
+        const mutation = @import("dom").mutation;
+        return mutation.preRemove(child, self_parent) catch |err| switch (err) {
+            error.HierarchyRequestError => error.HierarchyRequestError,
+            error.NotFoundError => error.NotFoundError,
+            error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
+        };
+    
+    }
+
+    pub fn call_getRootNode(self: *CharacterData, options: ?GetRootNodeOptions) *Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        const tree = @import("dom").tree;
+
+        // Check if we need shadow-including root
+        const composed = if (options) |opts| opts.composed else false;
+
+        if (composed) {
+            // Return shadow-including root (DOM §4.2.2.4)
+            // Algorithm:
+            // 1. Let root be node's root
+            // 2. If root is a shadow root, return root's host's shadow-including root
+            // 3. Return root
+            var root = tree.root(self_parent);
+
+            // Check if root is a ShadowRoot by checking type_tag
+            while (root.base.type_tag == .ShadowRoot) {
+                // Cast to ShadowRoot to access host
+                const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
+
+                // Get the host element (which is a Node)
+                const host_element = shadow_root.host_element;
+                const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
+
+                // Get host's root (might be another shadow root)
+                root = tree.root(host_node);
+            }
+
+            return root;
+        } else {
+            // Return regular root
+            return tree.root(self_parent);
+        }
+    
+    }
+
+    pub fn call_contains(self: *const CharacterData, other: ?*const Node) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        if (other == null) return false;
+        // Check if other is an inclusive descendant of this
+        const tree = @import("dom").tree;
+        const other_node = other.?;
+        return tree.isInclusiveDescendant(other_node, self_parent);
+    
+    }
+
+    pub fn call_compareDocumentPosition(self: *const CharacterData, other: *const Node) u16 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        const tree = @import("dom").tree;
+
+        // Step 1: If this is other, then return zero
+        if (self_parent == other) {
+            return 0;
+        }
+
+        // Step 2: Let node1 be other and node2 be this
+        const node1 = other;
+        const node2 = self_parent;
+
+        // Step 3: Let attr1 and attr2 be null
+        // Step 4-5: Handle attributes (not implemented yet - attributes don't participate in tree)
+        // For now, we skip attribute handling as Attr nodes are handled separately
+
+        // Step 6: If node1 or node2 is null, or node1's root is not node2's root
+        // Check if nodes are in the same tree by comparing roots
+        const root1 = tree.root(@constCast(node1));
+        const root2 = tree.root(@constCast(node2));
+
+        if (root1 != root2) {
+            // Return disconnected + implementation specific + preceding/following
+            // Use pointer comparison for consistent ordering
+            const ptr1 = @intFromPtr(node1);
+            const ptr2 = @intFromPtr(node2);
+            const ordering = if (ptr1 < ptr2) Node.DOCUMENT_POSITION_PRECEDING else Node.DOCUMENT_POSITION_FOLLOWING;
+            return Node.DOCUMENT_POSITION_DISCONNECTED | Node.DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC | ordering;
+        }
+
+        // Step 7: If node1 is an ancestor of node2
+        if (tree.isAncestor(node1, node2)) {
+            return Node.DOCUMENT_POSITION_CONTAINS | Node.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 8: If node1 is a descendant of node2
+        if (tree.isDescendant(node1, node2)) {
+            return Node.DOCUMENT_POSITION_CONTAINED_BY | Node.DOCUMENT_POSITION_FOLLOWING;
+        }
+
+        // Step 9: If node1 is preceding node2
+        if (tree.isPreceding(node1, node2)) {
+            return Node.DOCUMENT_POSITION_PRECEDING;
+        }
+
+        // Step 10: Return DOCUMENT_POSITION_FOLLOWING
+        return Node.DOCUMENT_POSITION_FOLLOWING;
+    
+    }
+
+    pub fn call_isEqualNode(self: *const CharacterData, other_node: ?*const Node) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Step 1: Return true if otherNode is non-null and this equals otherNode
+        if (other_node == null) return false;
+        return Node.nodeEquals(self_parent, other_node.?);
     
     }
 
@@ -568,6 +737,44 @@ pub const CharacterData = struct {
         if (!std.mem.eql(u8, a.value, b.value)) return false;
 
         return true;
+    
+    }
+
+    pub fn call_isSameNode(self: *const CharacterData, other_node: ?*const Node) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Legacy alias of === (pointer equality)
+        if (other_node == null) return false;
+        return self_parent == other_node.?;
+    
+    }
+
+    pub fn call_hasChildNodes(self: *const CharacterData) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return self_parent.child_nodes.len > 0;
+    
+    }
+
+    pub fn call_cloneNode(self: *CharacterData, deep: bool) !*Node {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Step 1: If this is a shadow root, throw NotSupportedError
+        if (self_parent.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+            // Check if this is specifically a ShadowRoot
+            // ShadowRoot inherits from DocumentFragment, so we need to check the type tag
+            const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
+
+            // Try to access as DocumentFragmentBase to check type tag
+            // This is safe because DocumentFragment/ShadowRoot have base as first field
+            const frag_base: *const DocumentFragmentBase = @ptrCast(@alignCast(self_parent));
+            if (frag_base.type_tag == .ShadowRoot) {
+                return error.NotSupportedError;
+            }
+        }
+
+        // Step 2: Return the result of cloning this node with subtree set to deep
+        return try Node.cloneNodeInternal(self_parent, self_parent.owner_document, deep, null, null);
     
     }
 
@@ -773,6 +980,234 @@ pub const CharacterData = struct {
     
     }
 
+    pub fn call_normalize(self: *CharacterData) void {
+        const self_parent: *Node = @ptrCast(self);
+
+        _ = self_parent;
+        // Normalize adjacent text nodes
+    
+    }
+
+    pub fn get_nodeType(self: *const CharacterData) u16 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return self_parent.node_type;
+    
+    }
+
+    pub fn get_nodeName(self: *const CharacterData) []const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return self_parent.node_name;
+    
+    }
+
+    pub fn get_parentNode(self: *const CharacterData) ?*Node {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return self_parent.parent_node;
+    
+    }
+
+    pub fn get_parentElement(self: *const CharacterData) ?*Element {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Returns parent if it's an Element, null otherwise
+        const parent = self_parent.parent_node orelse return null;
+        if (parent.node_type == ELEMENT_NODE) {
+            // Cast to Element - safe because we checked node_type
+            return @ptrCast(@alignCast(parent));
+        }
+        return null;
+    
+    }
+
+    pub fn get_childNodes(self: *CharacterData) !*@import("node_list").NodeList {
+        const self_parent: *Node = @ptrCast(self);
+
+        // [SameObject] - Return the same NodeList object each time
+        // The NodeList is a live view of this node's children
+
+        if (self_parent.cached_child_nodes) |list| {
+            return list;
+        }
+
+        // Create new NodeList on first access
+        const list = try self_parent.allocator.create(NodeList);
+        list.* = try NodeList.init(self_parent.allocator);
+
+        // Populate with current children (live view will track changes)
+        for (self_parent.child_nodes.items) |child| {
+            try list.addNode(child);
+        }
+
+        self_parent.cached_child_nodes = list;
+        return list;
+    
+    }
+
+    pub fn get_firstChild(self: *const CharacterData) ?*Node {
+        const self_parent: *const Node = @ptrCast(self);
+
+        if (self_parent.child_nodes.len > 0) {
+            return self_parent.child_nodes.get(0);
+        }
+        return null;
+    
+    }
+
+    pub fn get_lastChild(self: *const CharacterData) ?*Node {
+        const self_parent: *const Node = @ptrCast(self);
+
+        if (self_parent.child_nodes.len > 0) {
+            return self_parent.child_nodes.get(self_parent.child_nodes.len - 1);
+        }
+        return null;
+    
+    }
+
+    pub fn get_ownerDocument(self: *const CharacterData) ?*Document {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return self_parent.owner_document;
+    
+    }
+
+    pub fn get_previousSibling(self: *const CharacterData) ?*Node {
+        const self_parent: *const Node = @ptrCast(self);
+
+        const parent = self_parent.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self_parent) {
+                if (i == 0) return null;
+                return parent.child_nodes.items[i - 1];
+            }
+        }
+        return null;
+    
+    }
+
+    pub fn get_nextSibling(self: *const CharacterData) ?*Node {
+        const self_parent: *const Node = @ptrCast(self);
+
+        const parent = self_parent.parent_node orelse return null;
+        for (parent.child_nodes.items, 0..) |child, i| {
+            if (child == self_parent) {
+                if (i + 1 >= parent.child_nodes.items.len) return null;
+                return parent.child_nodes.items[i + 1];
+            }
+        }
+        return null;
+    
+    }
+
+    pub fn get_isConnected(self: *const CharacterData) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // A node is connected if its root is a document
+        const tree = @import("dom").tree;
+        // tree.root requires mutable pointer but doesn't actually mutate
+        // Cast to mutable for the algorithm (safe for read-only root traversal)
+        const mutable_self = @constCast(self_parent);
+        const root_node = tree.root(mutable_self);
+        // Check if root is a document (node_type == DOCUMENT_NODE)
+        return root_node.node_type == DOCUMENT_NODE;
+    
+    }
+
+    pub fn get_baseURI(self: *const CharacterData) []const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Get owner document
+        const doc = self_parent.owner_document orelse {
+            // If no owner document, return empty string (should not happen in normal DOM)
+            return "about:blank";
+        };
+
+        // Return document's base URI
+        return doc.base_uri;
+    
+    }
+
+    pub fn get_nodeValue(self: *const CharacterData) ?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // The nodeValue getter steps are to return the following, switching on the interface:
+        // - Attr: this's value
+        // - CharacterData: this's data
+        // - Otherwise: null
+
+        switch (self_parent.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node
+                const attr: *const Attr = @ptrCast(@alignCast(self_parent));
+                return attr.value;
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes (Text, Comment, ProcessingInstruction, CDATASection)
+                const char_data: *const CharacterData = @ptrCast(@alignCast(self_parent));
+                return char_data.data;
+            },
+            else => {
+                // All other node types return null
+                return null;
+            },
+        }
+    
+    }
+
+    pub fn set_nodeValue(self: *CharacterData, value: ?[]const u8) !void {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
+        // The nodeValue setter steps are to, if given value is null, act as if it was empty string
+        // Then:
+        // - Attr: Set an existing attribute value with this and the given value
+        // - CharacterData: Replace data with node this, offset 0, count this's length, data given value
+        // - Otherwise: Do nothing
+
+        const str_value = value orelse "";
+
+        switch (self_parent.node_type) {
+            ATTRIBUTE_NODE => {
+                // Attr node - set an existing attribute value
+                const attr: *Attr = @ptrCast(@alignCast(self_parent));
+                // Use "set an existing attribute value" algorithm from Attr
+                try Attr.setExistingAttributeValue(attr, str_value);
+            },
+            TEXT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE, COMMENT_NODE => {
+                // CharacterData nodes - replace data
+                const char_data: *CharacterData = @ptrCast(@alignCast(self_parent));
+                // Replace data: offset 0, count = length, data = str_value
+                try char_data.call_replaceData(0, @intCast(char_data.data.len), str_value);
+            },
+            else => {
+                // All other node types do nothing
+            },
+        }
+    
+    }
+
+    pub fn get_textContent(self: *const CharacterData) !?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // Return the result of running get text content with this
+        return Node.getTextContent(self_parent, self_parent.allocator);
+    
+    }
+
+    pub fn set_textContent(self: *CharacterData, value: ?[]const u8) !void {
+        const self_parent: *Node = @ptrCast(self);
+
+        // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
+        // If the given value is null, act as if it was the empty string instead
+        const str_value = value orelse "";
+        try Node.setTextContent(self_parent, str_value);
+    
+    }
+
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -806,23 +1241,6 @@ pub const CharacterData = struct {
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
-    
-    }
-
-    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
-
-        // If this is a Text node, collect its data
-        if (node.node_type == Node.TEXT_NODE) {
-            const cd: *const CharacterData = @ptrCast(@alignCast(node));
-            try result.appendSlice(cd.data);
-        }
-
-        // Recursively process all children
-        for (0..node.child_nodes.len) |i| {
-            if (node.child_nodes.get(i)) |child| {
-                try collectDescendantText(child, result);
-            }
-        }
     
     }
 
@@ -875,75 +1293,174 @@ pub const CharacterData = struct {
     
     }
 
-    fn flattenOptions(options: anytype) bool {
+    pub fn call_lookupPrefix(self: *const CharacterData, namespace_param: ?[]const u8) ?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
 
-        const OptionsType = @TypeOf(options);
+        // Spec step 1: If namespace is null or empty, return null
+        const namespace = namespace_param orelse return null;
+        if (namespace.len == 0) return null;
 
-        // Step 1: If options is a boolean, return it
-        if (OptionsType == bool) {
-            return options;
+        // Spec step 2: Switch on node type
+        switch (self_parent.node_type) {
+            ELEMENT_NODE => {
+                // Return result of locating a namespace prefix
+                return self_parent.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_NODE => {
+                // If document element is null, return null
+                const doc: *const Document = @ptrCast(@alignCast(self_parent));
+                const doc_elem = doc.documentElement() orelse return null;
+                return doc_elem.base.locateNamespacePrefix(namespace);
+            },
+            DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
+                return null;
+            },
+            else => {
+                // For other node types, use parent element if exists
+                const parent = self_parent.parent_element orelse return null;
+                return parent.base.locateNamespacePrefix(namespace);
+            },
         }
-
-        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
-        if (@hasField(OptionsType, "capture")) {
-            return options.capture;
-        }
-
-        // Default: return false
-        return false;
     
     }
 
-    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
+    pub fn call_lookupNamespaceURI(self: *const CharacterData, prefix_param: ?[]const u8) ?[]const u8 {
+        const self_parent: *const Node = @ptrCast(self);
 
-        const OptionsType = @TypeOf(options);
+        // Spec step 1: If prefix is empty string, set to null
+        const prefix = if (prefix_param) |p| if (p.len == 0) null else p else null;
 
-        // If options is a boolean, only capture is set to that value
-        if (OptionsType == bool) {
-            return .{
-                .capture = options,
-                .passive = null,
-                .once = false,
-                .signal = null,
-            };
+        // Spec step 2: Return result of locating a namespace
+        return self_parent.locateNamespace(prefix);
+    
+    }
+
+    pub fn call_isDefaultNamespace(self: *const CharacterData, namespace_param: ?[]const u8) bool {
+        const self_parent: *const Node = @ptrCast(self);
+
+        // Spec step 1: If namespace is empty string, set to null
+        const namespace = if (namespace_param) |ns| if (ns.len == 0) null else ns else null;
+
+        // Spec step 2: Let defaultNamespace be result of locating namespace using null prefix
+        const default_namespace = self_parent.locateNamespace(null);
+
+        // Spec step 3: Return true if defaultNamespace equals namespace
+        if (default_namespace == null and namespace == null) return true;
+        if (default_namespace == null or namespace == null) return false;
+        return std.mem.eql(u8, default_namespace.?, namespace.?);
+    
+    }
+
+    pub fn getRegisteredObservers(self: *CharacterData) *std.ArrayList(RegisteredObserver) {
+        const self_parent: *Node = @ptrCast(self);
+
+        return &self_parent.registered_observers;
+    
+    }
+
+    pub fn addRegisteredObserver(self: *CharacterData, registered: RegisteredObserver) !void {
+        const self_parent: *Node = @ptrCast(self);
+
+        try self_parent.registered_observers.append(registered);
+    
+    }
+
+    pub fn removeRegisteredObserver(self: *CharacterData, observer: *const @import("mutation_observer").MutationObserver) void {
+        const self_parent: *Node = @ptrCast(self);
+
+        var i: usize = 0;
+        while (i < self_parent.registered_observers.items.len) {
+            if (self_parent.registered_observers.items[i].observer == observer) {
+                _ = self_parent.registered_observers.orderedRemove(i);
+                // Don't increment i, we just shifted everything down
+            } else {
+                i += 1;
+            }
         }
+    
+    }
 
-        // If options is AddEventListenerOptions dictionary, extract all fields
-        if (@hasField(OptionsType, "capture")) {
-            return .{
-                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
-                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
-                .once = if (@hasField(OptionsType, "once")) options.once else false,
-                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
-            };
-        }
+    pub fn removeTransientObservers(self: *CharacterData, source: *const RegisteredObserver) void {
+        const self_parent: *Node = @ptrCast(self);
 
-        // Default: return all defaults
-        return .{
-            .capture = false,
-            .passive = null,
-            .once = false,
-            .signal = null,
+        // Note: In our current implementation, we don't have a way to distinguish
+        // transient observers from regular ones in the registered_observers list.
+        // This would require either:
+        // 1. A separate transient_observers list, OR
+        // 2. Wrapping RegisteredObserver in a tagged union
+        //
+        // For now, this is a no-op. Transient observers are not yet fully implemented.
+        // When they are, they should be stored separately or tagged so we can identify
+        // and remove them here.
+        _ = self_parent;
+        _ = source;
+    
+    }
+
+    pub fn call_addEventListener(
+        self: *CharacterData,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) !void {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: Flatten more options
+        const flattened = flattenMoreOptions(options);
+
+        // Step 2: Add an event listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = flattened.capture,
+            .passive = flattened.passive,
+            .once = flattened.once,
+            .signal = flattened.signal,
         };
+
+        try self_parent.addAnEventListener(listener);
     
     }
 
-    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+    pub fn call_removeEventListener(
+        self: *CharacterData,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) void {
+        const self_parent: *EventTarget = @ptrCast(self);
 
-        _ = event_target;
-        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
-        // AND eventTarget is Window or specific node conditions
-        // For now, simplified: return true for touch/wheel events
-        if (std.mem.eql(u8, event_type, "touchstart") or
-            std.mem.eql(u8, event_type, "touchmove") or
-            std.mem.eql(u8, event_type, "wheel") or
-            std.mem.eql(u8, event_type, "mousewheel"))
-        {
-            // TODO: Check eventTarget conditions per spec
-            return true;
+        // Step 1: Flatten options
+        const capture = flattenOptions(options);
+
+        // Step 2: Remove matching listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = capture,
+        };
+
+        self_parent.removeAnEventListener(listener);
+    
+    }
+
+    pub fn call_dispatchEvent(self: *CharacterData, event: *Event) !bool {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: Check flags
+        if (event.dispatch_flag or !event.initialized_flag) {
+            return error.InvalidStateError;
         }
-        // Step 2: Return false
-        return false;
+
+        // Step 2: Initialize isTrusted to false
+        event.is_trusted = false;
+
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self_parent, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     
     }
 

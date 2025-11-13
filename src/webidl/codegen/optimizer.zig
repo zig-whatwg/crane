@@ -247,13 +247,13 @@ fn collectAllMethods(
                 allocator.free(parent_methods);
             }
             for (parent_methods) |method| {
-                // Skip if already defined in child class
+                // Skip private methods - they cannot be inherited
+                if (!method.modifiers.is_public) continue;
+
+                // Skip if already defined in child class (child override wins)
                 if (seen_methods.contains(method.name)) continue;
 
-                // Skip methods that require the specific class type in self parameter
-                // These methods can't be inherited because they reference the parent type
-                if (shouldSkipInheritedMethod(method, parent.name, class.name)) continue;
-
+                // Inherit the method - will be rewritten in generator to use child's self type
                 try methods.append(try cloneMethod(allocator, method));
                 try seen_methods.put(method.name, {});
             }
@@ -263,31 +263,9 @@ fn collectAllMethods(
     return methods.toOwnedSlice();
 }
 
-/// Check if a method should be skipped when inheriting
-/// Methods with self: *ParentType signatures can't be used in child class
-fn shouldSkipInheritedMethod(method: ir.Method, parent_name: []const u8, child_name: []const u8) bool {
-    _ = child_name; // Not needed yet, but might be useful later
-
-    // Check if the signature references the parent class type in self parameter
-    // Common patterns to check for:
-    // - (self: *ParentType)
-    // - (self: *const ParentType)
-
-    // Build a simple buffer for the patterns (max class name ~50 chars)
-    var buf1: [100]u8 = undefined;
-    var buf2: [100]u8 = undefined;
-
-    const self_pattern1 = std.fmt.bufPrint(&buf1, "self: *{s}", .{parent_name}) catch return false;
-    const self_pattern2 = std.fmt.bufPrint(&buf2, "self: *const {s}", .{parent_name}) catch return false;
-
-    if (std.mem.indexOf(u8, method.signature, self_pattern1) != null or
-        std.mem.indexOf(u8, method.signature, self_pattern2) != null)
-    {
-        return true;
-    }
-
-    return false;
-}
+// NOTE: shouldSkipInheritedMethod removed - we now inherit all parent methods
+// and use @ptrCast in the generator to handle type conversions between
+// parent and child types (safe due to flattened field layout)
 
 /// Collect all properties (own + inherited)
 fn collectAllProperties(

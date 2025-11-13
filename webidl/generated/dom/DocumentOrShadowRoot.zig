@@ -39,25 +39,28 @@ pub const DocumentOrShadowRoot = struct {
     // ========================================================================
 
     pub fn get_customElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
+        const self_parent: *const @This() = @ptrCast(self);
 
         // Step 1: If this is a document, then return this's custom element registry
         // Step 2: Assert: this is a ShadowRoot node
         // Step 3: Return this's custom element registry
 
         // Both cases just return the custom_element_registry field
-        return self.custom_element_registry;
+        return self_parent.custom_element_registry;
     
     }
 
     pub fn getCustomElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
+        const self_parent: *const @This() = @ptrCast(self);
 
-        return self.custom_element_registry;
+        return self_parent.custom_element_registry;
     
     }
 
     pub fn setCustomElementRegistry(self: *DocumentOrShadowRoot, registry: ?*anyopaque) void {
+        const self_parent: *@This() = @ptrCast(self);
 
-        self.custom_element_registry = registry;
+        self_parent.custom_element_registry = registry;
     
     }
 

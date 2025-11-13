@@ -1086,6 +1086,49 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
     return methods.toOwnedSlice();
 }
 
+/// Find a keyword as a standalone word (not substring of another identifier)
+/// Returns the position of the keyword if found, or null
+fn findKeyword(text: []const u8, keyword: []const u8) ?usize {
+    var pos: usize = 0;
+    while (pos < text.len) {
+        const found_pos = std.mem.indexOfPos(u8, text, pos, keyword) orelse return null;
+
+        // Check character before keyword (must be non-identifier character or start of string)
+        const has_valid_prefix = if (found_pos == 0)
+            true
+        else blk: {
+            const char_before = text[found_pos - 1];
+            const is_ident_char = (char_before >= 'a' and char_before <= 'z') or
+                (char_before >= 'A' and char_before <= 'Z') or
+                (char_before >= '0' and char_before <= '9') or
+                char_before == '_';
+            break :blk !is_ident_char;
+        };
+
+        // Check character after keyword (must be non-identifier character or end of string)
+        const after_pos = found_pos + keyword.len;
+        const has_valid_suffix = if (after_pos >= text.len)
+            true
+        else blk: {
+            const char_after = text[after_pos];
+            const is_ident_char = (char_after >= 'a' and char_after <= 'z') or
+                (char_after >= 'A' and char_after <= 'Z') or
+                (char_after >= '0' and char_after <= '9') or
+                char_after == '_';
+            break :blk !is_ident_char;
+        };
+
+        if (has_valid_prefix and has_valid_suffix) {
+            return found_pos;
+        }
+
+        // Continue searching after this match
+        pos = found_pos + 1;
+    }
+
+    return null;
+}
+
 /// Find the opening brace of the method body
 /// Handles anonymous struct return types: fn foo() struct { ... } { body }
 /// Returns the position of the '{' that starts the method body
@@ -1116,8 +1159,11 @@ fn findMethodSignatureEnd(source: []const u8, start: usize) ?usize {
 
     // Check if there's an anonymous struct or enum return type
     const text_between = source[pos + 1 .. @min(pos + 200, source.len)];
-    const has_struct_keyword = std.mem.indexOf(u8, text_between, "struct");
-    const has_enum_keyword = std.mem.indexOf(u8, text_between, "enum");
+
+    // Look for "struct" or "enum" as STANDALONE words (not substrings of other identifiers)
+    // This prevents matching "struct" in "ProcessingInstruction" or other type names
+    const has_struct_keyword = findKeyword(text_between, "struct");
+    const has_enum_keyword = findKeyword(text_between, "enum");
 
     // Check for struct keyword
     if (has_struct_keyword) |struct_pos| {

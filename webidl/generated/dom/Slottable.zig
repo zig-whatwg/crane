@@ -46,6 +46,7 @@ pub const Slottable = struct {
     // ========================================================================
 
     pub fn get_assignedSlot(self: *const Slottable) ?*anyopaque {
+        const self_parent: *const @This() = @ptrCast(self);
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -54,50 +55,57 @@ pub const Slottable = struct {
         // For now, return the assigned slot if it exists
         // The "open" parameter means we only return slots in open shadow roots
 
-        _ = self;
+        _ = self_parent;
         return null; // TODO: Implement when slot algorithms are available
     
     }
 
     pub fn getSlottableName(self: *const Slottable) []const u8 {
+        const self_parent: *const @This() = @ptrCast(self);
 
-        return self.slottable_name;
+        return self_parent.slottable_name;
     
     }
 
     pub fn setSlottableName(self: *Slottable, name: []const u8) void {
+        const self_parent: *@This() = @ptrCast(self);
 
-        self.slottable_name = name;
+        self_parent.slottable_name = name;
     
     }
 
     pub fn isAssigned(self: *const Slottable) bool {
+        const self_parent: *const @This() = @ptrCast(self);
 
-        return self.assigned_slot != null;
+        return self_parent.assigned_slot != null;
     
     }
 
     pub fn getAssignedSlotInternal(self: *const Slottable) ?*anyopaque {
+        const self_parent: *const @This() = @ptrCast(self);
 
-        return self.assigned_slot;
+        return self_parent.assigned_slot;
     
     }
 
     pub fn setAssignedSlot(self: *Slottable, slot: ?*anyopaque) void {
+        const self_parent: *@This() = @ptrCast(self);
 
-        self.assigned_slot = slot;
+        self_parent.assigned_slot = slot;
     
     }
 
     pub fn getManualSlotAssignment(self: *const Slottable) ?*anyopaque {
+        const self_parent: *const @This() = @ptrCast(self);
 
-        return self.manual_slot_assignment;
+        return self_parent.manual_slot_assignment;
     
     }
 
     pub fn setManualSlotAssignment(self: *Slottable, slot: ?*anyopaque) void {
+        const self_parent: *@This() = @ptrCast(self);
 
-        self.manual_slot_assignment = slot;
+        self_parent.manual_slot_assignment = slot;
     
     }
 

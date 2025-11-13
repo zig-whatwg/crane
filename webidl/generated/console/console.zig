@@ -311,17 +311,13 @@ pub const console = struct {
     }
 
     pub fn call_log(self: *console, data: []const webidl.JSValue) void {
+
         self.logger(.log, data);
+    
     }
 
-    /// table(tabularData, properties)
-    ///
-    /// WHATWG console Standard lines 102-106:
-    /// Try to construct a table with columns of properties and rows of tabularData.
-    /// Falls back to logging if it can't be parsed as tabular.
-    ///
-    /// IDL: undefined table(optional any tabularData, optional sequence<DOMString> properties);
     pub fn call_table(self: *console, tabular_data: ?webidl.JSValue, properties: ?[]const webidl.DOMString) void {
+
         if (tabular_data == null) {
             self.logger(.log, &.{});
             return;
@@ -342,15 +338,9 @@ pub const console = struct {
             const args: [1]webidl.JSValue = .{data};
             self.logger(.log, &args);
         }
+    
     }
 
-    /// Construct and display a table from tabular data.
-    ///
-    /// Complete implementation following browser console.table() behavior:
-    /// 1. Parse array elements and extract all unique keys
-    /// 2. Filter columns by properties parameter if provided
-    /// 3. Build ASCII table with proper alignment and borders
-    /// 4. Support primitives and objects as array elements
     fn constructTable(
         self: *console,
         rt: *types.RuntimeInterface,

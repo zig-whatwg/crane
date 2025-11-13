@@ -229,75 +229,70 @@ pub const AbortSignal = struct {
     
     }
 
-    fn flattenOptions(options: anytype) bool {
+    pub fn call_addEventListener(
+        self: *AbortSignal,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) !void {
+        const self_parent: *EventTarget = @ptrCast(self);
 
-        const OptionsType = @TypeOf(options);
+        // Step 1: Flatten more options
+        const flattened = flattenMoreOptions(options);
 
-        // Step 1: If options is a boolean, return it
-        if (OptionsType == bool) {
-            return options;
-        }
-
-        // Step 2: If it's EventListenerOptions or AddEventListenerOptions, return capture field
-        if (@hasField(OptionsType, "capture")) {
-            return options.capture;
-        }
-
-        // Default: return false
-        return false;
-    
-    }
-
-    fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-
-        const OptionsType = @TypeOf(options);
-
-        // If options is a boolean, only capture is set to that value
-        if (OptionsType == bool) {
-            return .{
-                .capture = options,
-                .passive = null,
-                .once = false,
-                .signal = null,
-            };
-        }
-
-        // If options is AddEventListenerOptions dictionary, extract all fields
-        if (@hasField(OptionsType, "capture")) {
-            return .{
-                .capture = if (@hasField(OptionsType, "capture")) options.capture else false,
-                .passive = if (@hasField(OptionsType, "passive")) options.passive else null,
-                .once = if (@hasField(OptionsType, "once")) options.once else false,
-                .signal = if (@hasField(OptionsType, "signal")) options.signal else null,
-            };
-        }
-
-        // Default: return all defaults
-        return .{
-            .capture = false,
-            .passive = null,
-            .once = false,
-            .signal = null,
+        // Step 2: Add an event listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = flattened.capture,
+            .passive = flattened.passive,
+            .once = flattened.once,
+            .signal = flattened.signal,
         };
+
+        try self_parent.addAnEventListener(listener);
     
     }
 
-    fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+    pub fn call_removeEventListener(
+        self: *AbortSignal,
+        event_type: []const u8,
+        callback: ?webidl.JSValue,
+        options: anytype,
+    ) void {
+        const self_parent: *EventTarget = @ptrCast(self);
 
-        _ = event_target;
-        // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
-        // AND eventTarget is Window or specific node conditions
-        // For now, simplified: return true for touch/wheel events
-        if (std.mem.eql(u8, event_type, "touchstart") or
-            std.mem.eql(u8, event_type, "touchmove") or
-            std.mem.eql(u8, event_type, "wheel") or
-            std.mem.eql(u8, event_type, "mousewheel"))
-        {
-            // TODO: Check eventTarget conditions per spec
-            return true;
+        // Step 1: Flatten options
+        const capture = flattenOptions(options);
+
+        // Step 2: Remove matching listener
+        const listener = EventListener{
+            .type = event_type,
+            .callback = callback,
+            .capture = capture,
+        };
+
+        self_parent.removeAnEventListener(listener);
+    
+    }
+
+    pub fn call_dispatchEvent(self: *AbortSignal, event: *Event) !bool {
+        const self_parent: *EventTarget = @ptrCast(self);
+
+        // Step 1: Check flags
+        if (event.dispatch_flag or !event.initialized_flag) {
+            return error.InvalidStateError;
         }
-        // Step 2: Return false
-        return false;
+
+        // Step 2: Initialize isTrusted to false
+        event.is_trusted = false;
+
+        // Step 3: Dispatch event to this using full dispatch algorithm
+        const event_dispatch = @import("dom").event_dispatch;
+        return event_dispatch.dispatch(event, self_parent, false, null) catch |err| {
+            // Handle dispatch errors
+            return err;
+        };
     
     }
 

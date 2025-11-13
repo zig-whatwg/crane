@@ -165,11 +165,12 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     pub fn get_closed(self: *const ReadableStreamDefaultReader) webidl.Promise(void) {
+        const self_parent: *const ReadableStreamGenericReader = @ptrCast(self);
 
-        if (self.closedPromise.isFulfilled()) {
+        if (self_parent.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
-        } else if (self.closedPromise.isRejected()) {
-            const err_msg = self.closedPromise.state.rejected.toString();
+        } else if (self_parent.closedPromise.isRejected()) {
+            const err_msg = self_parent.closedPromise.state.rejected.toString();
             return webidl.Promise(void).rejected(err_msg);
         } else {
             return webidl.Promise(void).pending();
@@ -178,14 +179,15 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     pub fn call_cancel(self: *ReadableStreamDefaultReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
+        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
-        if (self.stream == null) {
-            const promise = try AsyncPromise(void).init(self.allocator, self.eventLoop);
+        if (self_parent.stream == null) {
+            const promise = try AsyncPromise(void).init(self_parent.allocator, self_parent.eventLoop);
             const exception = webidl.errors.Exception{
                 .simple = .{
                     .type = .TypeError,
-                    .message = try self.allocator.dupe(u8, "Reader released"),
+                    .message = try self_parent.allocator.dupe(u8, "Reader released"),
                 },
             };
             promise.reject(exception);
@@ -195,14 +197,15 @@ pub const ReadableStreamDefaultReader = struct {
         const reason_value = if (reason) |r| common.JSValue.fromWebIDL(r) else null;
 
         // Step 2: Return ! ReadableStreamReaderGenericCancel(this, reason).
-        return self.genericCancel(reason_value);
+        return self_parent.genericCancel(reason_value);
     
     }
 
     fn genericCancel(self: *ReadableStreamDefaultReader, reason: ?common.JSValue) !*AsyncPromise(void) {
+        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
         // Step 1: Let stream be reader.[[stream]].
-        const stream = self.stream.?;
+        const stream = self_parent.stream.?;
 
         // Step 2: Assert: stream is not undefined.
         // (Assertion is implicit - .? will panic if stream is null)
@@ -213,16 +216,17 @@ pub const ReadableStreamDefaultReader = struct {
     }
 
     pub fn genericRelease(self: *ReadableStreamDefaultReader) void {
+        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
         // Step 1: Let stream be reader.[[stream]].
-        const stream = self.stream.?;
+        const stream = self_parent.stream.?;
 
         // Step 2: Assert: stream.[[reader]] is reader.
         // (We can't directly assert this due to type differences, but logically true)
 
         // Step 3: If stream.[[state]] is "readable", reject reader.[[closedPromise]] with a TypeError exception.
         if (stream.state == .readable) {
-            self.closedPromise.reject(webidl.errors.Exception.typeError(self.allocator, "Reader released before stream closed") catch return);
+            self_parent.closedPromise.reject(webidl.errors.Exception.typeError(self_parent.allocator, "Reader released before stream closed") catch return);
         }
 
         // Step 4: Otherwise, set reader.[[closedPromise]] to a promise rejected with a TypeError exception.
@@ -238,7 +242,7 @@ pub const ReadableStreamDefaultReader = struct {
         stream.reader = .none;
 
         // Step 8: Set reader.[[stream]] to undefined.
-        self.stream = null;
+        self_parent.stream = null;
     
     }
 

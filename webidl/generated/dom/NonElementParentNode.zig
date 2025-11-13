@@ -55,6 +55,7 @@ pub const NonElementParentNode = struct {
     // ========================================================================
 
     pub fn call_getElementById(self: NonElementParentNode, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
+        const self_parent = self;
 
         _ = allocator; // Not needed for traversal
 
@@ -91,7 +92,7 @@ pub const NonElementParentNode = struct {
         };
 
         // Traverse descendants in tree order (preorder depth-first)
-        return SearchHelper.findById(self.child_nodes.items, element_id);
+        return SearchHelper.findById(self_parent.child_nodes.items, element_id);
     
     }
 

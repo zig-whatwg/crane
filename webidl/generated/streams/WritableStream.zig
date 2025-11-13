@@ -241,6 +241,7 @@ pub const WritableStream = struct {
     }
 
     pub fn transferSteps(self: *WritableStream) !*structured_clone.SerializedData {
+
         const cross_realm_transform = @import("cross_realm_transform");
         const message_port = @import("message_port");
         const ReadableStream = @import("readable_stream").ReadableStream;
@@ -275,15 +276,9 @@ pub const WritableStream = struct {
         const serialized = try structured_clone.structuredSerializeWithTransfer(self.allocator, port2);
 
         return serialized;
+    
     }
 
-    /// [[TransferReceivingSteps]](dataHolder)
-    ///
-    /// Spec: § 5.2.5 "Transfer" (transfer-receiving steps)
-    /// https://streams.spec.whatwg.org/#ws-transfer
-    ///
-    /// Steps for receiving a transferred WritableStream in another realm.
-    /// Deserializes the MessagePort and sets up a stream that writes to it.
     pub fn transferReceivingSteps(
         self: *WritableStream,
         serialized: *structured_clone.SerializedData,

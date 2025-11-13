@@ -58,10 +58,11 @@ pub const NonDocumentTypeChildNode = struct {
     // ========================================================================
 
     pub fn previousElementSibling(self: NonDocumentTypeChildNode) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
-        const parent = self.parent_node orelse return null;
+        const parent = self_parent.parent_node orelse return null;
 
         // Find our index in parent's children
         var found_self = false;
@@ -70,7 +71,7 @@ pub const NonDocumentTypeChildNode = struct {
             i -= 1;
             const sibling = parent.child_nodes.items[i];
 
-            if (sibling == @as(*NodeType, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self_parent))) {
                 found_self = true;
                 continue;
             }
@@ -86,15 +87,16 @@ pub const NonDocumentTypeChildNode = struct {
     }
 
     pub fn nextElementSibling(self: NonDocumentTypeChildNode) ?*Element {
+        const self_parent = self;
 
         // Node type will be available from module-level import in generated code
         const NodeType = @import("node").Node;
-        const parent = self.parent_node orelse return null;
+        const parent = self_parent.parent_node orelse return null;
 
         // Find our index in parent's children
         var found_self = false;
         for (parent.child_nodes.items) |sibling| {
-            if (sibling == @as(*NodeType, @ptrCast(self))) {
+            if (sibling == @as(*NodeType, @ptrCast(self_parent))) {
                 found_self = true;
                 continue;
             }

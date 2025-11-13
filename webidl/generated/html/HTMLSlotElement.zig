@@ -61,45 +61,51 @@ pub const HTMLSlotElement = struct {
     }
 
     pub fn deinit(self: *HTMLSlotElement) void {
+        const self_parent: *Self = @ptrCast(self);
 
-        if (self.name.len > 0) {
-            self.allocator.free(self.name);
+        if (self_parent.name.len > 0) {
+            self_parent.allocator.free(self_parent.name);
         }
-        self.assigned_nodes.deinit();
-        self.manually_assigned_nodes.deinit();
+        self_parent.assigned_nodes.deinit();
+        self_parent.manually_assigned_nodes.deinit();
     
     }
 
     pub fn setName(self: *HTMLSlotElement, name: []const u8) !void {
+        const self_parent: *Self = @ptrCast(self);
 
-        if (self.name.len > 0) {
-            self.allocator.free(self.name);
+        if (self_parent.name.len > 0) {
+            self_parent.allocator.free(self_parent.name);
         }
-        self.name = try self.allocator.dupe(u8, name);
+        self_parent.name = try self_parent.allocator.dupe(u8, name);
     
     }
 
     pub fn getName(self: *const HTMLSlotElement) []const u8 {
+        const self_parent: *const Self = @ptrCast(self);
 
-        return self.name;
+        return self_parent.name;
     
     }
 
     pub fn getAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
+        const self_parent: *Self = @ptrCast(self);
 
-        return &self.assigned_nodes;
+        return &self_parent.assigned_nodes;
     
     }
 
     pub fn getManuallyAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
+        const self_parent: *Self = @ptrCast(self);
 
-        return &self.manually_assigned_nodes;
+        return &self_parent.manually_assigned_nodes;
     
     }
 
     pub fn hasAssignedNodes(self: *const HTMLSlotElement) bool {
+        const self_parent: *const Self = @ptrCast(self);
 
-        return self.assigned_nodes.items.len > 0;
+        return self_parent.assigned_nodes.items.len > 0;
     
     }
 

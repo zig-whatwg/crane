@@ -43,12 +43,13 @@ pub const ChildNode = struct {
     // ========================================================================
 
     pub fn call_before(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -98,12 +99,13 @@ pub const ChildNode = struct {
     }
 
     pub fn call_after(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -146,12 +148,13 @@ pub const ChildNode = struct {
     }
 
     pub fn call_replaceWith(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const this_node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const this_node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: Let parent be this's parent
         const parent = this_node.parent_node;
@@ -201,12 +204,13 @@ pub const ChildNode = struct {
     }
 
     pub fn call_remove(self: ChildNode) !void {
+        const self_parent = self;
 
         const NodeType = @import("node").Node;
         const mutation = @import("dom").mutation;
 
-        // Cast self to Node pointer
-        const node = @as(*NodeType, @ptrCast(self));
+        // Cast self_parent to Node pointer
+        const node = @as(*NodeType, @ptrCast(self_parent));
 
         // Step 1: If this's parent is null, then return
         if (node.parent_node == null) {

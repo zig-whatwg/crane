@@ -84,6 +84,284 @@ pub const CustomEvent = struct {
     
     }
 
+    pub fn call_stopPropagation(self: *CustomEvent) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        self_parent.stop_propagation_flag = true;
+    
+    }
+
+    pub fn call_stopImmediatePropagation(self: *CustomEvent) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        self_parent.stop_propagation_flag = true;
+        self_parent.stop_immediate_propagation_flag = true;
+    
+    }
+
+    pub fn call_preventDefault(self: *CustomEvent) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        self_parent.setCanceledFlag();
+    
+    }
+
+    pub fn call_composedPath(self: *CustomEvent) !std.ArrayList(*EventTarget) {
+        const self_parent: *Event = @ptrCast(self);
+
+        // Step 1: Let composedPath be an empty list
+        var composed_path = std.ArrayList(*EventTarget).init(self_parent.allocator);
+
+        // Step 2: Let path be this's path
+        const path = self_parent.path.items;
+
+        // Step 3: If path is empty, then return composedPath
+        if (path.len == 0) {
+            return composed_path;
+        }
+
+        // Step 4: Let currentTarget be this's currentTarget attribute value
+        const current_target = self_parent.current_target;
+
+        // Step 5: Assert: currentTarget is an EventTarget object
+        if (current_target == null) {
+            // Path is not empty but currentTarget is null - shouldn't happen during dispatch
+            return composed_path;
+        }
+
+        // Step 6: Append currentTarget to composedPath
+        try composed_path.append(current_target.?);
+
+        // Step 7: Let currentTargetIndex be 0
+        var current_target_index: usize = 0;
+
+        // Step 8: Let currentTargetHiddenSubtreeLevel be 0
+        var current_target_hidden_subtree_level: i32 = 0;
+
+        // Step 9: Let index be path's size − 1
+        var index: i32 = @as(i32, @intCast(path.len)) - 1;
+
+        // Step 10: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 10.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentTargetHiddenSubtreeLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_target_hidden_subtree_level += 1;
+            }
+
+            // Step 10.2: If path[index]'s invocation target is currentTarget,
+            // then set currentTargetIndex to index and break
+            if (path_item.invocation_target == current_target.?) {
+                current_target_index = @intCast(index);
+                break;
+            }
+
+            // Step 10.3: If path[index]'s slot-in-closed-tree is true,
+            // then decrease currentTargetHiddenSubtreeLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_target_hidden_subtree_level -= 1;
+            }
+        }
+
+        // Step 11: Let currentHiddenLevel and maxHiddenLevel be currentTargetHiddenSubtreeLevel
+        var current_hidden_level = current_target_hidden_subtree_level;
+        var max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 12: Set index to currentTargetIndex − 1
+        index = @as(i32, @intCast(current_target_index)) - 1;
+
+        // Step 13: While index is greater than or equal to 0
+        while (index >= 0) : (index -= 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 13.1: If path[index]'s root-of-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.root_of_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 13.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then prepend path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.insert(0, path_item.invocation_target);
+            }
+
+            // Step 13.3: If path[index]'s slot-in-closed-tree is true
+            if (path_item.slot_in_closed_tree) {
+                // Step 13.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 13.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 14: Set currentHiddenLevel and maxHiddenLevel to currentTargetHiddenSubtreeLevel
+        current_hidden_level = current_target_hidden_subtree_level;
+        max_hidden_level = current_target_hidden_subtree_level;
+
+        // Step 15: Set index to currentTargetIndex + 1
+        index = @as(i32, @intCast(current_target_index)) + 1;
+
+        // Step 16: While index is less than path's size
+        while (index < path.len) : (index += 1) {
+            const path_item = path[@intCast(index)];
+
+            // Step 16.1: If path[index]'s slot-in-closed-tree is true,
+            // then increase currentHiddenLevel by 1
+            if (path_item.slot_in_closed_tree) {
+                current_hidden_level += 1;
+            }
+
+            // Step 16.2: If currentHiddenLevel is less than or equal to maxHiddenLevel,
+            // then append path[index]'s invocation target to composedPath
+            if (current_hidden_level <= max_hidden_level) {
+                try composed_path.append(path_item.invocation_target);
+            }
+
+            // Step 16.3: If path[index]'s root-of-closed-tree is true
+            if (path_item.root_of_closed_tree) {
+                // Step 16.3.1: Decrease currentHiddenLevel by 1
+                current_hidden_level -= 1;
+
+                // Step 16.3.2: If currentHiddenLevel is less than maxHiddenLevel,
+                // then set maxHiddenLevel to currentHiddenLevel
+                if (current_hidden_level < max_hidden_level) {
+                    max_hidden_level = current_hidden_level;
+                }
+            }
+        }
+
+        // Step 17: Return composedPath
+        return composed_path;
+    
+    }
+
+    pub fn call_initEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        // Step 1: If dispatch flag is set, return
+        if (self_parent.dispatch_flag) return;
+
+        // Step 2: Initialize this
+        self_parent.initializeEvent(event_type, bubbles, cancelable);
+    
+    }
+
+    pub fn get_type(self: *const CustomEvent) []const u8 {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.event_type;
+    
+    }
+
+    pub fn get_target(self: *const CustomEvent) ?*EventTarget {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.target;
+    
+    }
+
+    pub fn get_srcElement(self: *const CustomEvent) ?*EventTarget {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.target;
+    
+    }
+
+    pub fn get_currentTarget(self: *const CustomEvent) ?*EventTarget {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.current_target;
+    
+    }
+
+    pub fn get_eventPhase(self: *const CustomEvent) u16 {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.event_phase;
+    
+    }
+
+    pub fn get_bubbles(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.bubbles;
+    
+    }
+
+    pub fn get_cancelable(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.cancelable;
+    
+    }
+
+    pub fn get_defaultPrevented(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.canceled_flag;
+    
+    }
+
+    pub fn get_composed(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.composed;
+    
+    }
+
+    pub fn get_isTrusted(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.is_trusted;
+    
+    }
+
+    pub fn get_timeStamp(self: *const CustomEvent) f64 {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.time_stamp;
+    
+    }
+
+    pub fn get_cancelBubble(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return self_parent.stop_propagation_flag;
+    
+    }
+
+    pub fn set_cancelBubble(self: *CustomEvent, value: bool) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        if (value) {
+            self_parent.stop_propagation_flag = true;
+        }
+    
+    }
+
+    pub fn get_returnValue(self: *const CustomEvent) bool {
+        const self_parent: *const Event = @ptrCast(self);
+
+        return !self_parent.canceled_flag;
+    
+    }
+
+    pub fn set_returnValue(self: *CustomEvent, value: bool) void {
+        const self_parent: *Event = @ptrCast(self);
+
+        if (!value) {
+            self_parent.setCanceledFlag();
+        }
+    
+    }
+
 };
 
 

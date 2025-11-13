@@ -131,6 +131,42 @@ pub const StaticRange = struct {
     
     }
 
+    pub fn get_startContainer(self: *const StaticRange) *Node {
+        const self_parent: *const AbstractRange = @ptrCast(self);
+
+        return self_parent.start_container;
+    
+    }
+
+    pub fn get_startOffset(self: *const StaticRange) u32 {
+        const self_parent: *const AbstractRange = @ptrCast(self);
+
+        return self_parent.start_offset;
+    
+    }
+
+    pub fn get_endContainer(self: *const StaticRange) *Node {
+        const self_parent: *const AbstractRange = @ptrCast(self);
+
+        return self_parent.end_container;
+    
+    }
+
+    pub fn get_endOffset(self: *const StaticRange) u32 {
+        const self_parent: *const AbstractRange = @ptrCast(self);
+
+        return self_parent.end_offset;
+    
+    }
+
+    pub fn get_collapsed(self: *const StaticRange) bool {
+        const self_parent: *const AbstractRange = @ptrCast(self);
+
+        return self_parent.start_container == self_parent.end_container and
+            self_parent.start_offset == self_parent.end_offset;
+    
+    }
+
 };
 
 

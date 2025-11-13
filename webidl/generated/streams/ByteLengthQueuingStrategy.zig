@@ -41,10 +41,12 @@ pub const ByteLengthQueuingStrategy = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) ByteLengthQueuingStrategy {
+
         _ = allocator; // Not needed for this simple structure
         return .{
             ._highWaterMark = initDict.highWaterMark,
         };
+    
     }
 
     pub fn deinit(_: *ByteLengthQueuingStrategy) void {

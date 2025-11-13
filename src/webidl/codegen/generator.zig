@@ -454,7 +454,7 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         }
     }
 
-    // Method signature - rewrite self parameter type for mixin methods
+    // Method signature - rewrite self parameter type for inherited and mixin methods
     const rewritten_signature = try rewriteSelfParameterType(allocator, method.signature, class_name);
     defer if (rewritten_signature.ptr != method.signature.ptr) allocator.free(rewritten_signature);
 
@@ -468,10 +468,65 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         rewritten_signature,
     });
 
-    // Method body - strip local imports that shadow top-level imports or the current class
-    const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
-    defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
-    try writer.writeAll(cleaned_body);
+    // Check if this is an inherited method (signature was rewritten)
+    const is_inherited = rewritten_signature.ptr != method.signature.ptr;
+
+    if (is_inherited) {
+        // For inherited methods, add a @ptrCast at the start to convert self to parent type
+        // Extract the original parent type from the method signature
+        const parent_type_info = try extractSelfTypeInfo(allocator, method.signature);
+        defer if (parent_type_info) |pti| {
+            if (pti.type_name) |tn| allocator.free(tn);
+        };
+
+        if (parent_type_info) |pti| {
+            if (pti.type_name) |pt| {
+                // Cast self to parent type for method body
+                // This works because flattened fields guarantee compatible memory layout
+                if (pti.has_pointer) {
+                    // Check if the rewritten signature has const to preserve it
+                    const is_const = std.mem.indexOf(u8, rewritten_signature, "self: *const ") != null;
+                    if (is_const and pti.has_const) {
+                        try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
+                    } else if (is_const and !pti.has_const) {
+                        // Parent was not const, but child is - need @constCast
+                        try writer.print("        const self_parent: *{s} = @ptrCast(@constCast(self));\n", .{pt});
+                    } else if (!is_const and pti.has_const) {
+                        // Parent was const, child is not - preserve const
+                        try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
+                    } else {
+                        try writer.print("        const self_parent: *{s} = @ptrCast(self);\n", .{pt});
+                    }
+                } else {
+                    // Non-pointer self (e.g., self: anytype) - no cast needed, just rename
+                    try writer.print("        const self_parent = self;\n", .{});
+                }
+
+                // Rewrite body to use self_parent instead of self
+                const rewritten_body = try rewriteSelfReferences(allocator, method.body, "self_parent");
+                defer allocator.free(rewritten_body);
+
+                const cleaned_body = try stripShadowingImports(allocator, rewritten_body, top_level_imports, class_name);
+                defer if (cleaned_body.ptr != rewritten_body.ptr) allocator.free(cleaned_body);
+                try writer.writeAll(cleaned_body);
+            } else {
+                // No type name extracted - use body as-is
+                const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
+                defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
+                try writer.writeAll(cleaned_body);
+            }
+        } else {
+            // Fallback: use body as-is
+            const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
+            defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
+            try writer.writeAll(cleaned_body);
+        }
+    } else {
+        // Own method - use body as-is
+        const cleaned_body = try stripShadowingImports(allocator, method.body, top_level_imports, class_name);
+        defer if (cleaned_body.ptr != method.body.ptr) allocator.free(cleaned_body);
+        try writer.writeAll(cleaned_body);
+    }
 
     try writer.writeAll("\n    }\n");
 }
@@ -622,4 +677,122 @@ fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imp
     allocator.free(full_result);
 
     return final;
+}
+
+const SelfTypeInfo = struct {
+    type_name: ?[]const u8,
+    has_pointer: bool,
+    has_const: bool,
+};
+
+/// Extract the type info from a self parameter in a method signature
+/// Example: "(self: *EventTarget, ...)" -> SelfTypeInfo{ .type_name = "EventTarget", .has_pointer = true }
+/// Example: "(self: *const Node, ...)" -> SelfTypeInfo{ .type_name = "Node", .has_pointer = true }
+/// Example: "(self: anytype, ...)" -> SelfTypeInfo{ .type_name = "anytype", .has_pointer = false }
+fn extractSelfTypeInfo(allocator: Allocator, signature: []const u8) !?SelfTypeInfo {
+    // Find "self: " pattern
+    const self_pattern = "self: ";
+    const self_start = std.mem.indexOf(u8, signature, self_pattern) orelse return null;
+
+    var cursor = self_start + self_pattern.len;
+    var has_pointer = false;
+    var has_const = false;
+
+    // Skip pointer syntax: * or *const
+    if (cursor < signature.len and signature[cursor] == '*') {
+        has_pointer = true;
+        cursor += 1;
+        // Check for "const " after the *
+        if (cursor + 6 < signature.len and std.mem.startsWith(u8, signature[cursor..], "const ")) {
+            has_const = true;
+            cursor += 6; // "const "
+        }
+    }
+
+    const type_start = cursor;
+
+    // Check for @This() special case
+    var type_end = type_start;
+    if (std.mem.startsWith(u8, signature[type_start..], "@This()")) {
+        type_end = type_start + "@This()".len;
+    } else {
+        // Find the end of the type name (next comma, paren, or whitespace)
+        while (type_end < signature.len) : (type_end += 1) {
+            const c = signature[type_end];
+            if (c == ',' or c == ')' or c == ' ' or c == '\t' or c == '\n') {
+                break;
+            }
+        }
+    }
+
+    if (type_end <= type_start) return null;
+
+    const type_name = signature[type_start..type_end];
+    return SelfTypeInfo{
+        .type_name = try allocator.dupe(u8, type_name),
+        .has_pointer = has_pointer,
+        .has_const = has_const,
+    };
+}
+
+/// Rewrite all occurrences of "self" to a new name in method body
+/// Example: rewriteSelfReferences(body, "self_parent") replaces "self" with "self_parent"
+fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []const u8) ![]const u8 {
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var pos: usize = 0;
+    while (pos < body.len) {
+        // Look for "self" keyword
+        const self_pos = std.mem.indexOfPos(u8, body, pos, "self") orelse {
+            // No more self references, append rest
+            try result.appendSlice(allocator, body[pos..]);
+            break;
+        };
+
+        // Check if this is actually the "self" keyword (not part of another identifier)
+        const is_valid_self = blk: {
+            // Check character before "self"
+            if (self_pos > 0) {
+                const before = body[self_pos - 1];
+                if ((before >= 'a' and before <= 'z') or
+                    (before >= 'A' and before <= 'Z') or
+                    (before >= '0' and before <= '9') or
+                    before == '_')
+                {
+                    break :blk false; // Part of another identifier
+                }
+            }
+
+            // Check character after "self"
+            const after_pos = self_pos + 4;
+            if (after_pos < body.len) {
+                const after = body[after_pos];
+                if ((after >= 'a' and after <= 'z') or
+                    (after >= 'A' and after <= 'Z') or
+                    (after >= '0' and after <= '9') or
+                    after == '_')
+                {
+                    break :blk false; // Part of another identifier
+                }
+            }
+
+            break :blk true;
+        };
+
+        // Append everything before this self
+        try result.appendSlice(allocator, body[pos..self_pos]);
+
+        if (is_valid_self) {
+            // Replace with new name
+            try result.appendSlice(allocator, new_name);
+            pos = self_pos + 4; // Skip "self"
+        } else {
+            // Keep original "self" (it's part of another word)
+            try result.appendSlice(allocator, "self");
+            pos = self_pos + 4;
+        }
+    }
+
+    return result.toOwnedSlice(allocator);
 }
