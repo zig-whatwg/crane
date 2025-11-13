@@ -31,6 +31,12 @@ pub const AbortSignal = webidl.interface(struct {
     /// Event listeners to remove when signal is aborted
     /// Spec: Step 6 of "add an event listener" algorithm
     event_listener_removals: std.ArrayList(EventListenerRemovalContext),
+    /// Source signals: weak set of AbortSignals this signal depends on
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-source-signals
+    source_signals: std.ArrayList(*AbortSignal),
+    /// Dependent signals: weak set of AbortSignals that depend on this signal
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
+    dependent_signals: std.ArrayList(*AbortSignal),
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
         return .{
@@ -39,12 +45,16 @@ pub const AbortSignal = webidl.interface(struct {
             .reason = null,
             .abort_algorithms = infra.List(AbortAlgorithm).init(allocator),
             .event_listener_removals = std.ArrayList(EventListenerRemovalContext).init(allocator),
+            .source_signals = std.ArrayList(*AbortSignal).init(allocator),
+            .dependent_signals = std.ArrayList(*AbortSignal).init(allocator),
         };
     }
 
     pub fn deinit(self: *AbortSignal) void {
         self.abort_algorithms.deinit();
         self.event_listener_removals.deinit();
+        self.source_signals.deinit();
+        self.dependent_signals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
     }
 
@@ -60,6 +70,50 @@ pub const AbortSignal = webidl.interface(struct {
         if (self.aborted) {
             return error.Aborted;
         }
+    }
+
+    /// AbortSignal.any(signals) - static method
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-any
+    /// Returns an AbortSignal that will be aborted when any of the signals are aborted
+    pub fn call_any(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
+        // This calls "create a dependent abort signal" algorithm
+        return createDependentAbortSignal(allocator, signals);
+    }
+
+    /// Create a dependent abort signal
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
+    ///
+    /// Steps:
+    /// 1. Let resultSignal be a new object implementing signalInterface using realm
+    /// 2. For each signal of signals:
+    ///    - If signal is aborted, then set resultSignal's abort reason to signal's abort reason
+    ///    - Otherwise:
+    ///      - Append signal to resultSignal's source signals
+    ///      - Append resultSignal to signal's dependent signals
+    /// 3. Return resultSignal
+    fn createDependentAbortSignal(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
+        // Step 1: Let resultSignal be a new object implementing AbortSignal
+        const result_signal = try allocator.create(AbortSignal);
+        errdefer allocator.destroy(result_signal);
+        result_signal.* = try AbortSignal.init(allocator);
+
+        // Step 2: For each signal of signals
+        for (signals) |signal| {
+            // If signal is aborted, then set resultSignal's abort reason to signal's abort reason
+            if (signal.aborted) {
+                result_signal.reason = signal.reason;
+                result_signal.aborted = true;
+            } else {
+                // Otherwise:
+                // Append signal to resultSignal's source signals
+                try result_signal.source_signals.append(signal);
+                // Append resultSignal to signal's dependent signals
+                try signal.dependent_signals.append(result_signal);
+            }
+        }
+
+        // Step 3: Return resultSignal
+        return result_signal;
     }
 
     /// Add an algorithm to be run when signal is aborted
@@ -84,11 +138,18 @@ pub const AbortSignal = webidl.interface(struct {
     /// Signal abort algorithm
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-signal-abort
     ///
-    /// Simplified implementation for Streams spec compliance.
-    /// TODO: Full DOM compliance requires:
-    /// - Dependent signals support
-    /// - Event firing with proper event loop integration
-    /// - Task queuing for cross-realm scenarios
+    /// Steps:
+    /// 1. If signal is aborted, then return
+    /// 2. Set signal's abort reason to reason if given, otherwise to new "AbortError" DOMException
+    /// 3. Let dependentSignalsToAbort be a new list
+    /// 4. For each dependentSignal of signal's dependent signals:
+    ///    - If dependentSignal is not aborted:
+    ///      - Set dependentSignal's abort reason to signal's abort reason
+    ///      - Append dependentSignal to dependentSignalsToAbort
+    /// 5. Run the abort steps for signal
+    /// 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal
+    ///
+    /// TODO: Fire 'abort' event (requires full event loop integration)
     pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
         // Spec step 1: If signal is aborted, then return
         if (self.aborted) return;
@@ -99,11 +160,29 @@ pub const AbortSignal = webidl.interface(struct {
         // Mark as aborted
         self.aborted = true;
 
+        // Spec step 3: Let dependentSignalsToAbort be a new list
+        var dependent_signals_to_abort = std.ArrayList(*AbortSignal).init(self.allocator);
+        defer dependent_signals_to_abort.deinit();
+
+        // Spec step 4: For each dependentSignal of signal's dependent signals
+        for (self.dependent_signals.items) |dependent_signal| {
+            // If dependentSignal is not aborted
+            if (!dependent_signal.aborted) {
+                // Set dependentSignal's abort reason to signal's abort reason
+                dependent_signal.reason = self.reason;
+                dependent_signal.aborted = true;
+                // Append dependentSignal to dependentSignalsToAbort
+                dependent_signals_to_abort.append(dependent_signal) catch continue;
+            }
+        }
+
         // Spec step 5: Run the abort steps for signal
         self.runAbortSteps();
 
-        // TODO: Spec step 3-4, 6: Handle dependent signals (not needed for basic Streams support)
-        // TODO: Fire 'abort' event (requires full event loop integration)
+        // Spec step 6: For each dependentSignal of dependentSignalsToAbort, run the abort steps
+        for (dependent_signals_to_abort.items) |dependent_signal| {
+            dependent_signal.runAbortSteps();
+        }
     }
 
     /// Add an event listener removal to be performed when signal is aborted
