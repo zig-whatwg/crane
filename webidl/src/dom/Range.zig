@@ -642,17 +642,9 @@ pub const Range = webidl.interface(struct {
         else
             self.start_container;
 
-        // Step 6: Validate pre-insertion
-        // TODO: Full pre-insertion validity check
-        // For now, basic check
-        if (parent.node_type == Node.DOCUMENT_NODE and node.node_type != Node.ELEMENT_NODE and
-            node.node_type != Node.PROCESSING_INSTRUCTION_NODE and
-            node.node_type != Node.COMMENT_NODE and
-            node.node_type != Node.DOCUMENT_TYPE_NODE and
-            node.node_type != Node.DOCUMENT_FRAGMENT_NODE)
-        {
-            return error.HierarchyRequestError;
-        }
+        // Step 6: Ensure pre-insertion validity
+        const mutation = @import("dom").mutation;
+        try mutation.ensurePreInsertValidity(node, parent, referenceNode);
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
