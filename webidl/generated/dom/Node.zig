@@ -638,10 +638,140 @@ pub const Node = struct {
     
     }
 
-    pub fn call_normalize(self: *Node) void {
+    pub fn call_normalize(self: *Node) !void {
 
-        _ = self;
-        // Normalize adjacent text nodes
+        // Get all descendant exclusive Text nodes
+        var text_nodes = std.ArrayList(*Node).init(self.allocator);
+        defer text_nodes.deinit();
+
+        try collectDescendantExclusiveTextNodes(self, &text_nodes);
+
+        // Process each exclusive Text node
+        for (text_nodes.items) |node| {
+            // Step 1: Let length be node's length
+            const cd: *CharacterData = @ptrCast(@alignCast(node));
+            var length: usize = cd.data.len;
+
+            // Step 2: If length is zero, remove node and continue
+            if (length == 0) {
+                // Remove the node from its parent
+                if (node.parent_node) |parent| {
+                    const mutation = @import("dom").mutation;
+                    _ = try mutation.remove(node, parent);
+                }
+                continue;
+            }
+
+            // Step 3: Let data be concatenation of contiguous exclusive Text nodes (excluding itself)
+            var contiguous_data = std.ArrayList(u8).init(self.allocator);
+            defer contiguous_data.deinit();
+
+            // Find next sibling exclusive Text nodes
+            var next_sibling = node.get_nextSibling();
+            while (next_sibling) |sibling| {
+                if (isExclusiveTextNode(sibling)) {
+                    const sibling_cd: *CharacterData = @ptrCast(@alignCast(sibling));
+                    try contiguous_data.appendSlice(sibling_cd.data);
+                    next_sibling = sibling.get_nextSibling();
+                } else {
+                    break;
+                }
+            }
+
+            // Step 4: Replace data with node, offset length, count 0, and data
+            // This appends the concatenated data to the current node's data
+            if (contiguous_data.items.len > 0) {
+                try cd.call_replaceData(@intCast(length), 0, contiguous_data.items);
+            }
+
+            // Step 5: Let currentNode be node's next sibling
+            var current_node = node.get_nextSibling();
+
+            // Step 6: While currentNode is an exclusive Text node
+            while (current_node) |curr| {
+                if (!isExclusiveTextNode(curr)) break;
+
+                const curr_cd: *CharacterData = @ptrCast(@alignCast(curr));
+
+                // Step 6.1-6.4: Update live ranges
+                // Get owner document for range tracking
+                if (node.owner_document) |doc| {
+                    updateRangesForNormalize(doc, node, curr, @intCast(length));
+                }
+
+                // Step 6.5: Add currentNode's length to length
+                length += curr_cd.data.len;
+
+                // Step 6.6: Set currentNode to its next sibling
+                const next = curr.get_nextSibling();
+                current_node = next;
+            }
+
+            // Step 7: Remove node's contiguous exclusive Text nodes (excluding itself)
+            // Go back through and remove all the adjacent text nodes we just merged
+            var remove_node = node.get_nextSibling();
+            while (remove_node) |rn| {
+                if (!isExclusiveTextNode(rn)) break;
+
+                const next_remove = rn.get_nextSibling();
+                if (rn.parent_node) |parent| {
+                    const mutation = @import("dom").mutation;
+                    _ = try mutation.remove(rn, parent);
+                }
+                remove_node = next_remove;
+            }
+        }
+    
+    }
+
+    fn isExclusiveTextNode(node: *Node) bool {
+
+        // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
+        return node.node_type == Node.TEXT_NODE;
+    
+    }
+
+    fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
+
+        // Check if this node is an exclusive Text node
+        if (isExclusiveTextNode(node)) {
+            try list.append(node);
+        }
+
+        // Recursively collect from children
+        for (node.child_nodes.items) |child| {
+            try collectDescendantExclusiveTextNodes(child, list);
+        }
+    
+    }
+
+    fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
+
+        // This requires access to document's live ranges list
+        // The range tracking infrastructure is in src/dom/range_tracking.zig
+        // For now, we'll add a helper function there
+
+        // Get document's ranges (if the infrastructure exists)
+        // Per spec step 6.1-6.4:
+        // 1. For each live range whose start node is currentNode,
+        //    add length to its start offset and set its start node to node
+        // 2. For each live range whose end node is currentNode,
+        //    add length to its end offset and set its end node to node
+        // 3. For each live range whose start node is currentNode's parent
+        //    and start offset is currentNode's index, set its start node to node
+        //    and its start offset to length
+        // 4. For each live range whose end node is currentNode's parent
+        //    and end offset is currentNode's index, set its end node to node
+        //    and its end offset to length
+
+        _ = doc;
+        _ = node;
+        _ = current_node;
+        _ = length;
+
+        // TODO: Implement range updates once Range tracking is fully integrated
+        // For now, this is a placeholder. Range tracking will be added when
+        // Phase 5 (Range Operations) is implemented.
     
     }
 
@@ -1420,5 +1550,77 @@ pub const Node = struct {
 pub const GetRootNodeOptions = struct {
     composed: bool = false,
 };
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test "Node.normalize - removes empty text node" {
+    const allocator = std.testing.allocator;
+
+    // Create element with empty text node
+    var elem = try Element.init(allocator, "div");
+    defer elem.deinit();
+
+    var text = try Text.init(allocator);
+    const text_cd: *CharacterData = @ptrCast(&text);
+    text_cd.data = try allocator.dupe(u8, "");
+    defer if (text_cd.data.len > 0) allocator.free(text_cd.data);
+
+    const elem_node: *Node = @ptrCast(&elem);
+    const text_node: *Node = @ptrCast(&text);
+
+    try elem_node.child_nodes.append(text_node);
+    text_node.parent_node = elem_node;
+    text_node.node_type = Node.TEXT_NODE;
+
+    // Normalize should remove empty text node
+    try elem_node.call_normalize();
+
+    // Verify no children
+    try std.testing.expectEqual(@as(usize, 0), elem_node.child_nodes.len);
+}
+
+test "Node.normalize - merges two adjacent text nodes" {
+    const allocator = std.testing.allocator;
+
+    // Create element with two adjacent text nodes
+    var elem = try Element.init(allocator, "div");
+    defer elem.deinit();
+
+    var text1 = try Text.init(allocator);
+    const text1_cd: *CharacterData = @ptrCast(&text1);
+    text1_cd.data = try allocator.dupe(u8, "Hello");
+    defer allocator.free(text1_cd.data);
+
+    var text2 = try Text.init(allocator);
+    const text2_cd: *CharacterData = @ptrCast(&text2);
+    text2_cd.data = try allocator.dupe(u8, " World");
+    defer allocator.free(text2_cd.data);
+
+    const elem_node: *Node = @ptrCast(&elem);
+    const text1_node: *Node = @ptrCast(&text1);
+    const text2_node: *Node = @ptrCast(&text2);
+
+    text1_node.node_type = Node.TEXT_NODE;
+    text2_node.node_type = Node.TEXT_NODE;
+
+    try elem_node.child_nodes.append(text1_node);
+    text1_node.parent_node = elem_node;
+
+    try elem_node.child_nodes.append(text2_node);
+    text2_node.parent_node = elem_node;
+
+    // Normalize should merge into first node
+    try elem_node.call_normalize();
+
+    // Verify only one child remains
+    try std.testing.expectEqual(@as(usize, 1), elem_node.child_nodes.len);
+
+    // Verify merged data
+    const result_node = elem_node.child_nodes.get(0).?;
+    const result_cd: *CharacterData = @ptrCast(result_node);
+    try std.testing.expectEqualStrings("Hello World", result_cd.data);
+}
 
 
