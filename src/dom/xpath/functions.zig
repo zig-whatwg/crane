@@ -72,19 +72,20 @@ fn getRootNode(node: *@import("node").Node) *@import("node").Node {
 /// Find element by ID in tree
 fn findElementById(allocator: std.mem.Allocator, node: *@import("node").Node, id: []const u8, result: *NodeSet) !void {
     const Node = @import("node").Node;
-    const ElementWithBase = @import("../element_with_base.zig").ElementWithBase;
+    const Element = @import("element").Element;
 
     // Check if this is an element with matching ID
     if (node.node_type == Node.ELEMENT_NODE) {
-        // Cast to ElementWithBase to access getId()
-        const element: *ElementWithBase = @ptrCast(node);
+        // Cast to Element to access attribute methods
+        // Safe cast: node_type == ELEMENT_NODE guarantees this is an Element
+        const element: *Element = @ptrCast(node);
 
-        // Check id attribute
-        if (element.getId()) |element_id| {
-            if (std.mem.eql(u8, element_id, id)) {
-                try result.add(node);
-                return; // IDs are unique, stop after finding first match
-            }
+        // Get id attribute using proper Element API
+        // Note: get_id() returns "" if no id attribute exists
+        const element_id = element.get_id();
+        if (element_id.len > 0 and std.mem.eql(u8, element_id, id)) {
+            try result.add(node);
+            return; // IDs are unique, stop after finding first match
         }
     }
 
@@ -144,11 +145,12 @@ pub fn fnNamespaceUri(allocator: std.mem.Allocator, ctx: *const Context, args: [
     };
 
     const Node = @import("node").Node;
-    const ElementWithBase = @import("../element_with_base.zig").ElementWithBase;
+    const Element = @import("element").Element;
 
     // For elements, return namespace URI; for other nodes, return empty string
     if (node.node_type == Node.ELEMENT_NODE) {
-        const element: *const ElementWithBase = @ptrCast(@alignCast(node));
+        // Safe cast: node_type == ELEMENT_NODE guarantees this is an Element
+        const element: *const Element = @ptrCast(@alignCast(node));
         if (element.namespace_uri) |ns_uri| {
             return Value{ .string = try allocator.dupe(u8, ns_uri) };
         }
