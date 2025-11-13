@@ -9,15 +9,9 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const DOM = @import("d_o_m").DOM;
-const List = @import("list").List;
 const Node = @import("node").Node;
-const Returns = @import("returns").Returns;
-const The = @import("the").The;
 const infra = @import("infra").infra;
-const infra.List(*Node) = @import("infra._list(*_node)").infra.List(*Node);
 const std = @import("std");
-const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
 
 

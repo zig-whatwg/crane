@@ -9,21 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const ById = @import("by_id").ById;
-const Cast = @import("cast").Cast;
-const Check = @import("check").Check;
-const ELEMENT_NODE = @import("e_l_e_m_e_n_t__n_o_d_e").ELEMENT_NODE;
 const Element = @import("element").Element;
-const ID = @import("i_d").ID;
-const Inline = @import("inline").Inline;
-const NamedItem = @import("named_item").NamedItem;
-const Node = @import("node").Node;
-const NodeType = @import("node_type").NodeType;
-const Not = @import("not").Not;
-const Per = @import("per").Per;
-const Recursively = @import("recursively").Recursively;
-const SearchHelper = @import("search_helper").SearchHelper;
-const Traverse = @import("traverse").Traverse;
 const std = @import("std");
 const webidl = @import("webidl");
 

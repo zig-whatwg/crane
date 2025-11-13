@@ -9,10 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Dict = @import("dict").Dict;
-const Not = @import("not").Not;
-const QueuingStrategyInit = @import("queuing_strategy_init").QueuingStrategyInit;
-const WaterMark = @import("water_mark").WaterMark;
 const std = @import("std");
 const webidl = @import("webidl");
 

@@ -9,24 +9,6 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Append = @import("append").Append;
-const Call = @import("call").Call;
-const Callback = @import("callback").Callback;
-const Called = @import("called").Called;
-const Check = @import("check").Check;
-const Clear = @import("clear").Clear;
-const Data = @import("data").Data;
-const DataOldValue = @import("data_old_value").DataOldValue;
-const Empty = @import("empty").Empty;
-const Enqueue = @import("enqueue").Enqueue;
-const Filter = @import("filter").Filter;
-const For = @import("for").For;
-const Get = @import("get").Get;
-const If = @import("if").If;
-const Implement = @import("implement").Implement;
-const Internal = @import("internal").Internal;
-const Let = @import("let").Let;
-const List = @import("list").List;
 const MutationCallback = @import("mutation_callback").MutationCallback;
 const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
 const MutationRecord = @import("mutation_record").MutationRecord;
@@ -38,28 +20,8 @@ const MutationObserverInit = @import("mutation_observer_init").MutationRecord, o
 // Import types that are shared between Node and MutationObserver
 const MutationObserverInit;
 const Node = @import("node").Node;
-const NodeList = @import("node_list").NodeList;
-const Observing = @import("observing").Observing;
-const OldValue = @import("old_value").OldValue;
-const Otherwise = @import("otherwise").Otherwise;
-const Record = @import("record").Record;
-const RecordQueue = @import("record_queue").RecordQueue;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-const RegisteredObservers = @import("registered_observers").RegisteredObservers;
-const Remove = @import("remove").Remove;
-const RetainingCapacity = @import("retaining_capacity").RetainingCapacity;
-const Return = @import("return").Return;
-const Returns = @import("returns").Returns;
-const Set = @import("set").Set;
-const Step = @import("step").Step;
-const TODO = @import("t_o_d_o").TODO;
-const This = @import("this").This;
-const TransientObservers = @import("transient_observers").TransientObservers;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
-const TypeError = @import("type_error").TypeError;
-const Used = @import("used").Used;
-const Useful = @import("useful").Useful;
-const WebIDL = @import("web_i_d_l").WebIDL;
 const fn (mutations: []const MutationRecord, observer: *MutationObserver) void;
 
 // Import types that are shared between Node and MutationObserver
@@ -69,8 +31,6 @@ const MutationObserverInit = @import("mutation_observer_init").fn (mutations: []
 const MutationObserverInit;
 const infra = @import("infra").infra;
 const std = @import("std");
-const std.ArrayList(*Node) = @import("std._array_list(*_node)").std.ArrayList(*Node);
-const std.ArrayList(MutationRecord) = @import("std._array_list(_mutation_record)").std.ArrayList(MutationRecord);
 const webidl = @import("webidl");
 
 

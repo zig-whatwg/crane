@@ -894,43 +894,79 @@ fn findMatchingBrace(source: []const u8, open_pos: usize) ?usize {
 
 /// Extract type names referenced in code
 /// Automatically detects any capitalized identifier (type names in Zig)
+/// Only looks at actual code, not comments or strings
 fn extractTypesFromCode(allocator: Allocator, signature: []const u8, body: []const u8) ![][]const u8 {
+    _ = signature; // Signature types are already captured by field parsing
+
     var types = std.StringHashMap(void).init(allocator);
     defer types.deinit();
 
-    const combined = try std.fmt.allocPrint(allocator, "{s} {s}", .{ signature, body });
-    defer allocator.free(combined);
+    // Only scan the body for type references
+    // This avoids extracting type names from comments in the body
 
-    // Scan for capitalized identifiers (type names)
+    // Simple heuristic: look for patterns like "*TypeName" or "?TypeName" or ": TypeName"
+    // These indicate actual type usage, not random capitalized words
     var pos: usize = 0;
-    while (pos < combined.len) {
-        const c = combined[pos];
 
-        // Look for start of identifier (uppercase letter)
-        if (c >= 'A' and c <= 'Z') {
-            // Found potential type name, extract it
-            const start = pos;
+    while (pos < body.len) {
+        const c = body[pos];
+
+        // Skip comment lines entirely
+        if (c == '/' and pos + 1 < body.len and body[pos + 1] == '/') {
+            // Skip to end of line
+            while (pos < body.len and body[pos] != '\n') {
+                pos += 1;
+            }
+            continue;
+        }
+
+        // Skip string literals
+        if (c == '"') {
             pos += 1;
+            while (pos < body.len) {
+                if (body[pos] == '"' and body[pos - 1] != '\\') break;
+                pos += 1;
+            }
+            pos += 1;
+            continue;
+        }
 
-            // Continue while we have valid identifier characters
-            while (pos < combined.len) : (pos += 1) {
-                const ch = combined[pos];
-                if ((ch >= 'a' and ch <= 'z') or
-                    (ch >= 'A' and ch <= 'Z') or
-                    (ch >= '0' and ch <= '9') or
-                    ch == '_')
-                {
-                    continue;
-                } else {
-                    break;
-                }
+        // Look for type indicators: *, ?, :, @as(
+        const is_type_context = (c == '*' or c == '?' or c == ':' or
+            (c == '@' and pos + 3 < body.len and
+                std.mem.startsWith(u8, body[pos..], "@as")));
+
+        if (is_type_context) {
+            // Skip past the indicator and whitespace
+            pos += 1;
+            while (pos < body.len and (body[pos] == ' ' or body[pos] == '\t')) {
+                pos += 1;
             }
 
-            const type_name = combined[start..pos];
+            // Check if next character is uppercase (start of type name)
+            if (pos < body.len and body[pos] >= 'A' and body[pos] <= 'Z') {
+                const start = pos;
 
-            // Filter out common keywords and built-in types
-            if (!isBuiltinType(type_name)) {
-                try types.put(type_name, {});
+                // Extract the identifier
+                while (pos < body.len) {
+                    const ch = body[pos];
+                    if ((ch >= 'a' and ch <= 'z') or
+                        (ch >= 'A' and ch <= 'Z') or
+                        (ch >= '0' and ch <= '9') or
+                        ch == '_')
+                    {
+                        pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+
+                const type_name = body[start..pos];
+
+                // Filter out built-in types
+                if (!isBuiltinType(type_name)) {
+                    try types.put(type_name, {});
+                }
             }
         } else {
             pos += 1;

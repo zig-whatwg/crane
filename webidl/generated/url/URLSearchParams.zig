@@ -8,40 +8,10 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Algorithm = @import("algorithm").Algorithm;
-const All = @import("all").All;
 const Allocator = @import("std.mem").Allocator;
-const Appends = @import("appends").Appends;
-const Attributes = @import("attributes").Attributes;
-const Calls = @import("calls").Calls;
-const Each = @import("each").Each;
 const EntriesIterator = @import("entries_iterator").EntriesIterator;
 const Entry = @import("entry").Entry;
-const ForEachCallback = @import("for_each_callback").ForEachCallback;
-const FromRecord = @import("from_record").FromRecord;
-const FromSequence = @import("from_sequence").FromSequence;
-const FromString = @import("from_string").FromString;
-const Iteration = @import("iteration").Iteration;
-const JavaScript = @import("java_script").JavaScript;
-const KeysIterator = @import("keys_iterator").KeysIterator;
-const Methods = @import("methods").Methods;
-const Note = @import("note").Note;
-const Parameters = @import("parameters").Parameters;
-const RecordEntry = @import("record_entry").RecordEntry;
-const Removes = @import("removes").Removes;
-const Represents = @import("represents").Represents;
-const Returns = @import("returns").Returns;
-const Serializes = @import("serializes").Serializes;
-const Sets = @import("sets").Sets;
-const Sorts = @import("sorts").Sorts;
-const Spec = @import("spec").Spec;
-const Steps = @import("steps").Steps;
-const Support = @import("support").Support;
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
-const USVString = @import("u_s_v_string").USVString;
-const Update = @import("update").Update;
-const ValuesIterator = @import("values_iterator").ValuesIterator;
-const WebIDL = @import("web_i_d_l").WebIDL;
 const std = @import("std");
 const webidl = @import("webidl");
 

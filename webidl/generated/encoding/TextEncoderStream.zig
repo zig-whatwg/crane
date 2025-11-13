@@ -8,59 +8,14 @@
 //   - Optimized field layouts
 //   - Automatic import resolution
 
-const Algorithms = @import("algorithms").Algorithms;
-const Allocate = @import("allocate").Allocate;
 const Allocator = @import("std.mem").Allocator;
-const AndEnqueue = @import("and_enqueue").AndEnqueue;
-const BD = @import("b_d").BD;
-const BF = @import("b_f").BF;
-const BMP = @import("b_m_p").BMP;
-const Cast = @import("cast").Cast;
-const Clear = @import("clear").Clear;
-const CodeUnitToScalarValue = @import("code_unit_to_scalar_value").CodeUnitToScalarValue;
-const Convert = @import("convert").Convert;
-const Create = @import("create").Create;
-const D800 = @import("d800").D800;
-const DC00 = @import("d_c00").DC00;
-const DFFF = @import("d_f_f_f").DFFF;
-const DOMString = @import("d_o_m_string").DOMString;
-const EF = @import("e_f").EF;
-const Encode = @import("encode").Encode;
-const Encoding = @import("encoding").Encoding;
-const Enqueue = @import("enqueue").Enqueue;
-const FFFD = @import("f_f_f_d").FFFD;
 const GenericTransformStream = @import("../streams/GenericTransformStream.zig").GenericTransformStream;
-const Get = @import("get").Get;
-const If = @import("if").If;
-const Initialize = @import("initialize").Initialize;
-const JSValue = @import("j_s_value").JSValue;
-const Process = @import("process").Process;
-const ReadableStream = @import("readable_stream").ReadableStream;
-const Return = @import("return").Return;
-const Set = @import("set").Set;
-const Should = @import("should").Should;
-const Skip = @import("skip").Skip;
-const Slice = @import("slice").Slice;
-const Standard = @import("standard").Standard;
-const Step = @import("step").Step;
-const Stream = @import("stream").Stream;
-const Surrogate = @import("surrogate").Surrogate;
 const TextEncoderCommon = @import("TextEncoderCommon.zig").TextEncoderCommon;
-const Transform = @import("transform").Transform;
 const TransformStream = @import("transform_stream").TransformStream;
 const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
-const Transformer = @import("transformer").Transformer;
-const U = @import("u").U;
-const UTF = @import("u_t_f").UTF;
-const Uint8Array = @import("uint8_array").Uint8Array;
-const WHATWG = @import("w_h_a_t_w_g").WHATWG;
-const Will = @import("will").Will;
-const WithCallbacks = @import("with_callbacks").WithCallbacks;
-const WritableStream = @import("writable_stream").WritableStream;
 const ]const u8 = @import("]const u8").]const u8;
 const infra = @import("infra").infra;
 const std = @import("std");
-const std.mem.Allocator = @import("std.mem._allocator").std.mem.Allocator;
 const webidl = @import("webidl");
 
 

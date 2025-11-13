@@ -10,7 +10,6 @@
 
 const Allocator = @import("std.mem").Allocator;
 const std = @import("std");
-const std.ArrayList(*anyopaque) = @import("std._array_list(*anyopaque)").std.ArrayList(*anyopaque);
 const webidl = @import("webidl");
 
 

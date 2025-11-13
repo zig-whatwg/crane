@@ -9,22 +9,11 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Attribute = @import("attribute").Attribute;
-const Cast = @import("cast").Cast;
-const Check = @import("check").Check;
-const DOM = @import("d_o_m").DOM;
-const ELEMENT_NODE = @import("e_l_e_m_e_n_t__n_o_d_e").ELEMENT_NODE;
 const Element = @import("element").Element;
-const Elements = @import("elements").Elements;
 const FilterFn = @import("filter_fn").FilterFn;
-const List = @import("list").List;
 const Node = @import("node").Node;
-const RetainingCapacity = @import("retaining_capacity").RetainingCapacity;
-const Returns = @import("returns").Returns;
-const The = @import("the").The;
 const anyopaque = @import("anyopaque").anyopaque;
 const infra = @import("infra").infra;
-const infra.List(*Element) = @import("infra._list(*_element)").infra.List(*Element);
 const std = @import("std");
 const webidl = @import("webidl");
 

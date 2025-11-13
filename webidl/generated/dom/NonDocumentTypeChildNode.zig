@@ -9,13 +9,8 @@
 //   - Automatic import resolution
 
 const Allocator = @import("std.mem").Allocator;
-const Cast = @import("cast").Cast;
-const ELEMENT_NODE = @import("e_l_e_m_e_n_t__n_o_d_e").ELEMENT_NODE;
 const Element = @import("element").Element;
-const Find = @import("find").Find;
-const Node = @import("node").Node;
 const NodeType = @import("node_type").NodeType;
-const Only = @import("only").Only;
 const std = @import("std");
 const webidl = @import("webidl");
 

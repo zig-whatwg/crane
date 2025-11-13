@@ -341,6 +341,16 @@ fn addImportForType(
         base_type = base_type["const ".len..];
     }
 
+    // Skip if contains '.' (already qualified like infra.List)
+    if (std.mem.indexOfScalar(u8, base_type, '.') != null) {
+        return;
+    }
+
+    // Skip if contains '(' (generic instantiation like OrderedMap(...))
+    if (std.mem.indexOfScalar(u8, base_type, '(') != null) {
+        return;
+    }
+
     // Skip if primitive or self-reference
     if (isPrimitiveType(base_type) or std.mem.eql(u8, base_type, current_class)) {
         return;
