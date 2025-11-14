@@ -119,7 +119,7 @@ pub const HTMLCollection = struct {
 
     fn collectElements(self: *HTMLCollection, node: *Node) !void {
 
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const element: *Element = @ptrCast(child);
                 if (self.filter_fn.?(element, self.filter_context.?)) {
@@ -141,7 +141,7 @@ pub const HTMLCollection = struct {
     /// Returns the number of elements in the collection.
     pub fn get_length(self: *const HTMLCollection) u32 {
 
-        return @intCast(self.elements.items.len);
+        return @intCast(self.elements.toSlice().len);
     
     }
 
@@ -150,10 +150,10 @@ pub const HTMLCollection = struct {
     /// The elements are sorted in tree order.
     pub fn call_item(self: *const HTMLCollection, index: u32) ?*Element {
 
-        if (index >= self.elements.items.len) {
+        if (index >= self.elements.toSlice().len) {
             return null;
         }
-        return self.elements.items[index];
+        return self.elements.toSlice()[index];
     
     }
 
@@ -162,7 +162,7 @@ pub const HTMLCollection = struct {
     /// Returns null if no such element exists.
     pub fn call_namedItem(self: *const HTMLCollection, name: []const u8) ?*Element {
 
-        for (self.elements.items) |element| {
+        for (self.elements.toSlice()) |element| {
             // Check if element's id matches
             const id = element.get_id();
             if (std.mem.eql(u8, id, name)) {

@@ -1192,13 +1192,15 @@ pub const ProcessingInstruction = struct {
             Node.DOCUMENT_NODE => {
                 // Cloning Document is complex and not fully supported yet
                 // For now, just create a basic copy
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },
             else => {
                 // Default: create basic node copy
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },
