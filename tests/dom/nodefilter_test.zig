@@ -2,10 +2,17 @@
 //! Tests for NodeFilter constants and filtering logic
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Document = dom.Document;
+const Node = dom.Node;
+const NodeFilter = dom.NodeFilter;
+
 const testing = std.testing;
-const NodeFilter = @import("node_filter").NodeFilter;
-const Document = @import("document").Document;
-const Node = @import("node").Node;
 
 test "NodeFilter: FILTER constants have correct values" {
     try testing.expectEqual(@as(u16, 1), NodeFilter.FILTER_ACCEPT);

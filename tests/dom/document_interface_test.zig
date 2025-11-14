@@ -3,7 +3,10 @@
 
 const std = @import("std");
 const dom = @import("dom");
-
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Document = dom.Document;
 
 test "dom.Document - internString basic deduplication" {
     const allocator = std.testing.allocator;

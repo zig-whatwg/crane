@@ -2,11 +2,13 @@
 //! Tests for NodeList interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Node = dom.Node;
+
 const testing = std.testing;
-const NodeList = @import("NodeList").NodeList;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
 
 test "NodeList: init creates empty list" {
     const allocator = testing.allocator;

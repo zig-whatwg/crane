@@ -1,5 +1,12 @@
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Document = dom.Document;
+const DocumentFragment = dom.DocumentFragment;
+const Range = dom.Range;
+const Text = dom.Text;
 
 test "Range.surroundContents - wraps range content in new parent" {
     const allocator = std.testing.allocator;

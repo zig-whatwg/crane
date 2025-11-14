@@ -1,14 +1,20 @@
-const document = @import("document");
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Document = dom.Document;
+const Node = dom.Node;
+const Range = dom.Range;
+
 const testing = std.testing;
 
 test "Range tracking - per-document isolation" {
     const allocator = testing.allocator;
 
     // Import types
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
 
     // Create two documents
     const doc1_ptr = try allocator.create(Document);
@@ -52,9 +58,6 @@ test "Range tracking - per-document isolation" {
 test "Range tracking - auto unregister on deinit" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -85,10 +88,6 @@ test "Range tracking - auto unregister on deinit" {
 test "Range tracking - replaceData updates range offsets" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Text = @import("text").Text;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -130,10 +129,6 @@ test "Range tracking - replaceData updates range offsets" {
 test "Range tracking - replaceData collapses range within replaced region" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Text = @import("text").Text;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -171,11 +166,6 @@ test "Range tracking - replaceData collapses range within replaced region" {
 test "Range tracking - splitText updates ranges correctly" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Element = @import("element").Element;
-    const Text = @import("text").Text;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -223,10 +213,6 @@ test "Range tracking - splitText updates ranges correctly" {
 test "Range tracking - splitText updates parent-relative ranges" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Element = @import("element").Element;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -273,10 +259,6 @@ test "Range tracking - splitText updates parent-relative ranges" {
 test "Range tracking - node removal updates ranges" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Element = @import("element").Element;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);
@@ -327,10 +309,6 @@ test "Range tracking - node removal updates ranges" {
 test "Range tracking - multiple ranges update independently" {
     const allocator = testing.allocator;
 
-    const Document = @import("document").Document;
-    const Range = @import("range").Range;
-    const Node = @import("node").Node;
-    const Text = @import("text").Text;
 
     const doc_ptr = try allocator.create(Document);
     defer allocator.destroy(doc_ptr);

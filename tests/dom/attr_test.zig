@@ -2,8 +2,15 @@
 //! Tests for Attr interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Attr = dom.Attr;
+
 const testing = std.testing;
-const Attr = @import("attr").Attr;
 
 test "Attr: init creates attribute with local name only" {
     const allocator = testing.allocator;

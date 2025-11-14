@@ -2,6 +2,18 @@
 // Spec: https://dom.spec.whatwg.org/#interface-childnode
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+const Comment = dom.Comment;
+const DocumentFragment = dom.DocumentFragment;
+const DocumentType = dom.DocumentType;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
+
 const testing = std.testing;
 
 // NOTE: These are placeholder tests. Full implementation requires:

@@ -2,12 +2,16 @@
 //! Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const MutationRecord = dom.MutationRecord;
 
 const MutationObserver = dom_types.MutationObserver;
-const Node = dom_types.Node;
-const Element = dom_types.Element;
-const Document = dom_types.Document;
+const Node = Node;
+const Element = Element;
+const Document = Document;
 
 fn testCallback(_: []const dom_types.MutationRecord, _: *MutationObserver) void {
     // Empty callback for testing

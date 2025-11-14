@@ -2,8 +2,15 @@
 //! Tests for Element id, className, classList, and slot attributes
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Element = dom.Element;
+
 const testing = std.testing;
-const Element = @import("element").Element;
 
 test "Element: id getter returns empty string when not set" {
     const allocator = testing.allocator;

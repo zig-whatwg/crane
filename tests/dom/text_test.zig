@@ -2,9 +2,13 @@
 //! Tests for Text interface and text-specific methods
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Text = @import("text").Text;
 
 test "Text: createTextNode creates text with data" {
     const allocator = testing.allocator;
@@ -319,7 +323,6 @@ test "Text: empty text node operations" {
 
 test "Text: splitText inserts new node into parent tree" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -366,7 +369,6 @@ test "Text: splitText inserts new node into parent tree" {
 
 test "Text: splitText with siblings inserts in correct position" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();

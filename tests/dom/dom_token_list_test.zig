@@ -2,6 +2,10 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-domtokenlist (§6.1)
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const ElementWithBase = @import("dom").ElementWithBase;
 const DOMTokenList = @import("dom").DOMTokenListImpl;
 

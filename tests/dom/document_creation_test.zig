@@ -2,11 +2,13 @@
 //! Tests for Document node creation methods
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
-const Comment = @import("comment").Comment;
 const DocumentFragment = @import("DocumentFragment").DocumentFragment;
 
 test "Document: createElement creates Element node" {
@@ -182,7 +184,6 @@ test "Document: createElement with custom tag names" {
 
 test "Document: adoptNode changes owner document" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     // Create two documents
     var doc1 = try Document.init(allocator);
@@ -215,7 +216,6 @@ test "Document: adoptNode changes owner document" {
 
 test "Document: adoptNode removes from parent" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     // Create two documents
     var doc1 = try Document.init(allocator);
@@ -260,7 +260,6 @@ test "Document: adoptNode removes from parent" {
 
 test "Document: adoptNode throws NotSupportedError for document node" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc1 = try Document.init(allocator);
     defer doc1.deinit();
@@ -277,7 +276,6 @@ test "Document: adoptNode throws NotSupportedError for document node" {
 
 test "Document: adoptNode with tree of descendants" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     // Create two documents
     var doc1 = try Document.init(allocator);
@@ -449,7 +447,6 @@ test "Document: baseURI defaults to about:blank" {
 
 test "Node: baseURI returns document's base_uri" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
     
     var doc = try Document.init(allocator);
     defer doc.deinit();

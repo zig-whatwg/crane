@@ -2,7 +2,10 @@
 //! Spec: https://dom.spec.whatwg.org/#concept-event-listener-inner-invoke
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const event_dispatch = @import("event_dispatch");
 
 const EventTarget = dom_types.EventTarget;

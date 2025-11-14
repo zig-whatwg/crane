@@ -1,13 +1,13 @@
-const document = @import("document");
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+
 const testing = std.testing;
 
 // Import DOM types
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
-const Node = @import("node").Node;
-const mutation = @import("mutation");
 
 test "Move algorithm - basic element move" {
     const allocator = testing.allocator;

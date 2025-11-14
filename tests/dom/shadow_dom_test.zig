@@ -2,13 +2,15 @@
 //! Spec: https://dom.spec.whatwg.org/#shadow-trees
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
-const Element = dom_types.Element;
-const ShadowRoot = dom_types.ShadowRoot;
-const ShadowRootInit = dom_types.ShadowRootInit;
-const Document = dom_types.Document;
-const Text = dom_types.Text;
+const Element = Element;
+const ShadowRoot = ShadowRoot;
+const ShadowRootInit = ShadowRootInit;
+const Document = Document;
+const Text = Text;
 
 test "Shadow DOM: attachShadow creates open shadow root" {
     const allocator = std.testing.allocator;

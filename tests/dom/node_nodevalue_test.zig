@@ -1,9 +1,16 @@
 const std = @import("std");
-const Node = @import("node").Node;
-const Text = @import("text").Text;
-const Comment = @import("comment").Comment;
-const Element = @import("element").Element;
-const Attr = @import("attr").Attr;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Attr = dom.Attr;
+const Comment = dom.Comment;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
 
 test "Node.nodeValue - Text node returns data" {
     const allocator = std.testing.allocator;

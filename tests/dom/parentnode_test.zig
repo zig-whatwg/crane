@@ -2,6 +2,16 @@
 // Spec: https://dom.spec.whatwg.org/#interface-parentnode
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const DocumentFragment = dom.DocumentFragment;
+const Element = dom.Element;
+const HTMLCollection = dom.HTMLCollection;
+const NodeList = dom.NodeList;
+const Text = dom.Text;
+
 const testing = std.testing;
 
 // NOTE: These are placeholder tests. Full implementation requires:
@@ -17,8 +27,6 @@ const testing = std.testing;
 
 test "ParentNode - children attribute returns HTMLCollection" {
     const allocator = testing.allocator;
-    const Document = @import("document").Document;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -89,8 +97,6 @@ test "ParentNode - children attribute returns HTMLCollection" {
 
 test "ParentNode - children returns empty HTMLCollection when no elements" {
     const allocator = testing.allocator;
-    const Document = @import("document").Document;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();

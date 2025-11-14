@@ -1,7 +1,13 @@
-const document_type = @import("document_type");
 const std = @import("std");
-const Node = @import("node").Node;
-const DocumentType = @import("document_type").DocumentType;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const DocumentType = dom.DocumentType;
+const Node = dom.Node;
 
 test "Node.isEqualNode - DocumentType with same properties" {
     const allocator = std.testing.allocator;

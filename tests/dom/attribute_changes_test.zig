@@ -2,6 +2,10 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-element (§4.9)
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const ElementWithBase = @import("dom").ElementWithBase;
 const AttrWithBase = @import("dom").AttrWithBase;
 const attribute_algorithms = @import("dom").attribute_algorithms;

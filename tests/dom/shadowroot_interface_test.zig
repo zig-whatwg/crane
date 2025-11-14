@@ -3,7 +3,11 @@
 
 const std = @import("std");
 const dom = @import("dom");
-
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Element = dom.Element;
+const ShadowRoot = dom.ShadowRoot;
 
 test "dom.ShadowRoot - creation with basic properties" {
     const allocator = std.testing.allocator;

@@ -6,9 +6,15 @@
 //! - Zero runtime overhead
 
 const std = @import("std");
-const testing = std.testing;
 const dom = @import("dom");
 const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
+
+const testing = std.testing;
 const NodeBase = dom.NodeBase;
 const Allocator = std.mem.Allocator;
 
@@ -237,7 +243,6 @@ test "NodeBase - real CharacterData integration" {
     // This ensures removing the stub didn't break anything
 
     const allocator = testing.allocator;
-    const CharacterData = @import("character_data").CharacterData;
 
     // Create a real CharacterData node
     var char_data = try CharacterData.init(allocator);

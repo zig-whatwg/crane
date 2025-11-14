@@ -1,13 +1,18 @@
-const document = @import("document");
 //! NamedNodeMap Tests (DOM Standard §4.9)
 //! Tests for NamedNodeMap interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const testing = std.testing;
 const NamedNodeMap = @import("NamedNodeMap").NamedNodeMap;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Attr = @import("attr").Attr;
+
+
+// Type aliases
+const Attr = dom.Attr;
+const Document = dom.Document;
 
 test "NamedNodeMap: init creates empty map" {
     const allocator = testing.allocator;

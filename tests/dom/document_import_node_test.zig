@@ -2,13 +2,15 @@
 //! Spec: https://dom.spec.whatwg.org/#dom-document-importnode
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
-const Document = dom_types.Document;
-const Element = dom_types.Element;
-const Text = dom_types.Text;
-const Comment = dom_types.Comment;
-const Node = dom_types.Node;
+const Document = Document;
+const Element = Element;
+const Text = Text;
+const Comment = Comment;
+const Node = Node;
 
 test "importNode: shallow copy of element" {
     const allocator = std.testing.allocator;

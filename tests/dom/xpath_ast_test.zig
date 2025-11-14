@@ -2,8 +2,9 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
-
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
 test "ast - binary expression creation" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

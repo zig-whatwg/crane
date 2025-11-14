@@ -1,7 +1,14 @@
 const std = @import("std");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const NodeList = @import("node_list").NodeList;
+
+
+// Type aliases
+const Element = dom.Element;
+const Node = dom.Node;
 
 test "Node.childNodes - [SameObject] returns same NodeList" {
     const allocator = std.testing.allocator;

@@ -3,7 +3,8 @@
 
 const std = @import("std");
 const dom = @import("dom");
-
+const infra = @import("infra");
+const webidl = @import("webidl");
 
 test "DocumentOrShadowRoot - initial state" {
     const TestDocOrShadow = struct {

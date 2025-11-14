@@ -2,13 +2,20 @@
 //! Tests for Event, EventTarget, and event dispatch
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const testing = std.testing;
 
 // Import Event and EventTarget from generated WebIDL
-const Event = @import("event").Event;
-const EventTarget = @import("event_target").EventTarget;
-const Node = @import("node").Node;
 const event_dispatch = @import("dom").event_dispatch;
+
+
+// Type aliases
+const Event = dom.Event;
+const EventTarget = dom.EventTarget;
+const Node = dom.Node;
 
 test "Event: constructor with type only" {
     const allocator = testing.allocator;

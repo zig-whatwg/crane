@@ -7,6 +7,19 @@
 //! are not yet implemented. Tests will be expanded as implementation progresses.
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Attr = dom.Attr;
+const CharacterData = dom.CharacterData;
+const Document = dom.Document;
+const DocumentFragment = dom.DocumentFragment;
+const DocumentType = dom.DocumentType;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
+
 // TODO: Import from dom module once build.zig is updated
 // const dom = @import("dom");
 

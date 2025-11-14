@@ -1,7 +1,14 @@
 const std = @import("std");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const Document = @import("document").Document;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Document = dom.Document;
+const Element = dom.Element;
+const Node = dom.Node;
 
 test "Node.isConnected - document is connected" {
     const allocator = std.testing.allocator;

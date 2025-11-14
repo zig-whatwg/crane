@@ -6,6 +6,15 @@
 //! exactly, including error conditions and edge cases.
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Document = dom.Document;
+const DocumentFragment = dom.DocumentFragment;
+const DocumentType = dom.DocumentType;
+const Text = dom.Text;
+
 // TODO: Import from dom module once build.zig is updated
 // const dom = @import("dom");
 // const mutation = dom.mutation;

@@ -3,7 +3,10 @@
 
 const std = @import("std");
 const dom = @import("dom");
-
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const EventTarget = dom.EventTarget;
 
 test "dom.EventTarget - event_listener_list starts as null (lazy allocation)" {
     const allocator = std.testing.allocator;

@@ -2,13 +2,14 @@
 //! Spec: https://dom.spec.whatwg.org/#concept-node-children-changed-ext
 
 const std = @import("std");
-const dom_types = @import("dom_types");
-const mutation = @import("mutation");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
-const Node = dom_types.Node;
-const Element = dom_types.Element;
-const Text = dom_types.Text;
-const CharacterData = dom_types.CharacterData;
+const Node = Node;
+const Element = Element;
+const Text = Text;
+const CharacterData = CharacterData;
 
 // Test callback state
 var test_callback_count: usize = 0;

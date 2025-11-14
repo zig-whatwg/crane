@@ -3,6 +3,15 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const AbstractRange = dom.AbstractRange;
+const Document = dom.Document;
+const DocumentType = dom.DocumentType;
+const Node = dom.Node;
+const Range = dom.Range;
+const StaticRange = dom.StaticRange;
 
 test "StaticRange - basic construction" {
     const allocator = std.testing.allocator;

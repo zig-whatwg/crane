@@ -2,12 +2,18 @@
 //! Spec: https://dom.spec.whatwg.org/#concept-node-adopt (§4.2.2)
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
 const mutation = @import("dom").mutation;
+
+
+// Type aliases
+const Document = dom.Document;
+const Node = dom.Node;
+const Text = dom.Text;
 
 test "adopt - node already in target document updates ownerDocument" {
     const allocator = testing.allocator;

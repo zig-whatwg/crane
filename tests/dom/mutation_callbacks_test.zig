@@ -2,13 +2,14 @@
 //! Spec: Extension points for specifications to hook into DOM mutations
 
 const std = @import("std");
-const dom_types = @import("dom_types");
-const mutation = @import("mutation");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
-const Node = dom_types.Node;
-const Element = dom_types.Element;
-const Text = dom_types.Text;
-const Document = dom_types.Document;
+const Node = Node;
+const Element = Element;
+const Text = Text;
+const Document = Document;
 
 // Test state for insertion steps
 var insertion_count: usize = 0;

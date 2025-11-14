@@ -1,6 +1,12 @@
-const node = @import("node");
 const std = @import("std");
-const Node = @import("node").Node;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Node = dom.Node;
 
 // Test data structure to track if cloning steps were called
 const CloningTestContext = struct {

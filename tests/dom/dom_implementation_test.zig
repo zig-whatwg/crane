@@ -1,6 +1,13 @@
 const std = @import("std");
-const testing = std.testing;
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Node = dom.Node;
+
+const testing = std.testing;
 const Document = dom.Document;
 const DOMImplementation = dom.DOMImplementation;
 const DocumentType = dom.DocumentType;
@@ -267,7 +274,6 @@ test "DOMImplementation: Document.implementation getter" {
 
 test "DOMImplementation: createHTMLDocument creates proper tree structure" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -315,7 +321,6 @@ test "DOMImplementation: createHTMLDocument creates proper tree structure" {
 
 test "DOMImplementation: createHTMLDocument without title has no title element" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -345,7 +350,6 @@ test "DOMImplementation: createHTMLDocument without title has no title element" 
 
 test "DOMImplementation: createDocument with element creates tree" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -370,7 +374,6 @@ test "DOMImplementation: createDocument with element creates tree" {
 
 test "DOMImplementation: createDocument with doctype and element" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();
@@ -402,7 +405,6 @@ test "DOMImplementation: createDocument with doctype and element" {
 
 test "DOMImplementation: createDocument with empty qualified name has no element" {
     const allocator = testing.allocator;
-    const Node = @import("node").Node;
 
     var doc = try Document.init(allocator);
     defer doc.deinit();

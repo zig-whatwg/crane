@@ -3,6 +3,15 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+const Comment = dom.Comment;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
+
 const MutationObserver = dom.MutationObserver;
 const MutationRecord = dom.MutationRecord;
 const MutationObserverInit = dom.MutationObserverInit;

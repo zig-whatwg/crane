@@ -1,6 +1,9 @@
 const std = @import("std");
-const testing = std.testing;
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+const testing = std.testing;
 const Document = dom.Document;
 const DOMImplementation = dom.DOMImplementation;
 const Element = dom.Element;

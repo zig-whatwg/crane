@@ -3,6 +3,9 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const Node = dom.Node;
 const NodeIterator = dom.NodeIterator;
 const NodeFilter = dom.NodeFilter;

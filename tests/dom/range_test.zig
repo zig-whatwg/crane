@@ -2,12 +2,17 @@
 //! Tests for Range interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Document = dom.Document;
+const Node = dom.Node;
+const Range = dom.Range;
+
 const testing = std.testing;
-const Range = @import("range").Range;
-const Document = @import("document").Document;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
 
 test "Range: init creates range with document boundary" {
     const allocator = testing.allocator;

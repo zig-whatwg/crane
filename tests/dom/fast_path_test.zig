@@ -4,10 +4,12 @@
 //! These tests verify the optimization logic for common selector patterns.
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
 // Import the fast_path module directly from source
 // This allows testing internal implementation details
-const fast_path = @import("../../src/dom/fast_path.zig");
 
 const FastPathType = fast_path.FastPathType;
 const detectFastPath = fast_path.detectFastPath;

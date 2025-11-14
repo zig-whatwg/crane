@@ -6,6 +6,10 @@
 //! Standard exactly. Tests are organized by concept.
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 // TODO: Import from dom module once build.zig is updated
 // const dom = @import("dom");
 // const tree = dom.tree;

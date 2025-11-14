@@ -5,17 +5,20 @@
 //! These tests verify complete mutation algorithm implementation
 
 const std = @import("std");
-const testing = std.testing;
 const dom = @import("dom");
-const element = @import("element");
-const document = @import("document");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+const testing = std.testing;
 const mutation = dom.mutation;
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const Text = @import("text").Text;
-const DocumentType = @import("document_type").DocumentType;
+
+
+// Type aliases
+const Document = dom.Document;
+const DocumentType = dom.DocumentType;
+const Element = dom.Element;
+const Text = dom.Text;
 
 test "mutation - ensurePreInsertValidity: valid Element into Element" {
     const allocator = testing.allocator;

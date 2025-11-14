@@ -5,6 +5,13 @@
 //! ranges within a single CharacterData node (the most common case).
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+const Text = dom.Text;
+
 const Range = @import("dom").Range;
 const Document = @import("dom").Document;
 const Node = @import("dom").Node;

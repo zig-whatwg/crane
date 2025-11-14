@@ -2,7 +2,8 @@
 //! Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
 const webidl = @import("webidl");
 
 const AbortSignal = dom_types.AbortSignal;

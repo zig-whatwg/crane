@@ -2,10 +2,15 @@
 //! Spec: https://dom.spec.whatwg.org/#ref-for-dom-element-attributes
 
 const std = @import("std");
-const dom_types = @import("dom_types");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const DOMTokenList = dom.DOMTokenList;
+const NamedNodeMap = dom.NamedNodeMap;
 
-const Element = dom_types.Element;
-const Document = dom_types.Document;
+const Element = Element;
+const Document = Document;
 
 test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
     const allocator = std.testing.allocator;

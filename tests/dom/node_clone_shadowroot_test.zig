@@ -1,10 +1,15 @@
 const std = @import("std");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
-const ShadowRootMode = @import("shadow_root").ShadowRootMode;
-const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
+
+
+// Type aliases
+const Element = dom.Element;
+const Node = dom.Node;
+const ShadowRoot = dom.ShadowRoot;
 
 test "Node.cloneNode - ShadowRoot throws NotSupportedError" {
     const allocator = std.testing.allocator;

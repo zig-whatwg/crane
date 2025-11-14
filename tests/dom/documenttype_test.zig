@@ -2,8 +2,13 @@
 //! Tests for DocumentType interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const DocumentType = dom.DocumentType;
+
 const testing = std.testing;
-const Document = @import("document").Document;
 
 test "DocumentType: createDocumentType with all parameters" {
     const allocator = testing.allocator;

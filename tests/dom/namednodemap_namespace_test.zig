@@ -1,5 +1,11 @@
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Attr = dom.Attr;
+const Document = dom.Document;
+const NamedNodeMap = dom.NamedNodeMap;
 
 test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name" {
     const allocator = std.testing.allocator;

@@ -8,6 +8,12 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Document = dom.Document;
+const Range = dom.Range;
+
 const testing = std.testing;
 
 // Test: Range offsets shift when node inserted before range start

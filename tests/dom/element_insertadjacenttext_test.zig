@@ -1,5 +1,12 @@
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Document = dom.Document;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
 
 test "Element.insertAdjacentText - beforebegin inserts before element" {
     const allocator = std.testing.allocator;

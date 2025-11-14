@@ -1,5 +1,12 @@
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Comment = dom.Comment;
+const Document = dom.Document;
+const Range = dom.Range;
+const Text = dom.Text;
 
 test "Range.deleteContents - deletes text data within same Text node" {
     const allocator = std.testing.allocator;

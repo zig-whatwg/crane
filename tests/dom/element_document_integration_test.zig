@@ -1,12 +1,14 @@
-const document = @import("document");
 //! Element and Document Integration Tests
 //! Tests for Element and Document working together in typical DOM scenarios
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const DocumentFragment = dom.DocumentFragment;
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Text = @import("text").Text;
 
 test "Integration: Create element with document and set attributes" {
     const allocator = testing.allocator;

@@ -2,10 +2,11 @@
 //! Tests for Element.matches() and Element.closest()
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
-const Node = @import("node").Node;
 
 test "Element.matches: basic type selector" {
     const allocator = testing.allocator;
@@ -218,6 +219,13 @@ test "Element.classList: returns DOMTokenList" {
     const allocator = testing.allocator;
     const DOMTokenList = @import("dom_token_list").DOMTokenList;
     
+
+// Type aliases
+const DOMTokenList = dom.DOMTokenList;
+const Document = dom.Document;
+const Element = dom.Element;
+const Node = dom.Node;
+
     var doc = try Document.init(allocator);
     defer doc.deinit();
     

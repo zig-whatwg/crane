@@ -4,8 +4,16 @@
 //! and running XPath queries against them.
 
 const std = @import("std");
-const testing = std.testing;
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
+
+const testing = std.testing;
 
 // Use the WithBase types
 const NodeBase = dom.NodeBase;

@@ -10,6 +10,8 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
 
 const Element = dom.Element;
 const ShadowRoot = dom.ShadowRoot;

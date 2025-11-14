@@ -2,10 +2,16 @@
 //! Tests for HTMLCollection interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+// Type aliases
+const Document = dom.Document;
+const HTMLCollection = dom.HTMLCollection;
+
 const testing = std.testing;
-const HTMLCollection = @import("HTMLCollection").HTMLCollection;
-const Document = @import("document").Document;
-const Element = @import("element").Element;
 
 test "HTMLCollection: init creates empty collection" {
     const allocator = testing.allocator;

@@ -2,8 +2,11 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
-
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const Node = dom.Node;
 
 test "queueMutationRecord - basic childList mutation" {
     const allocator = std.testing.allocator;

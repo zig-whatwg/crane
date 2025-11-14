@@ -1,10 +1,15 @@
-const node = @import("node");
 //! Tests for Node.contains() method
 //! Spec: https://dom.spec.whatwg.org/#dom-node-contains
 
 const std = @import("std");
-const Node = @import("node").Node;
+const dom = @import("dom");
 const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Node = dom.Node;
 
 test "Node.contains - self" {
     const allocator = std.testing.allocator;

@@ -1,8 +1,13 @@
 const std = @import("std");
-const Element = @import("element").Element;
-const Document = @import("document").Document;
-const NodeBase = @import("node").NodeBase;
-const EventTargetBase = @import("event_target").EventTargetBase;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Document = dom.Document;
+const Element = dom.Element;
 
 test "NodeBase.tryCast - successful downcast to Element with auto-initialized type_tag" {
     const allocator = std.testing.allocator;

@@ -1,9 +1,14 @@
 const std = @import("std");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const ShadowRoot = @import("shadow_root").ShadowRoot;
-const ShadowRootMode = @import("shadow_root").ShadowRootMode;
-const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Element = dom.Element;
+const Node = dom.Node;
+const ShadowRoot = dom.ShadowRoot;
 
 test "Node.cloneNode - element with clonable shadow root is cloned" {
     const allocator = std.testing.allocator;

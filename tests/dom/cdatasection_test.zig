@@ -2,8 +2,15 @@
 //! Tests for CDATASection interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CDATASection = dom.CDATASection;
+const CharacterData = dom.CharacterData;
+const Text = dom.Text;
+
 const testing = std.testing;
-const Document = @import("document").Document;
 
 test "CDATASection: createCDATASection creates node with data" {
     const allocator = testing.allocator;

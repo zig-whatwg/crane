@@ -3,6 +3,9 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
 const Document = dom.Document;
 const Element = dom.Element;
 

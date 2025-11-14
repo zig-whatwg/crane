@@ -1,10 +1,15 @@
-const element = @import("element");
-const document = @import("document");
 const std = @import("std");
-const Node = @import("node").Node;
-const Element = @import("element").Element;
-const Document = @import("document").Document;
-const Text = @import("text").Text;
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+
+
+
+// Type aliases
+const Document = dom.Document;
+const Element = dom.Element;
+const Node = dom.Node;
+const Text = dom.Text;
 
 test "Node.parentElement - element parent returns element" {
     const allocator = std.testing.allocator;

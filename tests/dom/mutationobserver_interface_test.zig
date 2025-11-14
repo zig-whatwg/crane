@@ -3,7 +3,12 @@
 
 const std = @import("std");
 const dom = @import("dom");
-
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const MutationObserver = dom.MutationObserver;
+const MutationRecord = dom.MutationRecord;
+const Node = dom.Node;
 
 test "dom.MutationObserver - construction" {
     const allocator = std.testing.allocator;

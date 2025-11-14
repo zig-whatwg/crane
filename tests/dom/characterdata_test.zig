@@ -2,10 +2,13 @@
 //! Tests for CharacterData interface and data manipulation methods
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+
 const testing = std.testing;
-const Document = @import("document").Document;
-const Text = @import("text").Text;
-const Comment = @import("comment").Comment;
 
 test "CharacterData: data getter returns data" {
     const allocator = testing.allocator;

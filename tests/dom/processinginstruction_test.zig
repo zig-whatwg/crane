@@ -2,8 +2,14 @@
 //! Tests for ProcessingInstruction interface
 
 const std = @import("std");
+const dom = @import("dom");
+const infra = @import("infra");
+const webidl = @import("webidl");
+// Type aliases
+const CharacterData = dom.CharacterData;
+const ProcessingInstruction = dom.ProcessingInstruction;
+
 const testing = std.testing;
-const Document = @import("document").Document;
 
 test "ProcessingInstruction: createProcessingInstruction creates PI with target and data" {
     const allocator = testing.allocator;
