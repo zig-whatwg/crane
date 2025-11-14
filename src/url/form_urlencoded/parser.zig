@@ -7,6 +7,7 @@
 //! name-value pairs in URL query strings and HTML form submissions.
 
 const std = @import("std");
+const infra = @import("infra");
 const percentDecode = @import("percent_encoding").percentDecode;
 
 /// A name-value tuple (spec line 1686)
@@ -45,12 +46,12 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) ![]Tuple {
     var sequences = std.mem.splitSequence(u8, input, "&");
 
     // Step 2: Create output list
-    var output = std.ArrayList(Tuple){};
+    var output = infra.List(Tuple).init(allocator);
     errdefer {
-        for (output.items) |tuple| {
+        for (output.toSlice()) |tuple| {
             tuple.deinit(allocator);
         }
-        output.deinit(allocator);
+        output.deinit();
     }
 
     // Step 3: For each byte sequence
@@ -93,14 +94,14 @@ pub fn parse(allocator: std.mem.Allocator, input: []const u8) ![]Tuple {
         errdefer allocator.free(value_string);
 
         // Step 3.6: Append tuple
-        try output.append(allocator, .{
+        try output.append(.{
             .name = name_string,
             .value = value_string,
         });
     }
 
     // Step 4: Return output
-    return try output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Replace 0x2B (+) with 0x20 (space) per spec line 1695
