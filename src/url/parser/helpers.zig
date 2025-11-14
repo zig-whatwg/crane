@@ -9,6 +9,7 @@
 //! - Windows drive letter detection
 
 const std = @import("std");
+const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 const Path = @import("path").Path;
 const windows_drive = @import("windows_drive");
@@ -194,10 +195,10 @@ test "helpers - shortenPath" {
     // Normal path shortening
     {
         const buffer = try allocator.dupe(u8, "http");
-        var segments = std.ArrayList([]const u8){};
-        try segments.append(allocator, try allocator.dupe(u8, "a"));
-        try segments.append(allocator, try allocator.dupe(u8, "b"));
-        try segments.append(allocator, try allocator.dupe(u8, "c"));
+        var segments = infra.List([]const u8).init(allocator);
+        try segments.append(try allocator.dupe(u8, "a"));
+        try segments.append(try allocator.dupe(u8, "b"));
+        try segments.append(try allocator.dupe(u8, "c"));
 
         var url = URLRecord{
             .buffer = buffer,
@@ -218,27 +219,27 @@ test "helpers - shortenPath" {
         };
         defer url.deinit();
 
-        try std.testing.expectEqual(@as(usize, 3), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 3), url.path.segments.len);
 
         shortenPath(&url);
-        try std.testing.expectEqual(@as(usize, 2), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 2), url.path.segments.len);
 
         shortenPath(&url);
-        try std.testing.expectEqual(@as(usize, 1), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 1), url.path.segments.len);
 
         shortenPath(&url);
-        try std.testing.expectEqual(@as(usize, 0), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 0), url.path.segments.len);
 
         // Shortening empty path does nothing
         shortenPath(&url);
-        try std.testing.expectEqual(@as(usize, 0), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 0), url.path.segments.len);
     }
 
     // file: URL with Windows drive letter (should not shorten)
     {
         const buffer = try allocator.dupe(u8, "file");
-        var segments = std.ArrayList([]const u8){};
-        try segments.append(allocator, try allocator.dupe(u8, "C:"));
+        var segments = infra.List([]const u8).init(allocator);
+        try segments.append(try allocator.dupe(u8, "C:"));
 
         var url = URLRecord{
             .buffer = buffer,
@@ -259,11 +260,11 @@ test "helpers - shortenPath" {
         };
         defer url.deinit();
 
-        try std.testing.expectEqual(@as(usize, 1), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 1), url.path.segments.len);
 
         // Should not shorten (Windows drive letter protection)
         shortenPath(&url);
-        try std.testing.expectEqual(@as(usize, 1), url.path.segments.items.len);
+        try std.testing.expectEqual(@as(usize, 1), url.path.segments.len);
     }
 }
 
