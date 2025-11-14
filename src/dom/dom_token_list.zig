@@ -86,7 +86,7 @@ pub const DOMTokenList = struct {
     /// Spec §6.1 line 6511
     pub fn contains(self: *const DOMTokenList, token: []const u8) bool {
         // Convert to u16 string for comparison
-        const token_u16 = infra.string.utf8ToUtf16(token) catch return false;
+        const token_u16 = infra.string.utf8ToUtf16(self.allocator, token) catch return false;
         defer self.allocator.free(token_u16);
         return self.token_set.contains(token_u16);
     }
@@ -110,7 +110,7 @@ pub const DOMTokenList = struct {
 
         // Step 2: For each token of tokens, append token to this's token set
         for (tokens) |token| {
-            const token_u16 = try infra.string.utf8ToUtf16(token);
+            const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
             errdefer self.allocator.free(token_u16);
 
             // append only adds if not already present (ordered set semantics)
@@ -140,7 +140,7 @@ pub const DOMTokenList = struct {
 
         // Step 2: For each token in tokens, remove token from this's token set
         for (tokens) |token| {
-            const token_u16 = try infra.string.utf8ToUtf16(token);
+            const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
             defer self.allocator.free(token_u16);
 
             _ = self.token_set.remove(token_u16);
@@ -163,7 +163,7 @@ pub const DOMTokenList = struct {
             return error.InvalidCharacterError;
         }
 
-        const token_u16 = try infra.string.utf8ToUtf16(token);
+        const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
         defer self.allocator.free(token_u16);
 
         // Step 3: If this's token set[token] exists:
@@ -208,7 +208,7 @@ pub const DOMTokenList = struct {
             return error.InvalidCharacterError;
         }
 
-        const token_u16 = try infra.string.utf8ToUtf16(token);
+        const token_u16 = try infra.string.utf8ToUtf16(self.allocator, token);
         defer self.allocator.free(token_u16);
 
         // Step 3: If this's token set does not contain token, then return false

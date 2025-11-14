@@ -80,15 +80,10 @@ const ParserContext = struct {
     fn init(allocator: std.mem.Allocator, input: []const u8, base: ?*const URLRecord, state_override: ?ParserState, url_mut: ?*URLRecord) !ParserContext {
         const initial_state = state_override orelse .scheme_start;
 
-        // P6 Optimization: Pre-allocate List capacity based on input size
-        // Most URL components are much smaller than input, but pre-allocating
-        // reasonable capacity reduces reallocations during parsing.
-        const capacity_hint = @min(input.len, 256); // Cap at 256 bytes for small URLs
+        // NOTE: Pre-allocation optimization removed - List doesn't support ensureTotalCapacity
 
         var scheme = infra.List(u8).init(allocator);
-
         var username = infra.List(u8).init(allocator);
-
         var password = infra.List(u8).init(allocator);
 
         var query = infra.List(u8).init(allocator);
@@ -260,7 +255,7 @@ fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
     if (url.path == .opaque_path) {
         ctx.opaque_path = try ctx.allocator.dupe(u8, url.path.opaque_path);
     } else {
-        for (url.path.segments.items) |segment| {
+        for (url.path.segments.toSlice()) |segment| {
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
         }
     }
@@ -639,7 +634,7 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
         ctx.port = base.port;
         // Clone path
-        for (base.path.segments.items) |segment| {
+        for (base.path.segments.toSlice()) |segment| {
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
         }
         if (base.query()) |q| {
@@ -665,7 +660,7 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     try ctx.password.appendSlice(base.password());
     if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
     ctx.port = base.port;
-    for (base.path.segments.items) |segment| {
+    for (base.path.segments.toSlice()) |segment| {
         try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
     }
     if (base.query()) |q| {
@@ -970,7 +965,7 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
         const base_scheme = base.scheme();
         if (std.mem.eql(u8, base_scheme, "file")) {
             if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
-            for (base.path.segments.items) |segment| {
+            for (base.path.segments.toSlice()) |segment| {
                 try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
             }
             if (base.query()) |q| {
@@ -1282,6 +1277,3 @@ fn fragmentState(ctx: *ParserContext, c: ?u8) ParseError!void {
 // ============================================================================
 // Tests
 // ============================================================================
-
-
-
