@@ -19,11 +19,11 @@
 //! const validation = @import("validation");
 //!
 //! // Optional validation error collection
-//! var errors = std.ArrayList(validation.ValidationError){};
+//! var errors = infra.List(validation.ValidationError).init(allocator);
 //! defer errors.deinit();
 //!
 //! // Record error during parsing
-//! try errors.append(allocator, .{ .type = .invalid_url_unit, .position = 5 });
+//! try errors.append(.{ .type = .invalid_url_unit, .position = 5 });
 //! ```
 
 const std = @import("std");
