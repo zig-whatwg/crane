@@ -632,6 +632,108 @@ pub const ProcessingInstruction = struct {
     
     }
 
+    /// Safe downcast to CharacterData (returns null if not a CharacterData node)
+    pub fn asCharacterData(self: *ProcessingInstruction) ?*CharacterData {
+        const self_parent: *Node = @ptrCast(self);
+
+        return switch (self_parent.node_type) {
+            TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self_parent)),
+            else => null,
+        };
+    
+    }
+
+    /// Safe const downcast to CharacterData
+    pub fn asCharacterDataConst(self: *const ProcessingInstruction) ?*const CharacterData {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return switch (self_parent.node_type) {
+            TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self_parent)),
+            else => null,
+        };
+    
+    }
+
+    /// Safe downcast to Element (returns null if not an Element node)
+    pub fn asElement(self: *ProcessingInstruction) ?*Element {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Element
+    pub fn asElementConst(self: *const ProcessingInstruction) ?*const Element {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Document (returns null if not a Document node)
+    pub fn asDocument(self: *ProcessingInstruction) ?*Document {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Document
+    pub fn asDocumentConst(self: *const ProcessingInstruction) ?*const Document {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment node)
+    pub fn asDocumentFragment(self: *ProcessingInstruction) ?*DocumentFragment {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to DocumentFragment
+    pub fn asDocumentFragmentConst(self: *const ProcessingInstruction) ?*const DocumentFragment {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Text (returns null if not a Text node)
+    pub fn asText(self: *ProcessingInstruction) ?*Text {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == TEXT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Text
+    pub fn asTextConst(self: *const ProcessingInstruction) ?*const Text {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == TEXT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Attr (returns null if not an Attr node)
+    pub fn asAttr(self: *ProcessingInstruction) ?*Attr {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Attr
+    pub fn asAttrConst(self: *const ProcessingInstruction) ?*const Attr {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
     /// insertBefore(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *ProcessingInstruction, node: *Node, child: ?*Node) !*Node {

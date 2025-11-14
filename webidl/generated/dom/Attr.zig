@@ -313,6 +313,108 @@ pub const Attr = struct {
     
     }
 
+    /// Safe downcast to CharacterData (returns null if not a CharacterData node)
+    pub fn asCharacterData(self: *Attr) ?*CharacterData {
+        const self_parent: *Node = @ptrCast(self);
+
+        return switch (self_parent.node_type) {
+            TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self_parent)),
+            else => null,
+        };
+    
+    }
+
+    /// Safe const downcast to CharacterData
+    pub fn asCharacterDataConst(self: *const Attr) ?*const CharacterData {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return switch (self_parent.node_type) {
+            TEXT_NODE, COMMENT_NODE, CDATA_SECTION_NODE, PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self_parent)),
+            else => null,
+        };
+    
+    }
+
+    /// Safe downcast to Element (returns null if not an Element node)
+    pub fn asElement(self: *Attr) ?*Element {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Element
+    pub fn asElementConst(self: *const Attr) ?*const Element {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Document (returns null if not a Document node)
+    pub fn asDocument(self: *Attr) ?*Document {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Document
+    pub fn asDocumentConst(self: *const Attr) ?*const Document {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment node)
+    pub fn asDocumentFragment(self: *Attr) ?*DocumentFragment {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to DocumentFragment
+    pub fn asDocumentFragmentConst(self: *const Attr) ?*const DocumentFragment {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Text (returns null if not a Text node)
+    pub fn asText(self: *Attr) ?*Text {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == TEXT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Text
+    pub fn asTextConst(self: *const Attr) ?*const Text {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == TEXT_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe downcast to Attr (returns null if not an Attr node)
+    pub fn asAttr(self: *Attr) ?*Attr {
+        const self_parent: *Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
+    /// Safe const downcast to Attr
+    pub fn asAttrConst(self: *const Attr) ?*const Attr {
+        const self_parent: *const Node = @ptrCast(self);
+
+        return if (self_parent.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self_parent)) else null;
+    
+    }
+
     /// insertBefore(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *Attr, node: *Node, child: ?*Node) !*Node {
