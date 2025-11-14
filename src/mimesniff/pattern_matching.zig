@@ -6,6 +6,7 @@
 //! including comptime pattern tables and SIMD-optimized matching.
 
 const std = @import("std");
+const infra = @import("infra");
 const mime_type_mod = @import("mime_type.zig");
 const MimeType = mime_type_mod.MimeType;
 const mime_constants = @import("mime_constants.zig");
@@ -1048,18 +1049,19 @@ test "matchesMp3Signature - valid MP3 without ID3" {
     //   scale = (version == 1) ? 72 : 144 = 144
     //   frame_size = 80000 * 144 / 44100 = 261 bytes
 
-    var mp3_data = try std.ArrayList(u8).initCapacity(allocator, 530);
-    defer mp3_data.deinit(allocator);
+    var mp3_data = infra.List(u8).init(allocator);
+    try mp3_data.ensureCapacity(530);
+    defer mp3_data.deinit();
 
     // First MP3 frame: 261 bytes
-    try mp3_data.appendSlice(allocator, &[_]u8{ 0xFF, 0xFB, 0x90, 0x00 });
-    try mp3_data.appendSlice(allocator, &([_]u8{0x00} ** 257)); // 4 + 257 = 261
+    try mp3_data.appendSlice(&[_]u8{ 0xFF, 0xFB, 0x90, 0x00 });
+    try mp3_data.appendSlice(&([_]u8{0x00} ** 257)); // 4 + 257 = 261
 
     // Second MP3 frame: 261 bytes
-    try mp3_data.appendSlice(allocator, &[_]u8{ 0xFF, 0xFB, 0x90, 0x00 });
-    try mp3_data.appendSlice(allocator, &([_]u8{0x00} ** 257)); // 4 + 257 = 261
+    try mp3_data.appendSlice(&[_]u8{ 0xFF, 0xFB, 0x90, 0x00 });
+    try mp3_data.appendSlice(&([_]u8{0x00} ** 257)); // 4 + 257 = 261
 
-    try std.testing.expect(matchesMp3Signature(mp3_data.items));
+    try std.testing.expect(matchesMp3Signature(mp3_data.items()));
 }
 
 test "matchesMp3Signature - invalid MP3 header (bad bitrate)" {
