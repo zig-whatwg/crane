@@ -28,8 +28,8 @@
 //! - Any API that produces data over time without loading everything into memory
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const infra = @import("infra");
+const Allocator = std.mem.Allocator;
 
 /// AsyncSequence<T> represents a WebIDL async_sequence<T> type.
 ///
@@ -111,14 +111,14 @@ pub fn AsyncSequence(comptime T: type) type {
 
         /// Helper to collect all values into a sequence (defeats the purpose but useful for testing)
         pub fn collect(self: *Self, allocator: Allocator) ![]T {
-            var list = std.ArrayList(T){};
-            errdefer list.deinit(allocator);
+            var list = infra.List(T).init(allocator);
+            errdefer list.deinit();
 
             while (try self.iterator.next()) |item| {
-                try list.append(allocator, item);
+                try list.append(item);
             }
 
-            return try list.toOwnedSlice(allocator);
+            return try list.toOwnedSlice();
         }
     };
 }
