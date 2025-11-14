@@ -390,7 +390,122 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         }
     }
 
+    // Type Conversion Helpers (Downcast Methods)
+    try writeDowncastHelpers(allocator, writer, enhanced);
+
     try writer.writeAll("};\n");
+}
+
+/// Generate type conversion helper methods for safe downcasting
+/// Only generates for Node and its descendants (uses node_type discriminator)
+fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR) !void {
+    _ = allocator;
+    const class = enhanced.class;
+
+    // Only generate for Node and classes that inherit from Node
+    const inherits_from_node = blk: {
+        if (std.mem.eql(u8, class.name, "Node")) break :blk true;
+
+        // Check if this class or any parent is Node
+        const current_parent = class.parent;
+        while (current_parent) |parent_name| {
+            if (std.mem.eql(u8, parent_name, "Node")) break :blk true;
+            // For simplicity, we'll check direct parent only
+            // A more complete solution would traverse the full hierarchy
+            break;
+        }
+        break :blk false;
+    };
+
+    if (!inherits_from_node) return;
+
+    // Only Node itself gets the downcast helpers
+    // (Children inherit them through flattened inheritance)
+    if (!std.mem.eql(u8, class.name, "Node")) return;
+
+    try writer.writeAll("\n    // ========================================================================\n");
+    try writer.writeAll("    // Type Conversion Helpers (Safe Downcasting)\n");
+    try writer.writeAll("    // ========================================================================\n");
+    try writer.writeAll("    // With flattened inheritance, we need runtime type checking to safely\n");
+    try writer.writeAll("    // downcast from Node to more specific types.\n\n");
+
+    // CharacterData downcast (TEXT, COMMENT, CDATA_SECTION, PROCESSING_INSTRUCTION)
+    try writer.writeAll("    /// Safe downcast to CharacterData (returns null if not a CharacterData node)\n");
+    try writer.writeAll("    pub fn asCharacterData(self: *Node) ?*CharacterData {\n");
+    try writer.writeAll("        return switch (self.node_type) {\n");
+    try writer.writeAll("            TEXT_NODE,\n");
+    try writer.writeAll("            COMMENT_NODE,\n");
+    try writer.writeAll("            CDATA_SECTION_NODE,\n");
+    try writer.writeAll("            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),\n");
+    try writer.writeAll("            else => null,\n");
+    try writer.writeAll("        };\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to CharacterData\n");
+    try writer.writeAll("    pub fn asCharacterDataConst(self: *const Node) ?*const CharacterData {\n");
+    try writer.writeAll("        return switch (self.node_type) {\n");
+    try writer.writeAll("            TEXT_NODE,\n");
+    try writer.writeAll("            COMMENT_NODE,\n");
+    try writer.writeAll("            CDATA_SECTION_NODE,\n");
+    try writer.writeAll("            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),\n");
+    try writer.writeAll("            else => null,\n");
+    try writer.writeAll("        };\n");
+    try writer.writeAll("    }\n\n");
+
+    // Element downcast
+    try writer.writeAll("    /// Safe downcast to Element (returns null if not an Element node)\n");
+    try writer.writeAll("    pub fn asElement(self: *Node) ?*Element {\n");
+    try writer.writeAll("        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to Element\n");
+    try writer.writeAll("    pub fn asElementConst(self: *const Node) ?*const Element {\n");
+    try writer.writeAll("        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    // Document downcast
+    try writer.writeAll("    /// Safe downcast to Document (returns null if not a Document node)\n");
+    try writer.writeAll("    pub fn asDocument(self: *Node) ?*Document {\n");
+    try writer.writeAll("        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to Document\n");
+    try writer.writeAll("    pub fn asDocumentConst(self: *const Node) ?*const Document {\n");
+    try writer.writeAll("        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    // DocumentFragment downcast
+    try writer.writeAll("    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment node)\n");
+    try writer.writeAll("    pub fn asDocumentFragment(self: *Node) ?*DocumentFragment {\n");
+    try writer.writeAll("        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to DocumentFragment\n");
+    try writer.writeAll("    pub fn asDocumentFragmentConst(self: *const Node) ?*const DocumentFragment {\n");
+    try writer.writeAll("        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    // Text downcast
+    try writer.writeAll("    /// Safe downcast to Text (returns null if not a Text node)\n");
+    try writer.writeAll("    pub fn asText(self: *Node) ?*Text {\n");
+    try writer.writeAll("        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to Text\n");
+    try writer.writeAll("    pub fn asTextConst(self: *const Node) ?*const Text {\n");
+    try writer.writeAll("        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    // Attr downcast
+    try writer.writeAll("    /// Safe downcast to Attr (returns null if not an Attr node)\n");
+    try writer.writeAll("    pub fn asAttr(self: *Node) ?*Attr {\n");
+    try writer.writeAll("        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
+
+    try writer.writeAll("    /// Safe const downcast to Attr\n");
+    try writer.writeAll("    pub fn asAttrConst(self: *const Node) ?*const Attr {\n");
+    try writer.writeAll("        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;\n");
+    try writer.writeAll("    }\n\n");
 }
 
 /// Rewrite self parameter type in method signature for mixin inheritance
