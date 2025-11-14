@@ -213,7 +213,7 @@ pub const MutationObserver = webidl.interface(struct {
     /// Called by mutation observation algorithms when mutations occur.
     /// This is an internal method, not exposed in the WebIDL.
     pub fn enqueueRecord(self: *MutationObserver, record: MutationRecord) !void {
-        try self.record_queue.append(self.allocator, record);
+        try self.record_queue.append(record);
     }
 
     /// Get the callback for this observer

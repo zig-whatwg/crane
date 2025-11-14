@@ -822,6 +822,7 @@ pub const CDATASection = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     
     }
@@ -852,6 +853,7 @@ pub const CDATASection = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     
     }

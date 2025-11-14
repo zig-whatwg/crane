@@ -122,10 +122,24 @@ pub const ProcessingInstruction = struct {
 
     pub fn init(allocator: std.mem.Allocator, target: []const u8, data: []const u8) !ProcessingInstruction {
 
+                        
         return .{
+            // From EventTarget (via Node/CharacterData)
+            .event_listener_list = null,
+            // From Node (via CharacterData)
+            .node_type = 7, // PROCESSING_INSTRUCTION_NODE
+            .node_name = try allocator.dupe(u8, target),
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // From CharacterData
+            .data = try allocator.dupe(u8, data),
+            // ProcessingInstruction-specific
             .allocator = allocator,
             .target = try allocator.dupe(u8, target),
-            .data = try allocator.dupe(u8, data),
         };
     
     }
@@ -621,6 +635,7 @@ pub const ProcessingInstruction = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     
     }
@@ -651,6 +666,7 @@ pub const ProcessingInstruction = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
         };
     
     }

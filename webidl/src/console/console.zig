@@ -968,7 +968,7 @@ pub const console = webidl.namespace(struct {
         const start_time = self.timerTable.get(interned) orelse return;
 
         // Step 3: Remove timerTable[label]
-        self.timerTable.remove(interned);
+        _ = self.timerTable.remove(interned);
 
         // Step 4: Let duration be string representing difference
         const now = infra.Moment.now();
