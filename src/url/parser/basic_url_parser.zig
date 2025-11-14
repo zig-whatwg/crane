@@ -11,6 +11,7 @@
 //! the comprehensive state machine with 20 states and many edge cases.
 
 const std = @import("std");
+const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 const Host = @import("host").Host;
 const Path = @import("path").Path;
@@ -52,17 +53,17 @@ const ParserContext = struct {
     url_mut: ?*URLRecord,
 
     // URL components being built (stored as strings, will be assigned to URLRecord at end)
-    scheme: std.ArrayList(u8),
-    username: std.ArrayList(u8),
-    password: std.ArrayList(u8),
+    scheme: infra.List(u8),
+    username: infra.List(u8),
+    password: infra.List(u8),
     host: ?Host,
     port: ?u16,
-    path_segments: std.ArrayList([]const u8),
+    path_segments: infra.List([]const u8),
     opaque_path: ?[]const u8,
-    query: std.ArrayList(u8),
-    fragment: std.ArrayList(u8),
+    query: infra.List(u8),
+    fragment: infra.List(u8),
 
-    buffer: std.ArrayList(u8),
+    buffer: infra.List(u8),
     pointer: usize,
     at_sign_seen: bool,
     inside_brackets: bool,
@@ -79,33 +80,33 @@ const ParserContext = struct {
     fn init(allocator: std.mem.Allocator, input: []const u8, base: ?*const URLRecord, state_override: ?ParserState, url_mut: ?*URLRecord) !ParserContext {
         const initial_state = state_override orelse .scheme_start;
 
-        // P6 Optimization: Pre-allocate ArrayList capacity based on input size
+        // P6 Optimization: Pre-allocate List capacity based on input size
         // Most URL components are much smaller than input, but pre-allocating
         // reasonable capacity reduces reallocations during parsing.
         const capacity_hint = @min(input.len, 256); // Cap at 256 bytes for small URLs
 
-        var scheme = std.ArrayList(u8){};
-        try scheme.ensureTotalCapacity(allocator, 8); // Most schemes < 8 chars
+        var scheme = infra.List(u8).init(allocator);
+        try scheme.ensureTotalCapacity(8); // Most schemes < 8 chars
 
-        var username = std.ArrayList(u8){};
-        try username.ensureTotalCapacity(allocator, 32); // Username rarely > 32 chars
+        var username = infra.List(u8).init(allocator);
+        try username.ensureTotalCapacity(32); // Username rarely > 32 chars
 
-        var password = std.ArrayList(u8){};
-        try password.ensureTotalCapacity(allocator, 32); // Password rarely > 32 chars
+        var password = infra.List(u8).init(allocator);
+        try password.ensureTotalCapacity(32); // Password rarely > 32 chars
 
-        var query = std.ArrayList(u8){};
-        try query.ensureTotalCapacity(allocator, capacity_hint / 2); // Query often ~half of URL
+        var query = infra.List(u8).init(allocator);
+        try query.ensureTotalCapacity(capacity_hint / 2); // Query often ~half of URL
 
-        var fragment = std.ArrayList(u8){};
-        try fragment.ensureTotalCapacity(allocator, 32); // Fragments usually small
+        var fragment = infra.List(u8).init(allocator);
+        try fragment.ensureTotalCapacity(32); // Fragments usually small
 
-        var buffer = std.ArrayList(u8){};
-        try buffer.ensureTotalCapacity(allocator, capacity_hint); // Buffer can be large
+        var buffer = infra.List(u8).init(allocator);
+        try buffer.ensureTotalCapacity(capacity_hint); // Buffer can be large
 
         // P8 Optimization: Pre-allocate path_segments capacity
         // Most URLs have 1-5 path segments, pre-allocate for common case
-        var path_segments = std.ArrayList([]const u8){};
-        try path_segments.ensureTotalCapacity(allocator, 4); // Most URLs have 1-4 segments
+        var path_segments = infra.List([]const u8).init(allocator);
+        try path_segments.ensureTotalCapacity(4); // Most URLs have 1-4 segments
 
         return ParserContext{
             .allocator = allocator,
@@ -141,18 +142,18 @@ const ParserContext = struct {
     }
 
     fn deinit(self: *ParserContext) void {
-        self.scheme.deinit(self.allocator);
-        self.username.deinit(self.allocator);
-        self.password.deinit(self.allocator);
+        self.scheme.deinit();
+        self.username.deinit();
+        self.password.deinit();
         // NOTE: Do NOT free self.host - ownership is transferred to URLRecord
         // in buildURLRecord(). The URLRecord is responsible for freeing it.
         // NOTE: Do NOT free path_segments items - ownership is transferred to URLRecord
         // via clone(). The segments are shallow-copied, so URLRecord owns them.
-        self.path_segments.deinit(self.allocator);
+        self.path_segments.deinit();
         if (self.opaque_path) |op| self.allocator.free(op);
-        self.query.deinit(self.allocator);
-        self.fragment.deinit(self.allocator);
-        self.buffer.deinit(self.allocator);
+        self.query.deinit();
+        self.fragment.deinit();
+        self.buffer.deinit();
     }
 
     fn currentChar(self: *const ParserContext) ?u8 {
@@ -173,7 +174,7 @@ const ParserContext = struct {
     }
 
     fn isSpecial(self: *const ParserContext) bool {
-        return helpers.isSpecialScheme(self.scheme.items);
+        return helpers.isSpecialScheme(self.scheme.items());
     }
 };
 
@@ -248,11 +249,11 @@ pub fn parseWithStateOverride(
 /// Initialize parser context from existing URL (for state override mode)
 fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
     // Copy scheme
-    try ctx.scheme.appendSlice(ctx.allocator, url.scheme());
+    try ctx.scheme.appendSlice(url.scheme());
 
     // Copy username/password
-    try ctx.username.appendSlice(ctx.allocator, url.username());
-    try ctx.password.appendSlice(ctx.allocator, url.password());
+    try ctx.username.appendSlice(url.username());
+    try ctx.password.appendSlice(url.password());
 
     // Copy host (clone it)
     if (url.host) |h| {
@@ -267,14 +268,14 @@ fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
         ctx.opaque_path = try ctx.allocator.dupe(u8, url.path.opaque_path);
     } else {
         for (url.path.segments.items) |segment| {
-            try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, segment));
+            try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
         }
     }
 
     // Copy query (unless we're overriding it)
     if (ctx.state_override != .query) {
         if (url.query()) |q| {
-            try ctx.query.appendSlice(ctx.allocator, q);
+            try ctx.query.appendSlice(q);
             ctx.has_query = true;
         }
     }
@@ -282,7 +283,7 @@ fn initContextFromURL(ctx: *ParserContext, url: *const URLRecord) !void {
     // Copy fragment (unless we're overriding it)
     if (ctx.state_override != .fragment) {
         if (url.fragment()) |f| {
-            try ctx.fragment.appendSlice(ctx.allocator, f);
+            try ctx.fragment.appendSlice(f);
             ctx.has_fragment = true;
         }
     }
@@ -294,35 +295,35 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
     url.allocator.free(url.buffer);
 
     // Build new buffer
-    var buffer = std.ArrayList(u8){};
-    errdefer buffer.deinit(url.allocator);
+    var buffer = infra.List(u8).init(url.allocator);
+    errdefer buffer.deinit();
 
-    const scheme_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(url.allocator, ctx.scheme.items);
-    const scheme_len: u32 = @intCast(ctx.scheme.items.len);
+    const scheme_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.scheme.items());
+    const scheme_len: u32 = @intCast(ctx.scheme.items().len);
 
-    const username_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(url.allocator, ctx.username.items);
-    const username_len: u32 = @intCast(ctx.username.items.len);
+    const username_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.username.items());
+    const username_len: u32 = @intCast(ctx.username.items().len);
 
-    const password_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(url.allocator, ctx.password.items);
-    const password_len: u32 = @intCast(ctx.password.items.len);
+    const password_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.password.items());
+    const password_len: u32 = @intCast(ctx.password.items().len);
 
-    const query_start: u32 = @intCast(buffer.items.len);
+    const query_start: u32 = @intCast(buffer.len);
     const query_len: u32 = if (ctx.has_query) blk: {
-        try buffer.appendSlice(url.allocator, ctx.query.items);
-        break :blk @intCast(ctx.query.items.len);
+        try buffer.appendSlice(ctx.query.items());
+        break :blk @intCast(ctx.query.items().len);
     } else 0;
 
-    const fragment_start: u32 = @intCast(buffer.items.len);
+    const fragment_start: u32 = @intCast(buffer.len);
     const fragment_len: u32 = if (ctx.has_fragment) blk: {
-        try buffer.appendSlice(url.allocator, ctx.fragment.items);
-        break :blk @intCast(ctx.fragment.items.len);
+        try buffer.appendSlice(ctx.fragment.items());
+        break :blk @intCast(ctx.fragment.items().len);
     } else 0;
 
     // Update URLRecord fields
-    url.buffer = try buffer.toOwnedSlice(url.allocator);
+    url.buffer = try buffer.toOwnedSlice();
     url.scheme_start = scheme_start;
     url.scheme_len = scheme_len;
     url.username_start = username_start;
@@ -346,14 +347,14 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
     } else {
         // Deep clone path segments from arena to URL's allocator
         // Each segment string needs to be cloned to survive after arena.deinit()
-        var segments = std.ArrayList([]const u8){};
+        var segments = infra.List([]const u8).init(url.allocator);
         errdefer {
-            for (segments.items) |seg| url.allocator.free(seg);
-            segments.deinit(url.allocator);
+            for (0..segments.len) |i| url.allocator.free(segments.get(i).?);
+            segments.deinit();
         }
-        try segments.ensureTotalCapacity(url.allocator, ctx.path_segments.items.len);
-        for (ctx.path_segments.items) |seg| {
-            try segments.append(url.allocator, try url.allocator.dupe(u8, seg));
+        try segments.ensureTotalCapacity(ctx.path_segments.items().len);
+        for (ctx.path_segments.items()) |seg| {
+            try segments.append(try url.allocator.dupe(u8, seg));
         }
         url.path = Path{ .segments = segments };
     }
@@ -367,31 +368,31 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
 /// Build URLRecord from parser context
 fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord {
     // Create buffer to hold all string components
-    var buffer = std.ArrayList(u8){};
-    errdefer buffer.deinit(allocator);
+    var buffer = infra.List(u8).init(allocator);
+    errdefer buffer.deinit();
 
-    const scheme_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(allocator, ctx.scheme.items);
-    const scheme_len: u32 = @intCast(ctx.scheme.items.len);
+    const scheme_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.scheme.items());
+    const scheme_len: u32 = @intCast(ctx.scheme.items().len);
 
-    const username_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(allocator, ctx.username.items);
-    const username_len: u32 = @intCast(ctx.username.items.len);
+    const username_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.username.items());
+    const username_len: u32 = @intCast(ctx.username.items().len);
 
-    const password_start: u32 = @intCast(buffer.items.len);
-    try buffer.appendSlice(allocator, ctx.password.items);
-    const password_len: u32 = @intCast(ctx.password.items.len);
+    const password_start: u32 = @intCast(buffer.len);
+    try buffer.appendSlice(ctx.password.items());
+    const password_len: u32 = @intCast(ctx.password.items().len);
 
-    const query_start: u32 = @intCast(buffer.items.len);
+    const query_start: u32 = @intCast(buffer.len);
     const query_len: u32 = if (ctx.has_query) blk: {
-        try buffer.appendSlice(allocator, ctx.query.items);
-        break :blk @intCast(ctx.query.items.len);
+        try buffer.appendSlice(ctx.query.items());
+        break :blk @intCast(ctx.query.items().len);
     } else 0;
 
-    const fragment_start: u32 = @intCast(buffer.items.len);
+    const fragment_start: u32 = @intCast(buffer.len);
     const fragment_len: u32 = if (ctx.has_fragment) blk: {
-        try buffer.appendSlice(allocator, ctx.fragment.items);
-        break :blk @intCast(ctx.fragment.items.len);
+        try buffer.appendSlice(ctx.fragment.items());
+        break :blk @intCast(ctx.fragment.items().len);
     } else 0;
 
     // P3 Optimization: Deep clone path from arena to final allocator
@@ -400,14 +401,14 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
     const path = if (ctx.opaque_path) |op|
         Path{ .opaque_path = try allocator.dupe(u8, op) }
     else blk: {
-        var segments = std.ArrayList([]const u8){};
+        var segments = infra.List([]const u8).init(allocator);
         errdefer {
-            for (segments.items) |seg| allocator.free(seg);
-            segments.deinit(allocator);
+            for (0..segments.len) |i| allocator.free(segments.get(i).?);
+            segments.deinit();
         }
-        try segments.ensureTotalCapacity(allocator, ctx.path_segments.items.len);
-        for (ctx.path_segments.items) |seg| {
-            try segments.append(allocator, try allocator.dupe(u8, seg));
+        try segments.ensureTotalCapacity(ctx.path_segments.items().len);
+        for (ctx.path_segments.items()) |seg| {
+            try segments.append(try allocator.dupe(u8, seg));
         }
         break :blk Path{ .segments = segments };
     };
@@ -418,7 +419,7 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
     const host = if (ctx.host) |h| try h.clone(allocator) else null;
 
     return URLRecord{
-        .buffer = try buffer.toOwnedSlice(allocator),
+        .buffer = try buffer.toOwnedSlice(),
         .scheme_start = scheme_start,
         .scheme_len = scheme_len,
         .username_start = username_start,
@@ -470,7 +471,7 @@ fn schemeStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1063)
     if (c) |char| {
         if (std.ascii.isAlphabetic(char)) {
-            try ctx.buffer.append(ctx.allocator, std.ascii.toLower(char));
+            try ctx.buffer.append(std.ascii.toLower(char));
             ctx.state = .scheme;
             return;
         }
@@ -491,7 +492,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1073)
     if (c) |char| {
         if (std.ascii.isAlphanumeric(char) or char == '+' or char == '-' or char == '.') {
-            try ctx.buffer.append(ctx.allocator, std.ascii.toLower(char));
+            try ctx.buffer.append(std.ascii.toLower(char));
             return;
         }
 
@@ -499,7 +500,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (char == ':') {
             // Spec step 2.1 (lines 1077-1086): If state override is given
             if (ctx.hasStateOverride()) {
-                const buffer_is_special = helpers.isSpecialScheme(ctx.buffer.items);
+                const buffer_is_special = helpers.isSpecialScheme(ctx.buffer.items());
                 const url_scheme_is_special = ctx.isSpecial();
 
                 // Step 2.1.1 (line 1079): special → non-special or vice versa
@@ -507,14 +508,14 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 if (!url_scheme_is_special and buffer_is_special) return;
 
                 // Step 2.1.3 (line 1083): credentials/port + file
-                if ((ctx.username.items.len > 0 or ctx.password.items.len > 0 or ctx.port != null) and
-                    std.mem.eql(u8, ctx.buffer.items, "file"))
+                if ((ctx.username.items().len > 0 or ctx.password.items().len > 0 or ctx.port != null) and
+                    std.mem.eql(u8, ctx.buffer.items(), "file"))
                 {
                     return;
                 }
 
                 // Step 2.1.4 (line 1085): file scheme + empty host
-                if (std.mem.eql(u8, ctx.scheme.items, "file") and ctx.host != null) {
+                if (std.mem.eql(u8, ctx.scheme.items(), "file") and ctx.host != null) {
                     if (ctx.host.? == .empty) return;
                 }
             }
@@ -524,13 +525,13 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             if (ctx.hasStateOverride()) {
                 ctx.scheme.clearRetainingCapacity();
             }
-            try ctx.scheme.appendSlice(ctx.allocator, ctx.buffer.items);
+            try ctx.scheme.appendSlice(ctx.buffer.items());
             ctx.buffer.clearRetainingCapacity();
 
             // Spec step 2.3 (lines 1089-1093): If state override is given
             if (ctx.hasStateOverride()) {
                 // Step 2.3.1 (line 1091): Clear default port
-                const default_port = helpers.defaultPort(ctx.scheme.items);
+                const default_port = helpers.defaultPort(ctx.scheme.items());
                 if (ctx.port != null and ctx.port.? == default_port) {
                     ctx.port = null;
                 }
@@ -543,7 +544,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             // (already done above)
 
             // Spec step 2.5 (lines 1097-1101): If scheme is "file"
-            if (std.mem.eql(u8, ctx.scheme.items, "file")) {
+            if (std.mem.eql(u8, ctx.scheme.items(), "file")) {
                 ctx.state = .file;
                 return;
             }
@@ -551,7 +552,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             // Spec step 2.6 (lines 1103-1107): special + base with same scheme
             if (ctx.isSpecial() and ctx.base != null) {
                 const base_scheme = ctx.base.?.scheme();
-                if (std.mem.eql(u8, base_scheme, ctx.scheme.items)) {
+                if (std.mem.eql(u8, base_scheme, ctx.scheme.items())) {
                     ctx.state = .special_relative_or_authority;
                     return;
                 }
@@ -595,10 +596,10 @@ fn noSchemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (base.hasOpaquePath()) {
         if (c == null or c.? != '#') return ParseError.MissingSchemeNonRelativeURL;
         // Copy base components
-        try ctx.scheme.appendSlice(ctx.allocator, base.scheme());
+        try ctx.scheme.appendSlice(base.scheme());
         ctx.opaque_path = try ctx.allocator.dupe(u8, base.path.opaque_path);
         if (base.query()) |q| {
-            try ctx.query.appendSlice(ctx.allocator, q);
+            try ctx.query.appendSlice(q);
             ctx.has_query = true;
         }
         ctx.has_fragment = true;
@@ -638,20 +639,20 @@ fn pathOrAuthorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
 fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const base = ctx.base.?;
-    try ctx.scheme.appendSlice(ctx.allocator, base.scheme());
+    try ctx.scheme.appendSlice(base.scheme());
 
     if (c == null) {
         // Copy everything from base
-        try ctx.username.appendSlice(ctx.allocator, base.username());
-        try ctx.password.appendSlice(ctx.allocator, base.password());
+        try ctx.username.appendSlice(base.username());
+        try ctx.password.appendSlice(base.password());
         if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
         ctx.port = base.port;
         // Clone path
         for (base.path.segments.items) |segment| {
-            try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, segment));
+            try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
         }
         if (base.query()) |q| {
-            try ctx.query.appendSlice(ctx.allocator, q);
+            try ctx.query.appendSlice(q);
             ctx.has_query = true;
         }
         return;
@@ -669,15 +670,15 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 
     // Copy base components
-    try ctx.username.appendSlice(ctx.allocator, base.username());
-    try ctx.password.appendSlice(ctx.allocator, base.password());
+    try ctx.username.appendSlice(base.username());
+    try ctx.password.appendSlice(base.password());
     if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
     ctx.port = base.port;
     for (base.path.segments.items) |segment| {
-        try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, segment));
+        try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
     }
     if (base.query()) |q| {
-        try ctx.query.appendSlice(ctx.allocator, q);
+        try ctx.query.appendSlice(q);
         ctx.has_query = true;
     }
 
@@ -720,8 +721,8 @@ fn relativeSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     // Copy base credentials/host/port
     const base = ctx.base.?;
-    try ctx.username.appendSlice(ctx.allocator, base.username());
-    try ctx.password.appendSlice(ctx.allocator, base.password());
+    try ctx.username.appendSlice(base.username());
+    try ctx.password.appendSlice(base.password());
     if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
     ctx.port = base.port;
     ctx.state = .path;
@@ -749,7 +750,7 @@ fn specialAuthorityIgnoreSlashesState(ctx: *ParserContext, c: ?u8) ParseError!vo
 fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Handle EOF: finalize as host
     if (c == null) {
-        if (ctx.at_sign_seen and ctx.buffer.items.len == 0) {
+        if (ctx.at_sign_seen and ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
         // If we've seen @ sign, the buffer contains the host
@@ -757,11 +758,11 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (!ctx.at_sign_seen) {
             // No @ seen, so this is all host (no userinfo)
             // Parse the buffer as host
-            if (ctx.isSpecial() and ctx.buffer.items.len == 0) {
+            if (ctx.isSpecial() and ctx.buffer.items().len == 0) {
                 return ParseError.HostMissing;
             }
-            if (ctx.buffer.items.len > 0) {
-                const host = parseHost(ctx.allocator, ctx.buffer.items, !ctx.isSpecial(), null) catch |err| {
+            if (ctx.buffer.items().len > 0) {
+                const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
                     return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
                 };
                 ctx.host = host;
@@ -771,8 +772,8 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
             return;
         }
         // @ sign seen, buffer contains host
-        if (ctx.buffer.items.len > 0) {
-            const host = parseHost(ctx.allocator, ctx.buffer.items, !ctx.isSpecial(), null) catch |err| {
+        if (ctx.buffer.items().len > 0) {
+            const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
                 return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
             };
             ctx.host = host;
@@ -792,7 +793,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
         }
         ctx.at_sign_seen = true;
 
-        for (ctx.buffer.items) |cp| {
+        for (ctx.buffer.items()) |cp| {
             if (cp == ':' and !ctx.password_token_seen) {
                 ctx.password_token_seen = true;
                 continue;
@@ -800,9 +801,9 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
             const encoded = try percentEncode(ctx.allocator, &[_]u8{cp}, .userinfo);
             defer ctx.allocator.free(encoded);
             if (ctx.password_token_seen) {
-                try ctx.password.appendSlice(ctx.allocator, encoded);
+                try ctx.password.appendSlice(encoded);
             } else {
-                try ctx.username.appendSlice(ctx.allocator, encoded);
+                try ctx.username.appendSlice(encoded);
             }
         }
         ctx.buffer.clearRetainingCapacity();
@@ -811,23 +812,23 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     const is_terminator = char == '/' or char == '?' or char == '#' or (ctx.isSpecial() and char == '\\');
     if (is_terminator) {
-        if (ctx.at_sign_seen and ctx.buffer.items.len == 0) {
+        if (ctx.at_sign_seen and ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
-        if (ctx.pointer >= ctx.buffer.items.len) {
-            ctx.pointer -= ctx.buffer.items.len + 1;
+        if (ctx.pointer >= ctx.buffer.items().len) {
+            ctx.pointer -= ctx.buffer.items().len + 1;
         }
         ctx.buffer.clearRetainingCapacity();
         ctx.state = .host;
         return;
     }
 
-    try ctx.buffer.append(ctx.allocator, char);
+    try ctx.buffer.append(char);
 }
 
 fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1232): If state override is given and url's scheme is "file"
-    if (ctx.hasStateOverride() and std.mem.eql(u8, ctx.scheme.items, "file")) {
+    if (ctx.hasStateOverride() and std.mem.eql(u8, ctx.scheme.items(), "file")) {
         if (ctx.pointer > 0) ctx.pointer -= 1;
         ctx.state = .file_host;
         return;
@@ -836,7 +837,7 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 2 (line 1234): Otherwise, if c is U+003A (:) and insideBrackets is false
     if (c != null and c.? == ':' and !ctx.inside_brackets) {
         // Step 2.1 (line 1236): If buffer is empty, return failure
-        if (ctx.buffer.items.len == 0) {
+        if (ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
 
@@ -846,7 +847,7 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         }
 
         // Step 2.3 (line 1240): Parse host
-        const host = parseHost(ctx.allocator, ctx.buffer.items, !ctx.isSpecial(), null) catch |err| {
+        const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
             return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
         };
 
@@ -865,21 +866,21 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (ctx.pointer > 0) ctx.pointer -= 1;
 
         // Step 3.1 (line 1254): If url is special and buffer is empty, return failure
-        if (ctx.isSpecial() and ctx.buffer.items.len == 0) {
+        if (ctx.isSpecial() and ctx.buffer.items().len == 0) {
             return ParseError.HostMissing;
         }
 
         // Step 3.2 (line 1256): If state override, buffer empty, and (credentials or port), return failure
-        if (ctx.hasStateOverride() and ctx.buffer.items.len == 0) {
-            const has_credentials = ctx.username.items.len > 0 or ctx.password.items.len > 0;
+        if (ctx.hasStateOverride() and ctx.buffer.items().len == 0) {
+            const has_credentials = ctx.username.items().len > 0 or ctx.password.items().len > 0;
             if (has_credentials or ctx.port != null) {
                 return ParseError.HostMissing;
             }
         }
 
         // Step 3.3 (line 1258): Parse host
-        if (ctx.buffer.items.len > 0) {
-            const host = parseHost(ctx.allocator, ctx.buffer.items, !ctx.isSpecial(), null) catch |err| {
+        if (ctx.buffer.items().len > 0) {
+            const host = parseHost(ctx.allocator, ctx.buffer.items(), !ctx.isSpecial(), null) catch |err| {
                 return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
             };
             ctx.host = host;
@@ -902,14 +903,14 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const char = c.?;
     if (char == '[') ctx.inside_brackets = true;
     if (char == ']') ctx.inside_brackets = false;
-    try ctx.buffer.append(ctx.allocator, char);
+    try ctx.buffer.append(char);
 }
 
 fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Spec step 1 (line 1276): If c is an ASCII digit
     if (c) |char| {
         if (std.ascii.isDigit(char)) {
-            try ctx.buffer.append(ctx.allocator, char);
+            try ctx.buffer.append(char);
             return;
         }
     }
@@ -924,14 +925,14 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (is_eof or is_terminator or is_state_override) {
         // Step 2.1 (lines 1288-1298): If buffer is not empty
-        if (ctx.buffer.items.len > 0) {
+        if (ctx.buffer.items().len > 0) {
             // Step 2.1.1 (line 1290): Parse port
-            const port = std.fmt.parseInt(u16, ctx.buffer.items, 10) catch {
+            const port = std.fmt.parseInt(u16, ctx.buffer.items(), 10) catch {
                 return ParseError.PortOutOfRange;
             };
 
             // Step 2.1.3 (line 1294): Set url's port (null if default, otherwise port)
-            const default_port = helpers.defaultPort(ctx.scheme.items);
+            const default_port = helpers.defaultPort(ctx.scheme.items());
             if (default_port == null or default_port.? != port) {
                 ctx.port = port;
             } else {
@@ -964,7 +965,7 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
 }
 
 fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
-    try ctx.scheme.appendSlice(ctx.allocator, "file");
+    try ctx.scheme.appendSlice("file");
     ctx.host = Host.empty;
 
     if (c) |char| {
@@ -979,10 +980,10 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (std.mem.eql(u8, base_scheme, "file")) {
             if (base.host) |h| ctx.host = try h.clone(ctx.allocator);
             for (base.path.segments.items) |segment| {
-                try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, segment));
+                try ctx.path_segments.append(try ctx.allocator.dupe(u8, segment));
             }
             if (base.query()) |q| {
-                try ctx.query.appendSlice(ctx.allocator, q);
+                try ctx.query.appendSlice(q);
                 ctx.has_query = true;
             }
 
@@ -1010,7 +1011,7 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
                         ctx.allocator.free(last);
                     }
                 } else {
-                    for (ctx.path_segments.items) |segment| {
+                    for (ctx.path_segments.items()) |segment| {
                         ctx.allocator.free(segment);
                     }
                     ctx.path_segments.clearRetainingCapacity();
@@ -1045,7 +1046,7 @@ fn fileSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
             {
                 const first_segment = base.path.segments.items[0];
                 if (windows_drive.isNormalizedWindowsDriveLetter(first_segment)) {
-                    try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, first_segment));
+                    try ctx.path_segments.append(try ctx.allocator.dupe(u8, first_segment));
                 }
             }
         }
@@ -1061,18 +1062,18 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (is_terminator) {
         if (ctx.pointer > 0) ctx.pointer -= 1;
 
-        if (windows_drive.isWindowsDriveLetter(ctx.buffer.items)) {
+        if (windows_drive.isWindowsDriveLetter(ctx.buffer.items())) {
             ctx.state = .path;
             return;
         }
 
-        if (ctx.buffer.items.len == 0) {
+        if (ctx.buffer.items().len == 0) {
             ctx.host = Host.empty;
             ctx.state = .path_start;
             return;
         }
 
-        const host = parseHost(ctx.allocator, ctx.buffer.items, true, null) catch |err| {
+        const host = parseHost(ctx.allocator, ctx.buffer.items(), true, null) catch |err| {
             return if (err == error.OutOfMemory) error.OutOfMemory else error.InvalidHost;
         };
         if (host == .domain and std.mem.eql(u8, host.domain, "localhost")) {
@@ -1085,7 +1086,7 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         return;
     }
 
-    try ctx.buffer.append(ctx.allocator, c.?);
+    try ctx.buffer.append(c.?);
 }
 
 fn pathStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
@@ -1123,7 +1124,7 @@ fn pathStartState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     // Spec step 5 (line 1416): Otherwise, if state override is given and url's host is null
     if (ctx.hasStateOverride() and ctx.host == null) {
-        try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, ""));
+        try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
     }
 }
 
@@ -1136,35 +1137,35 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
     const is_terminator = is_eof_or_slash or is_special_backslash or is_query_or_frag_without_override;
 
     if (is_terminator) {
-        if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items)) {
+        if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items())) {
             if (ctx.path_segments.pop()) |last| {
                 ctx.allocator.free(last);
             }
             const should_append_empty = !(c != null and c.? == '/') and
                 !(ctx.isSpecial() and c != null and c.? == '\\');
             if (!should_append_empty) {
-                try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, ""));
+                try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
-        } else if (path_helpers.isSingleDotPathSegment(ctx.buffer.items)) {
+        } else if (path_helpers.isSingleDotPathSegment(ctx.buffer.items())) {
             const should_append_empty = !(c != null and c.? == '/') and
                 !(ctx.isSpecial() and c != null and c.? == '\\');
             if (!should_append_empty) {
-                try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, ""));
+                try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
             }
-        } else if (ctx.buffer.items.len > 0) {
+        } else if (ctx.buffer.items().len > 0) {
             // Handle Windows drive letter normalization
-            if (std.mem.eql(u8, ctx.scheme.items, "file") and
-                ctx.path_segments.items.len == 0 and
-                windows_drive.isWindowsDriveLetter(ctx.buffer.items))
+            if (std.mem.eql(u8, ctx.scheme.items(), "file") and
+                ctx.path_segments.items().len == 0 and
+                windows_drive.isWindowsDriveLetter(ctx.buffer.items()))
             {
                 // Normalize: replace second char with ':'
-                ctx.buffer.items[1] = ':';
+                ctx.buffer.items()[1] = ':';
             }
-            try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, ctx.buffer.items));
-        } else if (c == null and ctx.buffer.items.len == 0) {
+            try ctx.path_segments.append(try ctx.allocator.dupe(u8, ctx.buffer.items()));
+        } else if (c == null and ctx.buffer.items().len == 0) {
             // EOF with empty buffer - append empty segment to represent trailing slash
             // This happens when URL ends with / like "http://example.com/"
-            try ctx.path_segments.append(ctx.allocator, try ctx.allocator.dupe(u8, ""));
+            try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
         }
 
         ctx.buffer.clearRetainingCapacity();
@@ -1190,11 +1191,11 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // P9 Optimization: For ASCII input, use fast path to avoid allocation
     if (ctx.is_ascii and char < 128) {
         const result = encodeSingleAscii(char, .path);
-        try ctx.buffer.appendSlice(ctx.allocator, result.bytes[0..result.length]);
+        try ctx.buffer.appendSlice(result.bytes[0..result.length]);
     } else {
         const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .path);
         defer ctx.allocator.free(encoded);
-        try ctx.buffer.appendSlice(ctx.allocator, encoded);
+        try ctx.buffer.appendSlice(encoded);
     }
 }
 
@@ -1249,8 +1250,8 @@ fn queryState(ctx: *ParserContext, c: ?u8) ParseError!void {
     if (is_eof or is_hash_without_override) {
         // Step 2.1-2.2 (lines 1502-1504): Percent-encode and append to query
         const encode_set: EncodeSet = if (ctx.isSpecial()) .special_query else .query;
-        const encoded = try percentEncode(ctx.allocator, ctx.buffer.items, encode_set);
-        try ctx.query.appendSlice(ctx.allocator, encoded);
+        const encoded = try percentEncode(ctx.allocator, ctx.buffer.items(), encode_set);
+        try ctx.query.appendSlice(encoded);
         ctx.allocator.free(encoded);
 
         // Step 2.3 (line 1508): Clear buffer
@@ -1266,7 +1267,7 @@ fn queryState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     // Spec step 3 (lines 1511-1515): Otherwise, append to buffer
     if (c) |char| {
-        try ctx.buffer.append(ctx.allocator, char);
+        try ctx.buffer.append(char);
     }
 }
 
@@ -1278,11 +1279,11 @@ fn fragmentState(ctx: *ParserContext, c: ?u8) ParseError!void {
         // P9 Optimization: For ASCII input, use fast path to avoid allocation
         if (ctx.is_ascii and char < 128) {
             const result = encodeSingleAscii(char, .fragment);
-            try ctx.fragment.appendSlice(ctx.allocator, result.bytes[0..result.length]);
+            try ctx.fragment.appendSlice(result.bytes[0..result.length]);
         } else {
             const encoded = try percentEncode(ctx.allocator, &[_]u8{char}, .fragment);
             defer ctx.allocator.free(encoded);
-            try ctx.fragment.appendSlice(ctx.allocator, encoded);
+            try ctx.fragment.appendSlice(encoded);
         }
     }
 }
