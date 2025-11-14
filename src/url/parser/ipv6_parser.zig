@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const validation = @import("validation");
 
 pub const IPv6Error = error{
@@ -73,7 +74,7 @@ const Pointer = struct {
 pub fn parseIPv6(
     allocator: std.mem.Allocator,
     input: []const u8,
-    errors: ?*std.ArrayList(validation.ValidationError),
+    errors: ?*infra.List(validation.ValidationError),
 ) ![8]u16 {
     // Step 1: Let address be a new IPv6 address whose pieces are all 0
     var address = [_]u16{0} ** 8;
