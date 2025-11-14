@@ -11,6 +11,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 const basic_parser = @import("basic_parser");
 
@@ -66,16 +67,16 @@ fn preprocessInput(allocator: std.mem.Allocator, input: []const u8) ![]const u8 
     }
 
     // Step 2: Remove ASCII tab and newline
-    var result = std.ArrayList(u8){};
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     for (input[start..end]) |c| {
         if (!isTabOrNewline(c)) {
-            try result.append(allocator, c);
+            try result.append(c);
         }
     }
 
-    return try result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Check if character is C0 control or space (spec: C0 control or space)
