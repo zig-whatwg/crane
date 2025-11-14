@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const infra = @import("infra");
 
 // Import stream infrastructure
 const common = @import("common");
@@ -45,7 +46,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     ///
     /// Spec: § 4.3.2 Internal slot [[readRequests]]
     /// Changed from ArrayList(ReadRequest) to support async operations
-    readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    readRequests: infra.List(*AsyncPromise(common.ReadResult)),
 
     /// Initialize a new default reader (internal - not exposed via WebIDL)
     ///
@@ -63,7 +64,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
             .eventLoop = loop,
             .closedPromise = closedPromise,
             .stream = stream,
-            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
+            .readRequests = infra.List(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     }
 
@@ -72,7 +73,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     /// Spec: Cleanup internal slots
     pub fn deinit(self: *ReadableStreamDefaultReader) void {
         // Note: readRequests promises are owned by callers, just clear the list
-        self.readRequests.deinit(self.allocator);
+        self.readRequests.deinit();
     }
 
     // ============================================================================
