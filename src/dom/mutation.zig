@@ -531,7 +531,7 @@ pub fn insert(
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        nodes = node.child_nodes.items;
+        nodes = node.child_nodes.toSlice();
         nodes_count = nodes.len;
     } else {
         nodes_buf[0] = node;
@@ -1311,7 +1311,7 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
         doc.ranges_mutex.lock();
         defer doc.ranges_mutex.unlock();
 
-        for (doc.ranges.items) |range| {
+        for (doc.ranges.toSlice()) |range| {
             // Step 4: For each live range whose start node is an inclusive descendant of node,
             // set its start to (parent, index)
             if (tree_helpers.isInclusiveDescendant(range.start_container, node)) {
@@ -1353,7 +1353,7 @@ fn runNodeIteratorPreRemoveSteps(node: *Node) void {
     doc.node_iterators_mutex.lock();
     defer doc.node_iterators_mutex.unlock();
 
-    for (doc.node_iterators.items) |iterator| {
+    for (doc.node_iterators.toSlice()) |iterator| {
         // Call preRemoveSteps on the iterator
         iterator.preRemoveSteps(node);
     }

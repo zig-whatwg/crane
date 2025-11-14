@@ -161,7 +161,7 @@ pub fn attachShadowRoot(
         // Step 4.3.1: Remove all of currentShadowRoot's children, in tree order
         // ShadowRoot extends DocumentFragment which extends Node, so it has child_nodes
         const shadow_node: *Node = @ptrCast(current_shadow_root);
-        const children = shadow_node.child_nodes.items();
+        const children = shadow_node.child_nodes.toSlice();
 
         // Remove children in reverse order to avoid index shifting issues
         var i: usize = children.len;
@@ -265,7 +265,7 @@ pub fn findSlot(slottable: *anyopaque, open: bool) ?*anyopaque {
     defer descendants.deinit();
 
     // Find first slot with matching name
-    for (descendants.items) |descendant| {
+    for (descendants.toSlice()) |descendant| {
         if (slot_helpers.isSlot(descendant)) {
             const slot_name = slot_helpers.getSlotName(descendant);
             // Match names (both empty string means default slot)
@@ -309,7 +309,7 @@ pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyop
     const host_node: *Node = @ptrCast(@alignCast(host));
     const children = host_node.get_childNodes();
 
-    for (children.items) |child| {
+    for (children.toSlice()) |child| {
         // Check if child is a slottable
         if (!slot_helpers.isSlottable(child)) continue;
 
@@ -347,11 +347,11 @@ pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !infra.Li
     defer slottables.deinit();
 
     // Step 4: If slottables is empty, append each slottable child of slot, in tree order, to slottables
-    if (slottables.items.len == 0) {
+    if (slottables.toSlice().len == 0) {
         const slot_node: *Node = @ptrCast(@alignCast(slot));
         const children = slot_node.get_childNodes();
 
-        for (children.items) |child| {
+        for (children.toSlice()) |child| {
             if (slot_helpers.isSlottable(child)) {
                 try slottables.append(child);
             }
@@ -359,7 +359,7 @@ pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !infra.Li
     }
 
     // Step 5: For each node of slottables:
-    for (slottables.items) |node| {
+    for (slottables.toSlice()) |node| {
         // Step 5.1: If node is a slot whose root is a shadow root:
         if (slot_helpers.isSlot(node)) {
             const node_root = slot_helpers.getRoot(node);
@@ -369,7 +369,7 @@ pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !infra.Li
                 defer temp_result.deinit();
 
                 // Step 5.1.2: Append each slottable in temporaryResult, in order, to result
-                for (temp_result.items) |item| {
+                for (temp_result.toSlice()) |item| {
                     try result.append(item);
                 }
                 continue;
@@ -405,7 +405,7 @@ pub fn assignSlottables(allocator: Allocator, slot: *anyopaque) !void {
     // This requires HTMLSlotElement integration
 
     // Step 4: For each slottable of slottables, set slottable's assigned slot to slot
-    for (slottables.items) |slottable| {
+    for (slottables.toSlice()) |slottable| {
         // Set the assigned slot using the helper (handles Element and Text)
         slot_helpers.setSlottableAssignedSlot(slottable, slot);
     }
@@ -426,7 +426,7 @@ pub fn assignSlottablesForTree(allocator: Allocator, root: *anyopaque) !void {
     defer descendants.deinit();
 
     // For each node in tree order, if it's a slot, assign slottables
-    for (descendants.items) |descendant| {
+    for (descendants.toSlice()) |descendant| {
         if (slot_helpers.isSlot(descendant)) {
             try assignSlottables(allocator, descendant);
         }
