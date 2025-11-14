@@ -10,6 +10,7 @@
 //! and may produce a valid URL despite validation errors.
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// Validation Error Types (spec lines 35-101)
 ///
@@ -243,33 +244,33 @@ pub const ValidationError = enum {
 ///
 /// Collects validation errors during URL parsing. Errors do not stop parsing.
 pub const ValidationErrorCollector = struct {
-    errors: std.ArrayList(ValidationError),
+    errors: infra.List(ValidationError),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) ValidationErrorCollector {
         return .{
-            .errors = std.ArrayList(ValidationError){},
+            .errors = infra.List(ValidationError).init(allocator),
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: *ValidationErrorCollector) void {
-        self.errors.deinit(self.allocator);
+        self.errors.deinit();
     }
 
     /// Record a validation error
     pub fn record(self: *ValidationErrorCollector, err: ValidationError) !void {
-        try self.errors.append(self.allocator, err);
+        try self.errors.append(err);
     }
 
     /// Check if any validation errors occurred
     pub fn hasErrors(self: *const ValidationErrorCollector) bool {
-        return self.errors.items.len > 0;
+        return self.errors.len > 0;
     }
 
     /// Check if any failures occurred (as opposed to cosmetic errors)
     pub fn hasFailures(self: *const ValidationErrorCollector) bool {
-        for (self.errors.items) |err| {
+        for (self.errors.toSlice()) |err| {
             if (err.isFailure()) return true;
         }
         return false;
@@ -277,7 +278,7 @@ pub const ValidationErrorCollector = struct {
 
     /// Get all errors
     pub fn getErrors(self: *const ValidationErrorCollector) []const ValidationError {
-        return self.errors.items;
+        return self.errors.toSlice();
     }
 };
 
