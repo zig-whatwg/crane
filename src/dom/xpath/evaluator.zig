@@ -289,8 +289,8 @@ fn evalLocationPath(allocator: std.mem.Allocator, path: *const LocationPath, ctx
 
     if (path.isAbsolute()) {
         // Start from document root
-        // TODO: Get actual document root
-        try result.add(ctx.context_node);
+        const root = ctx.context_node.getRoot();
+        try result.add(root);
 
         // Apply steps
         for (path.absolute.steps) |step| {
