@@ -1,8 +1,8 @@
 const std = @import("std");
+const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 const Tokenizer = @import("tokenizer.zig").Tokenizer;
 const Token = @import("tokenizer.zig").Token;
-const ArrayList = std.ArrayList;
 
 // ============================================================================
 // AST Node Types
@@ -329,30 +329,30 @@ pub const Parser = struct {
 
     /// Parse selector list (comma-separated complex selectors)
     pub fn parseSelectorList(self: *Parser) ParserError!SelectorList {
-        var selectors = ArrayList(ComplexSelector){};
+        var selectors = infra.List(ComplexSelector).init(self.allocator);
         errdefer {
-            for (selectors.items) |*selector| {
-                selector.deinit();
+            for (0..selectors.len) |i| {
+                selectors.getMut(i).?.deinit();
             }
-            selectors.deinit(self.allocator);
+            selectors.deinit();
         }
 
         // Parse first complex selector
-        try selectors.append(self.allocator, try self.parseComplexSelector());
+        try selectors.append(try self.parseComplexSelector());
 
         // Parse additional selectors (comma-separated)
         while (self.current_token) |token| {
             if (token.tag == .comma) {
                 try self.advance();
                 self.skipWhitespace();
-                try selectors.append(self.allocator, try self.parseComplexSelector());
+                try selectors.append(try self.parseComplexSelector());
             } else {
                 break;
             }
         }
 
         return SelectorList{
-            .selectors = try selectors.toOwnedSlice(self.allocator),
+            .selectors = try selectors.toOwnedSlice(),
             .allocator = self.allocator,
         };
     }
@@ -361,17 +361,17 @@ pub const Parser = struct {
     /// Invalid selectors are silently dropped instead of failing entire list
     /// Used by :is(), :where(), :has() per Selectors Level 4 spec
     fn parseForgivingSelectorList(self: *Parser) ParserError!SelectorList {
-        var selectors = ArrayList(ComplexSelector){};
+        var selectors = infra.List(ComplexSelector).init(self.allocator);
         errdefer {
-            for (selectors.items) |*selector| {
-                selector.deinit();
+            for (0..selectors.len) |i| {
+                selectors.getMut(i).?.deinit();
             }
-            selectors.deinit(self.allocator);
+            selectors.deinit();
         }
 
         // Parse first complex selector (with error recovery)
         if (self.parseComplexSelector()) |selector| {
-            try selectors.append(self.allocator, selector);
+            try selectors.append(selector);
         } else |_| {
             // First selector failed - skip to next comma or end
             self.skipToCommaOrEnd();
@@ -385,7 +385,7 @@ pub const Parser = struct {
 
                 // Try to parse next selector, skip if invalid
                 if (self.parseComplexSelector()) |selector| {
-                    try selectors.append(self.allocator, selector);
+                    try selectors.append(selector);
                 } else |_| {
                     // Invalid selector - skip to next comma or end
                     self.skipToCommaOrEnd();
@@ -397,7 +397,7 @@ pub const Parser = struct {
 
         // If all selectors were invalid, return empty list (matches nothing)
         return SelectorList{
-            .selectors = try selectors.toOwnedSlice(self.allocator),
+            .selectors = try selectors.toOwnedSlice(),
             .allocator = self.allocator,
         };
     }
@@ -414,12 +414,12 @@ pub const Parser = struct {
 
     /// Parse complex selector (combinator chain)
     fn parseComplexSelector(self: *Parser) ParserError!ComplexSelector {
-        var combinators = ArrayList(CombinatorPair){};
+        var combinators = infra.List(CombinatorPair).init(self.allocator);
         errdefer {
-            for (combinators.items) |*pair| {
-                pair.compound.deinit();
+            for (0..combinators.len) |i| {
+                combinators.getMut(i).?.compound.deinit();
             }
-            combinators.deinit(self.allocator);
+            combinators.deinit();
         }
 
         // Check for relative selector (starts with combinator)
@@ -448,7 +448,7 @@ pub const Parser = struct {
             // Parse next compound selector
             const next_compound = try self.parseCompoundSelector();
 
-            try combinators.append(self.allocator, CombinatorPair{
+            try combinators.append(CombinatorPair{
                 .combinator = combinator.?,
                 .compound = next_compound,
             });
@@ -456,7 +456,7 @@ pub const Parser = struct {
 
         return ComplexSelector{
             .compound = first_compound,
-            .combinators = try combinators.toOwnedSlice(self.allocator),
+            .combinators = try combinators.toOwnedSlice(),
             .allocator = self.allocator,
             .is_relative = is_relative,
             .initial_combinator = initial_combinator,
@@ -501,28 +501,28 @@ pub const Parser = struct {
 
     /// Parse compound selector (one or more simple selectors)
     fn parseCompoundSelector(self: *Parser) ParserError!CompoundSelector {
-        var simple_selectors = ArrayList(SimpleSelector){};
+        var simple_selectors = infra.List(SimpleSelector).init(self.allocator);
         errdefer {
-            for (simple_selectors.items) |*selector| {
-                selector.deinit(self.allocator);
+            for (0..simple_selectors.len) |i| {
+                simple_selectors.getMut(i).?.deinit(self.allocator);
             }
-            simple_selectors.deinit(self.allocator);
+            simple_selectors.deinit();
         }
 
         // Parse first simple selector
-        try simple_selectors.append(self.allocator, try self.parseSimpleSelector());
+        try simple_selectors.append(try self.parseSimpleSelector());
 
         // Parse additional simple selectors (no whitespace between)
         while (self.isSimpleSelectorStart()) {
-            try simple_selectors.append(self.allocator, try self.parseSimpleSelector());
+            try simple_selectors.append(try self.parseSimpleSelector());
         }
 
-        if (simple_selectors.items.len == 0) {
+        if (simple_selectors.len == 0) {
             return error.InvalidSelector;
         }
 
         return CompoundSelector{
-            .simple_selectors = try simple_selectors.toOwnedSlice(self.allocator),
+            .simple_selectors = try simple_selectors.toOwnedSlice(),
             .allocator = self.allocator,
         };
     }
