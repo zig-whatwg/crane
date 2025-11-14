@@ -133,7 +133,9 @@ pub const Text = struct {
 
     pub fn init(allocator: Allocator) !Text {
 
+        // NOTE: Parent CharacterData/Node/EventTarget fields must be initialized here
         return .{
+            .event_listener_list = null, // From EventTarget
             .allocator = allocator,
         };
     

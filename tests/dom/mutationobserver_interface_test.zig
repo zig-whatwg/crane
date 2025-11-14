@@ -36,7 +36,7 @@ test "dom.MutationObserver - observe validation" {
 
     // Create a mock node
     // TODO: Replace with real dom.Node once we have proper dom.Node implementation
-    var mock_node = dom.Node{};
+    var mock_node = try dom.Node.init(allocator, dom.Node.ELEMENT_NODE, "div");
     // This should fail - need to implement dom.Node.getRegisteredObservers() first
     // For now, just test the option validation
 

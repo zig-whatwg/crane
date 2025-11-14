@@ -115,8 +115,9 @@ pub const CharacterData = struct {
 
     pub fn init(allocator: Allocator) !CharacterData {
 
-        // NOTE: Parent Node fields will be flattened by codegen
+        // NOTE: Parent Node/EventTarget fields must be initialized here
         return .{
+            .event_listener_list = null, // From EventTarget
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
         };

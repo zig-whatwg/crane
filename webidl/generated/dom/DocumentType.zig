@@ -124,13 +124,13 @@ pub const DocumentType = struct {
         system_id: []const u8,
     ) !DocumentType {
 
-        // NOTE: Parent Node fields will be flattened by codegen
+        // NOTE: Parent Node/EventTarget fields must be initialized here
         return .{
+            .event_listener_list = null, // From EventTarget
             .allocator = allocator,
-            .name = try allocator.dupe(u8, name),
-            .public_id = try allocator.dupe(u8, public_id),
-            .system_id = try allocator.dupe(u8, system_id),
-            // NOTE: Parent Node initialization is handled by codegen
+            .name = name,
+            .public_id = public_id,
+            .system_id = system_id,
         };
     
     }
