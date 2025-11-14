@@ -110,16 +110,17 @@ pub const Tokenizer = struct {
 
     /// Tokenize entire input into token list
     pub fn tokenize(self: *Tokenizer) ![]Token {
-        var tokens = std.ArrayList(Token){};
-        errdefer tokens.deinit(self.allocator);
+        const infra = @import("infra");
+        var tokens = infra.List(Token).init(self.allocator);
+        errdefer tokens.deinit();
 
         while (true) {
             const token = try self.nextToken();
-            try tokens.append(self.allocator, token);
+            try tokens.append(token);
             if (token.tag == .eof) break;
         }
 
-        return try tokens.toOwnedSlice(self.allocator);
+        return try tokens.toOwnedSlice();
     }
 
     /// Get next token from input
