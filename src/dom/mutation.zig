@@ -25,6 +25,7 @@ pub const DOMException = error{
     HierarchyRequestError,
     NotFoundError,
     NotSupportedError,
+    OutOfMemory,
 };
 
 /// Children Changed Steps Callback
@@ -405,7 +406,7 @@ pub fn ensurePreInsertValidity(
     }
 
     // Step 2: Check node is not host-including inclusive ancestor of parent
-    if (tree_helpers.isHostIncludingInclusiveAncestor(node, parent)) {
+    if (isHostIncludingInclusiveAncestor(node, parent)) {
         return error.HierarchyRequestError;
     }
 
@@ -721,7 +722,7 @@ pub fn replace(
     }
 
     // Step 2: If node is host-including inclusive ancestor of parent, throw HierarchyRequestError
-    if (tree_helpers.isHostIncludingInclusiveAncestor(node, parent)) {
+    if (isHostIncludingInclusiveAncestor(node, parent)) {
         return error.HierarchyRequestError;
     }
 
