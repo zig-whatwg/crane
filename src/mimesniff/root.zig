@@ -12,6 +12,13 @@ const std = @import("std");
 pub const constants = @import("constants.zig");
 pub const mime_type = @import("mime_type.zig");
 
+// Re-export constants functions
+pub const isHttpTokenCodePoint = constants.isHttpTokenCodePoint;
+pub const isHttpQuotedStringTokenCodePoint = constants.isHttpQuotedStringTokenCodePoint;
+pub const isBinaryDataByte = constants.isBinaryDataByte;
+pub const isWhitespaceByte = constants.isWhitespaceByte;
+pub const isTagTerminatingByte = constants.isTagTerminatingByte;
+
 // Re-export common types and functions
 pub const MimeType = mime_type.MimeType;
 pub const parseMimeType = mime_type.parseMimeType;
@@ -24,6 +31,14 @@ pub const isValidMimeTypeWithNoParameters = mime_type.isValidMimeTypeWithNoParam
 
 // Phase 2: Pattern Matching
 pub const pattern_matching = @import("pattern_matching.zig");
+
+// Re-export pattern matching functions
+pub const patternMatching = pattern_matching.patternMatching;
+pub const patternMatchingSIMD = pattern_matching.patternMatchingSIMD;
+pub const matchImageTypePattern = pattern_matching.matchImageTypePattern;
+pub const matchAudioOrVideoTypePattern = pattern_matching.matchAudioOrVideoTypePattern;
+pub const matchFontTypePattern = pattern_matching.matchFontTypePattern;
+pub const matchArchiveTypePattern = pattern_matching.matchArchiveTypePattern;
 
 // Phase 3: MIME Type Predicates
 pub const predicates = @import("predicates.zig");

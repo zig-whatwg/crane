@@ -8,19 +8,19 @@ const dom = @import("dom");
 test "queueMutationRecord - basic childList mutation" {
     const allocator = std.testing.allocator;
     _ = allocator;
-    resetAgent();
+    dom.resetAgent();
 
     // TODO: Create real Node instances when fully integrated
     // For now, this test is incomplete
 
-    resetAgent();
+    dom.resetAgent();
 }
 test "notifyMutationObservers - callback invocation" {
     const allocator = std.testing.allocator;
     _ = allocator;
-    resetAgent();
+    dom.resetAgent();
 
     // TODO: Create real test with nodes and observers
 
-    resetAgent();
+    dom.resetAgent();
 }

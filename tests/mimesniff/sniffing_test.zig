@@ -2,6 +2,7 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
+const infra = @import("infra");
 
 const mimesniff = @import("mimesniff");
 
@@ -15,10 +16,12 @@ test "identifyUnknownMimeType - HTML detection" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -33,10 +36,12 @@ test "identifyUnknownMimeType - PNG detection" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("image/png", essence);
+        try std.testing.expectEqualStrings("image/png", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -48,10 +53,12 @@ test "identifyUnknownMimeType - text/plain for no binary data" {
     const computed = try mimesniff.identifyUnknownMimeType(allocator, resource_header, false);
 
     if (computed) |mt| {
-        const essence = try getEssence(allocator, &mt);
+        const essence = try mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/plain", essence);
+        try std.testing.expectEqualStrings("text/plain", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -63,10 +70,12 @@ test "identifyUnknownMimeType - application/octet-stream for binary data" {
     const computed = try mimesniff.identifyUnknownMimeType(allocator, resource_header, false);
 
     if (computed) |mt| {
-        const essence = try getEssence(allocator, &mt);
+        const essence = try mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("application/octet-stream", essence);
+        try std.testing.expectEqualStrings("application/octet-stream", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -81,10 +90,12 @@ test "distinguishTextOrBinary - UTF-16BE BOM" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/plain", essence);
+        try std.testing.expectEqualStrings("text/plain", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -99,10 +110,12 @@ test "distinguishTextOrBinary - UTF-8 BOM" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/plain", essence);
+        try std.testing.expectEqualStrings("text/plain", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -117,10 +130,12 @@ test "distinguishTextOrBinary - no binary data" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/plain", essence);
+        try std.testing.expectEqualStrings("text/plain", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -135,10 +150,12 @@ test "distinguishTextOrBinary - with binary data" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("application/octet-stream", essence);
+        try std.testing.expectEqualStrings("application/octet-stream", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -152,10 +169,12 @@ test "sniffInPluginContext - undefined returns octet-stream" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("application/octet-stream", essence);
+        try std.testing.expectEqualStrings("application/octet-stream", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -169,10 +188,12 @@ test "sniffInTextTrackContext - returns text/vtt" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/vtt", essence);
+        try std.testing.expectEqualStrings("text/vtt", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -186,10 +207,12 @@ test "sniffInCacheManifestContext - returns text/cache-manifest" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/cache-manifest", essence);
+        try std.testing.expectEqualStrings("text/cache-manifest", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -204,10 +227,12 @@ test "identifyUnknownMimeType - HTML <H1> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -222,10 +247,12 @@ test "identifyUnknownMimeType - HTML <DIV> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -240,10 +267,12 @@ test "identifyUnknownMimeType - HTML <FONT> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -258,10 +287,12 @@ test "identifyUnknownMimeType - HTML <TABLE> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -276,10 +307,12 @@ test "identifyUnknownMimeType - HTML <A> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -294,10 +327,12 @@ test "identifyUnknownMimeType - HTML <STYLE> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -312,10 +347,12 @@ test "identifyUnknownMimeType - HTML <TITLE> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -330,10 +367,12 @@ test "identifyUnknownMimeType - HTML <B> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -348,10 +387,12 @@ test "identifyUnknownMimeType - HTML <BODY> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -366,10 +407,12 @@ test "identifyUnknownMimeType - HTML <BR> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -384,10 +427,12 @@ test "identifyUnknownMimeType - HTML <P> tag" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -402,10 +447,12 @@ test "identifyUnknownMimeType - HTML comment" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }
@@ -420,10 +467,12 @@ test "identifyUnknownMimeType - HTML with leading whitespace" {
         var mutable_mt = mt;
         defer mutable_mt.deinit();
 
-        const essence = try getEssence(allocator, &mutable_mt);
+        const essence = try mutable_mt.essence(allocator);
         defer allocator.free(essence);
+        const essence_utf8 = try infra.bytes.isomorphicEncode(allocator, essence);
+        defer allocator.free(essence_utf8);
 
-        try std.testing.expectEqualStrings("text/html", essence);
+        try std.testing.expectEqualStrings("text/html", essence_utf8);
     } else {
         try std.testing.expect(false);
     }

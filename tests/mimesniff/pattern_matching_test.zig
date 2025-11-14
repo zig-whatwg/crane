@@ -4,12 +4,21 @@
 const std = @import("std");
 
 const mimesniff = @import("mimesniff");
+const MimeType = mimesniff.MimeType;
 
 const infra = @import("infra");
 
 fn expectEssence(mime_type: MimeType, expected_type: []const u8, expected_subtype: []const u8) !void {
-    try std.testing.expectEqualStrings(expected_type, mime_type.type_str);
-    try std.testing.expectEqualStrings(expected_subtype, mime_type.subtype);
+    const allocator = std.testing.allocator;
+    
+    // Convert UTF-16 to UTF-8 for comparison
+    const type_utf8 = try infra.bytes.isomorphicEncode(allocator, mime_type.type);
+    defer allocator.free(type_utf8);
+    const subtype_utf8 = try infra.bytes.isomorphicEncode(allocator, mime_type.subtype);
+    defer allocator.free(subtype_utf8);
+    
+    try std.testing.expectEqualStrings(expected_type, type_utf8);
+    try std.testing.expectEqualStrings(expected_subtype, subtype_utf8);
 }
 
 

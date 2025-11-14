@@ -9,7 +9,7 @@ test "public suffix - basic TLDs" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.com" };
-    const ps = try getPublicSuffix(allocator, host);
+    const ps = try url.getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -19,7 +19,7 @@ test "public suffix - multi-level TLD" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.co.uk" };
-    const ps = try getPublicSuffix(allocator, host);
+    const ps = try url.getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -29,7 +29,7 @@ test "public suffix - TLD only" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "com" };
-    const ps = try getPublicSuffix(allocator, host);
+    const ps = try url.getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -39,7 +39,7 @@ test "public suffix - IPv4 returns null" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .ipv4 = 0x7F000001 }; // 127.0.0.1
-    const ps = try getPublicSuffix(allocator, host);
+    const ps = try url.getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps == null);
@@ -48,7 +48,7 @@ test "public suffix - trailing dot preserved" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.com." };
-    const ps = try getPublicSuffix(allocator, host);
+    const ps = try url.getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);

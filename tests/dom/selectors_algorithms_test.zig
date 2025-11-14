@@ -12,7 +12,7 @@ test "selectors: scopeMatchSelectorsString with no matches" {
     defer root.deinit();
 
     // Query for "p" (but tree only has div)
-    var matches = try scopeMatchSelectorsString(allocator, "p", &root);
+    var matches = try dom.scopeMatchSelectorsString(allocator, "p", &root);
     defer matches.deinit();
 
     try testing.expectEqual(@as(usize, 0), matches.items().len);
@@ -24,6 +24,6 @@ test "selectors: scopeMatchSelectorsString with syntax error" {
     defer root.deinit();
 
     // Invalid selector should return SyntaxError
-    const result = scopeMatchSelectorsString(allocator, ">>", &root);
+    const result = dom.scopeMatchSelectorsString(allocator, ">>", &root);
     try testing.expectError(error.SyntaxError, result);
 }

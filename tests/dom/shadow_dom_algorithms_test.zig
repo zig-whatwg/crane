@@ -13,7 +13,7 @@ test "attachShadowRoot - invalid element name throws error" {
 
     try std.testing.expectError(
         error.NotSupportedError,
-        attachShadowRoot(&element, .open, false, false, false, .named, null),
+        dom.attachShadowRoot(&element, .open, false, false, false, .named, null),
     );
 }
 test "attachShadowRoot - basic attachment" {
@@ -22,7 +22,7 @@ test "attachShadowRoot - basic attachment" {
     var element = try Element.init(allocator, "div");
     defer element.deinit();
 
-    try attachShadowRoot(&element, .open, false, false, false, .named, null);
+    try dom.attachShadowRoot(&element, .open, false, false, false, .named, null);
 
     try std.testing.expect(element.shadow_root != null);
     if (element.shadow_root) |shadow| {
@@ -41,12 +41,12 @@ test "attachShadowRoot - double attachment with non-declarative throws error" {
     defer element.deinit();
 
     // First attachment
-    try attachShadowRoot(&element, .open, false, false, false, .named, null);
+    try dom.attachShadowRoot(&element, .open, false, false, false, .named, null);
 
     // Second attachment should fail (shadow root is not declarative)
     try std.testing.expectError(
         error.NotSupportedError,
-        attachShadowRoot(&element, .open, false, false, false, .named, null),
+        dom.attachShadowRoot(&element, .open, false, false, false, .named, null),
     );
 
     // Clean up

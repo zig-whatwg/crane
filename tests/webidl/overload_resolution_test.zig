@@ -18,5 +18,5 @@ test "resolveOverload - not yet implemented" {
     const args = [_]JSValue{.{ .string = "test" }};
 
     // Not implemented until JS runtime integration
-    try testing.expectError(error.NotImplemented, resolveOverload(testing.allocator, set, &args));
+    try testing.expectError(error.NotImplemented, webidl.resolveOverload(testing.allocator, set, &args));
 }

@@ -2,6 +2,7 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
+const infra = @import("infra");
 
 const mimesniff = @import("mimesniff");
 

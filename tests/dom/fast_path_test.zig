@@ -16,63 +16,63 @@ const extractIdentifier = fast_path.extractIdentifier;
 test "detectFastPath: simple ID selectors" {
     const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#main"));
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#main-content"));
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("  #header  ")); // Trimmed
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#_private"));
+    try testing.expectEqual(FastPathType.simple_id, dom.detectFastPath("#main"));
+    try testing.expectEqual(FastPathType.simple_id, dom.detectFastPath("#main-content"));
+    try testing.expectEqual(FastPathType.simple_id, dom.detectFastPath("  #header  ")); // Trimmed
+    try testing.expectEqual(FastPathType.simple_id, dom.detectFastPath("#_private"));
 }
 
 test "detectFastPath: simple class selectors" {
     const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath(".container"));
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath(".btn-primary"));
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath("  .active  ")); // Trimmed
+    try testing.expectEqual(FastPathType.simple_class, dom.detectFastPath(".container"));
+    try testing.expectEqual(FastPathType.simple_class, dom.detectFastPath(".btn-primary"));
+    try testing.expectEqual(FastPathType.simple_class, dom.detectFastPath("  .active  ")); // Trimmed
 }
 
 test "detectFastPath: simple tag selectors" {
     const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("div"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("span"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("custom-element"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("  p  ")); // Trimmed
+    try testing.expectEqual(FastPathType.simple_tag, dom.detectFastPath("div"));
+    try testing.expectEqual(FastPathType.simple_tag, dom.detectFastPath("span"));
+    try testing.expectEqual(FastPathType.simple_tag, dom.detectFastPath("custom-element"));
+    try testing.expectEqual(FastPathType.simple_tag, dom.detectFastPath("  p  ")); // Trimmed
 }
 
 test "detectFastPath: ID filtered selectors" {
     const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.id_filtered, detectFastPath("article#main .content"));
-    try testing.expectEqual(FastPathType.id_filtered, detectFastPath("div#container > p"));
+    try testing.expectEqual(FastPathType.id_filtered, dom.detectFastPath("article#main .content"));
+    try testing.expectEqual(FastPathType.id_filtered, dom.detectFastPath("div#container > p"));
 }
 
 test "detectFastPath: generic complex selectors" {
     const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.generic, detectFastPath("div > p"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("div.container"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("p:first-child"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("[href]"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath(""));
+    try testing.expectEqual(FastPathType.generic, dom.detectFastPath("div > p"));
+    try testing.expectEqual(FastPathType.generic, dom.detectFastPath("div.container"));
+    try testing.expectEqual(FastPathType.generic, dom.detectFastPath("p:first-child"));
+    try testing.expectEqual(FastPathType.generic, dom.detectFastPath("[href]"));
+    try testing.expectEqual(FastPathType.generic, dom.detectFastPath(""));
 }
 
 test "extractIdentifier: ID selectors" {
     const testing = std.testing;
 
-    try testing.expectEqualStrings("main", extractIdentifier("#main"));
-    try testing.expectEqualStrings("header-nav", extractIdentifier("#header-nav"));
+    try testing.expectEqualStrings("main", dom.extractIdentifier("#main"));
+    try testing.expectEqualStrings("header-nav", dom.extractIdentifier("#header-nav"));
 }
 
 test "extractIdentifier: class selectors" {
     const testing = std.testing;
 
-    try testing.expectEqualStrings("container", extractIdentifier(".container"));
-    try testing.expectEqualStrings("btn-primary", extractIdentifier(".btn-primary"));
+    try testing.expectEqualStrings("container", dom.extractIdentifier(".container"));
+    try testing.expectEqualStrings("btn-primary", dom.extractIdentifier(".btn-primary"));
 }
 
 test "extractIdentifier: tag selectors" {
     const testing = std.testing;
 
-    try testing.expectEqualStrings("div", extractIdentifier("div"));
-    try testing.expectEqualStrings("custom-element", extractIdentifier("custom-element"));
+    try testing.expectEqualStrings("div", dom.extractIdentifier("div"));
+    try testing.expectEqualStrings("custom-element", dom.extractIdentifier("custom-element"));
 }

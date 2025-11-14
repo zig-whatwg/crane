@@ -9,5 +9,5 @@ test "createLegacyPlatformObject - not yet implemented" {
     const config = LegacyPlatformObjectConfig{};
 
     // Will work once V8 integration is complete
-    try testing.expectError(error.NotImplemented, createLegacyPlatformObject(config));
+    try testing.expectError(error.NotImplemented, webidl.createLegacyPlatformObject(config));
 }

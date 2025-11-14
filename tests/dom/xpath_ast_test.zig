@@ -11,9 +11,9 @@ test "ast - binary expression creation" {
     const allocator = arena.allocator();
 
     // Create: 5 + 3
-    const left = try createPrimaryExpr(allocator, .{ .number = 5.0 });
-    const right = try createPrimaryExpr(allocator, .{ .number = 3.0 });
-    const expr = try createBinaryExpr(allocator, .plus, left, right);
+    const left = try dom.createPrimaryExpr(allocator, .{ .number = 5.0 });
+    const right = try dom.createPrimaryExpr(allocator, .{ .number = 3.0 });
+    const expr = try dom.createBinaryExpr(allocator, .plus, left, right);
 
     try std.testing.expectEqual(Expr.additive_expr, std.meta.activeTag(expr.*));
 }
