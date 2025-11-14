@@ -646,7 +646,7 @@ pub fn insert(
             defer descendants.deinit();
 
             // Run insertion steps for each shadow-including inclusive descendant
-            for (descendants.items) |inclusive_descendant| {
+            for (descendants.toSlice()) |inclusive_descendant| {
                 runInsertionSteps(inclusive_descendant);
 
                 // TODO: Step 7.7.2-4 - Custom element reactions

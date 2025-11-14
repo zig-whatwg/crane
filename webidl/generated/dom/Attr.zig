@@ -23,6 +23,7 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+const dom = @import("dom");
 const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
@@ -262,7 +263,7 @@ pub const Attr = struct {
     ) !void {
 
         // Step 1: Queue a mutation record of "attributes"
-        const mutation_observer = @import("mutation_observer_algorithms");
+        const mutation_observer = dom.mutation_observer_algorithms;
         const NodeListType = @import("node_list").NodeList;
 
         var empty_added = try NodeListType.init(element.allocator);
@@ -323,6 +324,7 @@ pub const Attr = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -338,6 +340,8 @@ pub const Attr = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -354,6 +358,7 @@ pub const Attr = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }

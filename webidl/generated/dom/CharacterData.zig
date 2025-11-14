@@ -25,6 +25,7 @@ const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+const dom = @import("dom");
 const dom_types = @import("dom_types");
 const infra = @import("infra");
 const std = @import("std");
@@ -253,7 +254,7 @@ pub const CharacterData = struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = @import("mutation");
+        const mutation = dom.mutation;
         const empty_nodes: []const *Node = &[_]*Node{};
         try mutation.queueMutationRecord(
             "characterData",
@@ -609,6 +610,7 @@ pub const CharacterData = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -624,6 +626,8 @@ pub const CharacterData = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -640,6 +644,7 @@ pub const CharacterData = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }

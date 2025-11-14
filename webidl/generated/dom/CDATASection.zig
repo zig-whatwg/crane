@@ -27,6 +27,7 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Slottable = @import("slottable").Slottable;
 const Text = @import("text").Text;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+const dom = @import("dom");
 const dom_types = @import("dom_types");
 const infra = @import("infra");
 const std = @import("std");
@@ -242,8 +243,7 @@ pub const CDATASection = struct {
     pub fn get_wholeText(self: *const CDATASection) ![]const u8 {
         const self_parent: *const Text = @ptrCast(self);
 
-        const dom = @import("dom");
-        var result = infra.List(u8).init(self_parent.allocator);
+                var result = infra.List(u8).init(self_parent.allocator);
         errdefer result.deinit();
 
         // Collect all contiguous Text nodes in tree order
@@ -752,7 +752,7 @@ pub const CDATASection = struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = @import("mutation");
+        const mutation = dom.mutation;
         const empty_nodes: []const *Node = &[_]*Node{};
         try mutation.queueMutationRecord(
             "characterData",
@@ -823,6 +823,7 @@ pub const CDATASection = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -838,6 +839,8 @@ pub const CDATASection = struct {
             error.HierarchyRequestError => error.HierarchyRequestError,
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
+            error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -854,6 +857,7 @@ pub const CDATASection = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }

@@ -5,6 +5,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const dom = @import("dom");
 const Node = @import("node").Node;
 const Element = @import("element").Element;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
@@ -146,7 +147,7 @@ pub const Attr = webidl.interface(struct {
         new_value: []const u8,
     ) !void {
         // Step 1: Queue a mutation record of "attributes"
-        const mutation_observer = @import("mutation_observer_algorithms");
+        const mutation_observer = dom.mutation_observer_algorithms;
         const NodeListType = @import("node_list").NodeList;
 
         var empty_added = try NodeListType.init(element.allocator);

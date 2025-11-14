@@ -4,6 +4,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const dom = @import("dom");
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const dom_types = @import("dom_types");
@@ -140,7 +141,7 @@ pub const CharacterData = webidl.interface(struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = @import("mutation");
+        const mutation = dom.mutation;
         const empty_nodes: []const *Node = &[_]*Node{};
         try mutation.queueMutationRecord(
             "characterData",
