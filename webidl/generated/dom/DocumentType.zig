@@ -942,13 +942,15 @@ pub const DocumentType = struct {
             },
             Node.DOCUMENT_TYPE_NODE => {
                 // Clone DocumentType (simplified - full implementation needs public ID, system ID)
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },
             Node.DOCUMENT_FRAGMENT_NODE => {
                 // Clone DocumentFragment
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },

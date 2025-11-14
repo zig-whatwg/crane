@@ -286,6 +286,8 @@ pub fn build(b: *std.Build) void {
     const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
     const named_node_map_mod = getWebIDLModule(webidl_modules, "dom_named_node_map");
     const html_collection_mod = getWebIDLModule(webidl_modules, "dom_htmlcollection");
+    html_collection_mod.addImport("infra", infra_mod);
+    html_collection_mod.addImport("webidl", webidl_mod);
     const node_mod = getWebIDLModule(webidl_modules, "dom_node");
     const element_mod = getWebIDLModule(webidl_modules, "dom_element");
     const character_data_mod = getWebIDLModule(webidl_modules, "dom_character_data");
@@ -520,6 +522,8 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("document", document_mod);
     element_mod.addImport("registered_observer", registered_observer_mod);
     element_mod.addImport("html_collection", html_collection_mod);
+    html_collection_mod.addImport("node", node_mod);
+    html_collection_mod.addImport("element", element_mod);
     character_data_mod.addImport("node", node_mod);
     character_data_mod.addImport("event_target", event_target_mod);
     character_data_mod.addImport("dom_types", dom_types_mod);

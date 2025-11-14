@@ -183,11 +183,11 @@ pub const CharacterData = webidl.interface(struct {
         self.data = new_data;
 
         // Steps 8-11 - Update ranges
-        if (self.base.owner_document) |doc| {
+        if (self_node.owner_document) |doc| {
             // owner_document is already *Document, no conversion needed
             const range_tracking = @import("range_tracking");
             const new_length = @as(u32, @intCast(data.len));
-            range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+            range_tracking.updateRangesAfterReplace(doc, self_node, offset, count, new_length);
         }
 
         // Step 12 - Run children changed steps for parent
@@ -199,7 +199,7 @@ pub const CharacterData = webidl.interface(struct {
         // - Shadow DOM slot assignment algorithm
         // - Form-associated element connections
         // - Custom element reactions
-        if (self.base.parent_node) |parent| {
+        if (self_node.parent_node) |parent| {
             // Call the mutation module's children changed callback system
             // This will invoke any registered callbacks from other specifications
             @import("mutation").runChildrenChangedSteps(parent);

@@ -296,11 +296,11 @@ pub const CharacterData = struct {
         self.data = new_data;
 
         // Steps 8-11 - Update ranges
-        if (self.base.owner_document) |doc| {
+        if (self_node.owner_document) |doc| {
             // owner_document is already *Document, no conversion needed
             const range_tracking = @import("range_tracking");
             const new_length = @as(u32, @intCast(data.len));
-            range_tracking.updateRangesAfterReplace(doc, &self.base, offset, count, new_length);
+            range_tracking.updateRangesAfterReplace(doc, self_node, offset, count, new_length);
         }
 
         // Step 12 - Run children changed steps for parent
@@ -312,7 +312,7 @@ pub const CharacterData = struct {
         // - Shadow DOM slot assignment algorithm
         // - Form-associated element connections
         // - Custom element reactions
-        if (self.base.parent_node) |parent| {
+        if (self_node.parent_node) |parent| {
             // Call the mutation module's children changed callback system
             // This will invoke any registered callbacks from other specifications
             @import("mutation").runChildrenChangedSteps(parent);
@@ -1151,13 +1151,15 @@ pub const CharacterData = struct {
             },
             Node.DOCUMENT_TYPE_NODE => {
                 // Clone DocumentType (simplified - full implementation needs public ID, system ID)
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },
             Node.DOCUMENT_FRAGMENT_NODE => {
                 // Clone DocumentFragment
-                var copy = try Node.init(node.allocator, node.node_type, node.node_name);
+                const copy = try node.allocator.create(Node);
+                copy.* = try Node.init(node.allocator, node.node_type, node.node_name);
                 copy.owner_document = document;
                 return copy;
             },
