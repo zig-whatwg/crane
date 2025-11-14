@@ -95,7 +95,7 @@ fn parseIPv4Number(input: []const u8) !NumberResult {
 pub fn parseIPv4(
     allocator: std.mem.Allocator,
     input: []const u8,
-    errors: ?*std.ArrayList(validation.ValidationError),
+    errors: ?*infra.List(validation.ValidationError),
 ) !u32 {
     // Step 1: Split on '.'
     var parts = infra.List([]const u8).init(allocator);
