@@ -122,6 +122,7 @@ fn mockToString(
         .boolean => |b| try allocator.dupe(u8, if (b) "true" else "false"),
         .null => try allocator.dupe(u8, "null"),
         .undefined => try allocator.dupe(u8, "undefined"),
+        .object => try allocator.dupe(u8, "[object Object]"),
     };
 }
 
@@ -135,6 +136,7 @@ fn mockToInteger(
         .boolean => |b| if (b) @as(i32, 1) else @as(i32, 0),
         .null => 0,
         .undefined => 0,
+        .object => 0,
     };
 }
 
@@ -148,6 +150,7 @@ fn mockToFloat(
         .boolean => |b| if (b) 1.0 else 0.0,
         .null => 0.0,
         .undefined => std.math.nan(f64),
+        .object => std.math.nan(f64),
     };
 }
 

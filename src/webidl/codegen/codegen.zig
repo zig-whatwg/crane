@@ -386,7 +386,7 @@ pub fn generateAllClasses(
         while (it.next()) |entry| {
             allocator.free(entry.key_ptr.*);
             var file_ir = entry.value_ptr.*;
-            file_ir.deinit();
+            file_ir.deinit(allocator);
         }
         file_irs.deinit();
     }
@@ -429,11 +429,11 @@ pub fn generateAllClasses(
         {
             // Parse file into IR
             var file_ir = try parser.parseFile(allocator, source_content, entry.path);
-            errdefer file_ir.deinit();
+            errdefer file_ir.deinit(allocator);
 
             // Skip files with no classes
             if (file_ir.classes.len == 0) {
-                file_ir.deinit();
+                file_ir.deinit(allocator);
                 continue;
             }
 

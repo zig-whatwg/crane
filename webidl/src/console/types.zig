@@ -154,6 +154,7 @@ pub const Message = struct {
                 .boolean => |b| if (b) "true" else "false",
                 .null => "null",
                 .undefined => "undefined",
+                .object => "[object Object]",
             };
             try result.appendSlice(arg_str);
         }
