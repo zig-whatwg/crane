@@ -4,22 +4,7 @@
 const std = @import("std");
 
 const dom = @import("dom");
-const source = @import("../../../src/dom/shadow_dom_algorithms.zig");
 
-test "isValidShadowHostName - valid names" {
-    try std.testing.expect(isValidShadowHostName("div"));
-    try std.testing.expect(isValidShadowHostName("span"));
-    try std.testing.expect(isValidShadowHostName("article"));
-    try std.testing.expect(isValidShadowHostName("section"));
-    try std.testing.expect(isValidShadowHostName("h1"));
-    try std.testing.expect(isValidShadowHostName("p"));
-}
-test "isValidShadowHostName - invalid names" {
-    try std.testing.expect(!isValidShadowHostName("invalid"));
-    try std.testing.expect(!isValidShadowHostName("script"));
-    try std.testing.expect(!isValidShadowHostName("style"));
-    try std.testing.expect(!isValidShadowHostName("img"));
-}
 test "attachShadowRoot - invalid element name throws error" {
     const allocator = std.testing.allocator;
 

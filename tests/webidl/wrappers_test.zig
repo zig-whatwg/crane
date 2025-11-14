@@ -4,7 +4,6 @@
 const std = @import("std");
 
 const webidl = @import("webidl");
-const source = @import("../../src/webidl/wrappers.zig");
 
 test "Nullable - null value" {
     var value = Nullable(u32).null_value();

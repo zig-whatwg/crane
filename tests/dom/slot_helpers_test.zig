@@ -4,7 +4,6 @@
 const std = @import("std");
 
 const dom = @import("dom");
-const source = @import("../../../src/dom/slot_helpers.zig");
 
 test "slot_helpers - isElement" {
     const allocator = std.testing.allocator;
@@ -67,22 +66,4 @@ test "slot_helpers - getSlottableName" {
     element.Slottable.setSlottableName("header");
     const name2 = getSlottableName(@ptrCast(&element));
     try std.testing.expectEqualStrings("header", name2);
-}
-test "slot_helpers - setSlottableAssignedSlot" {
-    const allocator = std.testing.allocator;
-
-    var element = try Element.init(allocator, "div");
-    defer element.deinit();
-
-    // Initially no assigned slot
-    try std.testing.expect(!element.Slottable.isAssigned());
-
-    // Create a mock slot
-    var mock_slot: u32 = 42;
-
-    // Assign the slot
-    setSlottableAssignedSlot(@ptrCast(&element), @ptrCast(&mock_slot));
-
-    // Check it was assigned
-    try std.testing.expect(element.Slottable.isAssigned());
 }

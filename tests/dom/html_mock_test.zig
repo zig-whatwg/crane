@@ -4,7 +4,6 @@
 const std = @import("std");
 
 const dom = @import("dom");
-const source = @import("../../src/dom/html_mock.zig");
 
 test "parseOrderedSet - single class" {
     const allocator = std.testing.allocator;

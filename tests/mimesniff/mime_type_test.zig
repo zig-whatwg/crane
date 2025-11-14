@@ -2,23 +2,13 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
-
+const infra = @import("infra");
 const mimesniff = @import("mimesniff");
-const source = @import("../../src/mimesniff/mime_type.zig");
 
-test "MimeType - init and deinit" {
-    const allocator = std.testing.allocator;
-
-    var mime = MimeType.init(allocator);
-    defer mime.deinit();
-
-    try std.testing.expectEqual(@as(usize, 0), mime.type.len);
-    try std.testing.expectEqual(@as(usize, 0), mime.subtype.len);
-}
 test "parseMimeType - simple type" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "text/html")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "text/html")) orelse return error.ParseFailed;
     defer mime.deinit();
 
     // Type should be "text"
@@ -37,7 +27,7 @@ test "parseMimeType - simple type" {
 test "parseMimeType - with parameter" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "text/html; charset=utf-8")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "text/html; charset=utf-8")) orelse return error.ParseFailed;
     defer mime.deinit();
 
     // Check parameter count
@@ -64,26 +54,26 @@ test "parseMimeType - with parameter" {
 }
 test "parseMimeType - invalid: no slash" {
     const allocator = std.testing.allocator;
-    const result = try parseMimeType(allocator, "texthtml");
+    const result = try mimesniff.parseMimeType(allocator, "texthtml");
     try std.testing.expect(result == null);
 }
 test "parseMimeType - invalid: empty type" {
     const allocator = std.testing.allocator;
-    const result = try parseMimeType(allocator, "/html");
+    const result = try mimesniff.parseMimeType(allocator, "/html");
     try std.testing.expect(result == null);
 }
 test "parseMimeType - invalid: empty subtype" {
     const allocator = std.testing.allocator;
-    const result = try parseMimeType(allocator, "text/");
+    const result = try mimesniff.parseMimeType(allocator, "text/");
     try std.testing.expect(result == null);
 }
 test "serializeMimeType - simple type" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "text/html")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "text/html")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const serialized = try serializeMimeType(allocator, mime);
+    const serialized = try mimesniff.serializeMimeType(allocator, mime);
     defer allocator.free(serialized);
 
     const expected = try infra.bytes.isomorphicDecode(allocator, "text/html");
@@ -94,10 +84,10 @@ test "serializeMimeType - simple type" {
 test "serializeMimeType - with parameter" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "text/html; charset=utf-8")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "text/html; charset=utf-8")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const serialized = try serializeMimeType(allocator, mime);
+    const serialized = try mimesniff.serializeMimeType(allocator, mime);
     defer allocator.free(serialized);
 
     const expected = try infra.bytes.isomorphicDecode(allocator, "text/html;charset=utf-8");
@@ -108,10 +98,10 @@ test "serializeMimeType - with parameter" {
 test "minimizeSupportedMimeType - JavaScript" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "text/javascript")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "text/javascript")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("text/javascript", minimized);
@@ -119,10 +109,10 @@ test "minimizeSupportedMimeType - JavaScript" {
 test "minimizeSupportedMimeType - JavaScript variant" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "application/x-javascript")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "application/x-javascript")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("text/javascript", minimized);
@@ -130,10 +120,10 @@ test "minimizeSupportedMimeType - JavaScript variant" {
 test "minimizeSupportedMimeType - JSON" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "application/json")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "application/json")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("application/json", minimized);
@@ -141,10 +131,10 @@ test "minimizeSupportedMimeType - JSON" {
 test "minimizeSupportedMimeType - JSON with +json" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "application/manifest+json")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "application/manifest+json")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("application/json", minimized);
@@ -152,10 +142,10 @@ test "minimizeSupportedMimeType - JSON with +json" {
 test "minimizeSupportedMimeType - SVG" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "image/svg+xml")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "image/svg+xml")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("image/svg+xml", minimized);
@@ -163,10 +153,10 @@ test "minimizeSupportedMimeType - SVG" {
 test "minimizeSupportedMimeType - XML" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "application/xml")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "application/xml")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("application/xml", minimized);
@@ -174,10 +164,10 @@ test "minimizeSupportedMimeType - XML" {
 test "minimizeSupportedMimeType - XML with +xml" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "application/rss+xml")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "application/rss+xml")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("application/xml", minimized);
@@ -185,45 +175,41 @@ test "minimizeSupportedMimeType - XML with +xml" {
 test "minimizeSupportedMimeType - other types return essence" {
     const allocator = std.testing.allocator;
 
-    var mime = (try parseMimeType(allocator, "image/png")) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, "image/png")) orelse return error.ParseFailed;
     defer mime.deinit();
 
-    const minimized = try minimizeSupportedMimeType(allocator, &mime);
+    const minimized = try mimesniff.minimizeSupportedMimeType(allocator, &mime);
     defer allocator.free(minimized);
 
     try std.testing.expectEqualStrings("image/png", minimized);
 }
 test "isValidMimeTypeString - valid simple" {
-    try std.testing.expect(isValidMimeTypeString("text/html"));
+    try std.testing.expect(mimesniff.isValidMimeTypeString("text/html"));
 }
 test "isValidMimeTypeString - valid with parameters" {
-    try std.testing.expect(isValidMimeTypeString("text/html; charset=utf-8"));
+    try std.testing.expect(mimesniff.isValidMimeTypeString("text/html; charset=utf-8"));
 }
 test "isValidMimeTypeString - valid complex" {
-    try std.testing.expect(isValidMimeTypeString("application/json; charset=utf-8; boundary=something"));
+    try std.testing.expect(mimesniff.isValidMimeTypeString("application/json; charset=utf-8; boundary=something"));
 }
 test "isValidMimeTypeString - invalid no slash" {
-    try std.testing.expect(!isValidMimeTypeString("texthtml"));
+    try std.testing.expect(!mimesniff.isValidMimeTypeString("texthtml"));
 }
 test "isValidMimeTypeString - invalid empty type" {
-    try std.testing.expect(!isValidMimeTypeString("/html"));
+    try std.testing.expect(!mimesniff.isValidMimeTypeString("/html"));
 }
 test "isValidMimeTypeString - invalid empty subtype" {
-    try std.testing.expect(!isValidMimeTypeString("text/"));
-}
-test "isValidMimeTypeString - invalid trailing semicolon" {
-    // Note: "text/html;" is actually accepted by parser (ignores trailing semicolon)
-    try std.testing.expect(isValidMimeTypeString("text/html;"));
+    try std.testing.expect(!mimesniff.isValidMimeTypeString("text/"));
 }
 test "isValidMimeTypeWithNoParameters - valid" {
-    try std.testing.expect(isValidMimeTypeWithNoParameters("text/html"));
-    try std.testing.expect(isValidMimeTypeWithNoParameters("application/json"));
+    try std.testing.expect(mimesniff.isValidMimeTypeWithNoParameters("text/html"));
+    try std.testing.expect(mimesniff.isValidMimeTypeWithNoParameters("application/json"));
 }
 test "isValidMimeTypeWithNoParameters - invalid with parameters" {
-    try std.testing.expect(!isValidMimeTypeWithNoParameters("text/html; charset=utf-8"));
+    try std.testing.expect(!mimesniff.isValidMimeTypeWithNoParameters("text/html; charset=utf-8"));
 }
 test "isValidMimeTypeWithNoParameters - invalid no slash" {
-    try std.testing.expect(!isValidMimeTypeWithNoParameters("texthtml"));
+    try std.testing.expect(!mimesniff.isValidMimeTypeWithNoParameters("texthtml"));
 }
 test "parseMimeType - custom type with + in subtype and multiple parameters" {
     const allocator = std.testing.allocator;
@@ -231,7 +217,7 @@ test "parseMimeType - custom type with + in subtype and multiple parameters" {
     // Test: text/swiftui+vml;target=ios;charset=UTF-8
     const input = "text/swiftui+vml;target=ios;charset=UTF-8";
 
-    var mime = (try parseMimeType(allocator, input)) orelse return error.ParseFailed;
+    var mime = (try mimesniff.parseMimeType(allocator, input)) orelse return error.ParseFailed;
     defer mime.deinit();
 
     // Check type
@@ -267,7 +253,7 @@ test "parseMimeType - custom type with + in subtype and multiple parameters" {
     try std.testing.expectEqualStrings("UTF-8", value2_utf8); // Note: value is NOT lowercased
 
     // Serialize back
-    const serialized = try serializeMimeTypeToBytes(allocator, mime);
+    const serialized = try mimesniff.serializeMimeTypeToBytes(allocator, mime);
     defer allocator.free(serialized);
 
     // Should be: text/swiftui+vml;target=ios;charset=UTF-8

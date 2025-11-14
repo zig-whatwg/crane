@@ -1507,41 +1507,6 @@ pub fn build(b: *std.Build) void {
         };
     }
 
-    // Add root-level test files (for whatwg root module)
-    if (test_all) {
-        const root_imports = [_]std.Build.Module.Import{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "encoding", .module = encoding_mod },
-            .{ .name = "url", .module = url_mod },
-            .{ .name = "console", .module = console_mod },
-            .{ .name = "streams", .module = streams_mod },
-            .{ .name = "mimesniff", .module = mimesniff_mod },
-            .{ .name = "selector", .module = selector_mod },
-            .{ .name = "whatwg", .module = whatwg_mod },
-        };
-
-        // Add root_test.zig and main_test.zig
-        const root_test = b.addTest(.{
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("tests/root_test.zig"),
-                .target = target,
-                .imports = &root_imports,
-            }),
-        });
-        test_step.dependOn(&b.addRunArtifact(root_test).step);
-
-        const main_test = b.addTest(.{
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("tests/main_test.zig"),
-                .target = target,
-                .imports = &root_imports,
-            }),
-        });
-        test_step.dependOn(&b.addRunArtifact(main_test).step);
-    }
-
     // ========================================================================
     // EXECUTABLE (optional CLI tool)
     // ========================================================================

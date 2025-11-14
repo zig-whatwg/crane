@@ -4,7 +4,6 @@
 const std = @import("std");
 
 const streams = @import("streams");
-const source = @import("../../src/streams/internal/message_port.zig");
 
 test "MessagePort - create and entangle" {
     const allocator = std.testing.allocator;

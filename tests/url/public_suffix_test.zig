@@ -4,7 +4,6 @@
 const std = @import("std");
 
 const url = @import("url");
-const source = @import("../../src/url/public_suffix.zig");
 
 test "public suffix - basic TLDs" {
     const allocator = std.testing.allocator;
