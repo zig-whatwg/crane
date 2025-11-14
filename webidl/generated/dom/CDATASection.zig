@@ -212,7 +212,6 @@ pub const CDATASection = struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Get node's index in parent (needed for range updates)
-            const dom = @import("dom");
             const node_index = dom.tree_helpers.getChildIndex(p, self_node) orelse 0;
 
             // Step 6.1: Insert new node into parent before node's next sibling
@@ -243,7 +242,7 @@ pub const CDATASection = struct {
     pub fn get_wholeText(self: *const CDATASection) ![]const u8 {
         const self_parent: *const Text = @ptrCast(self);
 
-                var result = infra.List(u8).init(self_parent.allocator);
+        var result = infra.List(u8).init(self_parent.allocator);
         errdefer result.deinit();
 
         // Collect all contiguous Text nodes in tree order

@@ -212,7 +212,6 @@ pub const Text = struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Get node's index in parent (needed for range updates)
-            const dom = @import("dom");
             const node_index = dom.tree_helpers.getChildIndex(p, self_node) orelse 0;
 
             // Step 6.1: Insert new node into parent before node's next sibling
@@ -242,7 +241,7 @@ pub const Text = struct {
     /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const Text) ![]const u8 {
 
-                var result = infra.List(u8).init(self.allocator);
+        var result = infra.List(u8).init(self.allocator);
         errdefer result.deinit();
 
         // Collect all contiguous Text nodes in tree order

@@ -4,6 +4,7 @@
 const std = @import("std");
 const webidl = @import("webidl");
 const infra = @import("infra");
+const dom = @import("dom");
 const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
@@ -100,7 +101,6 @@ pub const Text = webidl.interface(struct {
         const parent = self_node.parent_node;
         if (parent) |p| {
             // Get node's index in parent (needed for range updates)
-            const dom = @import("dom");
             const node_index = dom.tree_helpers.getChildIndex(p, self_node) orelse 0;
 
             // Step 6.1: Insert new node into parent before node's next sibling
@@ -128,7 +128,6 @@ pub const Text = webidl.interface(struct {
     ///
     /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const Text) ![]const u8 {
-        const dom = @import("dom");
         var result = infra.List(u8).init(self.allocator);
         errdefer result.deinit();
 
