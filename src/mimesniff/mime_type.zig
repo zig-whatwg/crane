@@ -355,8 +355,8 @@ fn collectHttpQuotedString(
     input: infra.String,
     pos: *usize,
 ) !infra.String {
-    var result = try std.ArrayList(u16).initCapacity(allocator, 32);
-    errdefer result.deinit(allocator);
+    var result = infra.List(u16).init(allocator);
+    errdefer result.deinit();
 
     // Skip opening quote
     pos.* += 1;
@@ -367,7 +367,7 @@ fn collectHttpQuotedString(
 
         if (in_escape) {
             // After backslash, take character literally
-            try result.append(allocator, c);
+            try result.append(c);
             in_escape = false;
         } else if (c == '\\') {
             // Start escape sequence
@@ -378,11 +378,11 @@ fn collectHttpQuotedString(
             break;
         } else {
             // Normal character
-            try result.append(allocator, c);
+            try result.append(c);
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Serialize MIME type to string (UTF-16)
@@ -392,49 +392,48 @@ pub fn serializeMimeType(
     allocator: std.mem.Allocator,
     mime_type: MimeType,
 ) !infra.String {
-    const initial_capacity = mime_type.type.len + mime_type.subtype.len + 32;
-    var result = try std.ArrayList(u16).initCapacity(allocator, initial_capacity);
-    errdefer result.deinit(allocator);
+    var result = infra.List(u16).init(allocator);
+    errdefer result.deinit();
 
     // 1. Let serialization be concatenation of type, U+002F (/), and subtype
-    try result.appendSlice(allocator, mime_type.type);
-    try result.append(allocator, '/');
-    try result.appendSlice(allocator, mime_type.subtype);
+    try result.appendSlice(mime_type.type);
+    try result.append('/');
+    try result.appendSlice(mime_type.subtype);
 
     // 2. For each name → value of parameters
     const entries = mime_type.parameters.entries.items();
     for (entries) |entry| {
         // 2.1. Append U+003B (;)
-        try result.append(allocator, ';');
+        try result.append(';');
 
         // 2.2. Append name
-        try result.appendSlice(allocator, entry.key);
+        try result.appendSlice(entry.key);
 
         // 2.3. Append U+003D (=)
-        try result.append(allocator, '=');
+        try result.append('=');
 
         // 2.4. If value does not solely contain HTTP token code points or is empty
         if (entry.value.len == 0 or !isHttpTokenString(entry.value)) {
             // Quote the value
-            try result.append(allocator, '"');
+            try result.append('"');
 
             // Escape quotes and backslashes
             for (entry.value) |c| {
                 if (c == '"' or c == '\\') {
-                    try result.append(allocator, '\\');
+                    try result.append('\\');
                 }
-                try result.append(allocator, c);
+                try result.append(c);
             }
 
-            try result.append(allocator, '"');
+            try result.append('"');
         } else {
             // 2.5. Append value
-            try result.appendSlice(allocator, entry.value);
+            try result.appendSlice(entry.value);
         }
     }
 
     // 3. Return serialization
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Serialize MIME type to bytes (UTF-8)
