@@ -17,8 +17,8 @@ test "Range.deleteContents - deletes text data within same Text node" {
     // Create a text node with "Hello World"
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(text));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -43,8 +43,8 @@ test "Range.deleteContents - deletes from start of Text node" {
 
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(text));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -69,8 +69,8 @@ test "Range.deleteContents - deletes to end of Text node" {
 
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(text));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -95,8 +95,8 @@ test "Range.deleteContents - deletes entire Text node content" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(text));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -128,13 +128,13 @@ test "Range.deleteContents - deletes contained element nodes" {
     const textB = try doc.call_createTextNode("B");
     const textC = try doc.call_createTextNode("C");
 
-    _ = try span1.call_appendChild((&textA));
-    _ = try span2.call_appendChild((&textB));
-    _ = try span3.call_appendChild((&textC));
+    _ = try span1.call_appendChild(@ptrCast(textA));
+    _ = try span2.call_appendChild(@ptrCast(textB));
+    _ = try span3.call_appendChild(@ptrCast(textC));
     _ = try div.call_appendChild((&span1));
     _ = try div.call_appendChild((&span2));
     _ = try div.call_appendChild((&span3));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -166,8 +166,8 @@ test "Range.deleteContents - collapsed range does nothing" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(text));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -193,8 +193,8 @@ test "Range.deleteContents - Comment node data deletion" {
     // Create a comment node with "This is a comment"
     const comment = try doc.call_createComment("This is a comment");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&comment));
-    _ = try doc.base.call_appendChild((&div));
+    _ = try div.call_appendChild(@ptrCast(comment));
+    _ = try doc.base.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();

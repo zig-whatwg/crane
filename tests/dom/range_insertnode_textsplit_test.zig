@@ -15,7 +15,7 @@ test "Range.insertNode - splits Text node at start offset" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("HelloWorld");
-    _ = try div.call_appendChild((&text));
+    _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.base.call_appendChild((&div));
 
     var range = try dom.Range.init(allocator, (&doc));
@@ -52,7 +52,7 @@ test "Range.insertNode - splits at start of Text node" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("Hello");
-    _ = try div.call_appendChild((&text));
+    _ = try div.call_appendChild(@ptrCast(text));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -82,7 +82,7 @@ test "Range.insertNode - splits at end of Text node" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("Hello");
-    _ = try div.call_appendChild((&text));
+    _ = try div.call_appendChild(@ptrCast(text));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
