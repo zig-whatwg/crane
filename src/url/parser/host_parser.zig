@@ -125,7 +125,7 @@ pub fn parseHost(
         // Step 1.1: Must end with ]
         if (input.len == 0 or input[input.len - 1] != ']') {
             if (errors) |errs| {
-                try errs.append(allocator, .{ .type = .ipv6_unclosed });
+                try errs.append(.{ .type = .ipv6_unclosed });
             }
             return HostParseError.IPv6Unclosed;
         }
@@ -143,7 +143,7 @@ pub fn parseHost(
         for (input) |byte| {
             if (host.isForbiddenHostCodePoint(byte)) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{ .type = .host_invalid_code_point });
+                    try errs.append(.{ .type = .host_invalid_code_point });
                 }
                 return HostParseError.InvalidHost;
             }
@@ -168,7 +168,7 @@ pub fn parseHost(
     for (decoded) |byte| {
         if (host.isForbiddenHostCodePoint(byte)) {
             if (errors) |errs| {
-                try errs.append(allocator, .{ .type = .host_invalid_code_point });
+                try errs.append(.{ .type = .host_invalid_code_point });
             }
             return HostParseError.InvalidHost;
         }
