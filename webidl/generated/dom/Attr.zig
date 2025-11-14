@@ -27,11 +27,9 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
-
 /// DOM §4.9 - Attr interface
 /// Attr nodes represent attributes.
 /// Attributes have a namespace, namespace prefix, local name, value, and element.
-
 /// Compare two callbacks for equality (from EventTarget)
 pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     if (a == null and b == null) return true;
@@ -61,7 +59,7 @@ pub const Attr = struct {
 
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
-    /// 
+    ///
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
@@ -129,7 +127,6 @@ pub const Attr = struct {
         local_name: []const u8,
         value: []const u8,
     ) !Attr {
-
         return .{
             .event_listener_list = null, // From EventTarget
             .node_type = 2, // ATTRIBUTE_NODE
@@ -147,41 +144,33 @@ pub const Attr = struct {
             .value = try allocator.dupe(u8, value),
             .owner_element = null,
         };
-    
     }
 
     pub fn deinit(self: *Attr) void {
-
         if (self.namespace_uri) |ns| self.allocator.free(ns);
         if (self.prefix) |p| self.allocator.free(p);
         self.allocator.free(self.local_name);
         self.allocator.free(self.value);
         // NOTE: Parent Node cleanup is handled by codegen
-    
+
     }
 
     /// DOM §4.9 - namespaceURI getter
     /// Returns this's namespace.
     pub fn get_namespaceURI(self: *const Attr) ?[]const u8 {
-
         return self.namespace_uri;
-    
     }
 
     /// DOM §4.9 - prefix getter
     /// Returns this's namespace prefix.
     pub fn get_prefix(self: *const Attr) ?[]const u8 {
-
         return self.prefix;
-    
     }
 
     /// DOM §4.9 - localName getter
     /// Returns this's local name.
     pub fn get_localName(self: *const Attr) []const u8 {
-
         return self.local_name;
-    
     }
 
     /// DOM §4.9 - name getter
@@ -189,7 +178,6 @@ pub const Attr = struct {
     /// The qualified name is local name if namespace prefix is null,
     /// otherwise it's prefix + ":" + local name.
     pub fn get_name(self: *const Attr) ![]const u8 {
-
         if (self.prefix) |p| {
             // Qualified name: prefix + ":" + localName
             const qualified = try std.fmt.allocPrint(
@@ -201,24 +189,19 @@ pub const Attr = struct {
         }
         // No prefix, just return local name
         return self.local_name;
-    
     }
 
     /// DOM §4.9 - value getter
     /// Returns this's value.
     pub fn get_value(self: *const Attr) []const u8 {
-
         return self.value;
-    
     }
 
     /// DOM §4.9 - value setter
     /// Sets this's value.
     /// Steps: Set an existing attribute value with this and the given value.
     pub fn set_value(self: *Attr, new_value: []const u8) !void {
-
         try Attr.setExistingAttributeValue(self, new_value);
-    
     }
 
     /// Set an existing attribute value - DOM Spec algorithm
@@ -233,7 +216,6 @@ pub const Attr = struct {
 
         // Step 2: Otherwise, change attribute to value
         try Attr.changeAttribute(attribute, value);
-    
     }
 
     /// Change an attribute - DOM Spec algorithm
@@ -250,7 +232,6 @@ pub const Attr = struct {
 
         // Step 3: Handle attribute changes
         try Attr.handleAttributeChanges(attribute, attribute.owner_element.?, old_value, value);
-    
     }
 
     /// Handle attribute changes - DOM Spec algorithm
@@ -262,7 +243,8 @@ pub const Attr = struct {
     ) !void {
 
         // Step 1: Queue a mutation record of "attributes"
-        const mutation_observer = @import("mutation_observer_algorithms");
+        const dom = @import("dom");
+        const mutation_observer = dom.mutation_observer_algorithms;
         const NodeListType = @import("node_list").NodeList;
 
         var empty_added = try NodeListType.init(element.allocator);
@@ -291,24 +273,20 @@ pub const Attr = struct {
         // Extension point for HTML, SVG, etc. to define attribute-specific behavior
         // Currently no attribute change steps defined for base DOM
         // Note: attribute parameter is used above (lines 144-145), no discard needed
-    
+
     }
 
     /// DOM §4.9 - ownerElement getter
     /// Returns this's element.
     pub fn get_ownerElement(self: *const Attr) ?*Element {
-
         return self.owner_element;
-    
     }
 
     /// DOM §4.9 - specified getter
     /// Always returns true (this is a legacy attribute).
     pub fn get_specified(self: *const Attr) bool {
-
         _ = self;
         return true;
-    
     }
 
     /// insertBefore(node, child)
@@ -324,7 +302,6 @@ pub const Attr = struct {
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
         };
-    
     }
 
     /// appendChild(node)
@@ -339,7 +316,6 @@ pub const Attr = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
         };
-    
     }
 
     /// replaceChild(node, child)
@@ -355,7 +331,6 @@ pub const Attr = struct {
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
         };
-    
     }
 
     /// removeChild(child)
@@ -371,12 +346,11 @@ pub const Attr = struct {
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
         };
-    
     }
 
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
-    /// 
+    ///
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Attr, options: ?GetRootNodeOptions) *Node {
@@ -413,7 +387,6 @@ pub const Attr = struct {
             // Return regular root
             return tree.root(self_parent);
         }
-    
     }
 
     /// contains(other)
@@ -426,7 +399,6 @@ pub const Attr = struct {
         const tree = @import("dom").tree;
         const other_node = other.?;
         return tree.isInclusiveDescendant(other_node, self_parent);
-    
     }
 
     /// compareDocumentPosition(other)
@@ -480,7 +452,6 @@ pub const Attr = struct {
 
         // Step 10: Return DOCUMENT_POSITION_FOLLOWING
         return Node.DOCUMENT_POSITION_FOLLOWING;
-    
     }
 
     /// isEqualNode(otherNode)
@@ -491,7 +462,6 @@ pub const Attr = struct {
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
         return Node.nodeEquals(self_parent, other_node.?);
-    
     }
 
     /// Node A equals node B - DOM Spec algorithm
@@ -592,7 +562,6 @@ pub const Attr = struct {
         }
 
         return true;
-    
     }
 
     /// Attribute equality check
@@ -616,7 +585,6 @@ pub const Attr = struct {
         if (!std.mem.eql(u8, a.value, b.value)) return false;
 
         return true;
-    
     }
 
     /// isSameNode(otherNode)
@@ -627,7 +595,6 @@ pub const Attr = struct {
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
         return self_parent == other_node.?;
-    
     }
 
     /// hasChildNodes()
@@ -636,7 +603,6 @@ pub const Attr = struct {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.child_nodes.len > 0;
-    
     }
 
     /// cloneNode(deep)
@@ -660,7 +626,6 @@ pub const Attr = struct {
 
         // Step 2: Return the result of cloning this node with subtree set to deep
         return try Node.cloneNodeInternal(self_parent, self_parent.owner_document, deep, null, null);
-    
     }
 
     /// Clone a node - DOM Spec algorithm
@@ -760,7 +725,6 @@ pub const Attr = struct {
 
         // Step 7: Return copy
         return copy;
-    
     }
 
     /// Clone a single node - DOM Spec algorithm
@@ -770,7 +734,6 @@ pub const Attr = struct {
         document: ?*Document,
         fallback_registry: ?*anyopaque,
     ) !*Node {
-
         _ = fallback_registry; // Not used yet - for custom elements
 
         // Step 2-3: Handle different node types
@@ -866,15 +829,14 @@ pub const Attr = struct {
                 return copy;
             },
         }
-    
     }
 
     /// normalize()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
-    /// 
+    ///
     /// Removes empty exclusive Text nodes and concatenates the data of remaining
     /// contiguous exclusive Text nodes into the first of their nodes.
-    /// 
+    ///
     /// The normalize() method steps are to run these steps for each descendant
     /// exclusive Text node `node` of this:
     /// 1. Let length be node's length
@@ -969,7 +931,6 @@ pub const Attr = struct {
                 remove_node = next_remove;
             }
         }
-    
     }
 
     /// Helper: Check if a node is an exclusive Text node
@@ -978,7 +939,6 @@ pub const Attr = struct {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
         return node.node_type == Node.TEXT_NODE;
-    
     }
 
     /// Helper: Collect all descendant exclusive Text nodes in tree order
@@ -994,7 +954,6 @@ pub const Attr = struct {
             const child = node.child_nodes.get(i) orelse continue;
             try collectDescendantExclusiveTextNodes(child, list);
         }
-    
     }
 
     /// Helper: Update ranges during normalize operation
@@ -1026,7 +985,7 @@ pub const Attr = struct {
         // TODO: Implement range updates once Range tracking is fully integrated
         // For now, this is a placeholder. Range tracking will be added when
         // Phase 5 (Range Operations) is implemented.
-    
+
     }
 
     /// Getters
@@ -1034,21 +993,18 @@ pub const Attr = struct {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.node_type;
-    
     }
 
     pub fn get_nodeName(self: *const Attr) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.node_name;
-    
     }
 
     pub fn get_parentNode(self: *const Attr) ?*Node {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.parent_node;
-    
     }
 
     pub fn get_parentElement(self: *const Attr) ?*Element {
@@ -1061,7 +1017,6 @@ pub const Attr = struct {
             return @ptrCast(@alignCast(parent));
         }
         return null;
-    
     }
 
     pub fn get_childNodes(self: *Attr) !*@import("node_list").NodeList {
@@ -1085,7 +1040,6 @@ pub const Attr = struct {
 
         self_parent.cached_child_nodes = list;
         return list;
-    
     }
 
     pub fn get_firstChild(self: *const Attr) ?*Node {
@@ -1095,7 +1049,6 @@ pub const Attr = struct {
             return self_parent.child_nodes.get(0);
         }
         return null;
-    
     }
 
     pub fn get_lastChild(self: *const Attr) ?*Node {
@@ -1105,14 +1058,12 @@ pub const Attr = struct {
             return self_parent.child_nodes.get(self_parent.child_nodes.len - 1);
         }
         return null;
-    
     }
 
     pub fn get_ownerDocument(self: *const Attr) ?*Document {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.owner_document;
-    
     }
 
     pub fn get_previousSibling(self: *const Attr) ?*Node {
@@ -1126,7 +1077,6 @@ pub const Attr = struct {
             }
         }
         return null;
-    
     }
 
     pub fn get_nextSibling(self: *const Attr) ?*Node {
@@ -1140,7 +1090,6 @@ pub const Attr = struct {
             }
         }
         return null;
-    
     }
 
     pub fn get_isConnected(self: *const Attr) bool {
@@ -1154,12 +1103,11 @@ pub const Attr = struct {
         const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return root_node.node_type == DOCUMENT_NODE;
-    
     }
 
     /// DOM §4.4 - Node.baseURI getter
     /// Returns this's node document's document base URL, serialized.
-    /// 
+    ///
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const Attr) []const u8 {
@@ -1173,7 +1121,6 @@ pub const Attr = struct {
 
         // Return document's base URI
         return doc.base_uri;
-    
     }
 
     pub fn get_nodeValue(self: *const Attr) ?[]const u8 {
@@ -1201,7 +1148,6 @@ pub const Attr = struct {
                 return null;
             },
         }
-    
     }
 
     pub fn set_nodeValue(self: *Attr, value: ?[]const u8) !void {
@@ -1233,7 +1179,6 @@ pub const Attr = struct {
                 // All other node types do nothing
             },
         }
-    
     }
 
     pub fn get_textContent(self: *const Attr) !?[]const u8 {
@@ -1242,7 +1187,6 @@ pub const Attr = struct {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
         return Node.getTextContent(self_parent, self_parent.allocator);
-    
     }
 
     pub fn set_textContent(self: *Attr, value: ?[]const u8) !void {
@@ -1252,7 +1196,6 @@ pub const Attr = struct {
         // If the given value is null, act as if it was the empty string instead
         const str_value = value orelse "";
         try Node.setTextContent(self_parent, str_value);
-    
     }
 
     /// Get text content - DOM Spec algorithm
@@ -1260,7 +1203,6 @@ pub const Attr = struct {
     /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
     /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
-
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // Return descendant text content (allocated)
@@ -1281,7 +1223,6 @@ pub const Attr = struct {
                 return null;
             },
         }
-    
     }
 
     /// Get descendant text content - concatenate all Text node descendants
@@ -1289,14 +1230,12 @@ pub const Attr = struct {
     /// Returns the concatenation of data from all Text node descendants in tree order.
     /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
-
         var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
-    
     }
 
     /// Helper function to recursively collect text from descendants
@@ -1314,13 +1253,11 @@ pub const Attr = struct {
                 try collectDescendantText(child, result);
             }
         }
-    
     }
 
     /// Set text content - DOM Spec algorithm
     /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
-
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // String replace all with value within node
@@ -1342,7 +1279,6 @@ pub const Attr = struct {
                 // Document, DocumentType, etc: do nothing
             },
         }
-    
     }
 
     /// String replace all - DOM Spec algorithm
@@ -1367,7 +1303,6 @@ pub const Attr = struct {
         // Step 3: Replace all with node within parent
         const mutation = @import("dom").mutation;
         try mutation.replaceAll(node_opt, parent);
-    
     }
 
     /// lookupPrefix(namespace)
@@ -1400,7 +1335,6 @@ pub const Attr = struct {
                 return parent.base.locateNamespacePrefix(namespace);
             },
         }
-    
     }
 
     /// lookupNamespaceURI(prefix)
@@ -1412,7 +1346,6 @@ pub const Attr = struct {
 
         // Spec step 2: Return result of locating a namespace
         return self.locateNamespace(prefix);
-    
     }
 
     /// isDefaultNamespace(namespace)
@@ -1429,7 +1362,6 @@ pub const Attr = struct {
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
-    
     }
 
     /// Locate a namespace prefix for element (internal algorithm)
@@ -1464,7 +1396,6 @@ pub const Attr = struct {
 
         // Step 4: Return null
         return null;
-    
     }
 
     /// Locate a namespace for node (internal algorithm)
@@ -1558,7 +1489,6 @@ pub const Attr = struct {
                 return parent.base.locateNamespace(prefix);
             },
         }
-    
     }
 
     /// Get the list of registered observers for this node
@@ -1566,7 +1496,6 @@ pub const Attr = struct {
         const self_parent: *Node = @ptrCast(self);
 
         return &self_parent.registered_observers;
-    
     }
 
     /// Add a registered observer to this node's list
@@ -1574,7 +1503,6 @@ pub const Attr = struct {
         const self_parent: *Node = @ptrCast(self);
 
         try self_parent.registered_observers.append(registered);
-    
     }
 
     /// Remove all registered observers for a specific MutationObserver
@@ -1590,11 +1518,10 @@ pub const Attr = struct {
                 i += 1;
             }
         }
-    
     }
 
     /// Remove all transient registered observers whose source matches the given registered observer
-    /// 
+    ///
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Attr, source: *const RegisteredObserver) void {
@@ -1611,7 +1538,6 @@ pub const Attr = struct {
         // and remove them here.
         _ = self_parent;
         _ = source;
-    
     }
 
     /// Ensure event listener list is allocated
@@ -1628,7 +1554,6 @@ pub const Attr = struct {
         list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
-    
     }
 
     /// Get event listener list (read-only access)
@@ -1640,7 +1565,6 @@ pub const Attr = struct {
             return list.toSlice();
         }
         return &[_]EventListener{};
-    
     }
 
     /// DOM §2.7 - flatten options
@@ -1648,7 +1572,6 @@ pub const Attr = struct {
     /// 1. If options is a boolean, then return options.
     /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
-
         const OptionsType = @TypeOf(options);
 
         // Step 1: If options is a boolean, return it
@@ -1663,13 +1586,11 @@ pub const Attr = struct {
 
         // Default: return false
         return false;
-    
     }
 
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-
         const OptionsType = @TypeOf(options);
 
         // If options is a boolean, only capture is set to that value
@@ -1699,13 +1620,11 @@ pub const Attr = struct {
             .once = false,
             .signal = null,
         };
-    
     }
 
     /// DOM §2.7 - default passive value
     /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
-
         _ = event_target;
         // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
         // AND eventTarget is Window or specific node conditions
@@ -1720,7 +1639,6 @@ pub const Attr = struct {
         }
         // Step 2: Return false
         return false;
-    
     }
 
     /// DOM §2.7 - add an event listener
@@ -1779,7 +1697,6 @@ pub const Attr = struct {
             };
             try signal.addEventListenerRemoval(removal_context);
         }
-    
     }
 
     /// addEventListener(type, callback, options)
@@ -1810,7 +1727,6 @@ pub const Attr = struct {
         };
 
         try self.addAnEventListener(listener);
-    
     }
 
     /// DOM §2.7 - remove an event listener
@@ -1840,7 +1756,6 @@ pub const Attr = struct {
             }
             i += 1;
         }
-    
     }
 
     /// removeEventListener(type, callback, options)
@@ -1868,7 +1783,6 @@ pub const Attr = struct {
         };
 
         self.removeAnEventListener(listener);
-    
     }
 
     /// dispatchEvent(event)
@@ -1895,9 +1809,5 @@ pub const Attr = struct {
             // Handle dispatch errors
             return err;
         };
-    
     }
-
 };
-
-
