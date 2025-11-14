@@ -50,6 +50,8 @@ pub const AbortController = struct {
     
     }
 
+    /// abort(reason) method
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortcontroller-abort
     pub fn call_abort(self: *AbortController, reason: ?webidl.Exception) void {
 
         // Spec: "signal abort on this with reason if it is given"

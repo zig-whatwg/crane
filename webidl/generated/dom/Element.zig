@@ -69,22 +69,44 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     };
 }
 
+/// Element WebIDL interface
+/// DOM Spec: interface Element : Node
 pub const Element = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// DOM §2.7 - Each EventTarget has an associated event listener list
+    /// (a list of zero or more event listeners). It is initially the empty list.
+    /// 
+    /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
+    /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
+    /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
     child_nodes: infra.List(*Node),
     owner_document: ?*Document,
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
     cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
     cached_child_nodes: ?*@import("node_list").NodeList,
+    /// Slottable name (from "slot" attribute)
     slottable_name: []const u8,
+    /// Currently assigned slot (null if not assigned)
+    /// TODO: Implement when HTMLSlotElement is available
     assigned_slot: ?*anyopaque,
+    /// Manual slot assignment (for manual slot assignment mode)
+    /// TODO: Implement when HTMLSlotElement is available
+    /// Should use weak reference per spec
     manual_slot_assignment: ?*anyopaque,
     allocator: Allocator,
     tag_name: []const u8,
@@ -92,10 +114,18 @@ pub const Element = struct {
     prefix: ?[]const u8,
     local_name: []const u8,
     attributes: infra.List(Attr),
+    /// Shadow root attached to this element (null if not a shadow host)
     shadow_root: ?*ShadowRoot,
+    /// Custom element state per HTML spec
+    /// Spec: https://html.spec.whatwg.org/#custom-element-state
     custom_element_state: CustomElementState,
+    /// "is" value for customized built-in elements
+    /// Spec: https://html.spec.whatwg.org/#concept-element-is-value
     is_value: ?[]const u8,
+    /// Cached DOMTokenList for classList ([SameObject])
     cached_class_list: ?*@import("dom_token_list").DOMTokenList,
+    /// Cached NamedNodeMap for attributes ([SameObject])
+    /// Spec: https://dom.spec.whatwg.org/#ref-for-dom-element-attributes
     cached_attributes: ?*@import("named_node_map").NamedNodeMap,
 
     // ========================================================================
@@ -199,6 +229,14 @@ pub const Element = struct {
     
     }
 
+    /// Append an attribute - DOM §4.10.3
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-append
+    /// 
+    /// To append an attribute to element:
+    /// 1. Append attribute to element's attribute list
+    /// 2. Set attribute's element to element
+    /// 3. Set attribute's node document to element's node document
+    /// 4. Handle attribute changes for attribute with element, null, and attribute's value
     fn appendAttribute(self: *Element, attribute: *Attr) !void {
 
         // Step 1: Append to attribute list
@@ -218,6 +256,14 @@ pub const Element = struct {
     
     }
 
+    /// Remove an attribute - DOM §4.10.3
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
+    /// 
+    /// To remove an attribute:
+    /// 1. Let element be attribute's element
+    /// 2. Remove attribute from element's attribute list
+    /// 3. Set attribute's element to null
+    /// 4. Handle attribute changes for attribute with element, attribute's value, and null
     fn removeAttributeInternal(self: *Element, attr_to_remove: *Attr) !void {
 
         // Step 1: element is self
@@ -240,6 +286,13 @@ pub const Element = struct {
     
     }
 
+    /// Set an attribute value - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-set-value
+    /// 
+    /// To set an attribute value given element, localName, value, and optionally prefix and namespace:
+    /// 1. Let attribute be result of getting attribute given namespace, localName, and element
+    /// 2. If attribute is null, create attribute and append to element, then return
+    /// 3. Change attribute to value
     fn setAttributeValue(
         self: *Element,
         local_name: []const u8,
@@ -268,6 +321,13 @@ pub const Element = struct {
     
     }
 
+    /// Remove an attribute by name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-name
+    /// 
+    /// To remove an attribute by name given qualifiedName and element:
+    /// 1. Let attr be result of getting attribute given qualifiedName and element
+    /// 2. If attr is non-null, then remove attr
+    /// 3. Return attr
     fn removeAttributeByName(self: *Element, qualified_name: []const u8) !void {
 
         if (self.getAttributeByName(qualified_name)) |attr| {
@@ -276,6 +336,13 @@ pub const Element = struct {
     
     }
 
+    /// Remove an attribute by namespace and local name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove-by-namespace
+    /// 
+    /// To remove an attribute by namespace and local name given namespace, localName, and element:
+    /// 1. Let attr be result of getting attribute given namespace, localName, and element
+    /// 2. If attr is non-null, then remove attr
+    /// 3. Return attr
     fn removeAttributeByNamespaceAndLocalName(
         self: *Element,
         namespace: ?[]const u8,
@@ -288,6 +355,14 @@ pub const Element = struct {
     
     }
 
+    /// Get an attribute by name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-name
+    /// 
+    /// To get an attribute by name given a string qualifiedName and element:
+    /// 1. If element is in HTML namespace and its node document is HTML document,
+    /// then set qualifiedName to qualifiedName in ASCII lowercase
+    /// 2. Return first attribute in element's attribute list whose qualified name
+    /// is qualifiedName; otherwise null
     fn getAttributeByName(self: *const Element, qualified_name: []const u8) ?*Attr {
 
         // Step 1: ASCII lowercase if HTML element in HTML document
@@ -318,6 +393,14 @@ pub const Element = struct {
     
     }
 
+    /// Get an attribute by namespace and local name - DOM §4.10.4
+    /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-namespace
+    /// 
+    /// To get an attribute by namespace and local name given null or string namespace,
+    /// string localName, and element:
+    /// 1. If namespace is empty string, set it to null
+    /// 2. Return attribute in element's attribute list whose namespace is namespace
+    /// and local name is localName, if any; otherwise null
     fn getAttributeByNamespaceAndLocalName(
         self: *const Element,
         namespace: ?[]const u8,
@@ -348,6 +431,8 @@ pub const Element = struct {
     
     }
 
+    /// Check if this element is an HTML element in an HTML document
+    /// Used for ASCII lowercasing of attribute names
     fn isHTMLElementInHTMLDocument(self: *const Element) bool {
 
         // Check if element is in HTML namespace
@@ -367,6 +452,13 @@ pub const Element = struct {
     
     }
 
+    /// getAttribute(qualifiedName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattribute
+    /// 
+    /// The getAttribute(qualifiedName) method steps are:
+    /// 1. Let attr be result of getting an attribute given qualifiedName and this
+    /// 2. If attr is null, return null
+    /// 3. Return attr's value
     pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {
 
         // Step 1: Get attribute by name
@@ -377,6 +469,13 @@ pub const Element = struct {
     
     }
 
+    /// getAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributens
+    /// 
+    /// The getAttributeNS(namespace, localName) method steps are:
+    /// 1. Let attr be result of getting an attribute given namespace, localName, and this
+    /// 2. If attr is null, return null
+    /// 3. Return attr's value
     pub fn call_getAttributeNS(
         self: *const Element,
         namespace: ?[]const u8,
@@ -391,6 +490,17 @@ pub const Element = struct {
     
     }
 
+    /// setAttribute(qualifiedName, value)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-setattribute
+    /// 
+    /// The setAttribute(qualifiedName, value) method steps are:
+    /// 1. If qualifiedName is not valid attribute local name, throw InvalidCharacterError
+    /// 2. If this is in HTML namespace and node document is HTML document,
+    /// set qualifiedName to qualifiedName in ASCII lowercase
+    /// 3. Let attribute be first attribute in this's attribute list whose qualified name
+    /// is qualifiedName, and null otherwise
+    /// 4. If attribute is null, create attribute and append to this, then return
+    /// 5. Change attribute to value
     pub fn call_setAttribute(self: *Element, qualified_name: []const u8, value: []const u8) !void {
 
         // Step 1: Validate qualified name (simplified - check not empty and valid chars)
@@ -431,6 +541,13 @@ pub const Element = struct {
     
     }
 
+    /// setAttributeNS(namespace, qualifiedName, value)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-setattributens
+    /// 
+    /// The setAttributeNS(namespace, qualifiedName, value) method steps are:
+    /// 1. Let (namespace, prefix, localName) = result of validating and extracting
+    /// namespace and qualifiedName given "element"
+    /// 2. Set an attribute value for this using localName, value, and also prefix and namespace
     pub fn call_setAttributeNS(
         self: *Element,
         namespace: ?[]const u8,
@@ -453,12 +570,22 @@ pub const Element = struct {
     
     }
 
+    /// removeAttribute(qualifiedName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattribute
+    /// 
+    /// The removeAttribute(qualifiedName) method steps are to remove an attribute
+    /// given qualifiedName and this, and then return undefined.
     pub fn call_removeAttribute(self: *Element, qualified_name: []const u8) !void {
 
         try self.removeAttributeByName(qualified_name);
     
     }
 
+    /// removeAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-removeattributens
+    /// 
+    /// The removeAttributeNS(namespace, localName) method steps are to remove an attribute
+    /// given namespace, localName, and this, and then return undefined.
     pub fn call_removeAttributeNS(
         self: *Element,
         namespace: ?[]const u8,
@@ -469,6 +596,18 @@ pub const Element = struct {
     
     }
 
+    /// toggleAttribute(qualifiedName, force?)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-toggleattribute
+    /// 
+    /// The toggleAttribute(qualifiedName, force) method steps are:
+    /// 1. If qualifiedName is not valid attribute local name, throw InvalidCharacterError
+    /// 2. If this is in HTML namespace and node document is HTML, set qualifiedName to ASCII lowercase
+    /// 3. Let attribute be first attribute whose qualified name is qualifiedName, else null
+    /// 4. If attribute is null:
+    /// a. If force not given or is true, create attribute with empty value, append, return true
+    /// b. Return false
+    /// 5. Otherwise, if force not given or is false, remove attribute, return false
+    /// 6. Return true
     pub fn call_toggleAttribute(
         self: *Element,
         qualified_name: []const u8,
@@ -524,12 +663,27 @@ pub const Element = struct {
     
     }
 
+    /// hasAttribute(qualifiedName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattribute
+    /// 
+    /// The hasAttribute(qualifiedName) method steps are:
+    /// 1. If this is in HTML namespace and its node document is HTML document,
+    /// then set qualifiedName to qualifiedName in ASCII lowercase
+    /// 2. Return true if this has attribute whose qualified name is qualifiedName;
+    /// otherwise false
     pub fn call_hasAttribute(self: *const Element, qualified_name: []const u8) bool {
 
         return self.getAttributeByName(qualified_name) != null;
     
     }
 
+    /// hasAttributeNS(namespace, localName)
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-hasattributens
+    /// 
+    /// The hasAttributeNS(namespace, localName) method steps are:
+    /// 1. If namespace is empty string, set it to null
+    /// 2. Return true if this has attribute whose namespace is namespace and
+    /// local name is localName; otherwise false
     pub fn call_hasAttributeNS(
         self: *const Element,
         namespace: ?[]const u8,
@@ -540,6 +694,15 @@ pub const Element = struct {
     
     }
 
+    /// getAttributeNames()
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-getattributenames
+    /// 
+    /// The getAttributeNames() method steps are to return the qualified names
+    /// of the attributes in this's attribute list, in order; otherwise a new list.
+    /// 
+    /// These are not guaranteed to be unique.
+    /// 
+    /// Note: Caller owns returned memory and must free each string and the ArrayList
     pub fn call_getAttributeNames(self: *const Element) !std.ArrayList([]const u8) {
 
         var names = std.ArrayList([]const u8).init(self.allocator);
@@ -563,6 +726,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.1 - Element.id
+    /// The id getter steps are to return the value of this's id content attribute.
+    /// The id setter steps are to set the value of this's id content attribute to the given value.
     pub fn get_id(self: *const Element) []const u8 {
 
         return self.call_getAttribute("id") orelse "";
@@ -575,6 +741,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.1 - Element.className
+    /// The className getter steps are to return the value of this's class content attribute.
+    /// The className setter steps are to set the value of this's class content attribute to the given value.
     pub fn get_className(self: *const Element) []const u8 {
 
         return self.call_getAttribute("class") orelse "";
@@ -587,6 +756,12 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.1 - Element.classList
+    /// The classList getter steps are to return a DOMTokenList object whose associated element
+    /// is this and whose associated attribute's local name is class.
+    /// 
+    /// Returns a DOMTokenList representing the class attribute.
+    /// The DOMTokenList is [SameObject] - returns same instance on repeated calls.
     pub fn get_classList(self: *Element) !*DOMTokenList {
 
         // Return cached instance if available
@@ -620,6 +795,10 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.9 - Element.attributes
+    /// Returns the element's attribute list as a NamedNodeMap.
+    /// The NamedNodeMap is [SameObject] - returns same instance on repeated calls.
+    /// Spec: https://dom.spec.whatwg.org/#ref-for-dom-element-attributes
     pub fn get_attributes(self: *Element) !*@import("named_node_map").NamedNodeMap {
 
         // Return cached instance if available
@@ -640,6 +819,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.1 - Element.slot
+    /// The slot getter steps are to return the value of this's slot content attribute.
+    /// The slot setter steps are to set the value of this's slot content attribute to the given value.
     pub fn get_slot(self: *const Element) []const u8 {
 
         return self.call_getAttribute("slot") orelse "";
@@ -652,6 +834,7 @@ pub const Element = struct {
     
     }
 
+    /// Getters
     pub fn get_namespaceURI(self: *const Element) ?[]const u8 {
 
         return self.namespace_uri;
@@ -676,6 +859,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.5 - Element.getElementsByTagName(qualifiedName)
+    /// Returns an HTMLCollection of all descendant elements whose qualified name is qualifiedName.
+    /// If qualifiedName is "*", returns all descendant elements.
     pub fn call_getElementsByTagName(self: *Element, qualified_name: []const u8) !*HTMLCollection {
 
         const collection = try self.allocator.create(HTMLCollection);
@@ -711,6 +897,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.5 - Element.getElementsByTagNameNS(namespace, localName)
+    /// Returns an HTMLCollection of all descendant elements matching the namespace and local name.
+    /// If namespace is "*", matches any namespace.
+    /// If localName is "*", matches any local name.
+    /// If both are "*", returns all descendant elements.
     pub fn call_getElementsByTagNameNS(
         self: *Element,
         namespace: ?[]const u8,
@@ -751,6 +942,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.5 - Element.getElementsByClassName(classNames)
+    /// Returns an HTMLCollection of all descendant elements that have all the given class names.
+    /// classNames is a space-separated list of class names.
     pub fn call_getElementsByClassName(self: *Element, class_names: []const u8) !*HTMLCollection {
 
         const collection = try self.allocator.create(HTMLCollection);
@@ -799,6 +993,14 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.4 - Element.matches(selectors)
+    /// Returns true if this element would be selected by the given CSS selectors; otherwise false.
+    /// 
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. If the result of match a selector against an element, using s, this,
+    /// and :scope element this, returns success, then return true; otherwise, return false.
     pub fn call_matches(self: *const Element, allocator: Allocator, selectors: []const u8) !bool {
 
         // Use scopeMatchSelectorsString to parse and match
@@ -817,6 +1019,17 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.4 - Element.closest(selectors)
+    /// Returns the closest ancestor element (including this element) that matches the given CSS selectors.
+    /// Returns null if no such element exists.
+    /// 
+    /// Spec steps:
+    /// 1. Let s be the result of parse a selector from selectors.
+    /// 2. If s is failure, throw a "SyntaxError" DOMException.
+    /// 3. Let elements be this's inclusive ancestors that are elements, in reverse tree order.
+    /// 4. For each element in elements, if the result of match a selector against an element,
+    /// using s, element, and :scope element this, returns success, return element.
+    /// 5. Return null.
     pub fn call_closest(self: *const Element, allocator: Allocator, selectors: []const u8) !?*Element {
 
         const NodeType = @import("node").Node;
@@ -853,6 +1066,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.7 - insert adjacent algorithm
+    /// To insert adjacent, given an element element, string where, and a node node, run the steps
+    /// associated with the first ASCII case-insensitive match for where
     fn insertAdjacent(element: *Element, where: []const u8, node: *Node) !?*Node {
 
         const mutation = dom.mutation;
@@ -890,6 +1106,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.7 - Element.insertAdjacentElement(where, element)
+    /// The insertAdjacentElement(where, element) method steps are to return the result of
+    /// running insert adjacent, given this, where, and element.
     pub fn call_insertAdjacentElement(self: *Element, where: []const u8, element: *Element) !?*Element {
 
         const result = try insertAdjacent(self, where, @ptrCast(element));
@@ -897,6 +1116,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.7 - Element.insertAdjacentText(where, data)
+    /// The insertAdjacentText(where, data) method steps are:
+    /// 1. Let text be a new Text node whose data is data and node document is this's node document.
+    /// 2. Run insert adjacent, given this, where, and text.
+    /// This method returns nothing because it existed before we had a chance to design it.
     pub fn call_insertAdjacentText(self: *Element, where: []const u8, data: []const u8) !void {
 
         // Step 1: Let text be a new Text node whose data is data and node document is this's node document
@@ -911,6 +1135,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.2 - Element.attachShadow(init)
+    /// 
+    /// Creates a shadow root for this element and returns it.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-attachshadow
     pub fn call_attachShadow(self: *Element, shadow_init: ShadowRootInit) !*ShadowRoot {
 
         // Step 1: Let registry be this's node document's custom element registry
@@ -941,6 +1170,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.10.2 - Element.shadowRoot getter
+    /// 
+    /// Returns element's shadow root, if any, and if shadow root's mode is "open"; otherwise null.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-element-shadowroot
     pub fn get_shadowRoot(self: *const Element) ?*ShadowRoot {
 
         // Step 1: Let shadow be this's shadow root
@@ -956,6 +1190,18 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.before()
+    /// Inserts nodes just before this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
+    /// 6. Pre-insert node into parent before viablePreviousSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_before(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1012,6 +1258,17 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.after()
+    /// Inserts nodes just after this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. Pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_after(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1061,6 +1318,18 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.replaceWith()
+    /// Replaces this node with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If this's parent is parent, replace this with node within parent.
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceWith(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1117,6 +1386,12 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.remove()
+    /// Removes this node from its parent.
+    /// 
+    /// Steps:
+    /// 1. If this's parent is null, then return.
+    /// 2. Remove this.
     pub fn call_remove(self: Element) !void {
         const self_parent = self;
 
@@ -1136,6 +1411,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
+    /// Returns the first preceding sibling that is an element; otherwise null.
+    /// 
+    /// The previousElementSibling getter steps are to return the first preceding
+    /// sibling that is an element; otherwise null.
     pub fn previousElementSibling(self: Element) ?*Element {
         const self_parent = self;
 
@@ -1165,6 +1445,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
+    /// Returns the first following sibling that is an element; otherwise null.
+    /// 
+    /// The nextElementSibling getter steps are to return the first following
+    /// sibling that is an element; otherwise null.
     pub fn nextElementSibling(self: Element) ?*Element {
         const self_parent = self;
 
@@ -1190,6 +1475,15 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.children
+    /// Returns the child elements.
+    /// 
+    /// The children getter steps are to return an HTMLCollection collection rooted
+    /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     pub fn get_children(self: Element) !*HTMLCollection {
         const self_parent = self;
 
@@ -1212,6 +1506,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.firstElementChild
+    /// Returns the first child that is an element; otherwise null.
+    /// 
+    /// The firstElementChild getter steps are to return the first child that is
+    /// an element; otherwise null.
     pub fn get_firstElementChild(self: Element) ?*Element {
         const self_parent = self;
 
@@ -1229,6 +1528,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.lastElementChild
+    /// Returns the last child that is an element; otherwise null.
+    /// 
+    /// The lastElementChild getter steps are to return the last child that is
+    /// an element; otherwise null.
     pub fn get_lastElementChild(self: Element) ?*Element {
         const self_parent = self;
 
@@ -1249,6 +1553,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.childElementCount
+    /// Returns the number of children that are elements.
+    /// 
+    /// The childElementCount getter steps are to return the number of children
+    /// of this that are elements.
     pub fn get_childElementCount(self: Element) u32 {
         const self_parent = self;
 
@@ -1267,6 +1576,14 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.prepend()
+    /// Inserts nodes before the first child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Pre-insert node into this before this's first child.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_prepend(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1287,6 +1604,14 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.append()
+    /// Inserts nodes after the last child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Append node to this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1306,6 +1631,15 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.replaceChildren()
+    /// Replaces all children with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Ensure pre-insert validity of node into this before null.
+    /// 3. Replace all with node within this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: Element, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -1328,6 +1662,18 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.moveBefore()
+    /// Moves, without first removing, movedNode into this after child.
+    /// This method preserves state associated with movedNode.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// 
+    /// Steps:
+    /// 1. Let referenceChild be child.
+    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+    /// 3. Move node into this before referenceChild.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: Element, node: anytype, child: anytype) !void {
         const self_parent = self;
 
@@ -1351,6 +1697,14 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelector()
+    /// Returns the first element that is a descendant of this that matches selectors.
+    /// 
+    /// The querySelector(selectors) method steps are to return the first result of
+    /// running scope-match a selectors string selectors against this, if the result
+    /// is not an empty list; otherwise null.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelector(self: Element, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
         const self_parent = self;
 
@@ -1367,6 +1721,13 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelectorAll()
+    /// Returns all element descendants of this that match selectors.
+    /// 
+    /// The querySelectorAll(selectors) method steps are to return the static result
+    /// of running scope-match a selectors string selectors against this.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelectorAll(self: Element, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
         const self_parent = self;
 
@@ -1389,6 +1750,12 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.3.7 - Slottable.assignedSlot
+    /// 
+    /// Returns the slot element this slottable is assigned to, if any.
+    /// Returns null if not assigned or if the shadow root is closed.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
     pub fn get_assignedSlot(self: *const Element) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -1404,6 +1771,7 @@ pub const Element = struct {
     
     }
 
+    /// Get the slottable name
     pub fn getSlottableName(self: *const Element) []const u8 {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -1411,6 +1779,7 @@ pub const Element = struct {
     
     }
 
+    /// Set the slottable name
     pub fn setSlottableName(self: *Element, name: []const u8) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -1418,6 +1787,7 @@ pub const Element = struct {
     
     }
 
+    /// Check if this slottable is assigned
     pub fn isAssigned(self: *const Element) bool {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -1425,6 +1795,7 @@ pub const Element = struct {
     
     }
 
+    /// Get the assigned slot
     pub fn getAssignedSlotInternal(self: *const Element) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -1432,6 +1803,7 @@ pub const Element = struct {
     
     }
 
+    /// Set the assigned slot
     pub fn setAssignedSlot(self: *Element, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -1439,6 +1811,7 @@ pub const Element = struct {
     
     }
 
+    /// Get the manual slot assignment
     pub fn getManualSlotAssignment(self: *const Element) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -1446,6 +1819,7 @@ pub const Element = struct {
     
     }
 
+    /// Set the manual slot assignment
     pub fn setManualSlotAssignment(self: *Element, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -1453,6 +1827,8 @@ pub const Element = struct {
     
     }
 
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *Element, node: *Node, child: ?*Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1466,6 +1842,8 @@ pub const Element = struct {
     
     }
 
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *Element, node: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1479,6 +1857,8 @@ pub const Element = struct {
     
     }
 
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *Element, node: *Node, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1492,6 +1872,8 @@ pub const Element = struct {
     
     }
 
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *Element, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1506,6 +1888,11 @@ pub const Element = struct {
     
     }
 
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Element, options: ?GetRootNodeOptions) *Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1543,6 +1930,8 @@ pub const Element = struct {
     
     }
 
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const Element, other: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1554,6 +1943,8 @@ pub const Element = struct {
     
     }
 
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Element, other: *const Node) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1606,6 +1997,8 @@ pub const Element = struct {
     
     }
 
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const Element, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1615,6 +2008,13 @@ pub const Element = struct {
     
     }
 
+    /// Node A equals node B - DOM Spec algorithm
+    /// A node A equals a node B if all of the following conditions are true:
+    /// - A and B implement the same interfaces
+    /// - Node-specific properties are equal
+    /// - If A is an element, each attribute in its list equals an attribute in B's list
+    /// - A and B have the same number of children
+    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -1709,6 +2109,11 @@ pub const Element = struct {
     
     }
 
+    /// Attribute equality check
+    /// An attribute A equals an attribute B if:
+    /// - namespace is equal
+    /// - local name is equal
+    /// - value is equal
     pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
 
         // Check namespace
@@ -1728,6 +2133,8 @@ pub const Element = struct {
     
     }
 
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
     pub fn call_isSameNode(self: *const Element, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1737,6 +2144,8 @@ pub const Element = struct {
     
     }
 
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Element) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1744,6 +2153,8 @@ pub const Element = struct {
     
     }
 
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Element, deep: bool) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1766,6 +2177,8 @@ pub const Element = struct {
     
     }
 
+    /// Clone a node - DOM Spec algorithm
+    /// Given a node `node` and optional document, subtree flag, parent, and fallbackRegistry
     pub fn cloneNodeInternal(
         node: *Node,
         document_param: ?*Document,
@@ -1864,6 +2277,8 @@ pub const Element = struct {
     
     }
 
+    /// Clone a single node - DOM Spec algorithm
+    /// Creates a new node with the same properties but no children
     pub fn cloneSingleNode(
         node: *Node,
         document: ?*Document,
@@ -1968,6 +2383,21 @@ pub const Element = struct {
     
     }
 
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    /// 
+    /// Removes empty exclusive Text nodes and concatenates the data of remaining
+    /// contiguous exclusive Text nodes into the first of their nodes.
+    /// 
+    /// The normalize() method steps are to run these steps for each descendant
+    /// exclusive Text node `node` of this:
+    /// 1. Let length be node's length
+    /// 2. If length is zero, remove node and continue
+    /// 3. Let data be concatenation of data of node's contiguous exclusive Text nodes (excluding itself)
+    /// 4. Replace data with node, offset length, count 0, and data
+    /// 5. Let currentNode be node's next sibling
+    /// 6. While currentNode is exclusive Text node: update ranges and advance
+    /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *Element) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -2055,6 +2485,8 @@ pub const Element = struct {
     
     }
 
+    /// Helper: Check if a node is an exclusive Text node
+    /// An exclusive Text node is a Text node that is NOT a CDATASection node
     fn isExclusiveTextNode(node: *Node) bool {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
@@ -2062,6 +2494,7 @@ pub const Element = struct {
     
     }
 
+    /// Helper: Collect all descendant exclusive Text nodes in tree order
     fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
 
         // Check if this node is an exclusive Text node
@@ -2076,6 +2509,8 @@ pub const Element = struct {
     
     }
 
+    /// Helper: Update ranges during normalize operation
+    /// Spec: DOM §4.2.5 normalize() step 6.1-6.4
     fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
 
         // This requires access to document's live ranges list
@@ -2106,6 +2541,7 @@ pub const Element = struct {
     
     }
 
+    /// Getters
     pub fn get_nodeType(self: *const Element) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -2233,6 +2669,11 @@ pub const Element = struct {
     
     }
 
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Element) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -2326,6 +2767,10 @@ pub const Element = struct {
     
     }
 
+    /// Get text content - DOM Spec algorithm
+    /// Returns text content based on node type
+    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
+    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -2351,6 +2796,10 @@ pub const Element = struct {
     
     }
 
+    /// Get descendant text content - concatenate all Text node descendants
+    /// Spec: https://dom.spec.whatwg.org/#concept-descendant-text-content
+    /// Returns the concatenation of data from all Text node descendants in tree order.
+    /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
         var result = std.ArrayList(u8).init(allocator);
@@ -2362,6 +2811,7 @@ pub const Element = struct {
     
     }
 
+    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -2379,6 +2829,8 @@ pub const Element = struct {
     
     }
 
+    /// Set text content - DOM Spec algorithm
+    /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -2405,6 +2857,8 @@ pub const Element = struct {
     
     }
 
+    /// String replace all - DOM Spec algorithm
+    /// Replace all children with a single text node containing string
     pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
 
         // Step 1: Let node be null
@@ -2428,6 +2882,8 @@ pub const Element = struct {
     
     }
 
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const Element, namespace_param: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -2459,6 +2915,8 @@ pub const Element = struct {
     
     }
 
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
     pub fn call_lookupNamespaceURI(self: *const Element, prefix_param: ?[]const u8) ?[]const u8 {
 
         // Spec step 1: If prefix is empty string, set to null
@@ -2469,6 +2927,8 @@ pub const Element = struct {
     
     }
 
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Element, namespace_param: ?[]const u8) bool {
 
         // Spec step 1: If namespace is empty string, set to null
@@ -2484,6 +2944,8 @@ pub const Element = struct {
     
     }
 
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const Element, namespace: []const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -2517,6 +2979,8 @@ pub const Element = struct {
     
     }
 
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const Element, prefix: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -2609,6 +3073,7 @@ pub const Element = struct {
     
     }
 
+    /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *Element) *std.ArrayList(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
@@ -2616,6 +3081,7 @@ pub const Element = struct {
     
     }
 
+    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *Element, registered: RegisteredObserver) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -2623,6 +3089,7 @@ pub const Element = struct {
     
     }
 
+    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Element, observer: *const @import("mutation_observer").MutationObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -2638,6 +3105,10 @@ pub const Element = struct {
     
     }
 
+    /// Remove all transient registered observers whose source matches the given registered observer
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Element, source: *const RegisteredObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -2655,6 +3126,8 @@ pub const Element = struct {
     
     }
 
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *Element) !*std.ArrayList(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -2670,6 +3143,8 @@ pub const Element = struct {
     
     }
 
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const Element) []const EventListener {
         const self_parent: *const EventTarget = @ptrCast(self);
 
@@ -2680,6 +3155,10 @@ pub const Element = struct {
     
     }
 
+    /// DOM §2.7 - flatten options
+    /// To flatten options, run these steps:
+    /// 1. If options is a boolean, then return options.
+    /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -2699,6 +3178,8 @@ pub const Element = struct {
     
     }
 
+    /// DOM §2.7 - flatten more options
+    /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
 
         const OptionsType = @TypeOf(options);
@@ -2733,6 +3214,8 @@ pub const Element = struct {
     
     }
 
+    /// DOM §2.7 - default passive value
+    /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
 
         _ = event_target;
@@ -2752,6 +3235,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn addAnEventListener(self: *Element, listener: EventListener) !void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -2804,6 +3290,13 @@ pub const Element = struct {
     
     }
 
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
     pub fn call_addEventListener(
         self: *Element,
         event_type: []const u8,
@@ -2828,6 +3321,9 @@ pub const Element = struct {
     
     }
 
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *Element, listener: EventListener) void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -2855,6 +3351,13 @@ pub const Element = struct {
     
     }
 
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
     pub fn call_removeEventListener(
         self: *Element,
         event_type: []const u8,
@@ -2876,6 +3379,13 @@ pub const Element = struct {
     
     }
 
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *Element, event: *Event) !bool {
         const self_parent: *EventTarget = @ptrCast(self);
 

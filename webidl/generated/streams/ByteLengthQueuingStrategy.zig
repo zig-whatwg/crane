@@ -25,6 +25,7 @@ pub const ByteLengthQueuingStrategy = struct {
     // Fields
     // ========================================================================
 
+    /// [[highWaterMark]]: The high water mark (internal slot)
     _highWaterMark: f64,
 
     // ========================================================================
@@ -40,6 +41,8 @@ pub const ByteLengthQueuingStrategy = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor: new ByteLengthQueuingStrategy(init)
+    /// Spec: https://streams.spec.whatwg.org/#blqs-constructor
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) ByteLengthQueuingStrategy {
 
         _ = allocator; // Not needed for this simple structure
@@ -53,12 +56,17 @@ pub const ByteLengthQueuingStrategy = struct {
 
     }
 
+    /// readonly attribute unrestricted double highWaterMark
+    /// Getter returns this.[[highWaterMark]]
+    /// Spec: https://streams.spec.whatwg.org/#blqs-high-water-mark
     pub fn get_highWaterMark(self: *const ByteLengthQueuingStrategy) f64 {
 
         return self._highWaterMark;
     
     }
 
+    /// size function: Measures the size of chunk by returning chunk.byteLength
+    /// This is called as strategy.size(chunk) in JavaScript
     pub fn call_size(_: *const ByteLengthQueuingStrategy, chunk: webidl.JSValue) f64 {
 
         // NOTE: Property extraction requires JS runtime integration

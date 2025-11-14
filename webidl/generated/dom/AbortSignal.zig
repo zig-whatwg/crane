@@ -51,18 +51,33 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     };
 }
 
+/// DOM Spec: interface AbortSignal : EventTarget
 pub const AbortSignal = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// DOM §2.7 - Each EventTarget has an associated event listener list
+    /// (a list of zero or more event listeners). It is initially the empty list.
+    /// 
+    /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
+    /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
+    /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
     allocator: std.mem.Allocator,
     aborted: bool,
     reason: ?webidl.Exception,
+    /// [[abortAlgorithms]]: List of algorithms to run when aborted
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-abort-algorithms
     abort_algorithms: infra.List(AbortAlgorithm),
+    /// Event listeners to remove when signal is aborted
+    /// Spec: Step 6 of "add an event listener" algorithm
     event_listener_removals: infra.List(EventListenerRemovalContext),
+    /// Source signals: weak set of AbortSignals this signal depends on
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-source-signals
     source_signals: infra.List(*AbortSignal),
+    /// Dependent signals: weak set of AbortSignals that depend on this signal
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-dependent-signals
     dependent_signals: infra.List(*AbortSignal),
 
     // ========================================================================
@@ -123,6 +138,9 @@ pub const AbortSignal = struct {
     
     }
 
+    /// AbortSignal.any(signals) - static method
+    /// Spec: https://dom.spec.whatwg.org/#dom-abortsignal-any
+    /// Returns an AbortSignal that will be aborted when any of the signals are aborted
     pub fn call_any(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
 
         // This calls "create a dependent abort signal" algorithm
@@ -130,6 +148,17 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Create a dependent abort signal
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
+    /// 
+    /// Steps:
+    /// 1. Let resultSignal be a new object implementing signalInterface using realm
+    /// 2. For each signal of signals:
+    /// - If signal is aborted, then set resultSignal's abort reason to signal's abort reason
+    /// - Otherwise:
+    /// - Append signal to resultSignal's source signals
+    /// - Append resultSignal to signal's dependent signals
+    /// 3. Return resultSignal
     fn createDependentAbortSignal(allocator: std.mem.Allocator, signals: []const *AbortSignal) !*AbortSignal {
 
         // Step 1: Let resultSignal be a new object implementing AbortSignal
@@ -157,12 +186,16 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Add an algorithm to be run when signal is aborted
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-add
     pub fn addAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) !void {
 
         try self.abort_algorithms.append(algorithm);
     
     }
 
+    /// Remove an algorithm from abort algorithms
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-remove
     pub fn removeAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) void {
 
         var i: usize = 0;
@@ -176,6 +209,21 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Signal abort algorithm
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-signal-abort
+    /// 
+    /// Steps:
+    /// 1. If signal is aborted, then return
+    /// 2. Set signal's abort reason to reason if given, otherwise to new "AbortError" DOMException
+    /// 3. Let dependentSignalsToAbort be a new list
+    /// 4. For each dependentSignal of signal's dependent signals:
+    /// - If dependentSignal is not aborted:
+    /// - Set dependentSignal's abort reason to signal's abort reason
+    /// - Append dependentSignal to dependentSignalsToAbort
+    /// 5. Run the abort steps for signal
+    /// 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal
+    /// 
+    /// TODO: Fire 'abort' event (requires full event loop integration)
     pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
 
         // Spec step 1: If signal is aborted, then return
@@ -213,12 +261,17 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Add an event listener removal to be performed when signal is aborted
+    /// Spec: Step 6 of "add an event listener" - add abort steps to remove the listener
+    /// https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
     pub fn addEventListenerRemoval(self: *AbortSignal, context: EventListenerRemovalContext) !void {
 
         try self.event_listener_removals.append(context);
     
     }
 
+    /// Run the abort steps for an AbortSignal
+    /// Spec: https://dom.spec.whatwg.org/#abortsignal-run-abort-steps
     fn runAbortSteps(self: *AbortSignal) void {
 
         // Spec step 1: For each algorithm of signal's abort algorithms: run algorithm
@@ -248,6 +301,8 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *AbortSignal) !*std.ArrayList(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -263,6 +318,8 @@ pub const AbortSignal = struct {
     
     }
 
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const AbortSignal) []const EventListener {
         const self_parent: *const EventTarget = @ptrCast(self);
 
@@ -273,6 +330,10 @@ pub const AbortSignal = struct {
     
     }
 
+    /// DOM §2.7 - flatten options
+    /// To flatten options, run these steps:
+    /// 1. If options is a boolean, then return options.
+    /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -292,6 +353,8 @@ pub const AbortSignal = struct {
     
     }
 
+    /// DOM §2.7 - flatten more options
+    /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
 
         const OptionsType = @TypeOf(options);
@@ -326,6 +389,8 @@ pub const AbortSignal = struct {
     
     }
 
+    /// DOM §2.7 - default passive value
+    /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
 
         _ = event_target;
@@ -345,6 +410,9 @@ pub const AbortSignal = struct {
     
     }
 
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn addAnEventListener(self: *AbortSignal, listener: EventListener) !void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -397,6 +465,13 @@ pub const AbortSignal = struct {
     
     }
 
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
     pub fn call_addEventListener(
         self: *AbortSignal,
         event_type: []const u8,
@@ -421,6 +496,9 @@ pub const AbortSignal = struct {
     
     }
 
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *AbortSignal, listener: EventListener) void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -448,6 +526,13 @@ pub const AbortSignal = struct {
     
     }
 
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
     pub fn call_removeEventListener(
         self: *AbortSignal,
         event_type: []const u8,
@@ -469,6 +554,13 @@ pub const AbortSignal = struct {
     
     }
 
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *AbortSignal, event: *Event) !bool {
         const self_parent: *EventTarget = @ptrCast(self);
 

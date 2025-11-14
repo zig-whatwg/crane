@@ -29,6 +29,7 @@ pub const EventPathItem = struct {
 
 /// Event WebIDL interface
 
+/// Event WebIDL interface
 pub const Event = struct {
     // ========================================================================
     // Fields
@@ -76,6 +77,8 @@ pub const Event = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor: new Event(type, eventInitDict)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-event
     pub fn init(allocator: Allocator, event_type: []const u8, options: ?EventInit) !Event {
 
         const event_init = options orelse EventInit{};
@@ -115,12 +118,16 @@ pub const Event = struct {
     
     }
 
+    /// stopPropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
     pub fn call_stopPropagation(self: *Event) void {
 
         self.stop_propagation_flag = true;
     
     }
 
+    /// stopImmediatePropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
     pub fn call_stopImmediatePropagation(self: *Event) void {
 
         self.stop_propagation_flag = true;
@@ -128,6 +135,10 @@ pub const Event = struct {
     
     }
 
+    /// DOM §2.3 - set the canceled flag
+    /// To set the canceled flag, given an event event, if event's cancelable
+    /// attribute value is true and event's in passive listener flag is unset,
+    /// then set event's canceled flag, and do nothing otherwise.
     fn setCanceledFlag(self: *Event) void {
 
         if (self.cancelable and !self.in_passive_listener_flag) {
@@ -136,12 +147,24 @@ pub const Event = struct {
     
     }
 
+    /// preventDefault()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
+    /// The preventDefault() method steps are to set the canceled flag with this.
     pub fn call_preventDefault(self: *Event) void {
 
         self.setCanceledFlag();
     
     }
 
+    /// composedPath()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
+    /// 
+    /// Returns the invocation target objects of event's path (objects on which
+    /// listeners will be invoked), except for any nodes in shadow trees of which
+    /// the shadow root's mode is "closed" that are not reachable from event's
+    /// currentTarget.
+    /// 
+    /// The composedPath() method steps are (DOM §2.3):
     pub fn call_composedPath(self: *Event) !std.ArrayList(*EventTarget) {
 
         // Step 1: Let composedPath be an empty list
@@ -277,6 +300,8 @@ pub const Event = struct {
     
     }
 
+    /// DOM §2.3 - initialize an event
+    /// To initialize an event, with type, bubbles, and cancelable, run these steps:
     fn initializeEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
 
         // Step 1: Set event's initialized flag
@@ -304,6 +329,11 @@ pub const Event = struct {
     
     }
 
+    /// initEvent(type, bubbles, cancelable)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
+    /// The initEvent(type, bubbles, cancelable) method steps are:
+    /// 1. If this's dispatch flag is set, then return.
+    /// 2. Initialize this with type, bubbles, and cancelable.
     pub fn call_initEvent(self: *Event, event_type: []const u8, bubbles: bool, cancelable: bool) void {
 
         // Step 1: If dispatch flag is set, return
@@ -314,6 +344,7 @@ pub const Event = struct {
     
     }
 
+    /// Getters
     pub fn get_type(self: *const Event) []const u8 {
 
         return self.event_type;
@@ -326,6 +357,8 @@ pub const Event = struct {
     
     }
 
+    /// DOM §2.3 - srcElement getter (legacy)
+    /// The srcElement getter steps are to return this's target.
     pub fn get_srcElement(self: *const Event) ?*EventTarget {
 
         return self.target;
@@ -380,12 +413,18 @@ pub const Event = struct {
     
     }
 
+    /// DOM §2.3 - cancelBubble getter (legacy)
+    /// The cancelBubble getter steps are to return true if this's stop propagation
+    /// flag is set; otherwise false.
     pub fn get_cancelBubble(self: *const Event) bool {
 
         return self.stop_propagation_flag;
     
     }
 
+    /// DOM §2.3 - cancelBubble setter (legacy)
+    /// The cancelBubble setter steps are to set this's stop propagation flag if
+    /// the given value is true; otherwise do nothing.
     pub fn set_cancelBubble(self: *Event, value: bool) void {
 
         if (value) {
@@ -394,12 +433,18 @@ pub const Event = struct {
     
     }
 
+    /// DOM §2.3 - returnValue getter (legacy)
+    /// The returnValue getter steps are to return false if this's canceled flag
+    /// is set; otherwise true.
     pub fn get_returnValue(self: *const Event) bool {
 
         return !self.canceled_flag;
     
     }
 
+    /// DOM §2.3 - returnValue setter (legacy)
+    /// The returnValue setter steps are to set the canceled flag with this if
+    /// the given value is false; otherwise do nothing.
     pub fn set_returnValue(self: *Event, value: bool) void {
 
         if (!value) {

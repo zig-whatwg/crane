@@ -35,9 +35,13 @@ pub const ReadableStreamBYOBReader = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
+    /// [[stream]]: The ReadableStream being read from (or undefined if released)
     stream: ?*ReadableStream,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
+    /// [[readIntoRequests]]: List of pending read-into requests
     readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
@@ -77,6 +81,9 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// Read data into the provided view
+    /// 
+    /// Spec: § 4.5.3 "The read(view, options) method steps are:"
     pub fn call_read(
         self: *ReadableStreamBYOBReader,
         view: webidl.ArrayBufferView,
@@ -160,6 +167,9 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// Internal read implementation
+    /// 
+    /// Spec: § 4.5.4 "ReadableStreamBYOBReaderRead(reader, view, min)"
     fn readInternal(
         self: *ReadableStreamBYOBReader,
         view: webidl.ArrayBufferView,
@@ -274,6 +284,10 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// readonly attribute Promise<undefined> closed
+    /// IDL: readonly attribute Promise<undefined> closed;
+    /// 
+    /// Spec: § 4.2.3 "The closed getter steps are:"
     pub fn get_closed(self: *const ReadableStreamBYOBReader) webidl.Promise(void) {
         const self_parent: *const ReadableStreamGenericReader = @ptrCast(self);
 
@@ -288,6 +302,10 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    /// 
+    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
     pub fn call_cancel(self: *ReadableStreamBYOBReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
@@ -311,6 +329,9 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericCancel(reader, reason)
+    /// 
+    /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
     fn genericCancel(self: *ReadableStreamBYOBReader, reason: ?common.JSValue) !*AsyncPromise(void) {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
@@ -325,6 +346,9 @@ pub const ReadableStreamBYOBReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericRelease(reader)
+    /// 
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamBYOBReader) void {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 

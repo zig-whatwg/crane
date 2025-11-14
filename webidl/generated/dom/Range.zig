@@ -34,16 +34,28 @@ const webidl = @import("webidl");
 ///
 /// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 
+/// DOM Spec: interface Range : AbstractRange
+/// 
+/// A Range object represents a sequence of content within the node tree.
+/// Each range has a start and an end which are boundary points.
+/// A boundary point is a tuple consisting of a node and an offset.
+/// 
+/// Unlike StaticRange, Range objects are "live" - they update when the DOM mutates.
 pub const Range = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Start boundary point - node
     start_container: *Node,
+    /// Start boundary point - offset
     start_offset: u32,
+    /// End boundary point - node
     end_container: *Node,
+    /// End boundary point - offset
     end_offset: u32,
     allocator: Allocator,
+    /// Owner document - needed for per-document range tracking
     owner_document: *Document,
 
     // ========================================================================
@@ -79,6 +91,9 @@ pub const Range = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §5 - Range constructor
+    /// The new Range() constructor steps are to set this's start and end to
+    /// (current global object's associated Document, 0).
     pub fn init(allocator: Allocator, document_node: *Node) !Range {
 
         // Get Document from node using asDocument pattern
@@ -101,6 +116,8 @@ pub const Range = struct {
     
     }
 
+    /// Register this range with its owner document for live tracking
+    /// Must be called after init and heap allocation
     pub fn registerWithDocument(self: *Range) !void {
 
         try self.owner_document.registerRange(self);
@@ -115,6 +132,9 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.commonAncestorContainer
+    /// Returns the node, furthest away from the document, that is an ancestor
+    /// of both range's start node and end node.
     pub fn get_commonAncestorContainer(self: *const Range) *Node {
 
         const dom = @import("dom");
@@ -135,6 +155,11 @@ pub const Range = struct {
     
     }
 
+    /// Helper: Get the length of a node per DOM spec
+    /// Per DOM §5.2: The length of a node is:
+    /// - 0 for DocumentType or Attr nodes
+    /// - data's length for CharacterData nodes
+    /// - number of children for other nodes
     fn getNodeLength(node: *Node) u32 {
 
         switch (node.node_type) {
@@ -152,6 +177,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setStart(node, offset)
+    /// Sets the start of the range to the given boundary point
     pub fn call_setStart(self: *Range, node: *Node, offset: u32) !void {
 
         // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -184,6 +211,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setEnd(node, offset)
+    /// Sets the end of the range to the given boundary point
     pub fn call_setEnd(self: *Range, node: *Node, offset: u32) !void {
 
         // Step 1: If node is a doctype, throw InvalidNodeTypeError
@@ -216,6 +245,11 @@ pub const Range = struct {
     
     }
 
+    /// Helper: Check if boundary point A is after boundary point B
+    /// Per DOM spec: A boundary point (nodeA, offsetA) is after another
+    /// boundary point (nodeB, offsetB) if:
+    /// - nodeA is after nodeB in tree order, or
+    /// - nodeA is nodeB and offsetA is greater than offsetB
     fn isAfter(self: *const Range, nodeA: *Node, offsetA: u32, nodeB: *Node, offsetB: u32) bool {
 
         _ = self;
@@ -231,6 +265,9 @@ pub const Range = struct {
     
     }
 
+    /// Helper: Compare position of boundary point (node, offset) relative to (otherNode, otherOffset)
+    /// Returns: .before, .equal, or .after
+    /// Per DOM §5.5 boundary point position algorithm
     fn compareBoundaryPointsHelper(
         node: *Node,
         offset: u32,
@@ -291,6 +328,11 @@ pub const Range = struct {
     
     }
 
+    /// Helper: Check if a node is contained in this range
+    /// Per DOM spec: A node is contained if:
+    /// - node's root is range's root
+    /// - (node, 0) is after range's start
+    /// - (node, node's length) is before range's end
     fn isNodeContained(self: *const Range, node: *Node) bool {
 
         const dom = @import("dom");
@@ -313,6 +355,9 @@ pub const Range = struct {
     
     }
 
+    /// Helper: Check if a node is partially contained in this range
+    /// Per DOM spec: A node is partially contained if it's an inclusive ancestor
+    /// of the start node but not the end node, or vice versa
     fn isNodePartiallyContained(self: *const Range, node: *Node) bool {
 
         const dom = @import("dom");
@@ -325,6 +370,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setStartBefore(node)
+    /// Sets the start to immediately before the given node
     pub fn call_setStartBefore(self: *Range, node: *Node) !void {
 
         const dom = @import("dom");
@@ -335,6 +382,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setStartAfter(node)
+    /// Sets the start to immediately after the given node
     pub fn call_setStartAfter(self: *Range, node: *Node) !void {
 
         const dom = @import("dom");
@@ -345,6 +394,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setEndBefore(node)
+    /// Sets the end to immediately before the given node
     pub fn call_setEndBefore(self: *Range, node: *Node) !void {
 
         const dom = @import("dom");
@@ -355,6 +406,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.setEndAfter(node)
+    /// Sets the end to immediately after the given node
     pub fn call_setEndAfter(self: *Range, node: *Node) !void {
 
         const dom = @import("dom");
@@ -365,6 +418,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.collapse(toStart)
+    /// Collapses the range to one of its boundary points
     pub fn call_collapse(self: *Range, toStart: bool) void {
 
         if (toStart) {
@@ -379,6 +434,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.selectNode(node)
+    /// Selects the entire node and its contents
     pub fn call_selectNode(self: *Range, node: *Node) !void {
 
         const dom = @import("dom");
@@ -390,6 +447,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.3 - Range.selectNodeContents(node)
+    /// Selects the contents of the node
     pub fn call_selectNodeContents(self: *Range, node: *Node) !void {
 
         // If node is a doctype, throw InvalidNodeTypeError
@@ -403,6 +462,9 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.5 - Range.compareBoundaryPoints(how, sourceRange)
+    /// Compares boundary points between two ranges
+    /// Returns -1 if this's point is before sourceRange's point, 0 if equal, 1 if after
     pub fn call_compareBoundaryPoints(self: *Range, how: u16, sourceRange: *Range) !i16 {
 
         // Step 1: Validate 'how' parameter
@@ -458,6 +520,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.4 - Range.deleteContents()
+    /// Removes the contents of the range from the range's context tree
     pub fn call_deleteContents(self: *Range) !void {
 
         // Spec: Remove all contained children within this from their parents
@@ -498,6 +562,9 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.6 - Range.extractContents()
+    /// Moves the contents of the range into a DocumentFragment
+    /// Note: Simplified implementation covering common cases
     pub fn call_extractContents(self: *Range) !*DocumentFragment {
 
         // Step 1: Create fragment
@@ -579,6 +646,9 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.6 - Range.cloneContents()
+    /// Returns a DocumentFragment that is a copy of the contents
+    /// Note: Simplified implementation covering common cases
     pub fn call_cloneContents(self: *Range) !*DocumentFragment {
 
         // Step 1: Create fragment
@@ -646,6 +716,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.4 - Range.insertNode(node)
+    /// Inserts node into the range's context tree
     pub fn call_insertNode(self: *Range, node: *Node) !void {
 
         // Step 1: Validate start node
@@ -725,6 +797,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5.4 - Range.surroundContents(newParent)
+    /// Moves the contents of the range into newParent, then inserts newParent at range's start
     pub fn call_surroundContents(self: *Range, newParent: *Node) !void {
 
         // Step 1: Check for partially contained non-Text nodes
@@ -771,6 +845,7 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.cloneRange()
     pub fn call_cloneRange(self: *Range) !*Range {
 
         const range = try self.allocator.create(Range);
@@ -787,6 +862,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.detach()
+    /// Does nothing. Kept for compatibility.
     pub fn call_detach(self: *Range) void {
 
         _ = self;
@@ -794,6 +871,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.isPointInRange(node, offset)
+    /// Returns true if the point (node, offset) is within the range
     pub fn call_isPointInRange(self: *Range, node: *Node, offset: u32) !bool {
 
         const dom = @import("dom");
@@ -829,6 +908,9 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.comparePoint(node, offset)
+    /// Compares the point (node, offset) to the range
+    /// Returns -1 if before, 0 if in range, 1 if after
     pub fn call_comparePoint(self: *Range, node: *Node, offset: u32) !i16 {
 
         const dom = @import("dom");
@@ -868,6 +950,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range.intersectsNode(node)
+    /// Returns true if the node intersects with the range
     pub fn call_intersectsNode(self: *Range, node: *Node) bool {
 
         const dom = @import("dom");
@@ -901,6 +985,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - Range stringifier
+    /// Returns the text content of the range per spec §5.7
     pub fn toString(self: *Range, allocator: Allocator) ![]const u8 {
 
         var result = std.ArrayList(u8).init(allocator);
@@ -952,6 +1038,7 @@ pub const Range = struct {
     
     }
 
+    /// Helper for toString: Recursively append contained Text node data
     fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
 
         // If this node is contained and is a Text node, append its data
@@ -969,6 +1056,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.startContainer
+    /// Returns the node at the start of the range
     pub fn get_startContainer(self: *const Range) *Node {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -976,6 +1065,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.startOffset
+    /// Returns the offset within the start node
     pub fn get_startOffset(self: *const Range) u32 {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -983,6 +1074,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.endContainer
+    /// Returns the node at the end of the range
     pub fn get_endContainer(self: *const Range) *Node {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -990,6 +1083,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.endOffset
+    /// Returns the offset within the end node
     pub fn get_endOffset(self: *const Range) u32 {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -997,6 +1092,8 @@ pub const Range = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.collapsed
+    /// Returns true if the range's start and end are the same position
     pub fn get_collapsed(self: *const Range) bool {
         const self_parent: *const AbstractRange = @ptrCast(self);
 

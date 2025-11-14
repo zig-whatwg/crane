@@ -30,14 +30,28 @@ pub const FilterFn = *const fn (*Element, *const anyopaque) bool;
 /// };
 /// ```
 
+/// HTMLCollection is a collection of elements.
+/// 
+/// This is a live collection - it automatically updates when the DOM changes.
+/// WebIDL Definition:
+/// ```
+/// interface HTMLCollection {
+/// readonly attribute unsigned long length;
+/// getter Element? item(unsigned long index);
+/// getter Element? namedItem(DOMString name);
+/// };
+/// ```
 pub const HTMLCollection = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
+    /// The elements in this collection (cached)
     elements: infra.List(*Element),
+    /// Root node for live traversal
     root: ?*Node,
+    /// Filter function for live collection
     filter_fn: ?FilterFn,
     filter_context: ?*const anyopaque,
 
@@ -120,12 +134,17 @@ pub const HTMLCollection = struct {
     
     }
 
+    /// DOM §4.3.5 - HTMLCollection.length
+    /// Returns the number of elements in the collection.
     pub fn get_length(self: *const HTMLCollection) u32 {
 
         return @intCast(self.elements.items.len);
     
     }
 
+    /// DOM §4.3.5 - HTMLCollection.item(index)
+    /// Returns the element at the given index, or null if out of bounds.
+    /// The elements are sorted in tree order.
     pub fn call_item(self: *const HTMLCollection, index: u32) ?*Element {
 
         if (index >= self.elements.items.len) {
@@ -135,6 +154,9 @@ pub const HTMLCollection = struct {
     
     }
 
+    /// DOM §4.3.5 - HTMLCollection.namedItem(name)
+    /// Returns the first element with ID or name attribute matching the given name.
+    /// Returns null if no such element exists.
     pub fn call_namedItem(self: *const HTMLCollection, name: []const u8) ?*Element {
 
         for (self.elements.items) |element| {
@@ -155,12 +177,16 @@ pub const HTMLCollection = struct {
     
     }
 
+    /// Helper method to add an element to the collection
+    /// NOTE: This is internal API, not part of WebIDL spec
     pub fn addElement(self: *HTMLCollection, element: *Element) !void {
 
         try self.elements.append(element);
     
     }
 
+    /// Helper method to clear the collection
+    /// NOTE: This is internal API, not part of WebIDL spec
     pub fn clear(self: *HTMLCollection) void {
 
         self.elements.clearRetainingCapacity();

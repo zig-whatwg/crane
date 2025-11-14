@@ -29,14 +29,22 @@ pub const StaticRangeInit = struct {
 /// A StaticRange is a range object that does not update when the node tree mutates.
 /// This makes it more efficient for one-time range operations.
 
+/// DOM §5 - interface StaticRange : AbstractRange
+/// 
+/// A StaticRange is a range object that does not update when the node tree mutates.
+/// This makes it more efficient for one-time range operations.
 pub const StaticRange = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Start boundary point - node
     start_container: *Node,
+    /// Start boundary point - offset
     start_offset: u32,
+    /// End boundary point - node
     end_container: *Node,
+    /// End boundary point - offset
     end_offset: u32,
 
     // ========================================================================
@@ -67,6 +75,13 @@ pub const StaticRange = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §5 - new StaticRange(init) constructor
+    /// 
+    /// Steps:
+    /// 1. If init["startContainer"] or init["endContainer"] is a DocumentType or Attr node,
+    /// then throw an "InvalidNodeTypeError" DOMException.
+    /// 2. Set this's start to (init["startContainer"], init["startOffset"])
+    /// and end to (init["endContainer"], init["endOffset"]).
     pub fn init(options: StaticRangeInit) !StaticRange {
 
         const NodeType = @import("node").Node;
@@ -101,6 +116,13 @@ pub const StaticRange = struct {
     
     }
 
+    /// Check if this StaticRange is valid per the DOM spec
+    /// 
+    /// A StaticRange is valid if all of the following are true:
+    /// - Its start and end are in the same node tree.
+    /// - Its start offset is between 0 and its start node's length, inclusive.
+    /// - Its end offset is between 0 and its end node's length, inclusive.
+    /// - Its start is before or equal to its end.
     pub fn isValid(self: *const StaticRange) bool {
 
         const dom = @import("dom");
@@ -131,6 +153,8 @@ pub const StaticRange = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.startContainer
+    /// Returns the node at the start of the range
     pub fn get_startContainer(self: *const StaticRange) *Node {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -138,6 +162,8 @@ pub const StaticRange = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.startOffset
+    /// Returns the offset within the start node
     pub fn get_startOffset(self: *const StaticRange) u32 {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -145,6 +171,8 @@ pub const StaticRange = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.endContainer
+    /// Returns the node at the end of the range
     pub fn get_endContainer(self: *const StaticRange) *Node {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -152,6 +180,8 @@ pub const StaticRange = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.endOffset
+    /// Returns the offset within the end node
     pub fn get_endOffset(self: *const StaticRange) u32 {
         const self_parent: *const AbstractRange = @ptrCast(self);
 
@@ -159,6 +189,8 @@ pub const StaticRange = struct {
     
     }
 
+    /// DOM §5 - AbstractRange.collapsed
+    /// Returns true if the range's start and end are the same position
     pub fn get_collapsed(self: *const StaticRange) bool {
         const self_parent: *const AbstractRange = @ptrCast(self);
 

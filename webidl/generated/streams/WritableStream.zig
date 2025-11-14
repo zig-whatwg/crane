@@ -48,18 +48,31 @@ pub const WritableStream = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[backpressure]]: boolean - whether backpressure is being applied
     backpressure: bool,
+    /// [[closeRequest]]: undefined or promise
     closeRequest: ?*AsyncPromise(void),
+    /// [[controller]]: WritableStreamDefaultController
     controller: *WritableStreamDefaultController,
+    /// [[detached]]: boolean - stream has been transferred via postMessage
     detached: bool,
+    /// [[inFlightWriteRequest]]: undefined or promise
     inFlightWriteRequest: ?*AsyncPromise(void),
+    /// [[inFlightCloseRequest]]: undefined or promise
     inFlightCloseRequest: ?*AsyncPromise(void),
+    /// [[pendingAbortRequest]]: undefined or abort request record
     pendingAbortRequest: ?AbortRequest,
+    /// [[state]]: "writable", "closed", "erroring", or "errored"
     state: StreamState,
+    /// [[storedError]]: JavaScript value (if state is "erroring" or "errored")
     storedError: ?common.JSValue,
+    /// [[writer]]: WritableStreamDefaultWriter or undefined
     writer: Writer,
+    /// [[writeRequests]]: list of async promises
     writeRequests: std.ArrayList(*AsyncPromise(void)),
+    /// Event loop for async operations (borrowed reference)
     eventLoop: eventLoop.EventLoop,
+    /// Optional owned event loop for backward compatibility
     eventLoop_storage: ?*TestEventLoop,
 
     // ========================================================================
@@ -75,6 +88,7 @@ pub const WritableStream = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a new WritableStream (backward compatibility)
     pub fn init(allocator: std.mem.Allocator) !WritableStream {
 
         const loop_ptr = try allocator.create(TestEventLoop);
@@ -111,6 +125,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// Initialize with underlying sink and strategy
+    /// 
+    /// Spec: § 5.1.3 "new WritableStream(underlyingSink, strategy)"
     pub fn initWithSink(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -179,12 +196,16 @@ pub const WritableStream = struct {
     
     }
 
+    /// readonly attribute boolean locked
+    /// Spec: https://streams.spec.whatwg.org/#ws-locked
     pub fn get_locked(self: *const WritableStream) bool {
 
         return self.writer != .none;
     
     }
 
+    /// Promise<undefined> abort(optional any reason)
+    /// Spec: https://streams.spec.whatwg.org/#ws-abort
     pub fn call_abort(self: *WritableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         if (self.get_locked()) {
@@ -204,6 +225,8 @@ pub const WritableStream = struct {
     
     }
 
+    /// Promise<undefined> close()
+    /// Spec: https://streams.spec.whatwg.org/#ws-close
     pub fn call_close(self: *WritableStream) !*AsyncPromise(void) {
 
         if (self.get_locked()) {
@@ -234,12 +257,22 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamDefaultWriter getWriter()
+    /// Spec: https://streams.spec.whatwg.org/#ws-get-writer
     pub fn call_getWriter(self: *WritableStream) !*WritableStreamDefaultWriter {
 
         return self.acquireDefaultWriter(self.eventLoop);
     
     }
 
+    /// [[TransferSteps]](dataHolder)
+    /// 
+    /// Spec: § 5.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#ws-transfer
+    /// 
+    /// Steps for transferring a WritableStream via postMessage().
+    /// Creates a MessagePort pair, sets up a readable that pipes to the writable,
+    /// and serializes the receiving port for transfer to another realm.
     pub fn transferSteps(self: *WritableStream) !*structured_clone.SerializedData {
 
         const cross_realm_transform = @import("cross_realm_transform");
@@ -279,6 +312,13 @@ pub const WritableStream = struct {
     
     }
 
+    /// [[TransferReceivingSteps]](dataHolder)
+    /// 
+    /// Spec: § 5.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#ws-transfer
+    /// 
+    /// Steps for receiving a transferred WritableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that writes to it.
     pub fn transferReceivingSteps(
         self: *WritableStream,
         serialized: *structured_clone.SerializedData,
@@ -297,6 +337,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamAbort(stream, reason)
+    /// 
+    /// Spec: § 5.3.3 "Abort the stream with given reason"
     fn abortInternal(self: *WritableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Spec step 1: If stream.[[state]] is "closed" or "errored", return fulfilled promise
@@ -361,6 +404,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamClose(stream)
+    /// 
+    /// Spec: § 5.3.4 "Close the writable stream"
     fn closeInternal(self: *WritableStream) !*AsyncPromise(void) {
 
         // Spec step 1: Let state be stream.[[state]]
@@ -413,6 +459,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamCloseQueuedOrInFlight(stream)
+    /// 
+    /// Spec: § 5.3.9 "Check if close is queued or in flight"
     fn closeQueuedOrInFlight(self: *const WritableStream) bool {
 
         // Spec step 1-2: If closeRequest or inFlightCloseRequest is undefined, return false; else true
@@ -442,6 +491,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamHasOperationMarkedInFlight(stream)
+    /// 
+    /// Spec: § 5.3.6 "Check if stream has operation in flight"
     fn hasOperationMarkedInFlight(self: *const WritableStream) bool {
 
         // Spec step 1-2: If inFlightWriteRequest or inFlightCloseRequest is undefined, return false; else true
@@ -449,6 +501,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamRejectCloseAndClosedPromiseIfNeeded(stream)
+    /// 
+    /// Spec: § 5.3.7 "Reject close request and writer's closed promise"
     fn rejectCloseAndClosedPromiseIfNeeded(self: *WritableStream) void {
 
         // Spec step 1: Assert: stream.[[state]] is "errored"
@@ -477,6 +532,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamStartErroring(stream, reason)
+    /// 
+    /// Spec: § 5.3.8 "Start the erroring process"
     pub fn startErroring(self: *WritableStream, reason: common.JSValue) void {
 
         // Spec step 1: Assert: stream.[[storedError]] is undefined
@@ -510,6 +568,9 @@ pub const WritableStream = struct {
     
     }
 
+    /// WritableStreamFinishErroring(stream)
+    /// 
+    /// Spec: § 5.3.5 "Finish the erroring process"
     fn finishErroring(self: *WritableStream) void {
 
         // Spec step 1: Assert: stream.[[state]] is "erroring"

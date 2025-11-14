@@ -25,14 +25,21 @@ const webidl = @import("webidl");
 /// This mixin defines the shared interface between ReadableStreamDefaultReader
 /// and ReadableStreamBYOBReader.
 
+/// ReadableStreamGenericReader mixin
+/// 
+/// This mixin defines the shared interface between ReadableStreamDefaultReader
+/// and ReadableStreamBYOBReader.
 pub const ReadableStreamGenericReader = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
+    /// [[stream]]: The ReadableStream being read from (or undefined if released)
     stream: ?*ReadableStream,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
     // ========================================================================
@@ -48,6 +55,10 @@ pub const ReadableStreamGenericReader = struct {
     // Methods
     // ========================================================================
 
+    /// readonly attribute Promise<undefined> closed
+    /// IDL: readonly attribute Promise<undefined> closed;
+    /// 
+    /// Spec: § 4.2.3 "The closed getter steps are:"
     pub fn get_closed(self: *const ReadableStreamGenericReader) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
@@ -61,6 +72,10 @@ pub const ReadableStreamGenericReader = struct {
     
     }
 
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    /// 
+    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
     pub fn call_cancel(self: *ReadableStreamGenericReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
@@ -83,6 +98,9 @@ pub const ReadableStreamGenericReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericCancel(reader, reason)
+    /// 
+    /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
     fn genericCancel(self: *ReadableStreamGenericReader, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Step 1: Let stream be reader.[[stream]].
@@ -96,6 +114,9 @@ pub const ReadableStreamGenericReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericRelease(reader)
+    /// 
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamGenericReader) void {
 
         // Step 1: Let stream be reader.[[stream]].

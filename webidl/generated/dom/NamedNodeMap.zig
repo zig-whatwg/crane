@@ -22,11 +22,17 @@ const webidl = @import("webidl");
 /// A NamedNodeMap has an associated element (an element).
 /// A NamedNodeMap object's attribute list is its element's attribute list.
 
+/// DOM §4.9 - NamedNodeMap interface
+/// A NamedNodeMap is a live collection of attributes.
+/// 
+/// A NamedNodeMap has an associated element (an element).
+/// A NamedNodeMap object's attribute list is its element's attribute list.
 pub const NamedNodeMap = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Associated element
     element: *Element,
 
     // ========================================================================
@@ -57,12 +63,20 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - length getter
+    /// Returns the attribute list's size.
     pub fn get_length(self: *const NamedNodeMap) u32 {
 
         return @intCast(self.element.attributes.items.len);
     
     }
 
+    /// DOM §4.9 - item(index)
+    /// Returns the attribute at the given index, or null if out of bounds.
+    /// 
+    /// Steps:
+    /// 1. If index is equal to or greater than this's attribute list's size, then return null.
+    /// 2. Otherwise, return this's attribute list[index].
     pub fn call_item(self: *const NamedNodeMap, index: u32) ?*Attr {
 
         if (index >= self.element.attributes.items.len) {
@@ -72,6 +86,10 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - getNamedItem(qualifiedName)
+    /// Returns the attribute with the given qualified name, or null if not found.
+    /// 
+    /// Steps: Return the result of getting an attribute given qualifiedName and element.
     pub fn call_getNamedItem(self: *const NamedNodeMap, qualified_name: []const u8) ?*Attr {
 
         // Get an attribute given qualifiedName and element
@@ -84,6 +102,10 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - getNamedItemNS(namespace, localName)
+    /// Returns the attribute with the given namespace and local name, or null if not found.
+    /// 
+    /// Steps: Return the result of getting an attribute given namespace, localName, and element.
     pub fn call_getNamedItemNS(
         self: *const NamedNodeMap,
         namespace: ?[]const u8,
@@ -95,12 +117,22 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - setNamedItem(attr)
+    /// Sets the given attribute. Returns the old attribute if replaced, or null.
+    /// 
+    /// Steps: Return the result of setting an attribute given attr and element.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItem(self: *NamedNodeMap, attr: *Attr) !?*Attr {
 
         return try NamedNodeMap.setAttribute(attr, self.element);
     
     }
 
+    /// DOM §4.9 - setNamedItemNS(attr)
+    /// Sets the given attribute with namespace. Returns the old attribute if replaced, or null.
+    /// 
+    /// Steps: Return the result of setting an attribute given attr and element.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_setNamedItemNS(self: *NamedNodeMap, attr: *Attr) !?*Attr {
 
         // Same as setNamedItem - the method handles namespaces automatically via attr's properties
@@ -108,6 +140,15 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - removeNamedItem(qualifiedName)
+    /// Removes the attribute with the given qualified name.
+    /// Throws NotFoundError if the attribute doesn't exist.
+    /// 
+    /// Steps:
+    /// 1. Let attr be the result of removing an attribute given qualifiedName and element.
+    /// 2. If attr is null, then throw a "NotFoundError" DOMException.
+    /// 3. Return attr.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_removeNamedItem(self: *NamedNodeMap, qualified_name: []const u8) !*Attr {
 
         // Step 1: Remove an attribute by name
@@ -123,6 +164,15 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// DOM §4.9 - removeNamedItemNS(namespace, localName)
+    /// Removes the attribute with the given namespace and local name.
+    /// Throws NotFoundError if the attribute doesn't exist.
+    /// 
+    /// Steps:
+    /// 1. Let attr be the result of removing an attribute given namespace, localName, and element.
+    /// 2. If attr is null, then throw a "NotFoundError" DOMException.
+    /// 3. Return attr.
+    /// [CEReactions] - Causes DOM mutations
     pub fn call_removeNamedItemNS(
         self: *NamedNodeMap,
         namespace: ?[]const u8,
@@ -142,6 +192,8 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Set an attribute - DOM Spec algorithm
+    /// Given an attribute attr and an element element
     pub fn setAttribute(attr: *Attr, element: *Element) !?*Attr {
 
         // Step 1: If attr's element is neither null nor element, throw InUseAttributeError
@@ -175,6 +227,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Append an attribute - DOM Spec algorithm
     pub fn appendAttribute(attribute: *Attr, element: *Element) !void {
 
         // Step 1: Append attribute to element's attribute list
@@ -194,6 +247,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Remove an attribute - DOM Spec algorithm
     pub fn removeAttribute(attribute: *Attr) !void {
 
         // Step 1: Let element be attribute's element
@@ -215,6 +269,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Replace an attribute - DOM Spec algorithm
     pub fn replaceAttribute(old_attribute: *Attr, new_attribute: *Attr) !void {
 
         // Step 1: Let element be oldAttribute's element
@@ -244,6 +299,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Get an attribute by namespace and local name
     fn getAttributeByNamespaceAndLocalName(
         namespace: ?[]const u8,
         local_name: []const u8,
@@ -268,6 +324,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Remove an attribute by name - DOM Spec algorithm
     pub fn removeAttributeByName(qualified_name: []const u8, element: *Element) !?*Attr {
 
         // Step 1: Let attr be the result of getting an attribute
@@ -292,6 +349,7 @@ pub const NamedNodeMap = struct {
     
     }
 
+    /// Remove an attribute by namespace and local name - DOM Spec algorithm
     pub fn removeAttributeByNamespaceAndLocalName(
         namespace: ?[]const u8,
         local_name: []const u8,

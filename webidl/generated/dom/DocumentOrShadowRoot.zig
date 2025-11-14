@@ -18,11 +18,16 @@ const webidl = @import("webidl");
 /// This mixin defines APIs shared between Document and ShadowRoot.
 /// It's expected to be used by other standards as well.
 
+/// DOM §4.4 - DocumentOrShadowRoot mixin
+/// 
+/// This mixin defines APIs shared between Document and ShadowRoot.
+/// It's expected to be used by other standards as well.
 pub const DocumentOrShadowRoot = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Custom element registry for this document or shadow root
     custom_element_registry: ?*anyopaque,
 
     // ========================================================================
@@ -38,6 +43,11 @@ pub const DocumentOrShadowRoot = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.4 - DocumentOrShadowRoot.customElementRegistry
+    /// 
+    /// Returns this's CustomElementRegistry object, if any; otherwise null.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-documentorshadowroot-customelementregistry
     pub fn get_customElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -50,6 +60,7 @@ pub const DocumentOrShadowRoot = struct {
     
     }
 
+    /// Get the custom element registry
     pub fn getCustomElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -57,6 +68,7 @@ pub const DocumentOrShadowRoot = struct {
     
     }
 
+    /// Set the custom element registry
     pub fn setCustomElementRegistry(self: *DocumentOrShadowRoot, registry: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 

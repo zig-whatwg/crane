@@ -22,7 +22,13 @@ pub const URL = struct {
     // Fields
     // ========================================================================
 
+    /// The underlying URL record
+    /// Spec: https://url.spec.whatwg.org/#concept-url-url (line 1786)
     url_record: URLRecord,
+    /// The associated URLSearchParams implementation
+    /// Spec: https://url.spec.whatwg.org/#url-query-object (line 1788)
+    /// [SameObject] - must return same instance each time
+    /// We store the implementation directly to avoid circular module dependencies
     query_impl: *URLSearchParamsImpl,
     allocator: std.mem.Allocator,
 
@@ -39,6 +45,13 @@ pub const URL = struct {
     // Methods
     // ========================================================================
 
+    /// URL constructor: new URL(url, base)
+    /// Spec: https://url.spec.whatwg.org/#dom-url-url (lines 1794-1800)
+    /// 
+    /// Steps:
+    /// 1. Let parsedURL be the result of running the API URL parser on url with base, if given.
+    /// 2. If parsedURL is failure, then throw a TypeError.
+    /// 3. Initialize this with parsedURL.
     pub fn init(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) !URL {
 
         // Step 1: Parse base URL if provided
@@ -66,6 +79,17 @@ pub const URL = struct {
     
     }
 
+    /// Initialize a URL object with a URLRecord
+    /// Spec: https://url.spec.whatwg.org/#concept-url-initialize (lines 1782-1793)
+    /// 
+    /// Algorithm:
+    /// 1. Let query be urlRecord's query, if that is non-null; otherwise the empty string.
+    /// 2. Set url's URL to urlRecord.
+    /// 3. Set url's query object to a new URLSearchParams object.
+    /// 4. Initialize url's query object with query.
+    /// 5. Set url's query object's URL object to url.
+    /// 
+    /// This creates the bidirectional link between URL and URLSearchParams.
     fn initializeWithURLRecord(allocator: std.mem.Allocator, url_record: URLRecord) !URL {
 
         // Step 1: Let query be urlRecord's query, if non-null; otherwise empty string
@@ -102,12 +126,29 @@ pub const URL = struct {
     
     }
 
+    /// URL.parse(url, base) static method
+    /// Spec: https://url.spec.whatwg.org/#dom-url-parse (lines 1835-1845)
+    /// 
+    /// Steps:
+    /// 1. Let parsedURL be the result of running the API URL parser on url with base, if given.
+    /// 2. If parsedURL is failure, then return null.
+    /// 3. Return the result of creating a new URL object, with parsedURL,
+    /// in the current realm.
+    /// 
+    /// Unlike the constructor, this returns null instead of throwing on parse failure.
     pub fn parse(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) ?URL {
 
         return init(allocator, url, base) catch null;
     
     }
 
+    /// URL.canParse(url, base) static method
+    /// Spec: https://url.spec.whatwg.org/#dom-url-canparse (lines 1847-1853)
+    /// 
+    /// Steps:
+    /// 1. Let parsedURL be the result of running the API URL parser on url with base, if given.
+    /// 2. If parsedURL is failure, then return false.
+    /// 3. Return true.
     pub fn canParse(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) bool {
 
         // Parse base URL if provided
@@ -129,12 +170,18 @@ pub const URL = struct {
     
     }
 
+    /// href getter (also used by toJSON)
+    /// Spec: https://url.spec.whatwg.org/#dom-url-href (line 1855)
+    /// Returns the serialization of this's URL
     pub fn href(self: *const URL) ![]const u8 {
 
         return url_serializer.serialize(self.allocator, &self.url_record, false);
     
     }
 
+    /// origin getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
+    /// Returns serialization of this's URL's origin
     pub fn origin(self: *const URL) ![]const u8 {
 
         const origin_module = @import("origin");
@@ -144,6 +191,9 @@ pub const URL = struct {
     
     }
 
+    /// protocol getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
+    /// Returns scheme + ":"
     pub fn protocol(self: *const URL) ![]const u8 {
 
         const scheme = self.url_record.scheme();
@@ -154,18 +204,27 @@ pub const URL = struct {
     
     }
 
+    /// username getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-username (line 1877)
+    /// Returns this's URL's username
     pub fn username(self: *const URL) []const u8 {
 
         return self.url_record.username();
     
     }
 
+    /// password getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-password (line 1885)
+    /// Returns this's URL's password
     pub fn password(self: *const URL) []const u8 {
 
         return self.url_record.password();
     
     }
 
+    /// host getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1893-1901)
+    /// Returns serialized host with port if present
     pub fn host(self: *const URL) ![]const u8 {
 
         const host_serializer = @import("host_serializer");
@@ -189,6 +248,9 @@ pub const URL = struct {
     
     }
 
+    /// hostname getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1911-1915)
+    /// Returns serialized host without port
     pub fn hostname(self: *const URL) ![]const u8 {
 
         const host_serializer = @import("host_serializer");
@@ -201,6 +263,9 @@ pub const URL = struct {
     
     }
 
+    /// port getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1923-1927)
+    /// Returns serialized port or empty string if null
     pub fn port(self: *const URL) ![]const u8 {
 
         // Step 1: If port is null, return empty string
@@ -211,6 +276,9 @@ pub const URL = struct {
     
     }
 
+    /// pathname getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (line 1937)
+    /// Returns URL path serialized
     pub fn pathname(self: *const URL) ![]const u8 {
 
         const path_serializer = @import("path_serializer");
@@ -218,6 +286,9 @@ pub const URL = struct {
     
     }
 
+    /// search getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1947-1951)
+    /// Returns "?" + query or empty string
     pub fn search(self: *const URL) ![]const u8 {
 
         const q = self.url_record.query();
@@ -232,12 +303,20 @@ pub const URL = struct {
     
     }
 
+    /// searchParams getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-searchparams (line 1967)
+    /// Returns this's query object (via implementation wrapper)
+    /// [SameObject] - must return same instance each time
+    /// Note: Returns pointer to implementation for now - will wrap in URLSearchParams type later
     pub fn searchParams(self: *const URL) *URLSearchParamsImpl {
 
         return self.query_impl;
     
     }
 
+    /// hash getter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1969-1973)
+    /// Returns "#" + fragment or empty string
     pub fn hash(self: *const URL) ![]const u8 {
 
         const f = self.url_record.fragment();
@@ -252,6 +331,9 @@ pub const URL = struct {
     
     }
 
+    /// href setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-href (lines 1855-1870)
+    /// Parse value, throw TypeError on failure, update URL and query object
     pub fn setHref(self: *URL, value: []const u8) !void {
 
         // Parse the new URL
@@ -273,6 +355,9 @@ pub const URL = struct {
     
     }
 
+    /// protocol setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1875)
+    /// Basic URL parse with scheme start state override
     pub fn setProtocol(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -296,6 +381,9 @@ pub const URL = struct {
     
     }
 
+    /// username setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-username (lines 1879-1883)
+    /// Check cannotHaveUsernamePasswordPort, call set the username
     pub fn setUsername(self: *URL, value: []const u8) !void {
 
         const percent_encoding = @import("percent_encoding");
@@ -390,6 +478,9 @@ pub const URL = struct {
     
     }
 
+    /// password setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-password (lines 1887-1891)
+    /// Check cannotHaveUsernamePasswordPort, call set the password
     pub fn setPassword(self: *URL, value: []const u8) !void {
 
         const percent_encoding = @import("percent_encoding");
@@ -474,6 +565,9 @@ pub const URL = struct {
     
     }
 
+    /// host setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1903-1907)
+    /// Check opaque path, parse with host state override
     pub fn setHost(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -496,6 +590,9 @@ pub const URL = struct {
     
     }
 
+    /// hostname setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1917-1921)
+    /// Check opaque path, parse with hostname state override
     pub fn setHostname(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -518,6 +615,9 @@ pub const URL = struct {
     
     }
 
+    /// port setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1929-1935)
+    /// Check cannotHaveUsernamePasswordPort, handle empty string, parse with port state
     pub fn setPort(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -546,6 +646,9 @@ pub const URL = struct {
     
     }
 
+    /// pathname setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (lines 1939-1945)
+    /// Check opaque path, empty path, parse with path start state
     pub fn setPathname(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -571,6 +674,9 @@ pub const URL = struct {
     
     }
 
+    /// search setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1953-1965)
+    /// Handle empty, remove leading "?", parse, update query object
     pub fn setSearch(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -612,6 +718,9 @@ pub const URL = struct {
     
     }
 
+    /// hash setter
+    /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1975-1983)
+    /// Handle empty, remove leading "#", parse with fragment state
     pub fn setHash(self: *URL, value: []const u8) !void {
 
         const basic_parser = @import("basic_parser");
@@ -643,6 +752,9 @@ pub const URL = struct {
     
     }
 
+    /// toJSON() method
+    /// Spec: https://url.spec.whatwg.org/#dom-url-tojson (line 1855)
+    /// Returns the result of running the href getter on this
     pub fn toJSON(self: *const URL) ![]const u8 {
 
         return self.href();

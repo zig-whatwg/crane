@@ -27,6 +27,18 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// NonDocumentTypeChildNode mixin provides element sibling navigation.
+/// Included by: Element, CharacterData
+/// 
+/// Web compatibility prevents these attributes from being exposed on DocumentType.
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin NonDocumentTypeChildNode {
+/// readonly attribute Element? previousElementSibling;
+/// readonly attribute Element? nextElementSibling;
+/// };
+/// ```
 pub const NonDocumentTypeChildNode = struct {
 
     // ========================================================================
@@ -57,6 +69,11 @@ pub const NonDocumentTypeChildNode = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
+    /// Returns the first preceding sibling that is an element; otherwise null.
+    /// 
+    /// The previousElementSibling getter steps are to return the first preceding
+    /// sibling that is an element; otherwise null.
     pub fn previousElementSibling(self: NonDocumentTypeChildNode) ?*Element {
         const self_parent = self;
 
@@ -86,6 +103,11 @@ pub const NonDocumentTypeChildNode = struct {
     
     }
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
+    /// Returns the first following sibling that is an element; otherwise null.
+    /// 
+    /// The nextElementSibling getter steps are to return the first following
+    /// sibling that is an element; otherwise null.
     pub fn nextElementSibling(self: NonDocumentTypeChildNode) ?*Element {
         const self_parent = self;
 

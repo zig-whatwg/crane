@@ -24,6 +24,15 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// NonElementParentNode mixin provides getElementById for Document and DocumentFragment.
+/// Included by: Document, DocumentFragment
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin NonElementParentNode {
+/// Element? getElementById(DOMString elementId);
+/// };
+/// ```
 pub const NonElementParentNode = struct {
 
     // ========================================================================
@@ -54,6 +63,13 @@ pub const NonElementParentNode = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.3.1 - NonElementParentNode.getElementById()
+    /// Returns the first element within this node's descendants whose ID is elementId.
+    /// 
+    /// The getElementById(elementId) method steps are:
+    /// 1. If this is not a Document or DocumentFragment, return null
+    /// 2. Return the first element, in tree order, within this's descendants,
+    /// that has an ID equal to elementId; otherwise null
     pub fn call_getElementById(self: NonElementParentNode, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
         const self_parent = self;
 

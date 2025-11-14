@@ -26,14 +26,35 @@ const webidl = @import("webidl");
 /// - assigned_nodes list (slottables assigned to this slot)
 /// - manually_assigned_nodes list (for manual slot assignment mode)
 
+/// HTMLSlotElement - Represents a <slot> element in shadow DOM
+/// 
+/// TODO: This is a mock implementation. Replace with full HTML spec implementation
+/// when available. The full implementation will extend HTMLElement and include:
+/// - Full HTML element attributes and methods
+/// - Integration with HTML parsing
+/// - Complete event handling
+/// 
+/// Current mock provides ONLY the minimal interface needed for shadow DOM:
+/// - name attribute (slot name)
+/// - assigned_nodes list (slottables assigned to this slot)
+/// - manually_assigned_nodes list (for manual slot assignment mode)
 pub const HTMLSlotElement = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Allocator for managing slot data
     allocator: std.mem.Allocator,
+    /// Slot name (DOM §4.8.2.3)
+    /// Default is empty string
     name: []const u8,
+    /// Assigned nodes list (DOM §4.8.2.3)
+    /// List of slottables assigned to this slot
+    /// Initially empty, updated by assign slottables algorithm
     assigned_nodes: std.ArrayList(*anyopaque),
+    /// Manually assigned nodes list (DOM §4.8.2.5)
+    /// For manual slot assignment mode
+    /// Initially empty
     manually_assigned_nodes: std.ArrayList(*anyopaque),
 
     // ========================================================================
@@ -49,6 +70,7 @@ pub const HTMLSlotElement = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a new HTMLSlotElement
     pub fn init(allocator: std.mem.Allocator) !Self {
 
         return Self{
@@ -60,6 +82,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Clean up resources
     pub fn deinit(self: *HTMLSlotElement) void {
         const self_parent: *Self = @ptrCast(self);
 
@@ -71,6 +94,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Set the slot name
     pub fn setName(self: *HTMLSlotElement, name: []const u8) !void {
         const self_parent: *Self = @ptrCast(self);
 
@@ -81,6 +105,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Get the slot name
     pub fn getName(self: *const HTMLSlotElement) []const u8 {
         const self_parent: *const Self = @ptrCast(self);
 
@@ -88,6 +113,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Get assigned nodes list
     pub fn getAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
         const self_parent: *Self = @ptrCast(self);
 
@@ -95,6 +121,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Get manually assigned nodes list
     pub fn getManuallyAssignedNodes(self: *HTMLSlotElement) *std.ArrayList(*anyopaque) {
         const self_parent: *Self = @ptrCast(self);
 
@@ -102,6 +129,7 @@ pub const HTMLSlotElement = struct {
     
     }
 
+    /// Check if this slot has any assigned nodes
     pub fn hasAssignedNodes(self: *const HTMLSlotElement) bool {
         const self_parent: *const Self = @ptrCast(self);
 

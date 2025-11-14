@@ -19,7 +19,9 @@ pub const ReadableStreamBYOBRequest = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[controller]]: The parent controller
     controller: ?*anyopaque,
+    /// [[view]]: The view to write into (as ArrayBufferView)
     view: ?webidl.ArrayBufferView,
 
     // ========================================================================
@@ -53,12 +55,18 @@ pub const ReadableStreamBYOBRequest = struct {
 
     }
 
+    /// Get the view for writing
+    /// 
+    /// Spec: § 4.8.2 "The view getter steps are:"
     pub fn get_view(self: *const ReadableStreamBYOBRequest) ?webidl.ArrayBufferView {
 
         return self.view;
     
     }
 
+    /// Respond with the number of bytes written
+    /// 
+    /// Spec: § 4.8.3 "The respond(bytesWritten) method steps"
     pub fn call_respond(self: *ReadableStreamBYOBRequest, bytesWritten: u64) !void {
 
         // Spec step 1: If this.[[controller]] is undefined, throw TypeError
@@ -78,6 +86,9 @@ pub const ReadableStreamBYOBRequest = struct {
     
     }
 
+    /// Respond with a new view
+    /// 
+    /// Spec: § 4.8.3 "The respondWithNewView(view) method steps are:"
     pub fn call_respondWithNewView(self: *ReadableStreamBYOBRequest, view: webidl.ArrayBufferView) !void {
 
         // Spec step 1: If this.[[controller]] is undefined, throw TypeError

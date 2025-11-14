@@ -27,6 +27,18 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// ChildNode mixin provides methods for manipulating nodes relative to their siblings.
+/// Included by: DocumentType, Element, CharacterData
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin ChildNode {
+/// [CEReactions, Unscopable] undefined before((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined after((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined replaceWith((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined remove();
+/// };
+/// ```
 pub const ChildNode = struct {
 
     // ========================================================================
@@ -42,6 +54,18 @@ pub const ChildNode = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.3.4 - ChildNode.before()
+    /// Inserts nodes just before this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
+    /// 6. Pre-insert node into parent before viablePreviousSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_before(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -98,6 +122,17 @@ pub const ChildNode = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.after()
+    /// Inserts nodes just after this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. Pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_after(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -147,6 +182,18 @@ pub const ChildNode = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.replaceWith()
+    /// Replaces this node with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If this's parent is parent, replace this with node within parent.
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceWith(self: ChildNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -203,6 +250,12 @@ pub const ChildNode = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.remove()
+    /// Removes this node from its parent.
+    /// 
+    /// Steps:
+    /// 1. If this's parent is null, then return.
+    /// 2. Remove this.
     pub fn call_remove(self: ChildNode) !void {
         const self_parent = self;
 

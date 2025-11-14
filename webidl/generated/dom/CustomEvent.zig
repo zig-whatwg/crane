@@ -19,6 +19,7 @@ const webidl = @import("webidl");
 
 /// DOM Spec: interface CustomEvent : Event
 
+/// DOM Spec: interface CustomEvent : Event
 pub const CustomEvent = struct {
     // ========================================================================
     // Fields
@@ -84,6 +85,8 @@ pub const CustomEvent = struct {
     
     }
 
+    /// stopPropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
     pub fn call_stopPropagation(self: *CustomEvent) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -91,6 +94,8 @@ pub const CustomEvent = struct {
     
     }
 
+    /// stopImmediatePropagation()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
     pub fn call_stopImmediatePropagation(self: *CustomEvent) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -99,6 +104,10 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - set the canceled flag
+    /// To set the canceled flag, given an event event, if event's cancelable
+    /// attribute value is true and event's in passive listener flag is unset,
+    /// then set event's canceled flag, and do nothing otherwise.
     fn setCanceledFlag(self: *CustomEvent) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -108,12 +117,24 @@ pub const CustomEvent = struct {
     
     }
 
+    /// preventDefault()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-preventdefault
+    /// The preventDefault() method steps are to set the canceled flag with this.
     pub fn call_preventDefault(self: *CustomEvent) void {
 
         self.setCanceledFlag();
     
     }
 
+    /// composedPath()
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-composedpath
+    /// 
+    /// Returns the invocation target objects of event's path (objects on which
+    /// listeners will be invoked), except for any nodes in shadow trees of which
+    /// the shadow root's mode is "closed" that are not reachable from event's
+    /// currentTarget.
+    /// 
+    /// The composedPath() method steps are (DOM §2.3):
     pub fn call_composedPath(self: *CustomEvent) !std.ArrayList(*EventTarget) {
         const self_parent: *Event = @ptrCast(self);
 
@@ -250,6 +271,8 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - initialize an event
+    /// To initialize an event, with type, bubbles, and cancelable, run these steps:
     fn initializeEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -278,6 +301,11 @@ pub const CustomEvent = struct {
     
     }
 
+    /// initEvent(type, bubbles, cancelable)
+    /// Spec: https://dom.spec.whatwg.org/#dom-event-initevent
+    /// The initEvent(type, bubbles, cancelable) method steps are:
+    /// 1. If this's dispatch flag is set, then return.
+    /// 2. Initialize this with type, bubbles, and cancelable.
     pub fn call_initEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -289,6 +317,7 @@ pub const CustomEvent = struct {
     
     }
 
+    /// Getters
     pub fn get_type(self: *const CustomEvent) []const u8 {
         const self_parent: *const Event = @ptrCast(self);
 
@@ -303,6 +332,8 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - srcElement getter (legacy)
+    /// The srcElement getter steps are to return this's target.
     pub fn get_srcElement(self: *const CustomEvent) ?*EventTarget {
         const self_parent: *const Event = @ptrCast(self);
 
@@ -366,6 +397,9 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - cancelBubble getter (legacy)
+    /// The cancelBubble getter steps are to return true if this's stop propagation
+    /// flag is set; otherwise false.
     pub fn get_cancelBubble(self: *const CustomEvent) bool {
         const self_parent: *const Event = @ptrCast(self);
 
@@ -373,6 +407,9 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - cancelBubble setter (legacy)
+    /// The cancelBubble setter steps are to set this's stop propagation flag if
+    /// the given value is true; otherwise do nothing.
     pub fn set_cancelBubble(self: *CustomEvent, value: bool) void {
         const self_parent: *Event = @ptrCast(self);
 
@@ -382,6 +419,9 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - returnValue getter (legacy)
+    /// The returnValue getter steps are to return false if this's canceled flag
+    /// is set; otherwise true.
     pub fn get_returnValue(self: *const CustomEvent) bool {
         const self_parent: *const Event = @ptrCast(self);
 
@@ -389,6 +429,9 @@ pub const CustomEvent = struct {
     
     }
 
+    /// DOM §2.3 - returnValue setter (legacy)
+    /// The returnValue setter steps are to set the canceled flag with this if
+    /// the given value is false; otherwise do nothing.
     pub fn set_returnValue(self: *CustomEvent, value: bool) void {
 
         if (!value) {

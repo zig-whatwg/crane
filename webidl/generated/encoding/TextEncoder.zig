@@ -92,11 +92,39 @@ fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const 
 /// Note: TextEncoder only supports UTF-8 encoding (no label argument).
 /// Note: TextEncoder offers no stream option (no buffering needed).
 
+/// TextEncoder - encodes strings to UTF-8 bytes
+/// 
+/// WHATWG Encoding Standard § 5.2
+/// https://encoding.spec.whatwg.org/#interface-textencoder
+/// 
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextEncoder {
+/// constructor();
+/// [NewObject] Uint8Array encode(optional USVString input = "");
+/// TextEncoderEncodeIntoResult encodeInto(USVString source, [AllowShared] Uint8Array destination);
+/// };
+/// TextEncoder includes TextEncoderCommon;
+/// 
+/// interface mixin TextEncoderCommon {
+/// readonly attribute DOMString encoding;
+/// };
+/// ```
+/// 
+/// Note: TextEncoder only supports UTF-8 encoding (no label argument).
+/// Note: TextEncoder offers no stream option (no buffering needed).
 pub const TextEncoder = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// The encoding name (always "utf-8")
+    /// 
+    /// TextEncoder and TextEncoderStream only support UTF-8 encoding,
+    /// so this attribute always returns "utf-8".
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
     encoding: []const u8,
     allocator: std.mem.Allocator,
 
@@ -113,6 +141,40 @@ pub const TextEncoder = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor - creates a new TextEncoder
+    /// 
+    /// WHATWG Encoding Standard § 5.2.1
+    /// https://encoding.spec.whatwg.org/#dom-textencoder
+    /// 
+    /// Creates a new UTF-8 encoder (stateless).
+    /// 
+    /// ## Parameters
+    /// 
+    /// - `allocator`: Memory allocator for `encode()` output (not used by `encodeInto()`)
+    /// 
+    /// ## Returns
+    /// 
+    /// New TextEncoder instance (always UTF-8).
+    /// 
+    /// ## Examples
+    /// 
+    /// ```zig
+    /// var encoder = TextEncoder.init(allocator);
+    /// defer encoder.deinit(); // No-op, but good practice
+    /// 
+    /// const bytes = try encoder.encode("Hello");
+    /// defer allocator.free(bytes);
+    /// ```
+    /// 
+    /// ## Spec Algorithm
+    /// 
+    /// The new TextEncoder() constructor steps are to do nothing.
+    /// 
+    /// ## Implementation Notes
+    /// 
+    /// - No label parameter (always UTF-8 per spec)
+    /// - No stream option (no buffering needed per spec)
+    /// - Stateless (safe to share across threads if allocator is thread-safe)
     pub fn init(allocator: std.mem.Allocator) TextEncoder {
 
         return .{
@@ -122,6 +184,7 @@ pub const TextEncoder = struct {
     
     }
 
+    /// Cleanup resources
     pub fn deinit(self: *TextEncoder) void {
 
         _ = self;
@@ -129,12 +192,97 @@ pub const TextEncoder = struct {
     
     }
 
+    /// Get the encoding name (always "utf-8")
+    /// 
+    /// WHATWG Encoding Standard § 5.2.1
+    /// TextEncoderCommon.encoding getter
+    /// 
+    /// IDL:
+    /// ```
+    /// readonly attribute DOMString encoding;
+    /// ```
+    /// 
+    /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextEncoder) []const u8 {
 
         return self.encoding;
     
     }
 
+    /// encode() - Encodes a string into UTF-8 bytes
+    /// 
+    /// WHATWG Encoding Standard § 5.2.2
+    /// https://encoding.spec.whatwg.org/#dom-textencoder-encode
+    /// 
+    /// Encodes the input string to UTF-8 and returns a newly allocated byte buffer.
+    /// 
+    /// ## Parameters
+    /// 
+    /// - `input`: String to encode (UTF-8)
+    /// - For JavaScript bindings: convert USVString (UTF-16) → UTF-8 first
+    /// 
+    /// ## Returns
+    /// 
+    /// Newly allocated UTF-8 byte buffer. **Caller owns the returned memory** and must free it.
+    /// 
+    /// ## Errors
+    /// 
+    /// - `error.OutOfMemory`: Allocation failed
+    /// 
+    /// Note: Per WHATWG spec, UTF-8 encoder cannot fail (invalid sequences replaced with U+FFFD).
+    /// 
+    /// ## Behavior
+    /// 
+    /// - **ASCII Fast Path**: For ASCII-only input, direct copy (~10x faster)
+    /// - **UTF-8 Validation**: Invalid sequences replaced with U+FFFD (shouldn't happen with valid input)
+    /// - **Allocation**: Always allocates new buffer (use `encodeInto()` for zero-copy)
+    /// 
+    /// ## Examples
+    /// 
+    /// ### Basic Encode
+    /// ```zig
+    /// var encoder = TextEncoder.init(allocator);
+    /// defer encoder.deinit();
+    /// 
+    /// const bytes = try encoder.encode("Hello");
+    /// defer allocator.free(bytes);
+    /// // bytes is [_]u8{ 0x48, 0x65, 0x6C, 0x6C, 0x6F }
+    /// ```
+    /// 
+    /// ### Multibyte Characters
+    /// ```zig
+    /// const bytes = try encoder.encode("世界");
+    /// defer allocator.free(bytes);
+    /// // bytes contains UTF-8 encoding of Chinese characters (6 bytes)
+    /// ```
+    /// 
+    /// ### Empty String
+    /// ```zig
+    /// const bytes = try encoder.encode("");
+    /// defer allocator.free(bytes);
+    /// // bytes.len == 0
+    /// ```
+    /// 
+    /// ## Performance
+    /// 
+    /// - ASCII-only: O(n) copy
+    /// - Multibyte: O(n) with validation
+    /// - No reallocation (size known upfront)
+    /// 
+    /// ## Spec Algorithm
+    /// 
+    /// The encode(input) method steps are:
+    /// 1. Convert input to an I/O queue of scalar values
+    /// 2. Let output be the I/O queue of bytes
+    /// 3. Process with UTF-8 encoder
+    /// 4. Return Uint8Array
+    /// 
+    /// ## Implementation Notes
+    /// 
+    /// This implementation uses UTF-8 strings for I/O (Zig native).
+    /// For JavaScript bindings:
+    /// - Convert USVString (UTF-16) → UTF-8 before calling
+    /// - Wrap returned []const u8 in Uint8Array after calling
     pub fn call_encode(
         self: *TextEncoder,
         input: []const u8,
@@ -166,6 +314,101 @@ pub const TextEncoder = struct {
     
     }
 
+    /// encodeInto() - Encodes a string into an existing Uint8Array
+    /// 
+    /// WHATWG Encoding Standard § 5.2.3
+    /// https://encoding.spec.whatwg.org/#dom-textencoder-encodeinto
+    /// 
+    /// Encodes the source string into the destination buffer (zero-copy, no allocation).
+    /// 
+    /// ## Parameters
+    /// 
+    /// - `source`: String to encode (UTF-8)
+    /// - For JavaScript bindings: convert USVString (UTF-16) → UTF-8 first
+    /// - `destination`: Existing buffer to write encoded bytes into
+    /// 
+    /// ## Returns
+    /// 
+    /// `TextEncoderEncodeIntoResult` containing:
+    /// - `read`: Number of UTF-8 bytes (or UTF-16 code units for JS) read from source
+    /// - `written`: Number of bytes written to destination
+    /// 
+    /// ## Errors
+    /// 
+    /// - `error.OutOfMemory`: Should not occur (no allocation)
+    /// 
+    /// ## Behavior
+    /// 
+    /// - **Zero-Copy**: Writes directly to provided buffer (no allocation)
+    /// - **Partial Encoding**: Stops when destination full
+    /// - **Character Boundary**: Never splits multibyte characters (stops before incomplete char)
+    /// - **Progress Tracking**: Returns read/written counts for resuming
+    /// 
+    /// ## Examples
+    /// 
+    /// ### Basic encodeInto
+    /// ```zig
+    /// var encoder = TextEncoder.init(allocator);
+    /// var buffer: [100]u8 = undefined;
+    /// 
+    /// const result = try encoder.encodeInto("Hello", &buffer);
+    /// // result.read = 5
+    /// // result.written = 5
+    /// // buffer[0..5] = "Hello"
+    /// ```
+    /// 
+    /// ### Insufficient Buffer
+    /// ```zig
+    /// var buffer: [3]u8 = undefined;
+    /// const result = try encoder.encodeInto("Hello", &buffer);
+    /// // result.read = 3
+    /// // result.written = 3
+    /// // buffer[0..3] = "Hel" (truncated)
+    /// ```
+    /// 
+    /// ### Multibyte Character Boundary
+    /// ```zig
+    /// var buffer: [3]u8 = undefined;
+    /// const result = try encoder.encodeInto("Hi🌍", &buffer);
+    /// // result.read = 2 ("Hi" only)
+    /// // result.written = 2
+    /// // buffer[0..2] = "Hi"
+    /// // Emoji skipped (4 bytes, doesn't fit)
+    /// ```
+    /// 
+    /// ### Resuming After Partial Encode
+    /// ```zig
+    /// const text = "Hello, World!";
+    /// var buffer: [5]u8 = undefined;
+    /// 
+    /// var offset: usize = 0;
+    /// while (offset < text.len) {
+    /// const remaining = text[offset..];
+    /// const result = try encoder.encodeInto(remaining, &buffer);
+    /// // Process buffer[0..result.written]
+    /// offset += result.read;
+    /// }
+    /// ```
+    /// 
+    /// ## Performance
+    /// 
+    /// - **Zero Allocation**: No memory allocation
+    /// - **Single Pass**: One iteration through source
+    /// - **Optimal**: Faster than `encode()` when buffer is reused
+    /// 
+    /// ## Spec Algorithm
+    /// 
+    /// The encodeInto(source, destination) method steps are:
+    /// 1. Convert source to scalar values
+    /// 2. Encode with UTF-8 encoder into destination
+    /// 3. Return read/written counts
+    /// 
+    /// ## Implementation Notes
+    /// 
+    /// This implementation uses UTF-8 strings for I/O.
+    /// For JavaScript bindings:
+    /// - Convert USVString (UTF-16) → UTF-8 before calling
+    /// - `result.read` should be adjusted to UTF-16 code units for JS
     pub fn call_encodeInto(
         self: *TextEncoder,
         source: []const u8,

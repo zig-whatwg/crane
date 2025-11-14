@@ -19,7 +19,7 @@ pub const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
 pub const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const HTMLCollection = @import("html_collection").HTMLCollection;
-pub const Node = @import("node").Node;
+const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
@@ -55,21 +55,40 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     };
 }
 
+/// DOM Spec: interface DocumentFragment : Node
 pub const DocumentFragment = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// DOM §2.7 - Each EventTarget has an associated event listener list
+    /// (a list of zero or more event listeners). It is initially the empty list.
+    /// 
+    /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
+    /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
+    /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
     child_nodes: infra.List(*Node),
     owner_document: ?*Document,
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
     cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
     cached_child_nodes: ?*@import("node_list").NodeList,
     allocator: std.mem.Allocator,
+    /// Host element for shadow roots (null for regular document fragments)
+    /// Per DOM spec: A shadow root's host is always non-null
+    /// This field allows distinguishing ShadowRoot from plain DocumentFragment
+    host: ?*Element,
 
     // ========================================================================
     // Constants
@@ -104,6 +123,7 @@ pub const DocumentFragment = struct {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
             .allocator = allocator,
+            .host = null,
             // NOTE: Parent Node initialization is handled by codegen
         };
     
@@ -116,6 +136,15 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.children
+    /// Returns the child elements.
+    /// 
+    /// The children getter steps are to return an HTMLCollection collection rooted
+    /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     pub fn get_children(self: DocumentFragment) !*HTMLCollection {
         const self_parent = self;
 
@@ -138,6 +167,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.firstElementChild
+    /// Returns the first child that is an element; otherwise null.
+    /// 
+    /// The firstElementChild getter steps are to return the first child that is
+    /// an element; otherwise null.
     pub fn get_firstElementChild(self: DocumentFragment) ?*Element {
         const self_parent = self;
 
@@ -155,6 +189,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.lastElementChild
+    /// Returns the last child that is an element; otherwise null.
+    /// 
+    /// The lastElementChild getter steps are to return the last child that is
+    /// an element; otherwise null.
     pub fn get_lastElementChild(self: DocumentFragment) ?*Element {
         const self_parent = self;
 
@@ -175,6 +214,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.childElementCount
+    /// Returns the number of children that are elements.
+    /// 
+    /// The childElementCount getter steps are to return the number of children
+    /// of this that are elements.
     pub fn get_childElementCount(self: DocumentFragment) u32 {
         const self_parent = self;
 
@@ -193,6 +237,14 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.prepend()
+    /// Inserts nodes before the first child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Pre-insert node into this before this's first child.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_prepend(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -213,6 +265,14 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.append()
+    /// Inserts nodes after the last child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Append node to this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -232,6 +292,15 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.replaceChildren()
+    /// Replaces all children with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Ensure pre-insert validity of node into this before null.
+    /// 3. Replace all with node within this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: DocumentFragment, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -254,6 +323,18 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.moveBefore()
+    /// Moves, without first removing, movedNode into this after child.
+    /// This method preserves state associated with movedNode.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// 
+    /// Steps:
+    /// 1. Let referenceChild be child.
+    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+    /// 3. Move node into this before referenceChild.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: DocumentFragment, node: anytype, child: anytype) !void {
         const self_parent = self;
 
@@ -277,6 +358,14 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelector()
+    /// Returns the first element that is a descendant of this that matches selectors.
+    /// 
+    /// The querySelector(selectors) method steps are to return the first result of
+    /// running scope-match a selectors string selectors against this, if the result
+    /// is not an empty list; otherwise null.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelector(self: DocumentFragment, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
         const self_parent = self;
 
@@ -293,6 +382,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelectorAll()
+    /// Returns all element descendants of this that match selectors.
+    /// 
+    /// The querySelectorAll(selectors) method steps are to return the static result
+    /// of running scope-match a selectors string selectors against this.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelectorAll(self: DocumentFragment, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
         const self_parent = self;
 
@@ -315,6 +411,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.3.1 - NonElementParentNode.getElementById()
+    /// Returns the first element within this node's descendants whose ID is elementId.
+    /// 
+    /// The getElementById(elementId) method steps are:
+    /// 1. If this is not a Document or DocumentFragment, return null
+    /// 2. Return the first element, in tree order, within this's descendants,
+    /// that has an ID equal to elementId; otherwise null
     pub fn call_getElementById(self: DocumentFragment, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
         const self_parent = self;
 
@@ -357,6 +460,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *DocumentFragment, node: *Node, child: ?*Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -370,6 +475,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *DocumentFragment, node: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -383,6 +490,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *DocumentFragment, node: *Node, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -396,6 +505,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *DocumentFragment, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -410,6 +521,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *DocumentFragment, options: ?GetRootNodeOptions) *Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -447,6 +563,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const DocumentFragment, other: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -458,6 +576,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const DocumentFragment, other: *const Node) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -510,6 +630,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const DocumentFragment, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -519,6 +641,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Node A equals node B - DOM Spec algorithm
+    /// A node A equals a node B if all of the following conditions are true:
+    /// - A and B implement the same interfaces
+    /// - Node-specific properties are equal
+    /// - If A is an element, each attribute in its list equals an attribute in B's list
+    /// - A and B have the same number of children
+    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -613,6 +742,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Attribute equality check
+    /// An attribute A equals an attribute B if:
+    /// - namespace is equal
+    /// - local name is equal
+    /// - value is equal
     pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
 
         // Check namespace
@@ -632,6 +766,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
     pub fn call_isSameNode(self: *const DocumentFragment, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -641,6 +777,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const DocumentFragment) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -648,6 +786,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *DocumentFragment, deep: bool) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -670,6 +810,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Clone a node - DOM Spec algorithm
+    /// Given a node `node` and optional document, subtree flag, parent, and fallbackRegistry
     pub fn cloneNodeInternal(
         node: *Node,
         document_param: ?*Document,
@@ -768,6 +910,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Clone a single node - DOM Spec algorithm
+    /// Creates a new node with the same properties but no children
     pub fn cloneSingleNode(
         node: *Node,
         document: ?*Document,
@@ -872,6 +1016,21 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    /// 
+    /// Removes empty exclusive Text nodes and concatenates the data of remaining
+    /// contiguous exclusive Text nodes into the first of their nodes.
+    /// 
+    /// The normalize() method steps are to run these steps for each descendant
+    /// exclusive Text node `node` of this:
+    /// 1. Let length be node's length
+    /// 2. If length is zero, remove node and continue
+    /// 3. Let data be concatenation of data of node's contiguous exclusive Text nodes (excluding itself)
+    /// 4. Replace data with node, offset length, count 0, and data
+    /// 5. Let currentNode be node's next sibling
+    /// 6. While currentNode is exclusive Text node: update ranges and advance
+    /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *DocumentFragment) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -959,6 +1118,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Helper: Check if a node is an exclusive Text node
+    /// An exclusive Text node is a Text node that is NOT a CDATASection node
     fn isExclusiveTextNode(node: *Node) bool {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
@@ -966,6 +1127,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Helper: Collect all descendant exclusive Text nodes in tree order
     fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
 
         // Check if this node is an exclusive Text node
@@ -980,6 +1142,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Helper: Update ranges during normalize operation
+    /// Spec: DOM §4.2.5 normalize() step 6.1-6.4
     fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
 
         // This requires access to document's live ranges list
@@ -1010,6 +1174,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Getters
     pub fn get_nodeType(self: *const DocumentFragment) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1137,6 +1302,11 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const DocumentFragment) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1230,6 +1400,10 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Get text content - DOM Spec algorithm
+    /// Returns text content based on node type
+    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
+    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -1255,6 +1429,10 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Get descendant text content - concatenate all Text node descendants
+    /// Spec: https://dom.spec.whatwg.org/#concept-descendant-text-content
+    /// Returns the concatenation of data from all Text node descendants in tree order.
+    /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
         var result = std.ArrayList(u8).init(allocator);
@@ -1266,6 +1444,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -1283,6 +1462,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Set text content - DOM Spec algorithm
+    /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1309,6 +1490,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// String replace all - DOM Spec algorithm
+    /// Replace all children with a single text node containing string
     pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
 
         // Step 1: Let node be null
@@ -1332,6 +1515,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const DocumentFragment, namespace_param: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1363,6 +1548,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
     pub fn call_lookupNamespaceURI(self: *const DocumentFragment, prefix_param: ?[]const u8) ?[]const u8 {
 
         // Spec step 1: If prefix is empty string, set to null
@@ -1373,6 +1560,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const DocumentFragment, namespace_param: ?[]const u8) bool {
 
         // Spec step 1: If namespace is empty string, set to null
@@ -1388,6 +1577,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const DocumentFragment, namespace: []const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1421,6 +1612,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const DocumentFragment, prefix: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1513,6 +1706,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *DocumentFragment) *std.ArrayList(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1520,6 +1714,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *DocumentFragment, registered: RegisteredObserver) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1527,6 +1722,7 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *DocumentFragment, observer: *const @import("mutation_observer").MutationObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1542,6 +1738,10 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Remove all transient registered observers whose source matches the given registered observer
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *DocumentFragment, source: *const RegisteredObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1559,6 +1759,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *DocumentFragment) !*std.ArrayList(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1574,6 +1776,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const DocumentFragment) []const EventListener {
         const self_parent: *const EventTarget = @ptrCast(self);
 
@@ -1584,6 +1788,10 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §2.7 - flatten options
+    /// To flatten options, run these steps:
+    /// 1. If options is a boolean, then return options.
+    /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -1603,6 +1811,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §2.7 - flatten more options
+    /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
 
         const OptionsType = @TypeOf(options);
@@ -1637,6 +1847,8 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §2.7 - default passive value
+    /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
 
         _ = event_target;
@@ -1656,6 +1868,9 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn addAnEventListener(self: *DocumentFragment, listener: EventListener) !void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1708,6 +1923,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
     pub fn call_addEventListener(
         self: *DocumentFragment,
         event_type: []const u8,
@@ -1732,6 +1954,9 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *DocumentFragment, listener: EventListener) void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1759,6 +1984,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
     pub fn call_removeEventListener(
         self: *DocumentFragment,
         event_type: []const u8,
@@ -1780,6 +2012,13 @@ pub const DocumentFragment = struct {
     
     }
 
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *DocumentFragment, event: *Event) !bool {
         const self_parent: *EventTarget = @ptrCast(self);
 

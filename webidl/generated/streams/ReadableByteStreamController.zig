@@ -61,20 +61,36 @@ pub const ReadableByteStreamController = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablebytestreamcontroller-abortcontroller
     abortController: AbortController,
+    /// [[autoAllocateChunkSize]]: Size for auto-allocated buffers
     autoAllocateChunkSize: ?u64,
+    /// [[byobRequest]]: Current BYOB request (or null)
     byobRequest: ?*ReadableStreamBYOBRequest,
+    /// [[cancelAlgorithm]]: Algorithm for cancelation
     cancelAlgorithm: common.CancelAlgorithm,
+    /// [[closeRequested]]: boolean - stream closed by source but has queued chunks
     closeRequested: bool,
+    /// [[pullAgain]]: boolean - pull requested but previous pull still executing
     pullAgain: bool,
+    /// [[pullAlgorithm]]: Algorithm for pulling data
     pullAlgorithm: common.PullAlgorithm,
+    /// [[pulling]]: boolean - pull algorithm currently executing
     pulling: bool,
+    /// [[pendingPullIntos]]: List of pending pull-into descriptors
     pendingPullIntos: std.ArrayList(*PullIntoDescriptor),
+    /// [[queue]]: List of byte stream queue entries
     byteQueue: std.ArrayList(ByteStreamQueueEntry),
+    /// [[queueTotalSize]]: Total size of all byte chunks in queue
     queueTotalSize: f64,
+    /// [[started]]: boolean - underlying source has finished starting
     started: bool,
+    /// [[strategyHWM]]: High water mark for backpressure
     strategyHwm: f64,
+    /// [[stream]]: The ReadableStream instance controlled
     stream: ?*anyopaque,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
     // ========================================================================
@@ -146,12 +162,17 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// readonly attribute ReadableStreamBYOBRequest? byobRequest
+    /// Spec: https://streams.spec.whatwg.org/#rbs-controller-byob-request
     pub fn get_byobRequest(self: *const ReadableByteStreamController) ?*ReadableStreamBYOBRequest {
 
         return self.byobRequest;
     
     }
 
+    /// readonly attribute unrestricted double? desiredSize
+    /// Calculate desired size
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerGetDesiredSize(controller)"
     pub fn get_desiredSize(self: *const ReadableByteStreamController) ?f64 {
 
         // If stream is closed, return 0
@@ -164,6 +185,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// undefined close()
+    /// Close the controlled readable stream
+    /// Spec: § 4.7.3 "The close() method steps are:"
     pub fn call_close(self: *ReadableByteStreamController) !void {
 
         // Step 1: If closeRequested is true, throw TypeError
@@ -185,6 +209,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Enqueue the given chunk in the controlled readable stream
+    /// 
+    /// Spec: § 4.7.3 "The enqueue(chunk) method steps are:"
     pub fn call_enqueue(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
 
         // Step 1: If chunk ByteLength is 0, throw TypeError
@@ -217,6 +244,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// undefined error(optional any e)
+    /// Error the controlled readable stream
+    /// Spec: § 4.7.3 "The error(e) method steps are:"
     pub fn call_error(self: *ReadableByteStreamController, e: webidl.JSValue) void {
 
         const error_value = common.JSValue.fromWebIDL(e);
@@ -224,6 +254,12 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// [[PullSteps]](readRequest) - Implements the controller contract
+    /// 
+    /// Spec: § 4.7.4 "[[PullSteps]](readRequest)"
+    /// 
+    /// This is called when a default reader reads from a byte stream.
+    /// If autoAllocateChunkSize is set, this automatically allocates a buffer.
     pub fn pullSteps(
         self: *ReadableByteStreamController,
         reader: *anyopaque,
@@ -347,6 +383,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Enqueue a chunk to the byte stream queue
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueueChunkToQueue"
     fn enqueueChunkToQueue(
         self: *ReadableByteStreamController,
         buffer: *ArrayBuffer,
@@ -366,6 +405,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Enqueue cloned chunk to queue
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueueClonedChunkToQueue"
     fn enqueueClonedChunkToQueue(
         self: *ReadableByteStreamController,
         buffer: *ArrayBuffer,
@@ -393,6 +435,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Enqueue detached pull-into to queue
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueueDetachedPullIntoToQueue"
     fn enqueueDetachedPullIntoToQueue(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
@@ -415,6 +460,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Invalidate the current BYOB request
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerInvalidateBYOBRequest"
     fn invalidateBYOBRequest(self: *ReadableByteStreamController) void {
 
         // Step 1: If controller.[[byobRequest]] is null, return
@@ -426,6 +474,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Clear all pending pull-into descriptors
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerClearPendingPullIntos"
     fn clearPendingPullIntos(self: *ReadableByteStreamController) void {
 
         // Step 1: Invalidate BYOB request
@@ -441,6 +492,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Fill head pull-into descriptor with bytes
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerFillHeadPullIntoDescriptor"
     fn fillHeadPullIntoDescriptor(
         self: *ReadableByteStreamController,
         size: u64,
@@ -455,6 +509,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Fill pull-into descriptor from queue
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerFillPullIntoDescriptorFromQueue"
     fn fillPullIntoDescriptorFromQueue(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
@@ -518,6 +575,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Shift (remove) the first pending pull-into descriptor
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerShiftPendingPullInto"
     fn shiftPendingPullInto(self: *ReadableByteStreamController) *PullIntoDescriptor {
 
         // Step 1: Assert: controller.[[byobRequest]] is null
@@ -526,6 +586,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Convert pull-into descriptor to typed array view
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerConvertPullIntoDescriptor"
     fn convertPullIntoDescriptor(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
@@ -551,6 +614,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Error the controller
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerError"
     fn errorInternal(self: *ReadableByteStreamController, e: common.JSValue) void {
 
         _ = e; // Will be used for stream error
@@ -574,6 +640,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Clear all algorithm references
+    /// 
+    /// Spec: § 4.7.4 "ReadableByteStreamControllerClearAlgorithms"
     fn clearAlgorithms(self: *ReadableByteStreamController) void {
 
         // Reset algorithms to defaults to allow GC
@@ -582,6 +651,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Close the controller
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerClose"
     fn closeInternal(self: *ReadableByteStreamController) void {
 
         // Step 1: Get stream
@@ -619,6 +691,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Enqueue a chunk
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerEnqueue"
     fn enqueueInternal(self: *ReadableByteStreamController, chunk: webidl.ArrayBufferView) !void {
 
         // Step 1: Get stream
@@ -719,6 +794,11 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Initiate a BYOB read operation
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerPullInto"
+    /// 
+    /// This is the main entry point for BYOB (bring-your-own-buffer) reads.
     pub fn pullInto(
         self: *ReadableByteStreamController,
         view: webidl.ArrayBufferView,
@@ -798,6 +878,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Respond with bytes written to BYOB buffer
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespond"
     pub fn respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         // Step 1: Assert controller.[[pendingPullIntos]] is not empty
@@ -851,12 +934,16 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Wrapper for WebIDL call convention
     pub fn call_respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         return self.respond(bytesWritten);
     
     }
 
+    /// Respond with a new view (replacement buffer)
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondWithNewView"
     pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
 
         // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
@@ -943,12 +1030,16 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Wrapper for WebIDL call convention
     pub fn call_respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
 
         return self.respondWithNewView(view);
     
     }
 
+    /// Internal respond implementation
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInternal"
     fn respondInternal(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
@@ -984,6 +1075,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Respond when stream is in closed state
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInClosedState"
     fn respondInClosedState(
         self: *ReadableByteStreamController,
         firstDescriptor: *PullIntoDescriptor,
@@ -1026,6 +1120,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Respond when stream is in readable state
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerRespondInReadableState"
     fn respondInReadableState(
         self: *ReadableByteStreamController,
         bytesWritten: u64,
@@ -1072,6 +1169,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Commit a pull-into descriptor by converting and fulfilling
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerCommitPullIntoDescriptor"
     fn commitPullIntoDescriptor(
         self: *ReadableByteStreamController,
         pullIntoDescriptor: *PullIntoDescriptor,
@@ -1106,6 +1206,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Check if pull should be called
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerShouldCallPull"
     fn shouldCallPull(self: *const ReadableByteStreamController) bool {
 
         // Step 1: Let stream be controller.[[stream]]
@@ -1151,6 +1254,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Call pull if needed
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerCallPullIfNeeded"
     pub fn callPullIfNeeded(self: *ReadableByteStreamController) void {
 
         // Step 1: Determine if pull should be called
@@ -1193,6 +1299,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Process pull-into descriptors using queue
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue"
     fn processPullIntoDescriptorsUsingQueue(
         self: *ReadableByteStreamController,
     ) !std.ArrayList(*PullIntoDescriptor) {
@@ -1226,6 +1335,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Handle queue drain (empty queue with close requested)
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerHandleQueueDrain"
     pub fn handleQueueDrain(self: *ReadableByteStreamController) void {
 
         // Step 2: If queue is empty and close requested, close the stream
@@ -1243,6 +1355,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Process all pending read requests using queue (for default readers)
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessReadRequestsUsingQueue"
     pub fn processReadRequestsUsingQueue(self: *ReadableByteStreamController) !void {
 
         // Step 1: Get stream
@@ -1263,6 +1378,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Fill a read request from the queue (for default readers)
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerFillReadRequestFromQueue"
     fn fillReadRequestFromQueue(self: *ReadableByteStreamController) !void {
 
         // Step 2: Remove first queue entry
@@ -1298,6 +1416,9 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Get BYOB request for this controller
+    /// 
+    /// Spec: § 4.10.11 "ReadableByteStreamControllerGetBYOBRequest"
     pub fn call_getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest {
 
         // Step 1: If byobRequest is null and pendingPullIntos is not empty
@@ -1341,6 +1462,19 @@ pub const ReadableByteStreamController = struct {
     
     }
 
+    /// Tee this byte stream into two independent branches
+    /// 
+    /// Spec: § 3.3.9 "ReadableByteStreamTee(stream)"
+    /// 
+    /// This is a simplified implementation suitable for basic use cases.
+    /// Full spec implementation requires:
+    /// - Dynamic reader switching (default ↔ BYOB)
+    /// - Microtask queueing
+    /// - CloneAsUint8Array for chunks
+    /// - Complex error forwarding
+    /// 
+    /// Current implementation creates two independent branches that share
+    /// the underlying byte stream controller.
     pub fn tee(self: *ReadableByteStreamController) !struct { branch1: *anyopaque, branch2: *anyopaque } {
 
         // Get the stream

@@ -33,14 +33,32 @@ const webidl = @import("webidl");
 /// TextEncoderStream includes GenericTransformStream;
 /// ```
 
+/// TextEncoderStream - encodes a stream of strings to a stream of UTF-8 bytes
+/// 
+/// WHATWG Encoding Standard § 5.3
+/// https://encoding.spec.whatwg.org/#interface-textencoderstream
+/// 
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextEncoderStream {
+/// constructor();
+/// };
+/// TextEncoderStream includes TextEncoderCommon;
+/// TextEncoderStream includes GenericTransformStream;
+/// ```
 pub const TextEncoderStream = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// TextEncoderCommon mixin: encoding property
     encoding: []const u8,
+    /// GenericTransformStream mixin: transform
     transform: *TransformStream,
+    /// Associated leading surrogate (null or a leading surrogate, initially null)
+    /// Spec: § 5.3 - used to handle unpaired surrogates across chunk boundaries
     leadingSurrogate: ?u16,
 
     // ========================================================================
@@ -56,6 +74,9 @@ pub const TextEncoderStream = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor - creates a new TextEncoderStream
+    /// 
+    /// WHATWG Encoding Standard § 5.3 lines 1052-1064
     pub fn init(allocator: std.mem.Allocator) !TextEncoderStream {
 
         // Allocate stream on heap for context pointer
@@ -108,6 +129,7 @@ pub const TextEncoderStream = struct {
     
     }
 
+    /// Cleanup resources
     pub fn deinit(self: *TextEncoderStream) void {
 
         self.transform.deinit();
@@ -115,24 +137,30 @@ pub const TextEncoderStream = struct {
     
     }
 
+    /// Get encoding (TextEncoderCommon mixin)
     pub fn get_encoding(self: *const TextEncoderStream) []const u8 {
 
         return self.encoding;
     
     }
 
+    /// Get readable stream (GenericTransformStream mixin)
     pub fn get_readable(self: *const TextEncoderStream) *@import("readable_stream").ReadableStream {
 
         return self.transform.readableStream;
     
     }
 
+    /// Get writable stream (GenericTransformStream mixin)
     pub fn get_writable(self: *const TextEncoderStream) *@import("writable_stream").WritableStream {
 
         return self.transform.writableStream;
     
     }
 
+    /// Encode and enqueue a chunk algorithm
+    /// 
+    /// WHATWG Encoding Standard § 5.3 lines 1068-1097
     fn encodeAndEnqueue(
         self: *TextEncoderStream,
         controller: *TransformStreamDefaultController,
@@ -177,6 +205,11 @@ pub const TextEncoderStream = struct {
     
     }
 
+    /// Convert code unit to scalar value algorithm
+    /// 
+    /// WHATWG Encoding Standard § 5.3 lines 1099-1117
+    /// 
+    /// Returns: null for continue, u21 code point otherwise
     fn convertCodeUnitToScalarValue(
         self: *TextEncoderStream,
         item: u16,
@@ -217,6 +250,9 @@ pub const TextEncoderStream = struct {
     
     }
 
+    /// Encode and flush algorithm
+    /// 
+    /// WHATWG Encoding Standard § 5.3 lines 1120-1129
     fn flushAndEnqueue(
         self: *TextEncoderStream,
         controller: *TransformStreamDefaultController,

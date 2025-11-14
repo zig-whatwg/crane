@@ -26,9 +26,13 @@ pub const WritableStreamDefaultWriter = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
+    /// [[readyPromise]]: Promise that fulfills when stream is ready for writes
     readyPromise: ?*AsyncPromise(void),
+    /// [[stream]]: The WritableStream being written to (or undefined if released)
     stream: ?*WritableStream,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
     // ========================================================================
@@ -71,6 +75,8 @@ pub const WritableStreamDefaultWriter = struct {
 
     }
 
+    /// readonly attribute Promise<undefined> closed
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-closed
     pub fn get_closed(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
 
         if (self.closedPromise.isFulfilled()) {
@@ -84,6 +90,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// readonly attribute unrestricted double? desiredSize
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-desired-size
     pub fn get_desiredSize(self: *const WritableStreamDefaultWriter) ?f64 {
 
         if (self.stream == null) {
@@ -93,6 +101,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// readonly attribute Promise<undefined> ready
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-ready
     pub fn get_ready(self: *const WritableStreamDefaultWriter) webidl.Promise(void) {
 
         if (self.readyPromise) |promise| {
@@ -109,6 +119,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// Promise<undefined> abort(optional any reason)
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-abort
     pub fn call_abort(self: *WritableStreamDefaultWriter, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         if (self.stream == null) {
@@ -128,6 +140,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// Promise<undefined> close()
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-close
     pub fn call_close(self: *WritableStreamDefaultWriter) !*AsyncPromise(void) {
 
         if (self.stream == null) {
@@ -146,6 +160,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// undefined releaseLock()
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-release-lock
     pub fn call_releaseLock(self: *WritableStreamDefaultWriter) void {
 
         if (self.stream == null) {
@@ -155,6 +171,8 @@ pub const WritableStreamDefaultWriter = struct {
     
     }
 
+    /// Promise<undefined> write(optional any chunk)
+    /// Spec: https://streams.spec.whatwg.org/#default-writer-write
     pub fn call_write(self: *WritableStreamDefaultWriter, chunk: ?webidl.JSValue) !*AsyncPromise(void) {
 
         if (self.stream == null) {

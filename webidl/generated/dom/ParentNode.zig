@@ -40,6 +40,27 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// ParentNode mixin provides methods for manipulating child elements.
+/// Included by: Document, DocumentFragment, Element
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface mixin ParentNode {
+/// [SameObject] readonly attribute HTMLCollection children;
+/// readonly attribute Element? firstElementChild;
+/// readonly attribute Element? lastElementChild;
+/// readonly attribute unsigned long childElementCount;
+/// 
+/// [CEReactions, Unscopable] undefined prepend((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined append((Node or DOMString)... nodes);
+/// [CEReactions, Unscopable] undefined replaceChildren((Node or DOMString)... nodes);
+/// 
+/// [CEReactions] undefined moveBefore(Node node, Node? child);
+/// 
+/// Element? querySelector(DOMString selectors);
+/// [NewObject] NodeList querySelectorAll(DOMString selectors);
+/// };
+/// ```
 pub const ParentNode = struct {
 
     // ========================================================================
@@ -70,6 +91,15 @@ pub const ParentNode = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.3.2 - ParentNode.children
+    /// Returns the child elements.
+    /// 
+    /// The children getter steps are to return an HTMLCollection collection rooted
+    /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     pub fn get_children(self: ParentNode) !*HTMLCollection {
         const self_parent = self;
 
@@ -92,6 +122,11 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.firstElementChild
+    /// Returns the first child that is an element; otherwise null.
+    /// 
+    /// The firstElementChild getter steps are to return the first child that is
+    /// an element; otherwise null.
     pub fn get_firstElementChild(self: ParentNode) ?*Element {
         const self_parent = self;
 
@@ -109,6 +144,11 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.lastElementChild
+    /// Returns the last child that is an element; otherwise null.
+    /// 
+    /// The lastElementChild getter steps are to return the last child that is
+    /// an element; otherwise null.
     pub fn get_lastElementChild(self: ParentNode) ?*Element {
         const self_parent = self;
 
@@ -129,6 +169,11 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.childElementCount
+    /// Returns the number of children that are elements.
+    /// 
+    /// The childElementCount getter steps are to return the number of children
+    /// of this that are elements.
     pub fn get_childElementCount(self: ParentNode) u32 {
         const self_parent = self;
 
@@ -147,6 +192,14 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.prepend()
+    /// Inserts nodes before the first child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Pre-insert node into this before this's first child.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_prepend(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -167,6 +220,14 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.append()
+    /// Inserts nodes after the last child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Append node to this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -186,6 +247,15 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.replaceChildren()
+    /// Replaces all children with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Ensure pre-insert validity of node into this before null.
+    /// 3. Replace all with node within this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: ParentNode, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -208,6 +278,18 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.moveBefore()
+    /// Moves, without first removing, movedNode into this after child.
+    /// This method preserves state associated with movedNode.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// 
+    /// Steps:
+    /// 1. Let referenceChild be child.
+    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+    /// 3. Move node into this before referenceChild.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: ParentNode, node: anytype, child: anytype) !void {
         const self_parent = self;
 
@@ -231,6 +313,14 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelector()
+    /// Returns the first element that is a descendant of this that matches selectors.
+    /// 
+    /// The querySelector(selectors) method steps are to return the first result of
+    /// running scope-match a selectors string selectors against this, if the result
+    /// is not an empty list; otherwise null.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelector(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
         const self_parent = self;
 
@@ -247,6 +337,13 @@ pub const ParentNode = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelectorAll()
+    /// Returns all element descendants of this that match selectors.
+    /// 
+    /// The querySelectorAll(selectors) method steps are to return the static result
+    /// of running scope-match a selectors string selectors against this.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelectorAll(self: ParentNode, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
         const self_parent = self;
 

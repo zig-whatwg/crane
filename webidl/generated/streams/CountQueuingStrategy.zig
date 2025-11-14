@@ -25,6 +25,7 @@ pub const CountQueuingStrategy = struct {
     // Fields
     // ========================================================================
 
+    /// [[highWaterMark]]: The high water mark (internal slot)
     _highWaterMark: f64,
 
     // ========================================================================
@@ -40,6 +41,8 @@ pub const CountQueuingStrategy = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor: new CountQueuingStrategy(init)
+    /// Spec: https://streams.spec.whatwg.org/#cqs-constructor
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) CountQueuingStrategy {
 
         _ = allocator; // Not needed for this simple structure
@@ -53,12 +56,17 @@ pub const CountQueuingStrategy = struct {
 
     }
 
+    /// readonly attribute unrestricted double highWaterMark
+    /// Getter returns this.[[highWaterMark]]
+    /// Spec: https://streams.spec.whatwg.org/#cqs-high-water-mark
     pub fn get_highWaterMark(self: *const CountQueuingStrategy) f64 {
 
         return self._highWaterMark;
     
     }
 
+    /// size function: Returns 1 for each chunk (count-based strategy)
+    /// This is called as strategy.size(chunk) in JavaScript
     pub fn call_size(_: *const CountQueuingStrategy, _: webidl.JSValue) f64 {
 
         // Always returns 1 for count-based strategy

@@ -32,14 +32,33 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// DOMTokenList represents a set of space-separated tokens.
+/// Commonly used for Element.classList.
+/// 
+/// WebIDL Definition:
+/// ```
+/// interface DOMTokenList {
+/// readonly attribute unsigned long length;
+/// getter DOMString? item(unsigned long index);
+/// boolean contains(DOMString token);
+/// [CEReactions] undefined add(DOMString... tokens);
+/// [CEReactions] undefined remove(DOMString... tokens);
+/// [CEReactions] boolean toggle(DOMString token, optional boolean force);
+/// [CEReactions] boolean replace(DOMString token, DOMString newToken);
+/// [CEReactions] stringifier attribute DOMString value;
+/// };
+/// ```
 pub const DOMTokenList = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
+    /// The token set (ordered set of unique tokens)
     tokens: infra.List([]const u8),
+    /// Associated element (for updating attribute)
     element: ?*Element,
+    /// Associated attribute's local name (e.g., "class")
     attribute_name: []const u8,
 
     // ========================================================================
@@ -76,12 +95,16 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.length
+    /// Returns the number of tokens.
     pub fn get_length(self: *const DOMTokenList) u32 {
 
         return @intCast(self.tokens.items().len);
     
     }
 
+    /// DOM §4.7 - DOMTokenList.item(index)
+    /// Returns the token at the given index, or null if out of bounds.
     pub fn call_item(self: *const DOMTokenList, index: u32) ?[]const u8 {
 
         if (index >= self.tokens.items().len) {
@@ -91,6 +114,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.contains(token)
+    /// Returns true if token is present; otherwise false.
     pub fn call_contains(self: *const DOMTokenList, token: []const u8) bool {
 
         for (self.tokens.items()) |t| {
@@ -102,6 +127,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.add(tokens...)
+    /// Adds all arguments passed, except those already present.
     pub fn call_add(self: *DOMTokenList, tokens: []const []const u8) !void {
 
         // Step 1: Validate all tokens first
@@ -126,6 +153,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.remove(tokens...)
+    /// Removes all arguments passed, if they are present.
     pub fn call_remove(self: *DOMTokenList, tokens: []const []const u8) !void {
 
         // Step 1: Validate all tokens first
@@ -150,6 +179,11 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.toggle(token, force)
+    /// If force is not given, toggles token, returning true if token is now present,
+    /// and false otherwise. If force is true, adds token (same as add()). If force
+    /// is false, removes token (same as remove()). Returns true if token is now
+    /// present, and false otherwise.
     pub fn call_toggle(self: *DOMTokenList, token: []const u8, force: ?bool) !bool {
 
         // Step 1-2: Validate token
@@ -187,6 +221,9 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.replace(token, newToken)
+    /// Replaces token with newToken. Returns true if token was replaced;
+    /// otherwise false.
     pub fn call_replace(self: *DOMTokenList, token: []const u8, new_token: []const u8) !bool {
 
         // Step 1-2: Validate both tokens
@@ -221,6 +258,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.value (getter)
+    /// Returns the associated set as string (space-separated tokens).
     pub fn get_value(self: *const DOMTokenList) ![]const u8 {
 
         if (self.tokens.items().len == 0) {
@@ -250,6 +289,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// DOM §4.7 - DOMTokenList.value (setter)
+    /// Sets the associated attribute to the given value.
     pub fn set_value(self: *DOMTokenList, value: []const u8) !void {
 
         // Set an attribute value for the associated element using associated
@@ -273,6 +314,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// Validate token - DOM Spec validation
+    /// Throws SyntaxError if empty, InvalidCharacterError if contains whitespace
     fn validateToken(token: []const u8) !void {
 
         // If token is empty string, throw SyntaxError
@@ -289,6 +332,8 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// Update steps - DOM Spec algorithm
+    /// Syncs token set with element's attribute
     fn runUpdateSteps(self: *DOMTokenList) !void {
 
         // Step 1: If element is null and token set is empty, return
@@ -308,6 +353,7 @@ pub const DOMTokenList = struct {
     
     }
 
+    /// Serialize token set as space-separated string
     fn serializeTokenSet(self: *const DOMTokenList) ![]const u8 {
 
         if (self.tokens.items().len == 0) {

@@ -42,15 +42,39 @@ const webidl = @import("webidl");
 /// - readonly attribute Promise<undefined> closed;
 /// - Promise<undefined> cancel(optional any reason);
 
+/// ReadableStreamDefaultReader WebIDL interface
+/// 
+/// IDL:
+/// ```webidl
+/// [Exposed=*]
+/// interface ReadableStreamDefaultReader {
+/// constructor(ReadableStream stream);
+/// 
+/// Promise<ReadableStreamReadResult> read();
+/// undefined releaseLock();
+/// };
+/// ReadableStreamDefaultReader includes ReadableStreamGenericReader;
+/// ```
+/// 
+/// This interface includes the ReadableStreamGenericReader mixin, which provides:
+/// - readonly attribute Promise<undefined> closed;
+/// - Promise<undefined> cancel(optional any reason);
 pub const ReadableStreamDefaultReader = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[closedPromise]]: Promise that fulfills when stream closes
     closedPromise: *AsyncPromise(void),
+    /// [[stream]]: The ReadableStream being read from (or undefined if released)
     stream: ?*ReadableStream,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
+    /// [[readRequests]]: List of pending read requests (async promises)
+    /// 
+    /// Spec: § 4.3.2 Internal slot [[readRequests]]
+    /// Changed from ArrayList(ReadRequest) to support async operations
     readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
@@ -66,6 +90,9 @@ pub const ReadableStreamDefaultReader = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a new default reader (internal - not exposed via WebIDL)
+    /// 
+    /// Spec: § 4.3.4 "SetUpReadableStreamDefaultReader(reader, stream)"
     pub fn init(
         allocator: std.mem.Allocator,
         stream: *ReadableStream,
@@ -85,6 +112,9 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// Deinitialize the reader
+    /// 
+    /// Spec: Cleanup internal slots
     pub fn deinit(self: *ReadableStreamDefaultReader) void {
 
         // Note: readRequests promises are owned by callers, just clear the list
@@ -92,6 +122,14 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// Promise<ReadableStreamReadResult> read()
+    /// IDL: Promise<ReadableStreamReadResult> read();
+    /// 
+    /// Returns an AsyncPromise that will be fulfilled when data arrives
+    /// or rejected if the stream errors. The promise is PENDING if no
+    /// data is immediately available.
+    /// 
+    /// **IMPORTANT**: Caller owns the returned promise and must call deinit()
     pub fn call_read(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
@@ -115,6 +153,12 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// releaseLock() method
+    /// 
+    /// IDL: undefined releaseLock();
+    /// 
+    /// Spec: § 4.3.3 "The releaseLock() method steps are:"
+    /// Releases the reader's lock on the stream.
     pub fn call_releaseLock(self: *ReadableStreamDefaultReader) void {
 
         // Step 1: If this.[[stream]] is undefined, return.
@@ -128,6 +172,14 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// ReadableStreamDefaultReaderRead(reader) - ASYNC VERSION
+    /// 
+    /// Spec: § 4.3.4 "ReadableStreamDefaultReaderRead(reader)"
+    /// 
+    /// This is the core async read logic. It returns:
+    /// - Immediately fulfilled promise if data is available in the queue
+    /// - Pending promise if no data is available (will be fulfilled later when data arrives)
+    /// - Rejected promise if stream is errored
     fn readInternal(self: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
 
         // Step 1: Let stream be reader.[[stream]].
@@ -164,6 +216,10 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// readonly attribute Promise<undefined> closed
+    /// IDL: readonly attribute Promise<undefined> closed;
+    /// 
+    /// Spec: § 4.2.3 "The closed getter steps are:"
     pub fn get_closed(self: *const ReadableStreamDefaultReader) webidl.Promise(void) {
         const self_parent: *const ReadableStreamGenericReader = @ptrCast(self);
 
@@ -178,6 +234,10 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    /// 
+    /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
     pub fn call_cancel(self: *ReadableStreamDefaultReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
@@ -201,6 +261,9 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericCancel(reader, reason)
+    /// 
+    /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
     fn genericCancel(self: *ReadableStreamDefaultReader, reason: ?common.JSValue) !*AsyncPromise(void) {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 
@@ -215,6 +278,9 @@ pub const ReadableStreamDefaultReader = struct {
     
     }
 
+    /// ReadableStreamReaderGenericRelease(reader)
+    /// 
+    /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamDefaultReader) void {
         const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
 

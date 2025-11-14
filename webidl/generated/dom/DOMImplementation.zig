@@ -23,12 +23,17 @@ const webidl = @import("webidl");
 /// Factory interface for creating documents and document types.
 /// Accessed via document.implementation getter.
 
+/// DOM Spec: interface DOMImplementation
+/// 
+/// Factory interface for creating documents and document types.
+/// Accessed via document.implementation getter.
 pub const DOMImplementation = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
+    /// Associated document (the document that owns this implementation object)
     document: *Document,
 
     // ========================================================================
@@ -44,6 +49,7 @@ pub const DOMImplementation = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a DOMImplementation for the given document
     pub fn init(allocator: Allocator, document: *Document) !DOMImplementation {
 
         return .{
@@ -60,6 +66,13 @@ pub const DOMImplementation = struct {
     
     }
 
+    /// createDocumentType(name, publicId, systemId)
+    /// DOM §4.5 - Creates a DocumentType node
+    /// 
+    /// Spec algorithm:
+    /// 1. If name is not a valid doctype name, then throw an "InvalidCharacterError" DOMException.
+    /// 2. Return a new doctype, with name as its name, publicId as its public ID, and systemId
+    /// as its system ID, and with its node document set to the associated document of this.
     pub fn call_createDocumentType(
         self: *DOMImplementation,
         name: []const u8,
@@ -88,6 +101,23 @@ pub const DOMImplementation = struct {
     
     }
 
+    /// createDocument(namespace, qualifiedName, doctype)
+    /// DOM §4.5 - Creates an XMLDocument
+    /// 
+    /// Spec algorithm:
+    /// 1. Let document be a new XMLDocument.
+    /// 2. Let element be null.
+    /// 3. If qualifiedName is not the empty string, then set element to the result of running
+    /// the internal createElementNS steps, given document, namespace, qualifiedName, and an
+    /// empty dictionary.
+    /// 4. If doctype is non-null, append doctype to document.
+    /// 5. If element is non-null, append element to document.
+    /// 6. document's origin is this's associated document's origin.
+    /// 7. document's content type is determined by namespace:
+    /// - HTML namespace: "application/xhtml+xml"
+    /// - SVG namespace: "image/svg+xml"
+    /// - Any other namespace: "application/xml"
+    /// 8. Return document.
     pub fn call_createDocument(
         self: *DOMImplementation,
         namespace: ?[]const u8,
@@ -146,6 +176,21 @@ pub const DOMImplementation = struct {
     
     }
 
+    /// createHTMLDocument(title)
+    /// DOM §4.5 - Creates an HTML document
+    /// 
+    /// Spec algorithm:
+    /// 1. Let doc be a new document that is an HTML document.
+    /// 2. Set doc's content type to "text/html".
+    /// 3. Append a new doctype, with "html" as its name and with its node document set to doc, to doc.
+    /// 4. Append the result of creating an element given doc, "html", and the HTML namespace, to doc.
+    /// 5. Append the result of creating an element given doc, "head", and the HTML namespace, to the html element created earlier.
+    /// 6. If title is given:
+    /// 1. Append the result of creating an element given doc, "title", and the HTML namespace, to the head element created earlier.
+    /// 2. Append a new Text node, with its data set to title (which could be the empty string) and its node document set to doc, to the title element created earlier.
+    /// 7. Append the result of creating an element given doc, "body", and the HTML namespace, to the html element created earlier.
+    /// 8. doc's origin is this's associated document's origin.
+    /// 9. Return doc.
     pub fn call_createHTMLDocument(
         self: *DOMImplementation,
         title: ?[]const u8,
@@ -204,6 +249,14 @@ pub const DOMImplementation = struct {
     
     }
 
+    /// hasFeature()
+    /// DOM §4.5 - Legacy method that always returns true
+    /// 
+    /// Spec: hasFeature() originally would report whether the user agent claimed to support
+    /// a given DOM feature, but experience proved it was not nearly as reliable or granular
+    /// as simply checking whether the desired objects, attributes, or methods existed.
+    /// As such, it is no longer to be used, but continues to exist (and simply returns true)
+    /// so that old pages don't stop working.
     pub fn call_hasFeature() bool {
 
         return true;

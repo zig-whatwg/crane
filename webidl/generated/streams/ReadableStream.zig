@@ -82,14 +82,37 @@ pub const ReadableStream = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[controller]]: ReadableStreamDefaultController or ReadableByteStreamController
+    /// Spec: § 4.1 Internal slot [[controller]]
     controller: *ReadableStreamDefaultController,
+    /// [[detached]]: boolean - stream has been transferred via postMessage
+    /// Spec: § 4.1 Internal slot [[detached]]
     detached: bool,
+    /// [[disturbed]]: boolean - stream has ever had a reader
+    /// Spec: § 4.1 Internal slot [[disturbed]]
     disturbed: bool,
+    /// [[reader]]: ReadableStreamReader or undefined
+    /// Spec: § 4.1 Internal slot [[reader]]
     reader: Reader,
+    /// [[state]]: "readable", "closed", or "errored"
+    /// Spec: § 4.1 Internal slot [[state]]
     state: StreamState,
+    /// [[storedError]]: JavaScript value (if state is "errored")
+    /// Spec: § 4.1 Internal slot [[storedError]]
     storedError: ?common.JSValue,
+    /// Event loop for async operations (borrowed reference)
+    /// 
+    /// The stream does not own the event loop - it borrows it from the execution context.
+    /// This matches browser semantics where streams access the JavaScript execution
+    /// context's event loop, they don't own separate event loops.
     eventLoop: eventLoop.EventLoop,
+    /// Optional owned event loop for backward compatibility
+    /// 
+    /// Only set when using the deprecated init() method.
+    /// New code should use initWithSource() and manage event loops externally.
     eventLoop_storage: ?*TestEventLoop,
+    /// Optional TeeState reference if this stream is a tee branch
+    /// When set, deinit() will call teeState.release() to decrement ref count
     teeState: ?*TeeState,
 
     // ========================================================================
@@ -105,6 +128,13 @@ pub const ReadableStream = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a new ReadableStream (internal - not exposed via WebIDL)
+    /// 
+    /// DEPRECATED: Use initWithSource() and provide an event loop.
+    /// This function is kept for backward compatibility.
+    /// 
+    /// NOTE: This creates an internal event loop that is owned by the stream.
+    /// This is NOT recommended for new code - use initWithSource() instead.
     pub fn init(allocator: std.mem.Allocator) !ReadableStream {
 
         // Create an owned event loop for backward compatibility
@@ -122,6 +152,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Deinitialize the ReadableStream
+    /// 
+    /// Spec: Cleanup internal slots and release resources
     pub fn deinit(self: *ReadableStream) void {
 
         // IMPORTANT: We do NOT run microtasks during deinit.
@@ -158,6 +191,17 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Initialize a ReadableStream with an underlying source
+    /// 
+    /// Spec: § 4.1.1 "new ReadableStream(underlyingSource = {}, strategy = {})"
+    /// 
+    /// This is the main constructor for creating a ReadableStream with custom behavior.
+    /// 
+    /// Parameters:
+    /// - allocator: Memory allocator for the stream
+    /// - loop: Event loop for async operations (borrowed, not owned)
+    /// - underlyingSource: Optional source object with start/pull/cancel methods
+    /// - strategy: Optional queuing strategy with highWaterMark and size function
     pub fn initWithSource(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -232,6 +276,18 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStream.from(asyncIterable)
+    /// 
+    /// IDL: static ReadableStream from(any asyncIterable);
+    /// 
+    /// Spec: § 4.2.4 "The static from(asyncIterable) method steps are:"
+    /// Creates a ReadableStream from an async iterable (or sync iterable).
+    /// 
+    /// This allows creating streams from:
+    /// - Async generators
+    /// - Async iterables
+    /// - Sync iterables (arrays, etc.)
+    /// - Any object with Symbol.asyncIterator or Symbol.iterator
     pub fn from(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -243,6 +299,11 @@ pub const ReadableStream = struct {
     
     }
 
+    /// readonly attribute boolean locked
+    /// IDL: readonly attribute boolean locked;
+    /// 
+    /// Spec: § 4.1.2 "The locked getter steps are:"
+    /// Returns true if the stream is locked to a reader.
     pub fn get_locked(self: *const ReadableStream) bool {
 
         // Spec: § 4.1.2 "Return ! IsReadableStreamLocked(this)."
@@ -250,6 +311,11 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Promise<undefined> cancel(optional any reason)
+    /// IDL: Promise<undefined> cancel(optional any reason);
+    /// 
+    /// Spec: § 4.1.3 "The cancel(reason) method steps are:"
+    /// Cancels the stream, signaling a loss of interest in the stream by a consumer.
     pub fn call_cancel(self: *ReadableStream, reason: ?webidl.JSValue) !*AsyncPromise(void) {
 
         // Spec: § 4.1.3 step 1: "If ! IsReadableStreamLocked(this) is true, return a promise rejected with a TypeError exception."
@@ -270,6 +336,12 @@ pub const ReadableStream = struct {
     
     }
 
+    /// getReader(options) method
+    /// 
+    /// IDL: ReadableStreamReader getReader(optional ReadableStreamGetReaderOptions options = {});
+    /// 
+    /// Spec: § 4.1.4 "The getReader(options) method steps are:"
+    /// Creates a reader and locks the stream to it.
     pub fn call_getReader(
         self: *ReadableStream,
         options: ?webidl.JSValue,
@@ -287,6 +359,12 @@ pub const ReadableStream = struct {
     
     }
 
+    /// pipeTo(destination, options) method
+    /// 
+    /// IDL: Promise<undefined> pipeTo(WritableStream destination, optional StreamPipeOptions options = {});
+    /// 
+    /// Spec: § 4.1.5 "The pipeTo(destination, options) method steps are:"
+    /// Pipes this readable stream to a writable stream.
     pub fn call_pipeTo(
         self: *ReadableStream,
         destination: *WritableStream,
@@ -353,6 +431,12 @@ pub const ReadableStream = struct {
     
     }
 
+    /// pipeThrough(transform, options) method
+    /// 
+    /// IDL: ReadableStream pipeThrough(ReadableWritablePair transform, optional StreamPipeOptions options = {});
+    /// 
+    /// Spec: § 4.1.6 "The pipeThrough(transform, options) method steps are:"
+    /// Pipes this readable stream through a transform stream.
     pub fn call_pipeThrough(
         self: *ReadableStream,
         transform: *TransformPair,
@@ -384,6 +468,12 @@ pub const ReadableStream = struct {
     
     }
 
+    /// tee() method
+    /// 
+    /// IDL: sequence<ReadableStream> tee();
+    /// 
+    /// Spec: § 4.1.7 "The tee() method steps are:"
+    /// Creates two branches that can be consumed independently.
     pub fn call_tee(self: *ReadableStream) !TeeBranches {
 
         // Step 1: Let branches be ? ReadableStreamTee(this, false).
@@ -391,6 +481,15 @@ pub const ReadableStream = struct {
     
     }
 
+    /// from(asyncIterable) static method
+    /// 
+    /// IDL: static ReadableStream from(any asyncIterable);
+    /// 
+    /// Spec: § 4.1.8 "The static from(asyncIterable) method steps are:"
+    /// Creates a ReadableStream from an async iterable.
+    /// 
+    /// Spec steps:
+    /// 1. Return ? ReadableStreamFromIterable(asyncIterable).
     pub fn call_from(allocator: std.mem.Allocator, loop: eventLoop.EventLoop, asyncIterable: webidl.JSValue) !*ReadableStream {
 
         // Convert webidl.JSValue to common.AsyncIterator
@@ -406,6 +505,8 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Extract an AsyncIterator from a JSValue
+    /// This is a bridge function until full JavaScript runtime integration
     fn extractAsyncIterator(allocator: std.mem.Allocator, value: webidl.JSValue) !common.AsyncIterator {
 
         // For testing/development, we support passing MockAsyncIterator as pointer in JSValue
@@ -431,6 +532,10 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamFromIterable algorithm
+    /// Spec: § 4.3.15 ReadableStreamFromIterable(asyncIterable)
+    /// 
+    /// Creates a ReadableStream that pulls from an async iterator.
     fn readableStreamFromIterable(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -490,6 +595,13 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Create a ReadableStream from a MockAsyncIterator (for testing)
+    /// 
+    /// This is a convenience function that wraps MockAsyncIterator in common.AsyncIterator
+    /// and calls readableStreamFromIterable().
+    /// 
+    /// For production use, call_from() should be used with proper JSValue containing
+    /// Symbol.asyncIterator support.
     pub fn fromMockIterator(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -525,6 +637,8 @@ pub const ReadableStream = struct {
     
     }
 
+    /// CreateReadableStream abstract operation
+    /// Spec: § 4.3.4 CreateReadableStream(startAlgorithm, pullAlgorithm, cancelAlgorithm[, highWaterMark[, sizeAlgorithm]])
     fn createReadableStream(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -582,6 +696,12 @@ pub const ReadableStream = struct {
     
     }
 
+    /// values(options) method for async iteration
+    /// 
+    /// IDL: async_iterable<any>(optional ReadableStreamIteratorOptions options = {});
+    /// 
+    /// Spec: § 3.2.6 "Asynchronous iteration"
+    /// Returns an async iterator for the stream with optional preventCancel setting.
     pub fn call_values(self: *ReadableStream, preventCancel: bool) !ReadableStreamAsyncIterator {
 
         return ReadableStreamAsyncIterator.init(
@@ -593,12 +713,23 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Get an async iterator with default options (preventCancel = false)
+    /// 
+    /// This is the default async iterator used by for-await loops
     pub fn call_asyncIterator(self: *ReadableStream) !ReadableStreamAsyncIterator {
 
         return self.call_values(false);
     
     }
 
+    /// [[TransferSteps]](dataHolder)
+    /// 
+    /// Spec: § 4.2.5 "Transfer"
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    /// 
+    /// Steps for transferring a ReadableStream via postMessage().
+    /// Creates a MessagePort pair, pipes the stream through it, and serializes
+    /// the receiving port for transfer to another realm.
     pub fn transferSteps(self: *ReadableStream) !*structured_clone.SerializedData {
 
         const cross_realm_transform = @import("cross_realm_transform");
@@ -637,6 +768,13 @@ pub const ReadableStream = struct {
     
     }
 
+    /// [[TransferReceivingSteps]](dataHolder)
+    /// 
+    /// Spec: § 4.2.5 "Transfer" (transfer-receiving steps)
+    /// https://streams.spec.whatwg.org/#rs-transfer
+    /// 
+    /// Steps for receiving a transferred ReadableStream in another realm.
+    /// Deserializes the MessagePort and sets up a stream that reads from it.
     pub fn transferReceivingSteps(
         self: *ReadableStream,
         serialized: *structured_clone.SerializedData,
@@ -655,6 +793,11 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamCancel(stream, reason)
+    /// 
+    /// ReadableStreamCancel(stream, reason)
+    /// 
+    /// Spec: § 4.3.14 "Cancels stream and returns a promise that will be fulfilled when the stream is closed."
     pub fn cancelInternal(self: *ReadableStream, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Spec step 1: Set stream.[[disturbed]] to true
@@ -692,6 +835,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// AcquireReadableStreamDefaultReader(stream)
+    /// 
+    /// Spec: § 4.2.3 "Creates a default reader and locks the stream to it."
     fn acquireDefaultReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamDefaultReader {
 
         // Create reader on heap
@@ -708,6 +854,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// AcquireReadableStreamBYOBReader(stream)
+    /// 
+    /// Spec: § 4.2.3 "Creates a BYOB reader and locks the stream to it."
     fn acquireBYOBReader(self: *ReadableStream, loop: eventLoop.EventLoop) !*ReadableStreamBYOBReader {
 
         // Step 1: If stream is locked, throw TypeError
@@ -735,6 +884,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// CreateReadableByteStream(startAlgorithm, pullAlgorithm, cancelAlgorithm)
+    /// 
+    /// Spec: § 4.2.3 "Create a byte stream with custom algorithms"
     pub fn createByteStream(
         allocator: std.mem.Allocator,
         startAlgorithm: common.StartAlgorithm,
@@ -791,6 +943,20 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamFromIterable(asyncIterable)
+    /// 
+    /// Spec: § 4.9.1 "ReadableStreamFromIterable"
+    /// Creates a ReadableStream from an async iterable or sync iterable.
+    /// 
+    /// This implements the algorithm that powers ReadableStream.from().
+    /// It creates a stream that pulls values from the iterable and enqueues them.
+    /// 
+    /// Parameters:
+    /// - allocator: Memory allocator for the stream
+    /// - loop: Event loop for async operations
+    /// - asyncIterable: An async iterable, sync iterable, or object with iterator
+    /// 
+    /// Returns: A new ReadableStream that yields values from the iterable
     fn ReadableStreamFromIterable(
         allocator: std.mem.Allocator,
         loop: eventLoop.EventLoop,
@@ -900,6 +1066,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamGetNumReadRequests(stream)
+    /// 
+    /// Spec: § 4.2.4 "Get number of pending read requests"
     pub fn getNumReadRequests(self: *const ReadableStream) usize {
 
         return switch (self.reader) {
@@ -910,6 +1079,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Check if stream has a default reader
+    /// 
+    /// Spec: § 4.1.4 "ReadableStreamHasDefaultReader(stream)"
     pub fn hasDefaultReader(self: *const ReadableStream) bool {
 
         return switch (self.reader) {
@@ -919,6 +1091,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Check if stream has a BYOB reader
+    /// 
+    /// Spec: § 4.1.4 "ReadableStreamHasBYOBReader(stream)"
     pub fn hasBYOBReader(self: *const ReadableStream) bool {
 
         return switch (self.reader) {
@@ -928,6 +1103,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// Get number of pending read-into requests (BYOB)
+    /// 
+    /// Spec: § 4.1.4 "ReadableStreamGetNumReadIntoRequests(stream)"
     pub fn getNumReadIntoRequests(self: *const ReadableStream) usize {
 
         return switch (self.reader) {
@@ -938,6 +1116,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamFulfillReadRequest(stream, chunk, done)
+    /// 
+    /// Spec: § 4.2.5 "Fulfill a pending read request"
     pub fn fulfillReadRequest(self: *ReadableStream, chunk: common.JSValue, done: bool) void {
 
         switch (self.reader) {
@@ -966,6 +1147,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamFulfillReadIntoRequest(stream, chunk, done)
+    /// 
+    /// Spec: § 4.5.5 "Fulfill a pending read-into request (BYOB)"
     pub fn fulfillReadIntoRequest(self: *ReadableStream, chunk: webidl.ArrayBufferView, done: bool) void {
 
         switch (self.reader) {
@@ -1003,6 +1187,11 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamClose(stream)
+    /// 
+    /// Spec: § 4.2.6 "ReadableStreamClose(stream)"
+    /// 
+    /// Close the stream and resolve any pending read requests.
     pub fn closeInternal(self: *ReadableStream) void {
 
         // Spec step 1: Assert: stream.[[state]] is "readable"
@@ -1048,6 +1237,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamError(stream, e)
+    /// 
+    /// Spec: § 4.2.7 "Error the stream"
     pub fn errorInternal(self: *ReadableStream, e: common.JSValue) void {
 
         // Step 1: Assert: stream.[[state]] is "readable".
@@ -1090,6 +1282,10 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableByteStreamTee(stream)
+    /// 
+    /// Spec: § 4.10.6 "ReadableByteStreamTee(stream)"
+    /// Creates two branches of a byte stream with BYOB support
     fn readableByteStreamTee(self: *ReadableStream) !TeeBranches {
 
         // Step 1-2: Asserts
@@ -1211,6 +1407,9 @@ pub const ReadableStream = struct {
     
     }
 
+    /// ReadableStreamTee(stream, cloneForBranch2)
+    /// 
+    /// Spec: § 4.10.5 "Create two branches of a readable stream"
     fn teeInternal(self: *ReadableStream, cloneForBranch2: bool) !TeeBranches {
 
         // TODO: Route to byte stream tee if controller is a byte controller

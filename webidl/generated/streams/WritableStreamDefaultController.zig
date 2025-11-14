@@ -29,16 +29,30 @@ pub const WritableStreamDefaultController = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#writablestreamdefaultcontroller-abortcontroller
     abortController: AbortController,
+    /// [[abortAlgorithm]]: Promise-returning algorithm for abort
     abortAlgorithm: common.AbortAlgorithm,
+    /// [[closeAlgorithm]]: Promise-returning algorithm for close
     closeAlgorithm: common.CloseAlgorithm,
+    /// [[queue]]: Queue-with-sizes for internal chunk queue
     queue: QueueWithSizes,
+    /// [[started]]: boolean - underlying sink has finished starting
     started: bool,
+    /// [[strategyHWM]]: High water mark for backpressure
     strategyHwm: f64,
+    /// [[strategySizeAlgorithm]]: Algorithm to calculate chunk size
     strategySizeAlgorithm: common.SizeAlgorithm,
+    /// [[stream]]: The WritableStream instance controlled
     stream: ?*anyopaque,
+    /// [[writeAlgorithm]]: Promise-returning algorithm for write
     writeAlgorithm: common.WriteAlgorithm,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
+    /// Optional transform controller for TransformStream integration
+    /// When set, writes are routed through the transform controller instead of writeAlgorithm
+    /// This enables TransformStream to intercept writes and transform them
     transformController: ?*anyopaque,
 
     // ========================================================================
@@ -88,6 +102,8 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// undefined error(optional any e)
+    /// Spec: § 5.4.3 "The error(e) method steps are:"
     pub fn call_error(self: *WritableStreamDefaultController, e: ?webidl.JSValue) void {
 
         const error_value = if (e) |err| common.JSValue.fromWebIDL(err) else common.JSValue.undefined_value();
@@ -95,6 +111,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// WritableStreamDefaultControllerError(controller, error)
+    /// 
+    /// Spec: § 5.7.3 "Error the controller"
     fn errorInternal(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
 
         // Spec step 1: Let stream be controller.[[stream]]
@@ -120,6 +139,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// [[AbortSteps]](reason)
+    /// 
+    /// Spec: § 5.2.6 "Controller's abort steps"
     pub fn abortSteps(self: *WritableStreamDefaultController, reason: ?common.JSValue) common.Promise(void) {
 
         // Spec step 1: Let result be the result of performing this.[[abortAlgorithm]], passing reason
@@ -133,6 +155,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// [[ErrorSteps]]()
+    /// 
+    /// Spec: § 5.2.7 "Controller's error steps"
     pub fn errorSteps(self: *WritableStreamDefaultController) void {
 
         // Spec step 1: Perform ! ResetQueue(this)
@@ -140,6 +165,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// WritableStreamDefaultControllerClose(controller)
+    /// 
+    /// Spec: § 5.7.2 "Close the controller"
     pub fn closeInternal(self: *WritableStreamDefaultController) void {
 
         // Spec step 1: Perform ! EnqueueValueWithSize(controller, close sentinel, 0)
@@ -153,6 +181,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// WritableStreamDefaultControllerErrorIfNeeded(controller, error)
+    /// 
+    /// Spec: § 5.7.4 "Error the controller if writable"
     pub fn errorIfNeeded(self: *WritableStreamDefaultController, error_value: common.JSValue) void {
 
         // Spec step 1: If controller.[[stream]].[[state]] is "writable", perform ! WritableStreamDefaultControllerError(controller, error)
@@ -163,6 +194,9 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// WritableStreamDefaultControllerAdvanceQueueIfNeeded(controller)
+    /// 
+    /// Spec: § 5.7.1 "Process the next chunk in the queue if ready"
     fn advanceQueueIfNeeded(self: *WritableStreamDefaultController) void {
 
         // Simplified implementation - in full version, this would:
@@ -180,6 +214,11 @@ pub const WritableStreamDefaultController = struct {
     
     }
 
+    /// Process a write (internal method for queue processing)
+    /// 
+    /// This is called by WritableStreamDefaultControllerAdvanceQueueIfNeeded
+    /// to process the next chunk in the queue. If this controller is part of
+    /// a TransformStream, it routes through the transform controller.
     pub fn processWrite(self: *WritableStreamDefaultController, chunk: common.JSValue) common.Promise(void) {
 
         // Check if this is part of a TransformStream

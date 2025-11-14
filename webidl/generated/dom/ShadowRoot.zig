@@ -89,31 +89,63 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     };
 }
 
+/// DOM §4.8.1 - ShadowRoot interface
+/// 
+/// Shadow roots are DocumentFragments that serve as the root of a shadow tree.
+/// A shadow root is always attached to another node tree through its host element.
 pub const ShadowRoot = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// DOM §2.7 - Each EventTarget has an associated event listener list
+    /// (a list of zero or more event listeners). It is initially the empty list.
+    /// 
+    /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
+    /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
+    /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
     child_nodes: infra.List(*Node),
     owner_document: ?*Document,
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
     cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
     cached_child_nodes: ?*@import("node_list").NodeList,
+    /// Host element for shadow roots (null for regular document fragments)
+    /// Per DOM spec: A shadow root's host is always non-null
+    /// This field allows distinguishing ShadowRoot from plain DocumentFragment
+    host: ?*Element,
+    /// Custom element registry for this document or shadow root
     custom_element_registry: ?*anyopaque,
     allocator: Allocator,
-    host_element: *Element,
+    /// The mode of this shadow root ("open" or "closed")
     shadow_mode: ShadowRootMode,
+    /// Whether focus is delegated to the first focusable element
     delegates_focus_flag: bool,
+    /// How slottables are assigned to slots ("manual" or "named")
     slot_assignment_mode: SlotAssignmentMode,
+    /// Whether this shadow root can be cloned
     clonable_flag: bool,
+    /// Whether this shadow root can be serialized
     serializable_flag: bool,
+    /// Whether this shadow root is available to element internals
     available_to_element_internals: bool,
+    /// Whether this shadow root is declarative
     declarative_flag: bool,
+    /// Keep custom element registry null (for declarative shadow roots)
+    /// Note: custom_element_registry comes from DocumentOrShadowRoot mixin
     keep_custom_element_registry_null: bool,
+    /// Event handler for slotchange event
     onslotchange: ?*anyopaque,
 
     // ========================================================================
@@ -144,6 +176,9 @@ pub const ShadowRoot = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.8.1 - ShadowRoot constructor (internal)
+    /// 
+    /// Shadow roots are created via Element.attachShadow(), not directly.
     pub fn init(
         allocator: Allocator,
         host: *Element,
@@ -166,11 +201,12 @@ pub const ShadowRoot = struct {
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
+            // Inherited from DocumentFragment
+            .host = host, // Shadow roots ALWAYS have a host (never null)
             // Mixin from DocumentOrShadowRoot
             .custom_element_registry = null,
             // ShadowRoot own fields
             .allocator = allocator,
-            .host_element = host,
             .shadow_mode = mode,
             .delegates_focus_flag = delegates_focus,
             .slot_assignment_mode = slot_assignment,
@@ -196,42 +232,65 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.mode
+    /// 
+    /// Returns the mode of this shadow root ("open" or "closed").
     pub fn get_mode(self: *const ShadowRoot) []const u8 {
 
         return self.shadow_mode.toString();
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.delegatesFocus
+    /// 
+    /// Returns whether focus is delegated to the first focusable element.
     pub fn get_delegatesFocus(self: *const ShadowRoot) bool {
 
         return self.delegates_focus_flag;
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.slotAssignment
+    /// 
+    /// Returns how slottables are assigned to slots ("manual" or "named").
     pub fn get_slotAssignment(self: *const ShadowRoot) []const u8 {
 
         return self.slot_assignment_mode.toString();
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.clonable
+    /// 
+    /// Returns whether this shadow root can be cloned.
     pub fn get_clonable(self: *const ShadowRoot) bool {
 
         return self.clonable_flag;
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.serializable
+    /// 
+    /// Returns whether this shadow root can be serialized.
     pub fn get_serializable(self: *const ShadowRoot) bool {
 
         return self.serializable_flag;
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.host
+    /// 
+    /// Returns the element that hosts this shadow root.
     pub fn get_host(self: *const ShadowRoot) *Element {
 
-        return self.host_element;
+        // Shadow roots ALWAYS have a host (inherited from DocumentFragment)
+        return self.host.?;
     
     }
 
+    /// DOM §4.8.1 - ShadowRoot.onslotchange
+    /// 
+    /// Event handler for the slotchange event.
+    /// Fired when slot assignments change.
     pub fn get_onslotchange(self: *const ShadowRoot) ?*anyopaque {
 
         return self.onslotchange;
@@ -244,6 +303,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get the mode as an enum value
     pub fn getMode(self: *const ShadowRoot) ShadowRootMode {
         return self.shadow_mode;
     }
@@ -260,24 +320,32 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Check if this shadow root is declarative
     pub fn isDeclarative(self: *const ShadowRoot) bool {
 
         return self.declarative_flag;
     
     }
 
+    /// Set available to element internals
     pub fn setAvailableToElementInternals(self: *ShadowRoot, value: bool) void {
 
         self.available_to_element_internals = value;
     
     }
 
+    /// Set declarative flag
     pub fn setDeclarative(self: *ShadowRoot, value: bool) void {
 
         self.declarative_flag = value;
     
     }
 
+    /// DOM §4.4 - DocumentOrShadowRoot.customElementRegistry
+    /// 
+    /// Returns this's CustomElementRegistry object, if any; otherwise null.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-documentorshadowroot-customelementregistry
     pub fn get_customElementRegistry(self: *const ShadowRoot) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -290,6 +358,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get the custom element registry
     pub fn getCustomElementRegistry(self: *const ShadowRoot) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -297,6 +366,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Set the custom element registry
     pub fn setCustomElementRegistry(self: *ShadowRoot, registry: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -304,6 +374,15 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.children
+    /// Returns the child elements.
+    /// 
+    /// The children getter steps are to return an HTMLCollection collection rooted
+    /// at this matching only element children.
+    /// 
+    /// NOTE: This is a simplified implementation that returns a static snapshot.
+    /// A full implementation would return a live HTMLCollection that updates
+    /// automatically when the DOM changes.
     pub fn get_children(self: ShadowRoot) !*HTMLCollection {
         const self_parent = self;
 
@@ -326,6 +405,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.firstElementChild
+    /// Returns the first child that is an element; otherwise null.
+    /// 
+    /// The firstElementChild getter steps are to return the first child that is
+    /// an element; otherwise null.
     pub fn get_firstElementChild(self: ShadowRoot) ?*Element {
         const self_parent = self;
 
@@ -343,6 +427,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.lastElementChild
+    /// Returns the last child that is an element; otherwise null.
+    /// 
+    /// The lastElementChild getter steps are to return the last child that is
+    /// an element; otherwise null.
     pub fn get_lastElementChild(self: ShadowRoot) ?*Element {
         const self_parent = self;
 
@@ -363,6 +452,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.childElementCount
+    /// Returns the number of children that are elements.
+    /// 
+    /// The childElementCount getter steps are to return the number of children
+    /// of this that are elements.
     pub fn get_childElementCount(self: ShadowRoot) u32 {
         const self_parent = self;
 
@@ -381,6 +475,14 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.prepend()
+    /// Inserts nodes before the first child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Pre-insert node into this before this's first child.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_prepend(self: ShadowRoot, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -401,6 +503,14 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.append()
+    /// Inserts nodes after the last child, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Append node to this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_append(self: ShadowRoot, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -420,6 +530,15 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.replaceChildren()
+    /// Replaces all children with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let node be the result of converting nodes into a node given nodes and this's node document.
+    /// 2. Ensure pre-insert validity of node into this before null.
+    /// 3. Replace all with node within this.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceChildren(self: ShadowRoot, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -442,6 +561,18 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.moveBefore()
+    /// Moves, without first removing, movedNode into this after child.
+    /// This method preserves state associated with movedNode.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-parentnode-movebefore
+    /// 
+    /// Steps:
+    /// 1. Let referenceChild be child.
+    /// 2. If referenceChild is node, then set referenceChild to node's next sibling.
+    /// 3. Move node into this before referenceChild.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated, or state cannot be preserved.
     pub fn call_moveBefore(self: ShadowRoot, node: anytype, child: anytype) !void {
         const self_parent = self;
 
@@ -465,6 +596,14 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelector()
+    /// Returns the first element that is a descendant of this that matches selectors.
+    /// 
+    /// The querySelector(selectors) method steps are to return the first result of
+    /// running scope-match a selectors string selectors against this, if the result
+    /// is not an empty list; otherwise null.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelector(self: ShadowRoot, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
         const self_parent = self;
 
@@ -481,6 +620,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.2 - ParentNode.querySelectorAll()
+    /// Returns all element descendants of this that match selectors.
+    /// 
+    /// The querySelectorAll(selectors) method steps are to return the static result
+    /// of running scope-match a selectors string selectors against this.
+    /// 
+    /// Uses Selectors mock (basic support only).
     pub fn call_querySelectorAll(self: ShadowRoot, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
         const self_parent = self;
 
@@ -503,6 +649,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.3.1 - NonElementParentNode.getElementById()
+    /// Returns the first element within this node's descendants whose ID is elementId.
+    /// 
+    /// The getElementById(elementId) method steps are:
+    /// 1. If this is not a Document or DocumentFragment, return null
+    /// 2. Return the first element, in tree order, within this's descendants,
+    /// that has an ID equal to elementId; otherwise null
     pub fn call_getElementById(self: ShadowRoot, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
         const self_parent = self;
 
@@ -545,6 +698,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *ShadowRoot, node: *Node, child: ?*Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -558,6 +713,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *ShadowRoot, node: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -571,6 +728,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *ShadowRoot, node: *Node, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -584,6 +743,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *ShadowRoot, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -598,6 +759,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *ShadowRoot, options: ?GetRootNodeOptions) *Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -635,6 +801,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const ShadowRoot, other: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -646,6 +814,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const ShadowRoot, other: *const Node) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -698,6 +868,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const ShadowRoot, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -707,6 +879,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Node A equals node B - DOM Spec algorithm
+    /// A node A equals a node B if all of the following conditions are true:
+    /// - A and B implement the same interfaces
+    /// - Node-specific properties are equal
+    /// - If A is an element, each attribute in its list equals an attribute in B's list
+    /// - A and B have the same number of children
+    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -801,6 +980,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Attribute equality check
+    /// An attribute A equals an attribute B if:
+    /// - namespace is equal
+    /// - local name is equal
+    /// - value is equal
     pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
 
         // Check namespace
@@ -820,6 +1004,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
     pub fn call_isSameNode(self: *const ShadowRoot, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -829,6 +1015,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const ShadowRoot) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -836,6 +1024,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *ShadowRoot, deep: bool) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -858,6 +1048,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Clone a node - DOM Spec algorithm
+    /// Given a node `node` and optional document, subtree flag, parent, and fallbackRegistry
     pub fn cloneNodeInternal(
         node: *Node,
         document_param: ?*Document,
@@ -956,6 +1148,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Clone a single node - DOM Spec algorithm
+    /// Creates a new node with the same properties but no children
     pub fn cloneSingleNode(
         node: *Node,
         document: ?*Document,
@@ -1060,6 +1254,21 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    /// 
+    /// Removes empty exclusive Text nodes and concatenates the data of remaining
+    /// contiguous exclusive Text nodes into the first of their nodes.
+    /// 
+    /// The normalize() method steps are to run these steps for each descendant
+    /// exclusive Text node `node` of this:
+    /// 1. Let length be node's length
+    /// 2. If length is zero, remove node and continue
+    /// 3. Let data be concatenation of data of node's contiguous exclusive Text nodes (excluding itself)
+    /// 4. Replace data with node, offset length, count 0, and data
+    /// 5. Let currentNode be node's next sibling
+    /// 6. While currentNode is exclusive Text node: update ranges and advance
+    /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *ShadowRoot) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1147,6 +1356,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Helper: Check if a node is an exclusive Text node
+    /// An exclusive Text node is a Text node that is NOT a CDATASection node
     fn isExclusiveTextNode(node: *Node) bool {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
@@ -1154,6 +1365,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Helper: Collect all descendant exclusive Text nodes in tree order
     fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
 
         // Check if this node is an exclusive Text node
@@ -1168,6 +1380,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Helper: Update ranges during normalize operation
+    /// Spec: DOM §4.2.5 normalize() step 6.1-6.4
     fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
 
         // This requires access to document's live ranges list
@@ -1198,6 +1412,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Getters
     pub fn get_nodeType(self: *const ShadowRoot) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1325,6 +1540,11 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const ShadowRoot) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1418,6 +1638,10 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get text content - DOM Spec algorithm
+    /// Returns text content based on node type
+    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
+    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -1443,6 +1667,10 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get descendant text content - concatenate all Text node descendants
+    /// Spec: https://dom.spec.whatwg.org/#concept-descendant-text-content
+    /// Returns the concatenation of data from all Text node descendants in tree order.
+    /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
         var result = std.ArrayList(u8).init(allocator);
@@ -1454,6 +1682,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -1471,6 +1700,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Set text content - DOM Spec algorithm
+    /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1497,6 +1728,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// String replace all - DOM Spec algorithm
+    /// Replace all children with a single text node containing string
     pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
 
         // Step 1: Let node be null
@@ -1520,6 +1753,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const ShadowRoot, namespace_param: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1551,6 +1786,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
     pub fn call_lookupNamespaceURI(self: *const ShadowRoot, prefix_param: ?[]const u8) ?[]const u8 {
 
         // Spec step 1: If prefix is empty string, set to null
@@ -1561,6 +1798,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const ShadowRoot, namespace_param: ?[]const u8) bool {
 
         // Spec step 1: If namespace is empty string, set to null
@@ -1576,6 +1815,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const ShadowRoot, namespace: []const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1609,6 +1850,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const ShadowRoot, prefix: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1701,6 +1944,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *ShadowRoot) *std.ArrayList(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1708,6 +1952,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *ShadowRoot, registered: RegisteredObserver) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1715,6 +1960,7 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *ShadowRoot, observer: *const @import("mutation_observer").MutationObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1730,6 +1976,10 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Remove all transient registered observers whose source matches the given registered observer
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *ShadowRoot, source: *const RegisteredObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1747,6 +1997,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *ShadowRoot) !*std.ArrayList(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1762,6 +2014,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const ShadowRoot) []const EventListener {
         const self_parent: *const EventTarget = @ptrCast(self);
 
@@ -1772,6 +2026,10 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §2.7 - flatten options
+    /// To flatten options, run these steps:
+    /// 1. If options is a boolean, then return options.
+    /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -1791,6 +2049,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §2.7 - flatten more options
+    /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
 
         const OptionsType = @TypeOf(options);
@@ -1825,6 +2085,8 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §2.7 - default passive value
+    /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
 
         _ = event_target;
@@ -1844,6 +2106,9 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn addAnEventListener(self: *ShadowRoot, listener: EventListener) !void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1896,6 +2161,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
     pub fn call_addEventListener(
         self: *ShadowRoot,
         event_type: []const u8,
@@ -1920,6 +2192,9 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *ShadowRoot, listener: EventListener) void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1947,6 +2222,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
     pub fn call_removeEventListener(
         self: *ShadowRoot,
         event_type: []const u8,
@@ -1968,6 +2250,13 @@ pub const ShadowRoot = struct {
     
     }
 
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *ShadowRoot, event: *Event) !bool {
         const self_parent: *EventTarget = @ptrCast(self);
 

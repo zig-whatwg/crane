@@ -21,17 +21,28 @@ const webidl = @import("webidl");
 /// They maintain a reference pointer that moves through the tree as you
 /// call nextNode() and previousNode().
 
+/// DOM §6.2 - NodeIterator interface
+/// 
+/// NodeIterator objects can be used to filter and traverse node trees.
+/// They maintain a reference pointer that moves through the tree as you
+/// call nextNode() and previousNode().
 pub const NodeIterator = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
+    /// The root node of the iterator (never changes)
     root: *Node,
+    /// The reference node (current position in iteration)
     reference: *Node,
+    /// Whether the pointer is before the reference node
     pointer_before_reference: bool,
+    /// Bitmask indicating which node types to show
     what_to_show: u32,
+    /// Optional filter callback
     filter: NodeFilter.OptionalAcceptNodeFn,
+    /// Active flag to prevent recursive invocations
     active_flag: bool,
 
     // ========================================================================
@@ -53,6 +64,8 @@ pub const NodeIterator = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §6.2 - NodeIterator constructor (internal)
+    /// Use Document.createNodeIterator() to create instances
     pub fn init(
         allocator: Allocator,
         root: *Node,
@@ -79,48 +92,64 @@ pub const NodeIterator = struct {
     
     }
 
+    /// DOM §6.2 - NodeIterator.root
+    /// Returns the root node
     pub fn get_root(self: *const NodeIterator) *Node {
 
         return self.root;
     
     }
 
+    /// DOM §6.2 - NodeIterator.referenceNode
+    /// Returns the current reference node
     pub fn get_referenceNode(self: *const NodeIterator) *Node {
 
         return self.reference;
     
     }
 
+    /// DOM §6.2 - NodeIterator.pointerBeforeReferenceNode
+    /// Returns true if pointer is before the reference node
     pub fn get_pointerBeforeReferenceNode(self: *const NodeIterator) bool {
 
         return self.pointer_before_reference;
     
     }
 
+    /// DOM §6.2 - NodeIterator.whatToShow
+    /// Returns the whatToShow bitmask
     pub fn get_whatToShow(self: *const NodeIterator) u32 {
 
         return self.what_to_show;
     
     }
 
+    /// DOM §6.2 - NodeIterator.filter
+    /// Returns the filter callback (may be null)
     pub fn get_filter(self: *const NodeIterator) NodeFilter.OptionalAcceptNodeFn {
 
         return self.filter;
     
     }
 
+    /// DOM §6.2 - NodeIterator.nextNode()
+    /// Returns the next node in the iteration, or null if none
     pub fn nextNode(self: *NodeIterator) !?*Node {
 
         return try self.traverse(.next);
     
     }
 
+    /// DOM §6.2 - NodeIterator.previousNode()
+    /// Returns the previous node in the iteration, or null if none
     pub fn previousNode(self: *NodeIterator) !?*Node {
 
         return try self.traverse(.previous);
     
     }
 
+    /// DOM §6.2 - NodeIterator.detach()
+    /// Legacy method - does nothing (functionality removed, kept for compatibility)
     pub fn detach(self: *NodeIterator) void {
 
         _ = self;
@@ -128,6 +157,8 @@ pub const NodeIterator = struct {
     
     }
 
+    /// DOM §6.2 - traverse algorithm
+    /// Given a direction, traverse the tree and return the next accepted node
     fn traverse(self: *NodeIterator, direction: Direction) !?*Node {
 
         const dom = @import("dom");
@@ -186,6 +217,8 @@ pub const NodeIterator = struct {
     
     }
 
+    /// DOM §6 - filter algorithm
+    /// Filter a node within this iterator
     fn filterNode(self: *NodeIterator, node: *Node) !u16 {
 
         // Step 1: If traverser's active flag is set, throw InvalidStateError
@@ -222,6 +255,9 @@ pub const NodeIterator = struct {
     
     }
 
+    /// DOM §6.2 - NodeIterator pre-remove steps
+    /// Called when a node is about to be removed from the tree
+    /// Updates iterator state to handle the removal gracefully
     pub fn preRemoveSteps(self: *NodeIterator, to_be_removed: *Node) void {
 
         const dom = @import("dom");

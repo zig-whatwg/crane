@@ -29,10 +29,16 @@ pub const TransformStream = struct {
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[backpressure]]: boolean - whether backpressure signal has been sent
     backpressure: bool,
+    /// [[backpressureChangePromise]]: Promise that resolves when backpressure changes
+    /// Spec: § 6.1.2 Internal slots
     backpressureChangePromise: ?common.Promise(void),
+    /// [[readable]]: ReadableStream representing the readable side
     readableStream: *ReadableStream,
+    /// [[writable]]: WritableStream representing the writable side
     writableStream: *WritableStream,
+    /// [[controller]]: TransformStreamDefaultController
     controller: *TransformStreamDefaultController,
 
     // ========================================================================
@@ -65,6 +71,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// new TransformStream(transformer, writableStrategy, readableStrategy)
+    /// 
+    /// Spec: § 6.1.3 "Constructor steps"
     pub fn initWithTransformer(
         allocator: std.mem.Allocator,
         transformer: ?webidl.JSValue,
@@ -188,6 +197,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamError(stream, e)
+    /// 
+    /// Spec: § 6.3.1 "Error both sides of the transform stream"
     pub fn errorStream(self: *TransformStream, e: common.JSValue) void {
 
         // Spec step 1: Perform ! ReadableStreamDefaultControllerError(stream.[[readable]].[[controller]], e)
@@ -198,6 +210,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamErrorWritableAndUnblockWrite(stream, e)
+    /// 
+    /// Spec: § 6.3.1 "Error writable side and unblock write"
     pub fn errorWritableAndUnblockWrite(self: *TransformStream, e: common.JSValue) void {
 
         // Spec step 1: Perform ! TransformStreamDefaultControllerClearAlgorithms(stream.[[controller]])
@@ -212,6 +227,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamSetBackpressure(stream, backpressure)
+    /// 
+    /// Spec: § 6.3.1 "Set backpressure signal"
     pub fn setBackpressure(self: *TransformStream, backpressure: bool) void {
 
         // Spec step 1: Assert: stream.[[backpressure]] is not backpressure
@@ -233,6 +251,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamUnblockWrite(stream)
+    /// 
+    /// Spec: § 6.3.1 "Unblock write if backpressure is true"
     pub fn unblockWrite(self: *TransformStream) void {
 
         // Spec step 1: If stream.[[backpressure]] is true, perform ! TransformStreamSetBackpressure(stream, false)
@@ -242,6 +263,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamDefaultSinkWriteAlgorithm(stream, chunk)
+    /// 
+    /// Spec: § 6.3.4 "Default sink write algorithm"
     pub fn defaultSinkWriteAlgorithm(self: *TransformStream, chunk: common.JSValue) common.Promise(void) {
 
         // Spec step 1: Assert: stream.[[writable]].[[state]] is "writable"
@@ -277,6 +301,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamDefaultSinkAbortAlgorithm(stream, reason)
+    /// 
+    /// Spec: § 6.3.4 "Default sink abort algorithm"
     pub fn defaultSinkAbortAlgorithm(self: *TransformStream, reason: ?common.JSValue) common.Promise(void) {
 
         // Spec step 1: Let controller be stream.[[controller]]
@@ -333,6 +360,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamDefaultSinkCloseAlgorithm(stream)
+    /// 
+    /// Spec: § 6.3.4 "Default sink close algorithm"
     pub fn defaultSinkCloseAlgorithm(self: *TransformStream) common.Promise(void) {
 
         // Spec step 1: Let controller be stream.[[controller]]
@@ -387,6 +417,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamDefaultSourcePullAlgorithm(stream)
+    /// 
+    /// Spec: § 6.3.5 "Default source pull algorithm"
     pub fn defaultSourcePullAlgorithm(self: *TransformStream) common.Promise(void) {
 
         // Spec step 1: Assert: stream.[[backpressure]] is true
@@ -404,6 +437,9 @@ pub const TransformStream = struct {
     
     }
 
+    /// TransformStreamDefaultSourceCancelAlgorithm(stream, reason)
+    /// 
+    /// Spec: § 6.3.5 "Default source cancel algorithm"
     pub fn defaultSourceCancelAlgorithm(self: *TransformStream, reason: ?common.JSValue) common.Promise(void) {
 
         // Spec step 1: Let controller be stream.[[controller]]

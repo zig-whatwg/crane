@@ -23,13 +23,28 @@ const webidl = @import("webidl");
 /// - An associated assigned slot (null or a slot)
 /// - An associated manual slot assignment (null or a slot)
 
+/// DOM §4.3.7 - Slottable mixin
+/// 
+/// Element and Text nodes are slottables. They can be assigned to slots
+/// in shadow trees.
+/// 
+/// A slottable has:
+/// - An associated name (a string, empty string by default)
+/// - An associated assigned slot (null or a slot)
+/// - An associated manual slot assignment (null or a slot)
 pub const Slottable = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// Slottable name (from "slot" attribute)
     slottable_name: []const u8,
+    /// Currently assigned slot (null if not assigned)
+    /// TODO: Implement when HTMLSlotElement is available
     assigned_slot: ?*anyopaque,
+    /// Manual slot assignment (for manual slot assignment mode)
+    /// TODO: Implement when HTMLSlotElement is available
+    /// Should use weak reference per spec
     manual_slot_assignment: ?*anyopaque,
 
     // ========================================================================
@@ -45,6 +60,12 @@ pub const Slottable = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §4.3.7 - Slottable.assignedSlot
+    /// 
+    /// Returns the slot element this slottable is assigned to, if any.
+    /// Returns null if not assigned or if the shadow root is closed.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
     pub fn get_assignedSlot(self: *const Slottable) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -60,6 +81,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Get the slottable name
     pub fn getSlottableName(self: *const Slottable) []const u8 {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -67,6 +89,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Set the slottable name
     pub fn setSlottableName(self: *Slottable, name: []const u8) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -74,6 +97,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Check if this slottable is assigned
     pub fn isAssigned(self: *const Slottable) bool {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -81,6 +105,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Get the assigned slot
     pub fn getAssignedSlotInternal(self: *const Slottable) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -88,6 +113,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Set the assigned slot
     pub fn setAssignedSlot(self: *Slottable, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -95,6 +121,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Get the manual slot assignment
     pub fn getManualSlotAssignment(self: *const Slottable) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -102,6 +129,7 @@ pub const Slottable = struct {
     
     }
 
+    /// Set the manual slot assignment
     pub fn setManualSlotAssignment(self: *Slottable, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 

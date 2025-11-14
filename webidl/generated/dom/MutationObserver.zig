@@ -36,14 +36,33 @@ pub const TransientRegistered = TransientRegisteredObserver;
 ///
 /// MutationObservers can be used to observe mutations to the tree of nodes.
 
+/// DOM §7.1 - MutationObserver interface
+/// 
+/// MutationObservers can be used to observe mutations to the tree of nodes.
 pub const MutationObserver = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: Allocator,
+    /// Callback invoked when mutations are observed
     callback: MutationCallback,
+    /// List of weak references to nodes being observed
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#mutationobserver-node-list
+    /// 
+    /// Implementation note:
+    /// In garbage-collected languages (JavaScript), "weak references" means the GC
+    /// can collect nodes even while observed. In Zig with manual memory management,
+    /// "weak" means we don't own the nodes (don't call deinit on them).
+    /// 
+    /// Lifetime contract:
+    /// - MutationObserver does NOT own observed nodes
+    /// - Caller must ensure nodes outlive the observer, OR
+    /// - Caller must call disconnect() before freeing observed nodes
+    /// - This is the correct implementation for Zig's memory model
     node_list: std.ArrayList(*Node),
+    /// Queue of pending mutation records
     record_queue: std.ArrayList(MutationRecord),
 
     // ========================================================================
@@ -59,6 +78,13 @@ pub const MutationObserver = struct {
     // Methods
     // ========================================================================
 
+    /// DOM §7.1 - new MutationObserver(callback)
+    /// 
+    /// Constructs a MutationObserver and sets its callback to callback.
+    /// The callback is invoked with a list of MutationRecord objects as first
+    /// argument and the constructed MutationObserver object as second argument.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-mutationobserver
     pub fn init(allocator: Allocator, callback: MutationCallback) !MutationObserver {
 
         return .{
@@ -84,6 +110,12 @@ pub const MutationObserver = struct {
     
     }
 
+    /// DOM §7.1 - MutationObserver.observe(target, options)
+    /// 
+    /// Instructs the user agent to observe a given target (a node) and report
+    /// any mutations based on the criteria given by options (an object).
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe
     pub fn observe(self: *MutationObserver, target: *Node, options: MutationObserverInit) !void {
 
         // Step 1: If either options["attributeOldValue"] or options["attributeFilter"]
@@ -164,6 +196,12 @@ pub const MutationObserver = struct {
     
     }
 
+    /// DOM §7.1 - MutationObserver.disconnect()
+    /// 
+    /// Stops observer from observing any mutations. Until the observe() method
+    /// is used again, observer's callback will not be invoked.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
     pub fn disconnect(self: *MutationObserver) void {
 
         // Step 1: For each node of this's node list, remove any registered
@@ -178,6 +216,11 @@ pub const MutationObserver = struct {
     
     }
 
+    /// DOM §7.1 - MutationObserver.takeRecords()
+    /// 
+    /// Empties the record queue and returns what was in there.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-takerecords
     pub fn takeRecords(self: *MutationObserver) ![]MutationRecord {
 
         // Step 1: Let records be a clone of this's record queue.
@@ -193,30 +236,47 @@ pub const MutationObserver = struct {
     
     }
 
+    /// Enqueue a mutation record to this observer's record queue
+    /// 
+    /// Called by mutation observation algorithms when mutations occur.
+    /// This is an internal method, not exposed in the WebIDL.
     pub fn enqueueRecord(self: *MutationObserver, record: MutationRecord) !void {
 
         try self.record_queue.append(self.allocator, record);
     
     }
 
+    /// Get the callback for this observer
+    /// 
+    /// Used by the notify mutation observers algorithm.
     pub fn getCallback(self: *const MutationObserver) MutationCallback {
 
         return self.callback;
     
     }
 
+    /// Get the node list for this observer
+    /// 
+    /// Used by the notify mutation observers algorithm.
     pub fn getNodeList(self: *MutationObserver) []const *Node {
 
         return self.node_list.items;
     
     }
 
+    /// Get the record queue for this observer
+    /// 
+    /// Used by the notify mutation observers algorithm.
     pub fn getRecordQueue(self: *const MutationObserver) []const MutationRecord {
 
         return self.record_queue.items;
     
     }
 
+    /// Check if this observer is observing a specific node
+    /// 
+    /// Useful for caller to verify observation state before node cleanup.
+    /// Returns true if the node is in this observer's node list.
     pub fn isObserving(self: *const MutationObserver, node: *const Node) bool {
 
         for (self.node_list.items) |observed_node| {
@@ -228,6 +288,11 @@ pub const MutationObserver = struct {
     
     }
 
+    /// Remove a node from the observation list
+    /// 
+    /// This is an internal helper for cases where a node needs to be
+    /// removed from observation without calling disconnect().
+    /// Useful when node is about to be freed.
     pub fn unobserveNode(self: *MutationObserver, node: *const Node) void {
 
         var i: usize = 0;
@@ -241,6 +306,9 @@ pub const MutationObserver = struct {
     
     }
 
+    /// Clear the record queue
+    /// 
+    /// Used by the notify mutation observers algorithm.
     pub fn clearRecordQueue(self: *MutationObserver) void {
 
         self.record_queue.clearRetainingCapacity();

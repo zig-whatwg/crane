@@ -40,17 +40,54 @@ const Decoder = encoding_mod.Decoder;
 /// TextDecoderStream includes GenericTransformStream;
 /// ```
 
+/// TextDecoderStream - decodes a stream of bytes to a stream of strings
+/// 
+/// WHATWG Encoding Standard § 6.3
+/// https://encoding.spec.whatwg.org/#interface-textdecoderstream
+/// 
+/// IDL:
+/// ```
+/// [Exposed=*]
+/// interface TextDecoderStream {
+/// constructor(optional DOMString label = "utf-8", optional TextDecoderOptions options = {});
+/// };
+/// TextDecoderStream includes TextDecoderCommon;
+/// TextDecoderStream includes GenericTransformStream;
+/// ```
 pub const TextDecoderStream = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// The encoding name (WHATWG canonical name, lowercase ASCII)
+    /// 
+    /// Examples: "utf-8", "windows-1252", "iso-8859-1"
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
     encoding: []const u8,
+    /// Fatal error mode flag
+    /// 
+    /// - `true`: Throw TypeError on invalid byte sequences
+    /// - `false`: Use U+FFFD replacement character (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
     fatal: webidl.boolean,
+    /// Byte Order Mark (BOM) handling flag
+    /// 
+    /// - `true`: Keep BOM in output as U+FEFF (ZERO WIDTH NO-BREAK SPACE)
+    /// - `false`: Strip BOM from output (default)
+    /// 
+    /// This is a readonly attribute - set during construction and never changes.
     ignoreBOM: webidl.boolean,
+    /// [[transform]]: The actual TransformStream backing this object
+    /// 
+    /// Spec: "Any platform object that includes the GenericTransformStream
+    /// mixin has an associated transform, which is an actual TransformStream."
     transform: *TransformStream,
     allocator: std.mem.Allocator,
+    /// The encoding used by this stream decoder
     enc: *const Encoding,
+    /// Internal decoder instance
     decoder: *Decoder,
 
     // ========================================================================
@@ -66,6 +103,10 @@ pub const TextDecoderStream = struct {
     // Methods
     // ========================================================================
 
+    /// Constructor - creates a new TextDecoderStream
+    /// 
+    /// WHATWG Encoding Standard § 6.3.1
+    /// https://encoding.spec.whatwg.org/#dom-textdecoderstream
     pub fn init(
         allocator: std.mem.Allocator,
         label: []const u8,
@@ -108,6 +149,7 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// Cleanup resources
     pub fn deinit(self: *TextDecoderStream) void {
 
         self.allocator.destroy(self.decoder);
@@ -116,6 +158,10 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// Transform algorithm - decode chunk and enqueue
+    /// 
+    /// WHATWG Encoding Standard § 6.3.2
+    /// "decode and enqueue a chunk"
     fn transformAlgorithm(chunk: []const u8, controller: *TransformStream.Controller) !void {
 
         // TODO: Implement decode and enqueue algorithm
@@ -128,6 +174,10 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// Flush algorithm - flush decoder
+    /// 
+    /// WHATWG Encoding Standard § 6.3.2
+    /// "flush and enqueue"
     fn flushAlgorithm(controller: *TransformStream.Controller) !void {
 
         // TODO: Implement flush and enqueue algorithm
@@ -139,6 +189,12 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// readable attribute getter
+    /// 
+    /// IDL: readonly attribute ReadableStream readable;
+    /// 
+    /// Spec: § 6.4.3.3 "The readable getter steps are to return
+    /// this's transform.[[readable]]."
     pub fn get_readable(self: *const TextDecoderStream) *ReadableStream {
         const self_parent: *const GenericTransformStream = @ptrCast(self);
 
@@ -146,6 +202,12 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// writable attribute getter
+    /// 
+    /// IDL: readonly attribute WritableStream writable;
+    /// 
+    /// Spec: § 6.4.3.3 "The writable getter steps are to return
+    /// this's transform.[[writable]]."
     pub fn get_writable(self: *const TextDecoderStream) *WritableStream {
         const self_parent: *const GenericTransformStream = @ptrCast(self);
 

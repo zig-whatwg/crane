@@ -42,23 +42,70 @@ const webidl = @import("webidl");
 /// };
 /// ```
 
+/// ReadableStreamDefaultController WebIDL interface
+/// 
+/// IDL:
+/// ```webidl
+/// [Exposed=*]
+/// interface ReadableStreamDefaultController {
+/// readonly attribute unrestricted double? desiredSize;
+/// 
+/// undefined close();
+/// undefined enqueue(optional any chunk);
+/// undefined error(optional any e);
+/// };
+/// ```
 pub const ReadableStreamDefaultController = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
     allocator: std.mem.Allocator,
+    /// [[abortController]]: AbortController for signaling abort
+    /// Spec: https://streams.spec.whatwg.org/#readablestreamdefaultcontroller-abortcontroller
     abortController: AbortController,
+    /// [[cancelAlgorithm]]: Promise-returning algorithm for cancelation
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[cancelAlgorithm]]
     cancelAlgorithm: common.CancelAlgorithm,
+    /// [[closeRequested]]: boolean - stream closed by source but has queued chunks
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[closeRequested]]
     closeRequested: bool,
+    /// [[pullAgain]]: boolean - pull requested but previous pull still executing
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[pullAgain]]
     pullAgain: bool,
+    /// [[pullAlgorithm]]: Promise-returning algorithm for pulling data
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[pullAlgorithm]]
     pullAlgorithm: common.PullAlgorithm,
+    /// [[pulling]]: boolean - pull algorithm currently executing
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[pulling]]
     pulling: bool,
+    /// [[queue]]: Queue-with-sizes for internal chunk queue
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[queue]]
     queue: QueueWithSizes,
+    /// [[started]]: boolean - underlying source has finished starting
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[started]]
     started: bool,
+    /// [[strategyHWM]]: High water mark for backpressure
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[strategyHWM]]
     strategyHwm: f64,
+    /// [[strategySizeAlgorithm]]: Algorithm to calculate chunk size
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[strategySizeAlgorithm]]
     strategySizeAlgorithm: common.SizeAlgorithm,
+    /// [[stream]]: The ReadableStream instance controlled
+    /// 
+    /// Spec: § 4.6.2 Internal slot [[stream]]
+    /// Using *anyopaque to avoid circular dependency
     stream: ?*anyopaque,
+    /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
 
     // ========================================================================
@@ -74,6 +121,9 @@ pub const ReadableStreamDefaultController = struct {
     // Methods
     // ========================================================================
 
+    /// Initialize a new controller (internal - not exposed via WebIDL)
+    /// 
+    /// Spec: § 4.6.4 "SetUpReadableStreamDefaultController"
     pub fn init(
         allocator: std.mem.Allocator,
         cancelAlgorithm: common.CancelAlgorithm,
@@ -101,6 +151,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// Deinitialize the controller
+    /// 
+    /// Spec: Cleanup internal queue
     pub fn deinit(self: *ReadableStreamDefaultController) void {
 
         self.abortController.deinit();
@@ -108,6 +161,11 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// readonly attribute unrestricted double? desiredSize
+    /// IDL: readonly attribute unrestricted double? desiredSize;
+    /// 
+    /// Spec: § 4.6.3 "The desiredSize getter steps are:"
+    /// Returns the desired size to fill the stream's internal queue.
     pub fn get_desiredSize(self: *const ReadableStreamDefaultController) ?f64 {
 
         // Step 1: Return ! ReadableStreamDefaultControllerGetDesiredSize(this).
@@ -115,6 +173,11 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// undefined close()
+    /// IDL: undefined close();
+    /// 
+    /// Spec: § 4.6.3 "The close() method steps are:"
+    /// Closes the controlled readable stream.
     pub fn call_close(self: *ReadableStreamDefaultController) !void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false,
@@ -128,6 +191,12 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// enqueue(chunk) method
+    /// 
+    /// IDL: undefined enqueue(optional any chunk);
+    /// 
+    /// Spec: § 4.6.3 "The enqueue(chunk) method steps are:"
+    /// Enqueues the given chunk in the controlled readable stream.
     pub fn call_enqueue(self: *ReadableStreamDefaultController, chunk: ?webidl.JSValue) !void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(this) is false,
@@ -143,6 +212,11 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// undefined error(optional any e)
+    /// IDL: undefined error(optional any e);
+    /// 
+    /// Spec: § 4.6.3 "The error(e) method steps are:"
+    /// Errors the controlled readable stream.
     pub fn call_error(self: *ReadableStreamDefaultController, e: ?webidl.JSValue) void {
 
         // Step 1: Perform ! ReadableStreamDefaultControllerError(this, e).
@@ -151,6 +225,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerGetDesiredSize(controller)
+    /// 
+    /// Spec: § 4.6.4 "Calculate desired size for backpressure"
     pub fn calculateDesiredSize(self: *const ReadableStreamDefaultController) ?f64 {
 
         // If stream is closed, return 0
@@ -163,6 +240,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerCanCloseOrEnqueue(controller)
+    /// 
+    /// Spec: § 4.6.4 "Check if controller can close or enqueue"
     pub fn canCloseOrEnqueue(self: *const ReadableStreamDefaultController) bool {
 
         // Cannot close or enqueue if already close requested
@@ -170,6 +250,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerClose(controller)
+    /// 
+    /// Spec: § 4.6.4 "Close the controller"
     pub fn closeInternal(self: *ReadableStreamDefaultController) void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
@@ -210,6 +293,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerEnqueue(controller, chunk)
+    /// 
+    /// Spec: § 4.6.4 "Enqueue a chunk"
     pub fn enqueueInternal(self: *ReadableStreamDefaultController, chunk: webidl.JSValue) !void {
 
         // Step 1: If ! ReadableStreamDefaultControllerCanCloseOrEnqueue(controller) is false, return.
@@ -264,6 +350,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerError(controller, e)
+    /// 
+    /// Spec: § 4.6.4 "Error the controller"
     pub fn errorInternal(self: *ReadableStreamDefaultController, e: webidl.JSValue) void {
 
         // Convert to internal JSValue
@@ -287,6 +376,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerClearAlgorithms(controller)
+    /// 
+    /// Spec: § 4.6.4 "Clear algorithms to enable garbage collection"
     fn clearAlgorithms(self: *ReadableStreamDefaultController) void {
 
         // In Zig, we don't need explicit clearing since algorithms use VTable pattern
@@ -295,6 +387,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerCallPullIfNeeded(controller)
+    /// 
+    /// Spec: § 4.6.4 "Call pull algorithm if backpressure allows"
     fn callPullIfNeeded(self: *ReadableStreamDefaultController) void {
 
         // Step 1: Let shouldPull be ! ReadableStreamDefaultControllerShouldCallPull(controller).
@@ -331,6 +426,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerShouldCallPull(controller)
+    /// 
+    /// Spec: § 4.6.4 "Determine if pull should be called"
     fn shouldCallPull(self: *ReadableStreamDefaultController) bool {
 
         // Step 1: Let stream be controller.[[stream]].
@@ -368,6 +466,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// [[PullSteps]](reader) - Internal operation called by reader.read()
+    /// 
+    /// Spec: § 4.6.5 "Pull steps for default controller"
     pub fn pullSteps(self: *ReadableStreamDefaultController, reader: *ReadableStreamDefaultReader) !*AsyncPromise(common.ReadResult) {
 
         // Step 1: Let stream be controller.[[stream]].
@@ -424,6 +525,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// [[CancelSteps]](reason) - Internal operation called by stream.cancel()
+    /// 
+    /// Spec: § 4.6.5 "Cancel steps for default controller"
     pub fn cancelInternal(self: *ReadableStreamDefaultController, reason: ?common.JSValue) !*AsyncPromise(void) {
 
         // Step 1: Perform ! ResetQueue(controller).
@@ -446,6 +550,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// [[ReleaseSteps]]() - Internal operation called when reader is released
+    /// 
+    /// Spec: § 4.6.5 "Release steps for default controller"
     pub fn releaseSteps(self: *ReadableStreamDefaultController) void {
 
         // For default controller, release steps are a no-op
@@ -453,6 +560,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerHasBackpressure(controller)
+    /// 
+    /// Spec: § 4.6.6 "Check if controller has backpressure"
     pub fn hasBackpressure(self: *const ReadableStreamDefaultController) bool {
 
         // Spec step 1: Let desiredSize be ! ReadableStreamDefaultControllerGetDesiredSize(controller)
@@ -464,6 +574,9 @@ pub const ReadableStreamDefaultController = struct {
     
     }
 
+    /// ReadableStreamDefaultControllerGetDesiredSize(controller)
+    /// 
+    /// Spec: § 4.6.6 "Get desired size for controller"
     pub fn getDesiredSize(self: *const ReadableStreamDefaultController) ?f64 {
 
         return self.calculateDesiredSize();

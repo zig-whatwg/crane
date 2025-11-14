@@ -57,23 +57,49 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     };
 }
 
+/// DOM Spec: interface Text : CharacterData
+/// Text extends CharacterData (fields/methods inherited)
+/// Text must EXPLICITLY include parent mixins (codegen doesn't inherit them)
+/// CharacterData includes: ChildNode, NonDocumentTypeChildNode
+/// Text also includes: Slottable
 pub const Text = struct {
     // ========================================================================
     // Fields
     // ========================================================================
 
+    /// DOM §2.7 - Each EventTarget has an associated event listener list
+    /// (a list of zero or more event listeners). It is initially the empty list.
+    /// 
+    /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
+    /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
+    /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*std.ArrayList(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
     child_nodes: infra.List(*Node),
     owner_document: ?*Document,
+    /// DOM §7.1 - Registered observer list
+    /// List of registered mutation observers watching this node
     registered_observers: infra.List(@import("registered_observer").RegisteredObserver),
+    /// Cloning steps hook - optional function called during node cloning
+    /// Signature: fn(node: *Node, copy: *Node, subtree: bool) !void
+    /// Specifications (like HTML) can define cloning steps for specific node types
     cloning_steps_hook: ?*const fn (node: *Node, copy: *Node, subtree: bool) anyerror!void,
+    /// [SameObject] cache for childNodes NodeList
+    /// Per WebIDL [SameObject], the same NodeList object is returned each time
+    /// This is a live view of the child_nodes list
     cached_child_nodes: ?*@import("node_list").NodeList,
+    /// The mutable string data associated with this node
     data: []u8,
+    /// Slottable name (from "slot" attribute)
     slottable_name: []const u8,
+    /// Currently assigned slot (null if not assigned)
+    /// TODO: Implement when HTMLSlotElement is available
     assigned_slot: ?*anyopaque,
+    /// Manual slot assignment (for manual slot assignment mode)
+    /// TODO: Implement when HTMLSlotElement is available
+    /// Should use weak reference per spec
     manual_slot_assignment: ?*anyopaque,
     allocator: Allocator,
 
@@ -120,6 +146,20 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.12 - splitText(offset)
+    /// Splits this text node at the given offset and returns the remainder as a new Text node.
+    /// 
+    /// Spec: To split a Text node with offset:
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, throw "IndexSizeError".
+    /// 3. Let count be length minus offset.
+    /// 4. Let new data be the result of substringing data with node, offset, and count.
+    /// 5. Let new node be a new Text node with same node document. Set new node's data to new data.
+    /// 6. If parent is not null:
+    /// 6.1. Insert new node into parent before node's next sibling
+    /// 6.2-6.5. Update live ranges (TODO: when Range is implemented)
+    /// 7. Replace data with node, offset, count, and empty string.
+    /// 8. Return new node.
     pub fn call_splitText(self: *Text, offset: u32) !*Text {
 
         // Step 1: Let length be node's length
@@ -176,6 +216,10 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.12 - wholeText getter
+    /// Returns the concatenation of the data of all contiguous Text nodes.
+    /// 
+    /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const Text) ![]const u8 {
 
         const dom = @import("dom");
@@ -206,6 +250,18 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.before()
+    /// Inserts nodes just before this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viablePreviousSibling be this's first preceding sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If viablePreviousSibling is null, then set it to parent's first child; otherwise to viablePreviousSibling's next sibling.
+    /// 6. Pre-insert node into parent before viablePreviousSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_before(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -262,6 +318,17 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.after()
+    /// Inserts nodes just after this node, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. Pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_after(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -311,6 +378,18 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.replaceWith()
+    /// Replaces this node with nodes, while replacing strings with Text nodes.
+    /// 
+    /// Steps:
+    /// 1. Let parent be this's parent.
+    /// 2. If parent is null, then return.
+    /// 3. Let viableNextSibling be this's first following sibling not in nodes; otherwise null.
+    /// 4. Let node be the result of converting nodes into a node, given nodes and this's node document.
+    /// 5. If this's parent is parent, replace this with node within parent.
+    /// 6. Otherwise, pre-insert node into parent before viableNextSibling.
+    /// 
+    /// Throws HierarchyRequestError if constraints violated.
     pub fn call_replaceWith(self: Text, nodes: []const dom_types.NodeOrDOMString) !void {
         const self_parent = self;
 
@@ -367,6 +446,12 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.4 - ChildNode.remove()
+    /// Removes this node from its parent.
+    /// 
+    /// Steps:
+    /// 1. If this's parent is null, then return.
+    /// 2. Remove this.
     pub fn call_remove(self: Text) !void {
         const self_parent = self;
 
@@ -386,6 +471,11 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.previousElementSibling
+    /// Returns the first preceding sibling that is an element; otherwise null.
+    /// 
+    /// The previousElementSibling getter steps are to return the first preceding
+    /// sibling that is an element; otherwise null.
     pub fn previousElementSibling(self: Text) ?*Element {
         const self_parent = self;
 
@@ -415,6 +505,11 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.3 - NonDocumentTypeChildNode.nextElementSibling
+    /// Returns the first following sibling that is an element; otherwise null.
+    /// 
+    /// The nextElementSibling getter steps are to return the first following
+    /// sibling that is an element; otherwise null.
     pub fn nextElementSibling(self: Text) ?*Element {
         const self_parent = self;
 
@@ -440,6 +535,12 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.3.7 - Slottable.assignedSlot
+    /// 
+    /// Returns the slot element this slottable is assigned to, if any.
+    /// Returns null if not assigned or if the shadow root is closed.
+    /// 
+    /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
     pub fn get_assignedSlot(self: *const Text) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -455,6 +556,7 @@ pub const Text = struct {
     
     }
 
+    /// Get the slottable name
     pub fn getSlottableName(self: *const Text) []const u8 {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -462,6 +564,7 @@ pub const Text = struct {
     
     }
 
+    /// Set the slottable name
     pub fn setSlottableName(self: *Text, name: []const u8) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -469,6 +572,7 @@ pub const Text = struct {
     
     }
 
+    /// Check if this slottable is assigned
     pub fn isAssigned(self: *const Text) bool {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -476,6 +580,7 @@ pub const Text = struct {
     
     }
 
+    /// Get the assigned slot
     pub fn getAssignedSlotInternal(self: *const Text) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -483,6 +588,7 @@ pub const Text = struct {
     
     }
 
+    /// Set the assigned slot
     pub fn setAssignedSlot(self: *Text, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -490,6 +596,7 @@ pub const Text = struct {
     
     }
 
+    /// Get the manual slot assignment
     pub fn getManualSlotAssignment(self: *const Text) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
@@ -497,6 +604,7 @@ pub const Text = struct {
     
     }
 
+    /// Set the manual slot assignment
     pub fn setManualSlotAssignment(self: *Text, slot: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
@@ -504,6 +612,8 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - data getter
+    /// Returns this's data.
     pub fn get_data(self: *const Text) []const u8 {
         const self_parent: *const CharacterData = @ptrCast(self);
 
@@ -511,6 +621,8 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - data setter
+    /// Replace data with node this, offset 0, count this's length, and data new value.
     pub fn set_data(self: *Text, new_value: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
@@ -518,6 +630,8 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - length getter
+    /// Returns this's length (number of code units).
     pub fn get_length(self: *const Text) u32 {
         const self_parent: *const CharacterData = @ptrCast(self);
 
@@ -525,6 +639,14 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - substringData(offset, count)
+    /// Returns a substring of this's data.
+    /// 
+    /// Steps:
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, then throw an "IndexSizeError" DOMException.
+    /// 3. If offset plus count is greater than length, return code units from offset to end.
+    /// 4. Return code units from offset to offset+count.
     pub fn call_substringData(self: *const Text, offset: u32, count: u32) ![]const u8 {
         const self_parent: *const CharacterData = @ptrCast(self);
 
@@ -545,6 +667,10 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - appendData(data)
+    /// Appends data to this's data.
+    /// 
+    /// Steps: Replace data with node this, offset this's length, count 0, and data.
     pub fn call_appendData(self: *Text, data: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
@@ -552,24 +678,43 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.11 - insertData(offset, data)
+    /// Inserts data at the given offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count 0, and data.
     pub fn call_insertData(self: *Text, offset: u32, data: []const u8) !void {
 
         try self.replaceData(offset, 0, data);
     
     }
 
+    /// DOM §4.11 - deleteData(offset, count)
+    /// Deletes count code units starting at offset.
+    /// 
+    /// Steps: Replace data with node this, offset, count, and empty string.
     pub fn call_deleteData(self: *Text, offset: u32, count: u32) !void {
 
         try self.replaceData(offset, count, "");
     
     }
 
+    /// DOM §4.11 - replaceData(offset, count, data)
+    /// Replaces count code units at offset with data.
+    /// 
+    /// Steps (simplified - full spec includes range and mutation handling):
+    /// 1. Let length be node's length.
+    /// 2. If offset is greater than length, throw "IndexSizeError".
+    /// 3. If offset + count > length, set count to length - offset.
+    /// 4-12. [Mutation records, ranges, and parent notification skipped for now]
+    /// 5. Insert data into node's data after offset code units.
+    /// 6-7. Remove count code units starting from offset + data's length.
     pub fn call_replaceData(self: *Text, offset: u32, count: u32, data: []const u8) !void {
 
         try self.replaceData(offset, count, data);
     
     }
 
+    /// Internal replace data implementation
     fn replaceData(self: *Text, offset: u32, count_param: u32, data: []const u8) !void {
         const self_parent: *CharacterData = @ptrCast(self);
 
@@ -646,6 +791,8 @@ pub const Text = struct {
     
     }
 
+    /// insertBefore(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *Text, node: *Node, child: ?*Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -659,6 +806,8 @@ pub const Text = struct {
     
     }
 
+    /// appendChild(node)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *Text, node: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -672,6 +821,8 @@ pub const Text = struct {
     
     }
 
+    /// replaceChild(node, child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *Text, node: *Node, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -685,6 +836,8 @@ pub const Text = struct {
     
     }
 
+    /// removeChild(child)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *Text, child: *Node) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -699,6 +852,11 @@ pub const Text = struct {
     
     }
 
+    /// getRootNode(options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
+    /// 
+    /// The getRootNode(options) method steps are to return this's shadow-including root
+    /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Text, options: ?GetRootNodeOptions) *Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -736,6 +894,8 @@ pub const Text = struct {
     
     }
 
+    /// contains(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const Text, other: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -747,6 +907,8 @@ pub const Text = struct {
     
     }
 
+    /// compareDocumentPosition(other)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Text, other: *const Node) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -799,6 +961,8 @@ pub const Text = struct {
     
     }
 
+    /// isEqualNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const Text, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -808,6 +972,13 @@ pub const Text = struct {
     
     }
 
+    /// Node A equals node B - DOM Spec algorithm
+    /// A node A equals a node B if all of the following conditions are true:
+    /// - A and B implement the same interfaces
+    /// - Node-specific properties are equal
+    /// - If A is an element, each attribute in its list equals an attribute in B's list
+    /// - A and B have the same number of children
+    /// - Each child of A equals the child of B at the identical index
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
 
         // Step 1: A and B implement the same interfaces (check node_type)
@@ -902,6 +1073,11 @@ pub const Text = struct {
     
     }
 
+    /// Attribute equality check
+    /// An attribute A equals an attribute B if:
+    /// - namespace is equal
+    /// - local name is equal
+    /// - value is equal
     pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
 
         // Check namespace
@@ -921,6 +1097,8 @@ pub const Text = struct {
     
     }
 
+    /// isSameNode(otherNode)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
     pub fn call_isSameNode(self: *const Text, other_node: ?*const Node) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -930,6 +1108,8 @@ pub const Text = struct {
     
     }
 
+    /// hasChildNodes()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Text) bool {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -937,6 +1117,8 @@ pub const Text = struct {
     
     }
 
+    /// cloneNode(deep)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *Text, deep: bool) !*Node {
         const self_parent: *Node = @ptrCast(self);
 
@@ -959,6 +1141,8 @@ pub const Text = struct {
     
     }
 
+    /// Clone a node - DOM Spec algorithm
+    /// Given a node `node` and optional document, subtree flag, parent, and fallbackRegistry
     pub fn cloneNodeInternal(
         node: *Node,
         document_param: ?*Document,
@@ -1057,6 +1241,8 @@ pub const Text = struct {
     
     }
 
+    /// Clone a single node - DOM Spec algorithm
+    /// Creates a new node with the same properties but no children
     pub fn cloneSingleNode(
         node: *Node,
         document: ?*Document,
@@ -1161,6 +1347,21 @@ pub const Text = struct {
     
     }
 
+    /// normalize()
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
+    /// 
+    /// Removes empty exclusive Text nodes and concatenates the data of remaining
+    /// contiguous exclusive Text nodes into the first of their nodes.
+    /// 
+    /// The normalize() method steps are to run these steps for each descendant
+    /// exclusive Text node `node` of this:
+    /// 1. Let length be node's length
+    /// 2. If length is zero, remove node and continue
+    /// 3. Let data be concatenation of data of node's contiguous exclusive Text nodes (excluding itself)
+    /// 4. Replace data with node, offset length, count 0, and data
+    /// 5. Let currentNode be node's next sibling
+    /// 6. While currentNode is exclusive Text node: update ranges and advance
+    /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *Text) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1248,6 +1449,8 @@ pub const Text = struct {
     
     }
 
+    /// Helper: Check if a node is an exclusive Text node
+    /// An exclusive Text node is a Text node that is NOT a CDATASection node
     fn isExclusiveTextNode(node: *Node) bool {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
@@ -1255,6 +1458,7 @@ pub const Text = struct {
     
     }
 
+    /// Helper: Collect all descendant exclusive Text nodes in tree order
     fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
 
         // Check if this node is an exclusive Text node
@@ -1269,6 +1473,8 @@ pub const Text = struct {
     
     }
 
+    /// Helper: Update ranges during normalize operation
+    /// Spec: DOM §4.2.5 normalize() step 6.1-6.4
     fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
 
         // This requires access to document's live ranges list
@@ -1299,6 +1505,7 @@ pub const Text = struct {
     
     }
 
+    /// Getters
     pub fn get_nodeType(self: *const Text) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1426,6 +1633,11 @@ pub const Text = struct {
     
     }
 
+    /// DOM §4.4 - Node.baseURI getter
+    /// Returns this's node document's document base URL, serialized.
+    /// 
+    /// The baseURI getter steps are to return this's node document's
+    /// document base URL, serialized.
     pub fn get_baseURI(self: *const Text) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1519,6 +1731,10 @@ pub const Text = struct {
     
     }
 
+    /// Get text content - DOM Spec algorithm
+    /// Returns text content based on node type
+    /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
+    /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
 
         switch (node.node_type) {
@@ -1544,6 +1760,10 @@ pub const Text = struct {
     
     }
 
+    /// Get descendant text content - concatenate all Text node descendants
+    /// Spec: https://dom.spec.whatwg.org/#concept-descendant-text-content
+    /// Returns the concatenation of data from all Text node descendants in tree order.
+    /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
         var result = std.ArrayList(u8).init(allocator);
@@ -1555,6 +1775,7 @@ pub const Text = struct {
     
     }
 
+    /// Helper function to recursively collect text from descendants
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
 
         // If this is a Text node, collect its data
@@ -1572,6 +1793,8 @@ pub const Text = struct {
     
     }
 
+    /// Set text content - DOM Spec algorithm
+    /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
 
         switch (node.node_type) {
@@ -1598,6 +1821,8 @@ pub const Text = struct {
     
     }
 
+    /// String replace all - DOM Spec algorithm
+    /// Replace all children with a single text node containing string
     pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
 
         // Step 1: Let node be null
@@ -1621,6 +1846,8 @@ pub const Text = struct {
     
     }
 
+    /// lookupPrefix(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const Text, namespace_param: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1652,6 +1879,8 @@ pub const Text = struct {
     
     }
 
+    /// lookupNamespaceURI(prefix)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupnamespaceuri
     pub fn call_lookupNamespaceURI(self: *const Text, prefix_param: ?[]const u8) ?[]const u8 {
 
         // Spec step 1: If prefix is empty string, set to null
@@ -1662,6 +1891,8 @@ pub const Text = struct {
     
     }
 
+    /// isDefaultNamespace(namespace)
+    /// Spec: https://dom.spec.whatwg.org/#dom-node-isdefaultnamespace
     pub fn call_isDefaultNamespace(self: *const Text, namespace_param: ?[]const u8) bool {
 
         // Spec step 1: If namespace is empty string, set to null
@@ -1677,6 +1908,8 @@ pub const Text = struct {
     
     }
 
+    /// Locate a namespace prefix for element (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const Text, namespace: []const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1710,6 +1943,8 @@ pub const Text = struct {
     
     }
 
+    /// Locate a namespace for node (internal algorithm)
+    /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const Text, prefix: ?[]const u8) ?[]const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
@@ -1802,6 +2037,7 @@ pub const Text = struct {
     
     }
 
+    /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *Text) *std.ArrayList(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1809,6 +2045,7 @@ pub const Text = struct {
     
     }
 
+    /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *Text, registered: RegisteredObserver) !void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1816,6 +2053,7 @@ pub const Text = struct {
     
     }
 
+    /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Text, observer: *const @import("mutation_observer").MutationObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1831,6 +2069,10 @@ pub const Text = struct {
     
     }
 
+    /// Remove all transient registered observers whose source matches the given registered observer
+    /// 
+    /// Spec: Used during MutationObserver.observe() to clean up old transient observers
+    /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Text, source: *const RegisteredObserver) void {
         const self_parent: *Node = @ptrCast(self);
 
@@ -1848,6 +2090,8 @@ pub const Text = struct {
     
     }
 
+    /// Ensure event listener list is allocated
+    /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *Text) !*std.ArrayList(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1863,6 +2107,8 @@ pub const Text = struct {
     
     }
 
+    /// Get event listener list (read-only access)
+    /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const Text) []const EventListener {
         const self_parent: *const EventTarget = @ptrCast(self);
 
@@ -1873,6 +2119,10 @@ pub const Text = struct {
     
     }
 
+    /// DOM §2.7 - flatten options
+    /// To flatten options, run these steps:
+    /// 1. If options is a boolean, then return options.
+    /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
 
         const OptionsType = @TypeOf(options);
@@ -1892,6 +2142,8 @@ pub const Text = struct {
     
     }
 
+    /// DOM §2.7 - flatten more options
+    /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
 
         const OptionsType = @TypeOf(options);
@@ -1926,6 +2178,8 @@ pub const Text = struct {
     
     }
 
+    /// DOM §2.7 - default passive value
+    /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
 
         _ = event_target;
@@ -1945,6 +2199,9 @@ pub const Text = struct {
     
     }
 
+    /// DOM §2.7 - add an event listener
+    /// To add an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn addAnEventListener(self: *Text, listener: EventListener) !void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -1997,6 +2254,13 @@ pub const Text = struct {
     
     }
 
+    /// addEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
+    /// The addEventListener(type, callback, options) method steps are:
+    /// 1. Let capture, passive, once, and signal be the result of flattening more options.
+    /// 2. Add an event listener with this and an event listener whose type is type,
+    /// callback is callback, capture is capture, passive is passive, once is once,
+    /// and signal is signal.
     pub fn call_addEventListener(
         self: *Text,
         event_type: []const u8,
@@ -2021,6 +2285,9 @@ pub const Text = struct {
     
     }
 
+    /// DOM §2.7 - remove an event listener
+    /// To remove an event listener, given an EventTarget object eventTarget and
+    /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *Text, listener: EventListener) void {
         const self_parent: *EventTarget = @ptrCast(self);
 
@@ -2048,6 +2315,13 @@ pub const Text = struct {
     
     }
 
+    /// removeEventListener(type, callback, options)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-removeeventlistener
+    /// The removeEventListener(type, callback, options) method steps are:
+    /// 1. Let capture be the result of flattening options.
+    /// 2. If this's event listener list contains an event listener whose type is type,
+    /// callback is callback, and capture is capture, then remove an event listener
+    /// with this and that event listener.
     pub fn call_removeEventListener(
         self: *Text,
         event_type: []const u8,
@@ -2069,6 +2343,13 @@ pub const Text = struct {
     
     }
 
+    /// dispatchEvent(event)
+    /// Spec: https://dom.spec.whatwg.org/#dom-eventtarget-dispatchevent
+    /// The dispatchEvent(event) method steps are:
+    /// 1. If event's dispatch flag is set, or if its initialized flag is not set,
+    /// then throw an "InvalidStateError" DOMException.
+    /// 2. Initialize event's isTrusted attribute to false.
+    /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *Text, event: *Event) !bool {
         const self_parent: *EventTarget = @ptrCast(self);
 
