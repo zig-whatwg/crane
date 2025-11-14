@@ -381,7 +381,7 @@ pub const Element = struct {
         } else qualified_name;
 
         // Step 2: Find first attribute with matching qualified name
-        for (self.attributes.toSlice()) |*attr| {
+        for (@constCast(self).attributes.toSliceMut()) |*attr| {
             const attr_qualified_name = attr.get_name() catch continue;
             defer if (attr.prefix != null) self.allocator.free(attr_qualified_name); // Free if allocated
 
@@ -411,7 +411,7 @@ pub const Element = struct {
         const ns = if (namespace) |n| if (n.len == 0) null else n else null;
 
         // Step 2: Find attribute with matching namespace and local name
-        for (self.attributes.toSlice()) |*attr| {
+        for (@constCast(self).attributes.toSliceMut()) |*attr| {
             // Check namespace match
             const ns_match = if (ns == null and attr.namespace_uri == null)
                 true
