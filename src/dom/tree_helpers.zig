@@ -99,18 +99,16 @@ pub fn getChildCount(node: *const Node) usize {
 /// O(1) - Direct array access
 /// Returns null if index out of bounds
 pub fn getChildAt(node: *const Node, index: usize) ?*Node {
-    return if (index < node.child_nodes.items.len)
-        node.child_nodes.items[index]
-    else
-        null;
+    return node.child_nodes.get(index);
 }
 
 /// Find the index of a child node
 /// O(n) - Linear search through children
 /// Returns null if child not found
 pub fn getChildIndex(parent: *const Node, child: *const Node) ?usize {
-    for (parent.child_nodes.items, 0..) |existing, i| {
-        if (existing == child) {
+    var i: usize = 0;
+    while (i < parent.child_nodes.len) : (i += 1) {
+        if (parent.child_nodes.get(i) == child) {
             return i;
         }
     }
@@ -187,7 +185,7 @@ pub fn areSiblings(a: *const Node, b: *const Node) bool {
 /// Check if node has any children
 /// O(1) - Check list length
 pub fn hasChildren(node: *const Node) bool {
-    return node.child_nodes.items.len > 0;
+    return node.child_nodes.len > 0;
 }
 
 /// Check if node is the root (has no parent)
@@ -197,7 +195,7 @@ pub fn isRoot(node: *const Node) bool {
 
 /// Check if node is a leaf (has no children)
 pub fn isLeaf(node: *const Node) bool {
-    return node.child_nodes.items.len == 0;
+    return node.child_nodes.len == 0;
 }
 
 /// Check if node A is following node B (comes after B in tree order)
@@ -249,7 +247,9 @@ pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, e
     var currentB: ?*const Node = nodeB;
     while (currentB) |nodeB_ancestor| {
         // Check if this B ancestor is in A's chain
-        for (ancestorsA.items, 0..) |nodeA_ancestor, i| {
+        var i: usize = 0;
+        while (i < ancestorsA.len) : (i += 1) {
+            const nodeA_ancestor = ancestorsA.get(i).?;
             if (nodeA_ancestor == nodeB_ancestor) {
                 // Found common ancestor
                 // Compare which child branch comes first
@@ -258,7 +258,7 @@ pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, e
                     return .before;
                 }
 
-                const childOfCommonA = ancestorsA.items[i - 1];
+                const childOfCommonA = ancestorsA.get(i - 1).?;
 
                 // Find B's child of common ancestor
                 var childOfCommonB: *const Node = nodeB;
@@ -273,7 +273,9 @@ pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, e
                 var indexA: ?usize = null;
                 var indexB: ?usize = null;
 
-                for (common.child_nodes.items, 0..) |child, idx| {
+                var idx: usize = 0;
+                while (idx < common.child_nodes.len) : (idx += 1) {
+                    const child = common.child_nodes.get(idx);
                     if (child == childOfCommonA) indexA = idx;
                     if (child == childOfCommonB) indexB = idx;
                 }
@@ -349,7 +351,7 @@ fn getRightmostDescendant(node: *const Node) *Node {
 /// Concatenates all Text node descendants in tree order
 /// Caller owns returned memory
 pub fn getDescendantTextContent(node: *const Node, allocator: Allocator) ![]const u8 {
-    var text_list = std.ArrayList(u8).init(allocator);
+    var text_list = infra.List(u8).init(allocator);
     errdefer text_list.deinit();
 
     try collectTextContent(node, &text_list);
@@ -358,7 +360,7 @@ pub fn getDescendantTextContent(node: *const Node, allocator: Allocator) ![]cons
 }
 
 /// Recursively collect text content from node and its descendants
-fn collectTextContent(node: *const Node, list: *std.ArrayList(u8)) !void {
+fn collectTextContent(node: *const Node, list: *infra.List(u8)) !void {
     // If this is a Text node (type 3), append its content
     if (node.node_type == Node.TEXT_NODE) {
         // node_name contains the text data for Text nodes
@@ -366,7 +368,9 @@ fn collectTextContent(node: *const Node, list: *std.ArrayList(u8)) !void {
     }
 
     // Recursively process children
-    for (node.child_nodes.items) |child| {
+    var i: usize = 0;
+    while (i < node.child_nodes.len) : (i += 1) {
+        const child = node.child_nodes.get(i).?;
         try collectTextContent(child, list);
     }
 }
@@ -392,7 +396,9 @@ pub fn getDepth(node: *const Node) usize {
 pub fn getHeight(node: *const Node) usize {
     var max_height: usize = 0;
 
-    for (node.child_nodes.items) |child| {
+    var i: usize = 0;
+    while (i < node.child_nodes.len) : (i += 1) {
+        const child = node.child_nodes.get(i).?;
         const child_height = getHeight(child) + 1;
         if (child_height > max_height) {
             max_height = child_height;
@@ -406,7 +412,9 @@ pub fn getHeight(node: *const Node) usize {
 pub fn countDescendants(node: *const Node) usize {
     var count: usize = 0;
 
-    for (node.child_nodes.items) |child| {
+    var i: usize = 0;
+    while (i < node.child_nodes.len) : (i += 1) {
+        const child = node.child_nodes.get(i).?;
         count += 1; // Count the child
         count += countDescendants(child); // Count child's descendants
     }
@@ -434,7 +442,9 @@ pub fn findCommonAncestor(a: *const Node, b: *const Node) ?*Node {
     // Walk up from b until we find a common ancestor
     current = b;
     while (true) {
-        for (a_ancestors.items) |ancestor| {
+        var j: usize = 0;
+        while (j < a_ancestors.len) : (j += 1) {
+            const ancestor = a_ancestors.get(j).?;
             if (ancestor == current) {
                 return @constCast(current);
             }
