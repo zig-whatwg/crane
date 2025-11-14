@@ -13,6 +13,7 @@
 //! - Reduces allocations and improves cache locality
 
 const std = @import("std");
+const infra = @import("infra");
 const Host = @import("host").Host;
 const Path = @import("path").Path;
 const BlobURLEntry = @import("blob_url").BlobURLEntry;
@@ -158,8 +159,8 @@ test "url record - basic structure" {
 
     const host = Host{ .domain = try allocator.dupe(u8, "example.com") };
 
-    var segments = std.ArrayList([]const u8){};
-    try segments.append(allocator, try allocator.dupe(u8, "path"));
+    var segments = infra.List([]const u8).init(allocator);
+    try segments.append( try allocator.dupe(u8, "path"));
 
     var url = URLRecord{
         .buffer = try allocator.dupe(u8, buffer),
@@ -197,8 +198,8 @@ test "url record - isSpecial" {
     for (special_schemes) |sch| {
         const buffer = try allocator.dupe(u8, sch);
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -226,8 +227,8 @@ test "url record - isSpecial" {
     // Non-special scheme
     const buffer = try allocator.dupe(u8, "mailto");
 
-    var segments = std.ArrayList([]const u8){};
-    defer segments.deinit(allocator);
+    var segments = infra.List([]const u8).init(allocator);
+    defer segments.deinit();
 
     var url = URLRecord{
         .buffer = buffer,
@@ -259,8 +260,8 @@ test "url record - includesCredentials" {
     {
         const buffer = try allocator.dupe(u8, "user");
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -289,8 +290,8 @@ test "url record - includesCredentials" {
     {
         const buffer = try allocator.dupe(u8, "");
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -351,8 +352,8 @@ test "url record - hasOpaquePath" {
     {
         const buffer = try allocator.dupe(u8, "");
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -385,8 +386,8 @@ test "url record - cannotHaveUsernamePasswordPort" {
     {
         const buffer = try allocator.dupe(u8, "http");
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -416,8 +417,8 @@ test "url record - cannotHaveUsernamePasswordPort" {
         const buffer = try allocator.dupe(u8, "file");
         const host = Host{ .domain = try allocator.dupe(u8, "localhost") };
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
@@ -447,8 +448,8 @@ test "url record - cannotHaveUsernamePasswordPort" {
         const buffer = try allocator.dupe(u8, "http");
         const host = Host{ .domain = try allocator.dupe(u8, "example.com") };
 
-        var segments = std.ArrayList([]const u8){};
-        defer segments.deinit(allocator);
+        var segments = infra.List([]const u8).init(allocator);
+        defer segments.deinit();
 
         var url = URLRecord{
             .buffer = buffer,
