@@ -62,6 +62,8 @@ pub const selectors = @import("selectors.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
 pub const attribute_algorithms = @import("attribute_algorithms.zig");
+pub const dom_token_list = @import("dom_token_list.zig");
+pub const DOMTokenListImpl = dom_token_list.DOMTokenList;
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");
