@@ -6,11 +6,11 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Element = Element;
-const ShadowRoot = ShadowRoot;
-const ShadowRootInit = ShadowRootInit;
-const Document = Document;
-const Text = Text;
+const Element = dom.Element;
+const ShadowRoot = dom.ShadowRoot;
+const ShadowRootInit = dom.ShadowRootInit;
+const Document = dom.Document;
+const Text = dom.Text;
 
 test "Shadow DOM: attachShadow creates open shadow root" {
     const allocator = std.testing.allocator;
@@ -39,7 +39,7 @@ test "Shadow DOM: attachShadow creates open shadow root" {
     };
 
     const shadow = try div.call_attachShadow(init);
-    
+
     try std.testing.expect(shadow != null);
     try std.testing.expectEqualStrings("open", shadow.get_mode());
     try std.testing.expect(!shadow.get_delegatesFocus());
@@ -75,7 +75,7 @@ test "Shadow DOM: attachShadow creates closed shadow root" {
     };
 
     const shadow = try div.call_attachShadow(init);
-    
+
     try std.testing.expectEqualStrings("closed", shadow.get_mode());
     try std.testing.expect(shadow.get_delegatesFocus());
     try std.testing.expectEqualStrings("manual", shadow.get_slotAssignment());
@@ -109,7 +109,7 @@ test "Shadow DOM: shadowRoot getter returns open shadow" {
     };
 
     const shadow = try div.call_attachShadow(init);
-    
+
     // shadowRoot getter should return the shadow root for open mode
     const retrieved = div.get_shadowRoot();
     try std.testing.expect(retrieved != null);
@@ -142,7 +142,7 @@ test "Shadow DOM: shadowRoot getter returns null for closed shadow" {
     };
 
     _ = try div.call_attachShadow(init);
-    
+
     // shadowRoot getter should return null for closed mode
     const retrieved = div.get_shadowRoot();
     try std.testing.expect(retrieved == null);
