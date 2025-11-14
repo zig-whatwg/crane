@@ -39,6 +39,7 @@ pub const ParseError = error{
     InvalidIPv6,
     FileInvalidWindowsDriveLetter,
     OutOfMemory,
+    IndexOutOfBounds, // From List.insert() and List.remove()
 };
 
 /// Parser context holds all state during URL parsing
@@ -774,9 +775,9 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (char == '@') {
         if (ctx.at_sign_seen) {
-            try ctx.buffer.insert(ctx.allocator, 0, '%');
-            try ctx.buffer.insert(ctx.allocator, 1, '4');
-            try ctx.buffer.insert(ctx.allocator, 2, '0');
+            try ctx.buffer.insert(0, '%');
+            try ctx.buffer.insert(1, '4');
+            try ctx.buffer.insert(2, '0');
         }
         ctx.at_sign_seen = true;
 
