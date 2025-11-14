@@ -99,7 +99,7 @@ test "Console - init and deinit" {
     // Verify state is initialized empty
     try std.testing.expect(console_obj.countMap.isEmpty());
     try std.testing.expect(console_obj.timerTable.isEmpty());
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "Console - multiple instances" {
