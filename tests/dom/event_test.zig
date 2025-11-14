@@ -20,7 +20,7 @@ const Node = dom.Node;
 test "Event: constructor with type only" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     try testing.expectEqualStrings("test", event.type_name);
@@ -51,7 +51,7 @@ test "Event: constructor with EventInit" {
 test "Event: stopPropagation sets flag" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     try testing.expect(!event.stop_propagation_flag);
@@ -64,7 +64,7 @@ test "Event: stopPropagation sets flag" {
 test "Event: stopImmediatePropagation sets both flags" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     try testing.expect(!event.stop_propagation_flag);
@@ -96,7 +96,7 @@ test "Event: preventDefault on cancelable event" {
 test "Event: preventDefault on non-cancelable event has no effect" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "load");
+    var event = try Event.init(allocator, "load", null);
     defer event.deinit();
 
     try testing.expect(!event.cancelable);
@@ -111,7 +111,7 @@ test "Event: preventDefault on non-cancelable event has no effect" {
 test "Event: isTrusted defaults to false" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "custom");
+    var event = try Event.init(allocator, "custom", null);
     defer event.deinit();
 
     // Events created by scripts (via constructor) have isTrusted = false
@@ -121,7 +121,7 @@ test "Event: isTrusted defaults to false" {
 test "Event: composedPath returns empty for non-dispatched event" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     const path = try event.composedPath(allocator);
@@ -146,7 +146,7 @@ test "EventTarget: addEventListener and removeEventListener" {
 test "Event: cancelBubble getter/setter (legacy)" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Initially false
@@ -188,7 +188,7 @@ test "Event: returnValue getter/setter (legacy)" {
 test "Event: eventPhase transitions" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Initially NONE
@@ -211,7 +211,7 @@ test "Event: eventPhase transitions" {
 test "Event: target and currentTarget" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Initially null
@@ -232,7 +232,7 @@ test "Event: target and currentTarget" {
 test "Event: event path manipulation" {
     const allocator = testing.allocator;
 
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Initially empty

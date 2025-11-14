@@ -29,7 +29,7 @@ test "addEventListener with once=true removes listener after first dispatch" {
     defer target.deinit();
 
     // Create event
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Add listener with once=true
@@ -80,7 +80,7 @@ test "addEventListener with once=false keeps listener after dispatch" {
     defer target.deinit();
 
     // Create event
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
     // Add listener with once=false (default)
@@ -150,7 +150,7 @@ test "multiple once listeners are removed independently" {
     }
 
     // Dispatch event1
-    var event1 = try Event.init(allocator, "event1");
+    var event1 = try Event.init(allocator, "event1", null);
     defer event1.deinit();
     _ = try event_dispatch.dispatch(&event1, &target, false, null);
 
@@ -162,7 +162,7 @@ test "multiple once listeners are removed independently" {
     }
 
     // Dispatch event2
-    var event2 = try Event.init(allocator, "event2");
+    var event2 = try Event.init(allocator, "event2", null);
     defer event2.deinit();
     _ = try event_dispatch.dispatch(&event2, &target, false, null);
 
@@ -194,7 +194,7 @@ test "once listener removed even if stopPropagation is called" {
     try target.call_addEventListener("test", callback, once_options);
 
     // Create event and call stopPropagation
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
     event.stopPropagation();
 
@@ -240,7 +240,7 @@ test "once listener in capture phase is removed" {
     }
 
     // Dispatch event
-    var event = try Event.init(allocator, "test");
+    var event = try Event.init(allocator, "test", null);
     defer event.deinit();
     _ = try event_dispatch.dispatch(&event, &parent, false, null);
 

@@ -42,7 +42,7 @@ test "StaticRange - rejects DocumentType nodes" {
     const allocator = std.testing.allocator;
 
     // Create a DocumentType node
-    var doctype = try dom.DocumentType.init(allocator, "html");
+    var doctype = try dom.DocumentType.init(allocator, "html", "", "");
     defer doctype.deinit();
 
     const doctype_node: *dom.Node = @ptrCast(&doctype);

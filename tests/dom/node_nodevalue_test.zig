@@ -53,7 +53,7 @@ test "Node.nodeValue - Element returns null" {
 test "Node.nodeValue - Attr returns value" {
     const allocator = std.testing.allocator;
 
-    var attr = try Attr.init(allocator, null, "id", "myId");
+    var attr = try Attr.init(allocator, null, null, "id", "myId");
     defer attr.deinit();
 
     const attr_node = attr.asNode();
@@ -82,7 +82,7 @@ test "Node.nodeValue - set Text node value" {
 test "Node.nodeValue - set Attr value" {
     const allocator = std.testing.allocator;
 
-    var attr = try Attr.init(allocator, null, "class", "old-class");
+    var attr = try Attr.init(allocator, null, null, "class", "old-class");
     defer attr.deinit();
 
     const attr_node = attr.asNode();

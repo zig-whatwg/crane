@@ -14,18 +14,18 @@ test "NodeIterator - basic forward iteration" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2, child3]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, .ELEMENT_NODE);
+    var child1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child1.deinit();
     try root.appendChild(&child1);
 
-    var child2 = try Node.init(allocator, .TEXT_NODE);
+    var child2 = try Node.init(allocator, .TEXT_NODE, "#text");
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var child3 = try Node.init(allocator, .ELEMENT_NODE);
+    var child3 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child3.deinit();
     try root.appendChild(&child3);
 
@@ -55,14 +55,14 @@ test "NodeIterator - basic backward iteration" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, .ELEMENT_NODE);
+    var child1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child1.deinit();
     try root.appendChild(&child1);
 
-    var child2 = try Node.init(allocator, .TEXT_NODE);
+    var child2 = try Node.init(allocator, .TEXT_NODE, "#text");
     defer child2.deinit();
     try root.appendChild(&child2);
 
@@ -79,14 +79,14 @@ test "NodeIterator - forward then backward" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, .ELEMENT_NODE);
+    var child1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child1.deinit();
     try root.appendChild(&child1);
 
-    var child2 = try Node.init(allocator, .TEXT_NODE);
+    var child2 = try Node.init(allocator, .TEXT_NODE, "#text");
     defer child2.deinit();
     try root.appendChild(&child2);
 
@@ -107,18 +107,18 @@ test "NodeIterator - whatToShow SHOW_ELEMENT" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [element, text, element]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var element1 = try Node.init(allocator, .ELEMENT_NODE);
+    var element1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer element1.deinit();
     try root.appendChild(&element1);
 
-    var text = try Node.init(allocator, .TEXT_NODE);
+    var text = try Node.init(allocator, .TEXT_NODE, "#text");
     defer text.deinit();
     try root.appendChild(&text);
 
-    var element2 = try Node.init(allocator, .ELEMENT_NODE);
+    var element2 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer element2.deinit();
     try root.appendChild(&element2);
 
@@ -144,18 +144,18 @@ test "NodeIterator - whatToShow SHOW_TEXT" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [element, text, element]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var element1 = try Node.init(allocator, .ELEMENT_NODE);
+    var element1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer element1.deinit();
     try root.appendChild(&element1);
 
-    var text = try Node.init(allocator, .TEXT_NODE);
+    var text = try Node.init(allocator, .TEXT_NODE, "#text");
     defer text.deinit();
     try root.appendChild(&text);
 
-    var element2 = try Node.init(allocator, .ELEMENT_NODE);
+    var element2 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer element2.deinit();
     try root.appendChild(&element2);
 
@@ -181,10 +181,10 @@ test "NodeIterator - filter callback accepts all" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var child = try Node.init(allocator, .TEXT_NODE);
+    var child = try Node.init(allocator, .TEXT_NODE, "#text");
     defer child.deinit();
     try root.appendChild(&child);
 
@@ -212,18 +212,18 @@ test "NodeIterator - filter callback skips nodes" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var text1 = try Node.init(allocator, .TEXT_NODE);
+    var text1 = try Node.init(allocator, .TEXT_NODE, "#text");
     defer text1.deinit();
     try root.appendChild(&text1);
 
-    var element = try Node.init(allocator, .ELEMENT_NODE);
+    var element = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer element.deinit();
     try root.appendChild(&element);
 
-    var text2 = try Node.init(allocator, .TEXT_NODE);
+    var text2 = try Node.init(allocator, .TEXT_NODE, "#text");
     defer text2.deinit();
     try root.appendChild(&text2);
 
@@ -244,7 +244,7 @@ test "NodeIterator - filter callback skips nodes" {
 test "NodeIterator - detach does nothing" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
     var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
@@ -261,7 +261,7 @@ test "NodeIterator - detach does nothing" {
 test "NodeIterator - attributes" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
     const filter = struct {
@@ -286,18 +286,18 @@ test "NodeIterator - nested tree traversal" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1 -> [grandchild], child2]
-    var root = try Node.init(allocator, .ELEMENT_NODE);
+    var root = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, .ELEMENT_NODE);
+    var child1 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child1.deinit();
     try root.appendChild(&child1);
 
-    var grandchild = try Node.init(allocator, .TEXT_NODE);
+    var grandchild = try Node.init(allocator, .TEXT_NODE, "#text");
     defer grandchild.deinit();
     try child1.appendChild(&grandchild);
 
-    var child2 = try Node.init(allocator, .ELEMENT_NODE);
+    var child2 = try Node.init(allocator, .ELEMENT_NODE, "element");
     defer child2.deinit();
     try root.appendChild(&child2);
 
