@@ -6,6 +6,7 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-AbortSignal
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// Abort event listener callback
 pub const AbortListener = *const fn (context: ?*anyopaque) void;
@@ -24,20 +25,20 @@ pub const AbortSignal = struct {
     /// Whether the signal has been aborted
     aborted: bool,
     /// Registered event listeners
-    listeners: std.ArrayList(ListenerEntry),
+    listeners: infra.List(ListenerEntry),
 
     /// Initialize a new AbortSignal
     pub fn init(allocator: std.mem.Allocator) AbortSignal {
         return .{
             .allocator = allocator,
             .aborted = false,
-            .listeners = std.ArrayList(ListenerEntry){},
+            .listeners = infra.List(ListenerEntry).init(allocator),
         };
     }
 
     /// Clean up resources
     pub fn deinit(self: *AbortSignal) void {
-        self.listeners.deinit(self.allocator);
+        self.listeners.deinit();
     }
 
     /// Add an abort event listener
@@ -54,7 +55,7 @@ pub const AbortSignal = struct {
             return;
         }
 
-        try self.listeners.append(self.allocator, .{
+        try self.listeners.append(.{
             .callback = callback,
             .context = context,
         });
@@ -67,10 +68,10 @@ pub const AbortSignal = struct {
         context: ?*anyopaque,
     ) void {
         var i: usize = 0;
-        while (i < self.listeners.items.len) {
-            const entry = self.listeners.items[i];
+        while (i < self.listeners.len) {
+            const entry = self.listeners.get(i).?;
             if (entry.callback == callback and entry.context == context) {
-                _ = self.listeners.swapRemove(i);
+                _ = self.listeners.swapRemove(i) catch unreachable;
                 return;
             }
             i += 1;
@@ -86,12 +87,14 @@ pub const AbortSignal = struct {
         self.aborted = true;
 
         // Call all listeners
-        for (self.listeners.items) |entry| {
+        var i: usize = 0;
+        while (i < self.listeners.len) : (i += 1) {
+            const entry = self.listeners.get(i).?;
             entry.callback(entry.context);
         }
 
         // Clear listeners after calling them
-        self.listeners.clearRetainingCapacity();
+        self.listeners.clear();
     }
 
     /// Check if signal is aborted
