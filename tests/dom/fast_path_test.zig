@@ -10,6 +10,7 @@ const webidl = @import("webidl");
 
 // Import the fast_path module directly from source
 // This allows testing internal implementation details
+const fast_path = dom.fast_path;
 
 const FastPathType = fast_path.FastPathType;
 const detectFastPath = fast_path.detectFastPath;
