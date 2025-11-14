@@ -497,6 +497,12 @@ pub fn build(b: *std.Build) void {
     node_mod.addImport("node_list", node_list_mod);
     node_mod.addImport("registered_observer", registered_observer_mod);
     node_mod.addImport("mutation_observer", mutation_observer_mod);
+    node_mod.addImport("character_data", character_data_mod);
+    node_mod.addImport("text", text_mod);
+    node_mod.addImport("attr", attr_mod);
+    node_mod.addImport("element", element_mod);
+    node_mod.addImport("shadow_root", shadow_root_mod);
+    node_mod.addImport("abort_signal", abort_signal_mod);
     node_list_mod.addImport("node", node_mod); // Circular dependency
     element_mod.addImport("node", node_mod);
     element_mod.addImport("event_target", event_target_mod);
@@ -547,7 +553,6 @@ pub fn build(b: *std.Build) void {
     cdata_section_mod.addImport("document", document_mod);
     cdata_section_mod.addImport("registered_observer", registered_observer_mod);
     cdata_section_mod.addImport("node_list", node_list_mod);
-    cdata_section_mod.addImport("dom", dom_mod); // CDATASection needs dom for mutation and tree_helpers
     document_type_mod.addImport("node", node_mod);
     document_type_mod.addImport("dom_types", dom_types_mod);
     document_type_mod.addImport("event_target", event_target_mod);
@@ -652,9 +657,13 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
     attr_mod.addImport("dom", dom_mod); // attr needs dom for mutation operations
     text_mod.addImport("dom", dom_mod); // Circular: dom -> text, text -> dom
+    processing_instruction_mod.addImport("dom", dom_mod); // processing_instruction needs dom for mutation operations
+    processing_instruction_mod.addImport("abort_signal", abort_signal_mod);
+    processing_instruction_mod.addImport("attr", attr_mod);
     document_mod.addImport("dom", dom_mod); // Circular: dom -> document, document -> dom
     document_fragment_mod.addImport("dom", dom_mod); // Circular: dom -> document_fragment, document_fragment -> dom
     dom_implementation_mod.addImport("dom", dom_mod); // dom_implementation needs dom module
+    dom_implementation_mod.addImport("node", node_mod);
     node_mod.addImport("document", document_mod);
     node_mod.addImport("dom", dom_mod); // node needs dom for mutation operations
     range_mod.addImport("node", node_mod);
