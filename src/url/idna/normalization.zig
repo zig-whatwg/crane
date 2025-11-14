@@ -9,13 +9,14 @@
 //! - Lowercase conversion
 
 const std = @import("std");
+const infra = @import("infra");
 const unicode_data = @import("unicode_data.zig");
 
 /// Normalize a string for IDNA processing (NFC normalization)
 pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     // Step 1: Decode UTF-8 to code points
-    var codepoints = std.ArrayList(u21).empty;
-    defer codepoints.deinit(allocator);
+    var codepoints = infra.List(u21).init(allocator);
+    defer codepoints.deinit();
 
     var i: usize = 0;
     while (i < input.len) {
@@ -31,47 +32,48 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             continue;
         };
 
-        try codepoints.append(allocator, cp);
+        try codepoints.append(cp);
         i += cp_len; // BUGFIX: Advance by the full UTF-8 sequence length
     }
 
     // Step 2: Canonical decomposition (recursive)
-    var decomposed = std.ArrayList(u21).empty;
-    defer decomposed.deinit(allocator);
+    var decomposed = infra.List(u21).init(allocator);
+    defer decomposed.deinit();
 
-    for (codepoints.items) |cp| {
+    for (0..codepoints.len) |j| {
+        const cp = codepoints.get(j).?;
         try decomposeRecursive(allocator, cp, &decomposed);
     }
 
     // Step 3: Canonical ordering by combining class
-    canonicalOrder(decomposed.items);
+    canonicalOrder(decomposed.items());
 
     // Step 4: Canonical composition
-    var composed = std.ArrayList(u21).empty;
-    defer composed.deinit(allocator);
+    var composed = infra.List(u21).init(allocator);
+    defer composed.deinit();
 
     i = 0;
-    while (i < decomposed.items.len) {
-        var current = decomposed.items[i];
+    while (i < decomposed.len) {
+        var current = decomposed.get(i).?;
         const starter_cc = unicode_data.lookupCombiningClass(current);
         i += 1;
 
         // If this is a combining mark (not a starter), just output it
         if (starter_cc != 0) {
-            try composed.append(allocator, current);
+            try composed.append(current);
             continue;
         }
 
         // Try Hangul L+V composition with next character if it's a V
-        if (i < decomposed.items.len) {
-            const next = decomposed.items[i];
+        if (i < decomposed.len) {
+            const next = decomposed.get(i).?;
             if (tryComposeHangul(current, next)) |hangul_comp| {
                 current = hangul_comp;
                 i += 1;
 
                 // Try LV+T composition
-                if (i < decomposed.items.len) {
-                    const next_t = decomposed.items[i];
+                if (i < decomposed.len) {
+                    const next_t = decomposed.get(i).?;
                     if (tryComposeHangul(current, next_t)) |hangul_comp_t| {
                         current = hangul_comp_t;
                         i += 1;
@@ -81,27 +83,28 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         }
 
         // Collect combining marks after current
-        var marks = std.ArrayList(u21).empty;
-        defer marks.deinit(allocator);
+        var marks = infra.List(u21).init(allocator);
+        defer marks.deinit();
 
-        while (i < decomposed.items.len) {
-            const cc = unicode_data.lookupCombiningClass(decomposed.items[i]);
+        while (i < decomposed.len) {
+            const cc = unicode_data.lookupCombiningClass(decomposed.get(i).?);
             if (cc == 0) break; // Hit next starter
-            try marks.append(allocator, decomposed.items[i]);
+            try marks.append(decomposed.get(i).?);
             i += 1;
         }
 
         // Try to compose current with marks (must respect blocking)
         var last_cc: u8 = 0;
-        var consumed_marks = std.ArrayList(bool).empty;
-        defer consumed_marks.deinit(allocator);
+        var consumed_marks = infra.List(bool).init(allocator);
+        defer consumed_marks.deinit();
 
-        for (marks.items) |_| {
-            try consumed_marks.append(allocator, false);
+        for (0..marks.len) |_| {
+            try consumed_marks.append(false);
         }
 
-        for (marks.items, 0..) |mark, mark_idx| {
-            if (consumed_marks.items[mark_idx]) continue;
+        for (0..marks.len) |mark_idx| {
+            const mark = marks.get(mark_idx).?;
+            if (consumed_marks.get(mark_idx).?) continue;
 
             const mark_cc = unicode_data.lookupCombiningClass(mark);
 
@@ -110,7 +113,7 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 if (unicode_data.lookupComposition(current, mark)) |comp| {
                     if (!unicode_data.isCompositionExcluded(comp)) {
                         current = comp;
-                        consumed_marks.items[mark_idx] = true;
+                        consumed_marks.getMut(mark_idx).?.* = true;
                         last_cc = 0;
                         continue;
                     }
@@ -123,35 +126,37 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             }
         }
 
-        try composed.append(allocator, current);
+        try composed.append(current);
 
         // Add unconsumed marks
-        for (marks.items, 0..) |mark, mark_idx| {
-            if (!consumed_marks.items[mark_idx]) {
-                try composed.append(allocator, mark);
+        for (0..marks.len) |mark_idx| {
+            if (!consumed_marks.get(mark_idx).?) {
+                try composed.append(marks.get(mark_idx).?);
             }
         }
     }
 
     // Step 5: Lowercase (for testing - IDNA mapping should handle this)
-    var lowercased = std.ArrayList(u21).empty;
-    defer lowercased.deinit(allocator);
+    var lowercased = infra.List(u21).init(allocator);
+    defer lowercased.deinit();
 
-    for (composed.items) |cp| {
-        try lowercased.append(allocator, normalizeCodePoint(cp));
+    for (0..composed.len) |j| {
+        const cp = composed.get(j).?;
+        try lowercased.append(normalizeCodePoint(cp));
     }
 
     // Step 6: Encode back to UTF-8
-    var result = std.ArrayList(u8).empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
-    for (lowercased.items) |cp| {
+    for (0..lowercased.len) |j| {
+        const cp = lowercased.get(j).?;
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(cp, &buf) catch continue;
-        try result.appendSlice(allocator, buf[0..len]);
+        try result.appendSlice(buf[0..len]);
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Hangul syllable decomposition constants
@@ -166,7 +171,7 @@ const HANGUL_NCOUNT: u21 = HANGUL_VCOUNT * HANGUL_TCOUNT; // 588
 const HANGUL_SCOUNT: u21 = HANGUL_LCOUNT * HANGUL_NCOUNT; // 11172
 
 /// Recursively decompose a code point
-fn decomposeRecursive(allocator: std.mem.Allocator, cp: u21, output: *std.ArrayList(u21)) !void {
+fn decomposeRecursive(allocator: std.mem.Allocator, cp: u21, output: *infra.List(u21)) !void {
     // Hangul syllable decomposition (algorithmic)
     if (cp >= HANGUL_SBASE and cp < HANGUL_SBASE + HANGUL_SCOUNT) {
         const s_index = cp - HANGUL_SBASE;
@@ -174,10 +179,10 @@ fn decomposeRecursive(allocator: std.mem.Allocator, cp: u21, output: *std.ArrayL
         const v = HANGUL_VBASE + (s_index % HANGUL_NCOUNT) / HANGUL_TCOUNT;
         const t = HANGUL_TBASE + s_index % HANGUL_TCOUNT;
 
-        try output.append(allocator, l);
-        try output.append(allocator, v);
+        try output.append(l);
+        try output.append(v);
         if (t != HANGUL_TBASE) {
-            try output.append(allocator, t);
+            try output.append(t);
         }
         return;
     }
@@ -189,7 +194,7 @@ fn decomposeRecursive(allocator: std.mem.Allocator, cp: u21, output: *std.ArrayL
         }
     } else {
         // No decomposition - add as-is
-        try output.append(allocator, cp);
+        try output.append(cp);
     }
 }
 
