@@ -6,6 +6,8 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
+const DocumentOrShadowRoot = @import("document_or_shadow_root").DocumentOrShadowRoot;
+
 test "DocumentOrShadowRoot - initial state" {
     const TestDocOrShadow = struct {
         doc_or_shadow: DocumentOrShadowRoot = .{},

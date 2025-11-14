@@ -6,10 +6,9 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
-
 test "NonElementParentNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(NonElementParentNode);
+    // NonElementParentNode is a mixin included in Document and DocumentFragment
+    // Test that Document (which includes the mixin) compiles
+    const T = @TypeOf(dom.Document);
     try std.testing.expect(T != void);
 }

@@ -6,6 +6,8 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
+const Slottable = @import("slottable").Slottable;
+
 test "Slottable - initial state" {
     const TestSlottable = struct {
         slottable: Slottable = .{},

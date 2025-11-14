@@ -6,6 +6,8 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
+const ParentNode = @import("parent_node").ParentNode;
+
 test "ParentNode mixin compiles" {
     // Just verify the mixin structure compiles
     const T = @TypeOf(ParentNode);
