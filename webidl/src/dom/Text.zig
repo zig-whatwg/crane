@@ -111,8 +111,7 @@ pub const Text = webidl.interface(struct {
             // Steps 6.2-6.5: Update live ranges
             if (self_node.owner_document) |doc| {
                 // owner_document is already *Document, no conversion needed
-                const range_tracking = @import("range_tracking");
-                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset, p, @intCast(node_index));
+                dom.range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset, p, @intCast(node_index));
             }
         }
 

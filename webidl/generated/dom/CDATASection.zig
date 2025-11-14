@@ -222,8 +222,7 @@ pub const CDATASection = struct {
             // Steps 6.2-6.5: Update live ranges
             if (self_node.owner_document) |doc| {
                 // owner_document is already *Document, no conversion needed
-                const range_tracking = @import("range_tracking");
-                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset, p, @intCast(node_index));
+                dom.range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset, p, @intCast(node_index));
             }
         }
 
@@ -751,9 +750,9 @@ pub const CDATASection = struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = dom.mutation;
+        const mutation_observer_algs = dom.mutation_observer_algorithms;
         const empty_nodes: []const *Node = &[_]*Node{};
-        try mutation.queueMutationRecord(
+        try mutation_observer_algs.queueMutationRecord(
             "characterData",
             &self_parent.base,
             null,
@@ -1406,9 +1405,9 @@ pub const CDATASection = struct {
             // Step 2: If length is zero, remove node and continue
             if (length == 0) {
                 // Remove the node from its parent
-                if (node.parent_node) |parent| {
+                if (node.parent_node) |_| {
                     const mutation = @import("dom").mutation;
-                    _ = try mutation.remove(node, parent);
+                    _ = try mutation.remove(node, false);
                 }
                 continue;
             }
@@ -1465,9 +1464,9 @@ pub const CDATASection = struct {
                 if (!isExclusiveTextNode(rn)) break;
 
                 const next_remove = rn.get_nextSibling();
-                if (rn.parent_node) |parent| {
+                if (rn.parent_node) |_| {
                     const mutation = @import("dom").mutation;
-                    _ = try mutation.remove(rn, parent);
+                    _ = try mutation.remove(rn, false);
                 }
                 remove_node = next_remove;
             }

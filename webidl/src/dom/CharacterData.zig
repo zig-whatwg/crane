@@ -141,9 +141,9 @@ pub const CharacterData = webidl.interface(struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = dom.mutation;
+        const mutation_observer_algs = dom.mutation_observer_algorithms;
         const empty_nodes: []const *Node = &[_]*Node{};
-        try mutation.queueMutationRecord(
+        try mutation_observer_algs.queueMutationRecord(
             "characterData",
             &self.base,
             null,

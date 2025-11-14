@@ -506,6 +506,7 @@ pub fn build(b: *std.Build) void {
     node_mod.addImport("element", element_mod);
     node_mod.addImport("shadow_root", shadow_root_mod);
     node_mod.addImport("abort_signal", abort_signal_mod);
+    node_mod.addImport("document_fragment", document_fragment_mod);
     node_list_mod.addImport("node", node_mod); // Circular dependency
     element_mod.addImport("node", node_mod);
     element_mod.addImport("event_target", event_target_mod);
@@ -660,6 +661,7 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
     attr_mod.addImport("dom", dom_mod); // attr needs dom for mutation operations
     text_mod.addImport("dom", dom_mod); // Circular: dom -> text, text -> dom
+    cdata_section_mod.addImport("dom", dom_mod); // cdata_section needs dom (inherits from Text)
     processing_instruction_mod.addImport("dom", dom_mod); // processing_instruction needs dom for mutation operations
     processing_instruction_mod.addImport("abort_signal", abort_signal_mod);
     processing_instruction_mod.addImport("attr", attr_mod);

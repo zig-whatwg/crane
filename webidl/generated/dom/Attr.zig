@@ -908,9 +908,9 @@ pub const Attr = struct {
             // Step 2: If length is zero, remove node and continue
             if (length == 0) {
                 // Remove the node from its parent
-                if (node.parent_node) |parent| {
+                if (node.parent_node) |_| {
                     const mutation = @import("dom").mutation;
-                    _ = try mutation.remove(node, parent);
+                    _ = try mutation.remove(node, false);
                 }
                 continue;
             }
@@ -967,9 +967,9 @@ pub const Attr = struct {
                 if (!isExclusiveTextNode(rn)) break;
 
                 const next_remove = rn.get_nextSibling();
-                if (rn.parent_node) |parent| {
+                if (rn.parent_node) |_| {
                     const mutation = @import("dom").mutation;
-                    _ = try mutation.remove(rn, parent);
+                    _ = try mutation.remove(rn, false);
                 }
                 remove_node = next_remove;
             }
