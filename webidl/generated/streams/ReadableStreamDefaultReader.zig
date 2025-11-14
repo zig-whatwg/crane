@@ -100,14 +100,11 @@ pub const ReadableStreamDefaultReader = struct {
         loop: eventLoop.EventLoop,
     ) !ReadableStreamDefaultReader {
 
-        // Initialize closed promise as pending
-        const closedPromise = try AsyncPromise(void).init(allocator, loop);
-
         return .{
-            .allocator = allocator,
-            .eventLoop = loop,
-            .closedPromise = closedPromise,
-            .stream = stream,
+            .allocator = null,
+            .closedPromise = null,
+            .stream = null,
+            .eventLoop = null,
             .readRequests = infra.List(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     

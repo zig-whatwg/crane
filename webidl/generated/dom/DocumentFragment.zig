@@ -120,11 +120,18 @@ pub const DocumentFragment = struct {
 
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
 
-        // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .event_listener_list = null,
+            .node_type = Node.DOCUMENT_NODE,
+            .node_name = "#document",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             .allocator = allocator,
             .host = null,
-            // NOTE: Parent Node initialization is handled by codegen
         };
     
     }

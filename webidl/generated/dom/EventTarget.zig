@@ -117,7 +117,7 @@ pub const EventTarget = struct {
 
         return .{
             .allocator = allocator,
-            .event_listener_list = null, // Lazy allocation - created on first addEventListener
+            .event_listener_list = null,
         };
     
     }

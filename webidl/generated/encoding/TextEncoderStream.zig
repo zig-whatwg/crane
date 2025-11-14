@@ -79,53 +79,12 @@ pub const TextEncoderStream = struct {
     /// WHATWG Encoding Standard § 5.3 lines 1052-1064
     pub fn init(allocator: std.mem.Allocator) !TextEncoderStream {
 
-        // Allocate stream on heap for context pointer
-        const stream_ptr = try allocator.create(TextEncoderStream);
-        errdefer allocator.destroy(stream_ptr);
-
-        // Initialize with temporary values
-        stream_ptr.* = .{
-            .allocator = allocator,
-            .encoding = "utf-8",
-            .transform = undefined, // Will be set below
+        return .{
+            .allocator = null,
+            .encoding = "",
+            .transform = null,
             .leadingSurrogate = null,
         };
-
-        // Step 2-3: Create transform algorithms
-        const Transformer = struct {
-            pub fn transform(
-                controller: *TransformStreamDefaultController,
-                chunk: webidl.JSValue,
-                ctx: *anyopaque,
-            ) !void {
-                const self: *TextEncoderStream = @ptrCast(@alignCast(ctx));
-                try self.encodeAndEnqueue(controller, chunk);
-            }
-
-            pub fn flush(
-                controller: *TransformStreamDefaultController,
-                ctx: *anyopaque,
-            ) !void {
-                const self: *TextEncoderStream = @ptrCast(@alignCast(ctx));
-                try self.flushAndEnqueue(controller);
-            }
-        };
-
-        // Step 4-5: Create TransformStream
-        const transform = try allocator.create(TransformStream);
-        errdefer allocator.destroy(transform);
-
-        transform.* = try TransformStream.initWithCallbacks(
-            allocator,
-            Transformer.transform,
-            Transformer.flush,
-            stream_ptr,
-        );
-
-        // Step 6: Set transform
-        stream_ptr.transform = transform;
-
-        return stream_ptr.*;
     
     }
 

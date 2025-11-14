@@ -92,15 +92,22 @@ pub const WritableStream = struct {
     /// Initialize a new WritableStream (backward compatibility)
     pub fn init(allocator: std.mem.Allocator) !WritableStream {
 
-        const loop_ptr = try allocator.create(TestEventLoop);
-        errdefer allocator.destroy(loop_ptr);
-
-        loop_ptr.* = TestEventLoop.init(allocator);
-
-        var stream = try initWithSink(allocator, loop_ptr.eventLoop(), null, null);
-        stream.eventLoop_storage = loop_ptr;
-
-        return stream;
+        return .{
+            .allocator = null,
+            .backpressure = false,
+            .closeRequest = null,
+            .controller = null,
+            .detached = false,
+            .inFlightWriteRequest = null,
+            .inFlightCloseRequest = null,
+            .pendingAbortRequest = null,
+            .state = null,
+            .storedError = null,
+            .writer = null,
+            .writeRequests = infra.List(*AsyncPromise(void)).init(allocator),
+            .eventLoop = null,
+            .eventLoop_storage = null,
+        };
     
     }
 

@@ -155,15 +155,24 @@ pub const Document = struct {
 
     pub fn init(allocator: Allocator) !Document {
 
-        // NOTE: Parent Node fields will be flattened by codegen
         return .{
+            .event_listener_list = null,
+            .node_type = Node.DOCUMENT_NODE,
+            .node_name = "#document",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            .custom_element_registry = null,
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
+            .base_uri = "about:blank",
             .content_type = "application/xml",
             .doc_type = .xml,
             .origin = null,
-            .base_uri = "about:blank",
             .ranges = infra.List(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
             .node_iterators = infra.List(*NodeIterator).init(allocator),

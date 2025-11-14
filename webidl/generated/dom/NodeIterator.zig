@@ -76,8 +76,8 @@ pub const NodeIterator = struct {
         return .{
             .allocator = allocator,
             .root = root,
-            .reference = root, // Start at root
-            .pointer_before_reference = true, // Start before root
+            .reference = root,
+            .pointer_before_reference = true,
             .what_to_show = what_to_show,
             .filter = filter,
             .active_flag = false,

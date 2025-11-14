@@ -1992,7 +1992,8 @@ fn parseInitExpression(allocator: Allocator, value: []const u8) !ir.Field.InitEx
         std.mem.indexOf(u8, value, ".{") != null)
     {
         // Extract function and arguments
-        return .{ .function_call = try parseFunctionCall(allocator, value) };
+        const fc = try parseFunctionCall(allocator, value);
+        return .{ .function_call = .{ .function = fc.function, .args = fc.args } };
     }
 
     // Constant reference: Node.DOCUMENT_NODE, std.Thread.Mutex{}
@@ -2009,7 +2010,7 @@ fn parseInitExpression(allocator: Allocator, value: []const u8) !ir.Field.InitEx
     }
 
     // Parameter reference (simple identifier)
-    if (value.len > 0 and (std.ascii.isAlpha(value[0]) or value[0] == '_')) {
+    if (value.len > 0 and (std.ascii.isAlphabetic(value[0]) or value[0] == '_')) {
         var is_identifier = true;
         for (value) |c| {
             if (!std.ascii.isAlphanumeric(c) and c != '_') {

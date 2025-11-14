@@ -203,26 +203,10 @@ pub const TextDecoder = struct {
         options: TextDecoderOptions,
     ) TextDecoderError!TextDecoder {
 
-        // Step 1: Get encoding from label (§4.2 get an encoding)
-        // https://encoding.spec.whatwg.org/#concept-encoding-get
-        const enc = encoding_mod.getEncoding(label) orelse {
-            // Step 2: If encoding is failure, throw RangeError
-            return error.InvalidEncoding;
-        };
-
-        // Step 2: If encoding is replacement, throw RangeError
-        if (std.mem.eql(u8, enc.whatwg_name, "replacement")) {
-            return error.ReplacementEncoding;
-        }
-
-        // Store encoding name (no allocation - just reference the static string)
-        const encoding_name = enc.whatwg_name;
-
-        // Step 3-5: Set properties
         return .{
-            .encoding = encoding_name,
-            .fatal = options.fatal,
-            .ignoreBOM = options.ignoreBOM,
+            .encoding = "",
+            .fatal = null,
+            .ignoreBOM = null,
             .allocator = allocator,
             .enc = enc,
             .doNotFlush = false,

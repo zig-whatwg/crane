@@ -84,27 +84,11 @@ pub const StaticRange = struct {
     /// and end to (init["endContainer"], init["endOffset"]).
     pub fn init(options: StaticRangeInit) !StaticRange {
 
-        const NodeType = @import("node").Node;
-
-        // Step 1: Check for invalid node types
-        if (options.startContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            options.startContainer.node_type == NodeType.ATTRIBUTE_NODE)
-        {
-            return error.InvalidNodeTypeError;
-        }
-
-        if (options.endContainer.node_type == NodeType.DOCUMENT_TYPE_NODE or
-            options.endContainer.node_type == NodeType.ATTRIBUTE_NODE)
-        {
-            return error.InvalidNodeTypeError;
-        }
-
-        // Step 2: Set start and end boundary points
         return .{
-            .start_container = options.startContainer,
-            .start_offset = options.startOffset,
-            .end_container = options.endContainer,
-            .end_offset = options.endOffset,
+            .start_container = null,
+            .start_offset = 0,
+            .end_container = null,
+            .end_offset = 0,
         };
     
     }

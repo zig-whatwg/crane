@@ -190,22 +190,17 @@ pub const ShadowRoot = struct {
     ) !ShadowRoot {
 
         return .{
-            // Inherited from EventTarget (via Node/DocumentFragment)
             .event_listener_list = null,
-            // Inherited from Node (via DocumentFragment)
-            .node_type = 11, // DOCUMENT_FRAGMENT_NODE
-            .node_name = "#document-fragment",
+            .node_type = Node.DOCUMENT_NODE,
+            .node_name = "#document",
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
-            // Inherited from DocumentFragment
-            .host = host, // Shadow roots ALWAYS have a host (never null)
-            // Mixin from DocumentOrShadowRoot
+            .host = null,
             .custom_element_registry = null,
-            // ShadowRoot own fields
             .allocator = allocator,
             .shadow_mode = mode,
             .delegates_focus_flag = delegates_focus,

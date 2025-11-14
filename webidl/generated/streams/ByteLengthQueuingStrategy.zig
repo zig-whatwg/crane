@@ -45,7 +45,6 @@ pub const ByteLengthQueuingStrategy = struct {
     /// Spec: https://streams.spec.whatwg.org/#blqs-constructor
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) ByteLengthQueuingStrategy {
 
-        _ = allocator; // Not needed for this simple structure
         return .{
             ._highWaterMark = initDict.highWaterMark,
         };

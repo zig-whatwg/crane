@@ -56,7 +56,14 @@ pub const TransformStream = struct {
 
     pub fn init(allocator: std.mem.Allocator) !TransformStream {
 
-        return initWithTransformer(allocator, null, null, null);
+        return .{
+            .allocator = null,
+            .backpressure = false,
+            .backpressureChangePromise = null,
+            .readableStream = null,
+            .writableStream = null,
+            .controller = null,
+        };
     
     }
 

@@ -385,7 +385,7 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         try writer.writeAll("    // ========================================================================\n\n");
 
         for (enhanced.all_methods) |method| {
-            try writeMethod(allocator, writer, method, enhanced.all_imports, class.name);
+            try writeMethod(allocator, writer, method, enhanced.all_imports, class.name, enhanced.struct_fields);
             try writer.writeAll("\n");
         }
     }
@@ -443,15 +443,244 @@ fn rewriteSelfParameterType(allocator: Allocator, signature: []const u8, target_
     var result = infra.List(u8).init(allocator);
     defer result.deinit();
 
-    try result.appendSlice( signature[0..type_start]); // Up to and including "self: *" or "self: *const "
-    try result.appendSlice( target_class); // New type name
-    try result.appendSlice( signature[type_end..]); // Rest of signature (including closing paren if @This())
+    try result.appendSlice(signature[0..type_start]); // Up to and including "self: *" or "self: *const "
+    try result.appendSlice(target_class); // New type name
+    try result.appendSlice(signature[type_end..]); // Rest of signature (including closing paren if @This())
 
     return try result.toOwnedSlice();
 }
 
+/// Synthesize init method body from field init expressions
+fn synthesizeInitMethod(
+    allocator: Allocator,
+    struct_fields: []ir.Field,
+    method_signature: []const u8,
+) ![]const u8 {
+    var body = infra.List(u8).init(allocator);
+    errdefer body.deinit();
+    const writer = body.writer();
+
+    // Parse parameters from signature to know what's available
+    const params = try parseInitParameters(allocator, method_signature);
+    defer {
+        for (params) |param| {
+            allocator.free(param.name);
+            allocator.free(param.type_name);
+        }
+        allocator.free(params);
+    }
+
+    try writer.writeAll("\n        return .{\n");
+
+    // For each field, generate initialization code
+    for (struct_fields) |field| {
+        const init_code = if (field.init_expr) |expr|
+            try generateInitCodeFromExpression(allocator, expr, params)
+        else
+            try inferDefaultInit(allocator, field.type_name, params);
+
+        defer allocator.free(init_code);
+
+        try writer.print("            .{s} = {s},\n", .{ field.name, init_code });
+    }
+
+    try writer.writeAll("        };\n    ");
+
+    return body.toOwnedSlice();
+}
+
+/// Parameter info extracted from init signature
+const InitParameter = struct {
+    name: []const u8,
+    type_name: []const u8,
+};
+
+/// Parse init method parameters from signature
+fn parseInitParameters(allocator: Allocator, signature: []const u8) ![]InitParameter {
+    var params_list = infra.List(InitParameter).init(allocator);
+    errdefer {
+        for (params_list.toSliceMut()) |param| {
+            allocator.free(param.name);
+            allocator.free(param.type_name);
+        }
+        params_list.deinit();
+    }
+
+    // Find parameter list: (param1: Type1, param2: Type2) !ReturnType
+    const paren_start = std.mem.indexOf(u8, signature, "(") orelse return params_list.toOwnedSlice();
+    const paren_end = std.mem.indexOf(u8, signature[paren_start..], ")") orelse return params_list.toOwnedSlice();
+    const params_str = signature[paren_start + 1 .. paren_start + paren_end];
+
+    // Split by comma (accounting for nested generics)
+    var pos: usize = 0;
+    var param_start: usize = 0;
+    var angle_depth: i32 = 0;
+
+    while (pos < params_str.len) : (pos += 1) {
+        if (params_str[pos] == '<') angle_depth += 1;
+        if (params_str[pos] == '>') angle_depth -= 1;
+
+        if (params_str[pos] == ',' and angle_depth == 0) {
+            const param_str = std.mem.trim(u8, params_str[param_start..pos], " \t\n\r");
+            if (param_str.len > 0) {
+                if (try parseParameter(allocator, param_str)) |param| {
+                    try params_list.append(param);
+                }
+            }
+            param_start = pos + 1;
+        }
+    }
+
+    // Last parameter
+    const param_str = std.mem.trim(u8, params_str[param_start..], " \t\n\r");
+    if (param_str.len > 0) {
+        if (try parseParameter(allocator, param_str)) |param| {
+            try params_list.append(param);
+        }
+    }
+
+    return params_list.toOwnedSlice();
+}
+
+/// Parse a single parameter: "name: Type"
+fn parseParameter(allocator: Allocator, param_str: []const u8) !?InitParameter {
+    const colon_pos = std.mem.indexOf(u8, param_str, ":") orelse return null;
+
+    const name = std.mem.trim(u8, param_str[0..colon_pos], " \t");
+    const type_name = std.mem.trim(u8, param_str[colon_pos + 1 ..], " \t");
+
+    return InitParameter{
+        .name = try allocator.dupe(u8, name),
+        .type_name = try allocator.dupe(u8, type_name),
+    };
+}
+
+/// Generate init code from an InitExpression
+fn generateInitCodeFromExpression(
+    allocator: Allocator,
+    expr: ir.Field.InitExpression,
+    params: []InitParameter,
+) ![]const u8 {
+    return switch (expr) {
+        .literal => |lit| try allocator.dupe(u8, lit),
+
+        .function_call => |fc| blk: {
+            var code = infra.List(u8).init(allocator);
+            defer code.deinit();
+
+            try code.appendSlice(fc.function);
+            try code.append('(');
+            for (fc.args, 0..) |arg, i| {
+                if (i > 0) try code.appendSlice(", ");
+                try code.appendSlice(arg);
+            }
+            try code.append(')');
+
+            break :blk try code.toOwnedSlice();
+        },
+
+        .constant_ref => |cr| try allocator.dupe(u8, cr),
+
+        .parameter => |p| blk: {
+            // Verify parameter exists
+            for (params) |param| {
+                if (std.mem.eql(u8, param.name, p)) {
+                    break :blk try allocator.dupe(u8, p);
+                }
+            }
+            // Parameter not found in current signature - use smart defaults
+            // This happens when a child class inherits a field that was initialized
+            // from a parameter in the parent's init, but child's init doesn't have that param
+            if (std.mem.eql(u8, p, "node_type")) {
+                // Default document node type
+                break :blk try allocator.dupe(u8, "Node.DOCUMENT_NODE");
+            } else if (std.mem.eql(u8, p, "node_name")) {
+                // Default document node name
+                break :blk try allocator.dupe(u8, "\"#document\"");
+            }
+            // Fallback: assume it's available (will cause compile error if not, which is good)
+            break :blk try allocator.dupe(u8, p);
+        },
+
+        .complex => |c| try allocator.dupe(u8, c),
+    };
+}
+
+/// Infer default initialization for a field type
+fn inferDefaultInit(
+    allocator: Allocator,
+    type_name: []const u8,
+    params: []InitParameter,
+) ![]const u8 {
+    _ = params; // May use params for smarter inference later
+
+    // Optional types → null
+    if (type_name.len > 0 and type_name[0] == '?') {
+        return try allocator.dupe(u8, "null");
+    }
+
+    // Lists → List.init(allocator)
+    if (std.mem.indexOf(u8, type_name, "infra.List(") != null or
+        std.mem.indexOf(u8, type_name, "List(") != null)
+    {
+        return try std.fmt.allocPrint(allocator, "{s}.init(allocator)", .{type_name});
+    }
+
+    // Integers → 0
+    if (std.mem.eql(u8, type_name, "u8") or
+        std.mem.eql(u8, type_name, "u16") or
+        std.mem.eql(u8, type_name, "u32") or
+        std.mem.eql(u8, type_name, "u64") or
+        std.mem.eql(u8, type_name, "usize") or
+        std.mem.eql(u8, type_name, "i8") or
+        std.mem.eql(u8, type_name, "i16") or
+        std.mem.eql(u8, type_name, "i32") or
+        std.mem.eql(u8, type_name, "i64") or
+        std.mem.eql(u8, type_name, "isize"))
+    {
+        return try allocator.dupe(u8, "0");
+    }
+
+    // Booleans → false
+    if (std.mem.eql(u8, type_name, "bool")) {
+        return try allocator.dupe(u8, "false");
+    }
+
+    // Strings → ""
+    if (std.mem.eql(u8, type_name, "[]const u8") or
+        std.mem.eql(u8, type_name, "[]u8"))
+    {
+        return try allocator.dupe(u8, "\"\"");
+    }
+
+    // std.Thread.Mutex → {}
+    if (std.mem.indexOf(u8, type_name, "std.Thread.Mutex") != null or
+        std.mem.indexOf(u8, type_name, "Thread.Mutex") != null or
+        std.mem.indexOf(u8, type_name, "Mutex") != null)
+    {
+        return try std.fmt.allocPrint(allocator, "{s}{{}}", .{type_name});
+    }
+
+    // HashMaps → HashMap.init(allocator)
+    if (std.mem.indexOf(u8, type_name, "HashMap") != null or
+        std.mem.indexOf(u8, type_name, "StringHashMap") != null)
+    {
+        return try std.fmt.allocPrint(allocator, "{s}.init(allocator)", .{type_name});
+    }
+
+    // Default: null for complex types (likely pointers or optionals)
+    return try allocator.dupe(u8, "null");
+}
+
 /// Write a single method
-fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_level_imports: []ir.Import, class_name: []const u8) !void {
+fn writeMethod(
+    allocator: Allocator,
+    writer: anytype,
+    method: ir.Method,
+    top_level_imports: []ir.Import,
+    class_name: []const u8,
+    struct_fields: []ir.Field,
+) !void {
     // Doc comment
     if (method.doc_comment) |doc| {
         var lines = std.mem.splitScalar(u8, doc, '\n');
@@ -473,6 +702,16 @@ fn writeMethod(allocator: Allocator, writer: anytype, method: ir.Method, top_lev
         method.name,
         rewritten_signature,
     });
+
+    // Check if this is an init method - synthesize body from field init expressions
+    if (std.mem.eql(u8, method.name, "init")) {
+        const synthesized_body = try synthesizeInitMethod(allocator, struct_fields, method.signature);
+        defer allocator.free(synthesized_body);
+
+        try writer.writeAll(synthesized_body);
+        try writer.writeAll("\n    }\n");
+        return; // Early return - synthesized init replaces original body
+    }
 
     // Check if this is an inherited method (signature was rewritten)
     const is_inherited = rewritten_signature.ptr != method.signature.ptr;
@@ -567,18 +806,18 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
         // Look for pattern: const Name = @import(
         const const_pos = std.mem.indexOfPos(u8, body, pos, "const ") orelse {
             // No more consts, append rest
-            try result.appendSlice( body[pos..]);
+            try result.appendSlice(body[pos..]);
             break;
         };
 
         // Append everything before this const
-        try result.appendSlice( body[pos..const_pos]);
+        try result.appendSlice(body[pos..const_pos]);
 
         // Check if this is an import statement
         const after_const = const_pos + "const ".len;
         const eq_pos = std.mem.indexOfScalarPos(u8, body, after_const, '=') orelse {
             // No = sign, not an import, keep it
-            try result.appendSlice( "const ");
+            try result.appendSlice("const ");
             pos = after_const;
             continue;
         };
@@ -596,7 +835,7 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
         const after_eq = eq_pos + 1;
         const import_pos = std.mem.indexOfPos(u8, body, after_eq, "@import(") orelse {
             // Not an import, keep it
-            try result.appendSlice( body[const_pos..after_eq]);
+            try result.appendSlice(body[const_pos..after_eq]);
             pos = after_eq;
             continue;
         };
@@ -605,7 +844,7 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
         // Find the semicolon
         const semicolon_pos = std.mem.indexOfScalarPos(u8, body, import_pos, ';') orelse {
             // No semicolon found, keep it
-            try result.appendSlice( body[const_pos..]);
+            try result.appendSlice(body[const_pos..]);
             pos = body.len;
             break;
         };
@@ -619,7 +858,7 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
             if (pos < body.len and body[pos] == '\n') pos += 1; // Skip the newline
         } else {
             // Keep this import (not shadowing)
-            try result.appendSlice( body[const_pos .. semicolon_pos + 1]);
+            try result.appendSlice(body[const_pos .. semicolon_pos + 1]);
             pos = semicolon_pos + 1;
         }
     }
@@ -677,8 +916,8 @@ fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imp
         }
 
         if (!should_skip) {
-            try result.appendSlice( line);
-            try result.append( '\n');
+            try result.appendSlice(line);
+            try result.append('\n');
         }
     }
 
@@ -761,7 +1000,7 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
         // Look for "self" keyword
         const self_pos = std.mem.indexOfPos(u8, body, pos, "self") orelse {
             // No more self references, append rest
-            try result.appendSlice( body[pos..]);
+            try result.appendSlice(body[pos..]);
             break;
         };
 
@@ -796,7 +1035,7 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
         };
 
         // Append everything before this self
-        try result.appendSlice( body[pos..self_pos]);
+        try result.appendSlice(body[pos..self_pos]);
 
         if (is_valid_self) {
             // Check if this is a method call: self.methodName(
@@ -857,15 +1096,15 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
 
             if (is_method_call) {
                 // Keep as "self" for method calls (inherited methods are in child class)
-                try result.appendSlice( "self");
+                try result.appendSlice("self");
             } else {
                 // Replace with new name for field access
-                try result.appendSlice( new_name);
+                try result.appendSlice(new_name);
             }
             pos = self_pos + 4; // Skip "self"
         } else {
             // Keep original "self" (it's part of another word)
-            try result.appendSlice( "self");
+            try result.appendSlice("self");
             pos = self_pos + 4;
         }
     }
