@@ -15,19 +15,19 @@ test "Range.insertNode - splits Text node at start offset" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("HelloWorld");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Set range to middle of text (offset 5)
-    try range.call_setStart(&text.base.base, 5);
+    try range.call_setStart((&text), 5);
     try range.call_collapse(true);
 
     // Insert element
     const span = try doc.call_createElement("span");
-    try range.call_insertNode(&span.base);
+    try range.call_insertNode((&span));
 
     // Text should be split: "Hello" + span + "World"
     try std.testing.expectEqual(@as(usize, 3), div.base.child_nodes.size());
@@ -37,7 +37,7 @@ test "Range.insertNode - splits Text node at start offset" {
     try std.testing.expectEqualStrings("Hello", firstText.base.get_data());
 
     const second = div.base.child_nodes.item(1).?;
-    try std.testing.expectEqual(&span.base, second);
+    try std.testing.expectEqual((&span), second);
 
     const third = div.base.child_nodes.item(2).?;
     const thirdText = try dom.Text.fromNode(third);
@@ -52,22 +52,22 @@ test "Range.insertNode - splits at start of Text node" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("Hello");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
-    try range.call_setStart(&text.base.base, 0);
+    try range.call_setStart((&text), 0);
     try range.call_collapse(true);
 
     const span = try doc.call_createElement("span");
-    try range.call_insertNode(&span.base);
+    try range.call_insertNode((&span));
 
     // Should be: span + "Hello"
     try std.testing.expectEqual(@as(usize, 2), div.base.child_nodes.size());
 
     const first = div.base.child_nodes.item(0).?;
-    try std.testing.expectEqual(&span.base, first);
+    try std.testing.expectEqual((&span), first);
 
     const second = div.base.child_nodes.item(1).?;
     const secondText = try dom.Text.fromNode(second);
@@ -82,16 +82,16 @@ test "Range.insertNode - splits at end of Text node" {
 
     const div = try doc.call_createElement("div");
     const text = try doc.call_createTextNode("Hello");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
-    try range.call_setStart(&text.base.base, 5);
+    try range.call_setStart((&text), 5);
     try range.call_collapse(true);
 
     const span = try doc.call_createElement("span");
-    try range.call_insertNode(&span.base);
+    try range.call_insertNode((&span));
 
     // Should be: "Hello" + span
     try std.testing.expectEqual(@as(usize, 2), div.base.child_nodes.size());
@@ -101,5 +101,5 @@ test "Range.insertNode - splits at end of Text node" {
     try std.testing.expectEqualStrings("Hello", firstText.base.get_data());
 
     const second = div.base.child_nodes.item(1).?;
-    try std.testing.expectEqual(&span.base, second);
+    try std.testing.expectEqual((&span), second);
 }

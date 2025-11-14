@@ -17,15 +17,15 @@ test "Range.deleteContents - deletes text data within same Text node" {
     // Create a text node with "Hello World"
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "o Wor" (offset 4 to 9)
-    try range.call_setStart(&text.base.base, 4);
-    try range.call_setEnd(&text.base.base, 9);
+    try range.call_setStart((&text), 4);
+    try range.call_setEnd((&text), 9);
 
     // Delete the range
     try range.call_deleteContents();
@@ -43,15 +43,15 @@ test "Range.deleteContents - deletes from start of Text node" {
 
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "Hello " (offset 0 to 6)
-    try range.call_setStart(&text.base.base, 0);
-    try range.call_setEnd(&text.base.base, 6);
+    try range.call_setStart((&text), 0);
+    try range.call_setEnd((&text), 6);
 
     // Delete the range
     try range.call_deleteContents();
@@ -69,15 +69,15 @@ test "Range.deleteContents - deletes to end of Text node" {
 
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select " World" (offset 5 to 11)
-    try range.call_setStart(&text.base.base, 5);
-    try range.call_setEnd(&text.base.base, 11);
+    try range.call_setStart((&text), 5);
+    try range.call_setEnd((&text), 11);
 
     // Delete the range
     try range.call_deleteContents();
@@ -95,15 +95,15 @@ test "Range.deleteContents - deletes entire Text node content" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select entire text (offset 0 to 5)
-    try range.call_setStart(&text.base.base, 0);
-    try range.call_setEnd(&text.base.base, 5);
+    try range.call_setStart((&text), 0);
+    try range.call_setEnd((&text), 5);
 
     // Delete the range
     try range.call_deleteContents();
@@ -128,20 +128,20 @@ test "Range.deleteContents - deletes contained element nodes" {
     const textB = try doc.call_createTextNode("B");
     const textC = try doc.call_createTextNode("C");
 
-    _ = try span1.call_appendChild(&textA.base.base);
-    _ = try span2.call_appendChild(&textB.base.base);
-    _ = try span3.call_appendChild(&textC.base.base);
-    _ = try div.call_appendChild(&span1.base);
-    _ = try div.call_appendChild(&span2.base);
-    _ = try div.call_appendChild(&span3.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try span1.call_appendChild((&textA));
+    _ = try span2.call_appendChild((&textB));
+    _ = try span3.call_appendChild((&textC));
+    _ = try div.call_appendChild((&span1));
+    _ = try div.call_appendChild((&span2));
+    _ = try div.call_appendChild((&span3));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select middle span (offset 1 to 2)
-    try range.call_setStart(&div.base, 1);
-    try range.call_setEnd(&div.base, 2);
+    try range.call_setStart((&div), 1);
+    try range.call_setEnd((&div), 2);
 
     // Delete the range
     try range.call_deleteContents();
@@ -151,11 +151,11 @@ test "Range.deleteContents - deletes contained element nodes" {
 
     // First child should be span1
     const firstChild = div.base.child_nodes.item(0).?;
-    try std.testing.expectEqual(&span1.base, firstChild);
+    try std.testing.expectEqual((&span1), firstChild);
 
     // Second child should be span3
     const secondChild = div.base.child_nodes.item(1).?;
-    try std.testing.expectEqual(&span3.base, secondChild);
+    try std.testing.expectEqual((&span3), secondChild);
 }
 
 test "Range.deleteContents - collapsed range does nothing" {
@@ -166,15 +166,15 @@ test "Range.deleteContents - collapsed range does nothing" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&text));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Collapsed range at offset 2
-    try range.call_setStart(&text.base.base, 2);
-    try range.call_setEnd(&text.base.base, 2);
+    try range.call_setStart((&text), 2);
+    try range.call_setEnd((&text), 2);
 
     // Delete the range (should do nothing)
     try range.call_deleteContents();
@@ -193,15 +193,15 @@ test "Range.deleteContents - Comment node data deletion" {
     // Create a comment node with "This is a comment"
     const comment = try doc.call_createComment("This is a comment");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&comment.base.base);
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try div.call_appendChild((&comment));
+    _ = try doc.base.call_appendChild((&div));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "is a " (offset 5 to 10)
-    try range.call_setStart(&comment.base.base, 5);
-    try range.call_setEnd(&comment.base.base, 10);
+    try range.call_setStart((&comment), 5);
+    try range.call_setEnd((&comment), 10);
 
     // Delete the range
     try range.call_deleteContents();

@@ -1131,7 +1131,8 @@ pub const Element = struct {
         errdefer self.allocator.destroy(text);
         text.* = try Text.init(self.allocator);
         // Set the text node's data
-        try text.base.set_data(data);
+        self.allocator.free(text.data);
+        text.data = try self.allocator.dupe(u8, data);
 
         // Step 2: Run insert adjacent, given this, where, and text
         _ = try insertAdjacent(self, where, @ptrCast(text));

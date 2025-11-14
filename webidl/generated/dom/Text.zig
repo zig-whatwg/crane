@@ -247,7 +247,7 @@ pub const Text = struct {
 
         // Collect all contiguous Text nodes in tree order
         // Start from the first contiguous Text node (walk backward to find start)
-        var first = &self.base.base;
+        var first: *Node = @ptrCast(self);
         while (dom.tree_helpers.getPreviousSibling(first)) |prev| {
             if (prev.node_type != Node.TEXT_NODE) break;
             first = prev;
@@ -258,7 +258,7 @@ pub const Text = struct {
         while (current) |node| {
             if (node.node_type == Node.TEXT_NODE) {
                 const textNode = node.asText() orelse return error.InvalidNodeTypeError;
-                try result.appendSlice(textNode.base.get_data());
+                try result.appendSlice(textNode.get_data());
                 current = dom.tree_helpers.getNextSibling(node);
             } else {
                 break;

@@ -18,14 +18,14 @@ test "Range.extractContents - extracts substring from Text node" {
     // Create text node "Hello World"
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "World" (offset 6 to 11)
-    try range.call_setStart(&text.base.base, 6);
-    try range.call_setEnd(&text.base.base, 11);
+    try range.call_setStart((&text), 6);
+    try range.call_setEnd((&text), 11);
 
     // Extract contents
     const fragment = try range.call_extractContents();
@@ -54,14 +54,14 @@ test "Range.extractContents - handles entire Text node" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select entire text
-    try range.call_setStart(&text.base.base, 0);
-    try range.call_setEnd(&text.base.base, 5);
+    try range.call_setStart((&text), 0);
+    try range.call_setEnd((&text), 5);
 
     const fragment = try range.call_extractContents();
     defer {
@@ -86,14 +86,14 @@ test "Range.extractContents - handles Comment node" {
 
     const comment = try doc.call_createComment("This is a comment");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&comment.base.base);
+    _ = try div.call_appendChild((&comment));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "is a" (offset 5 to 10)
-    try range.call_setStart(&comment.base.base, 5);
-    try range.call_setEnd(&comment.base.base, 10);
+    try range.call_setStart((&comment), 5);
+    try range.call_setEnd((&comment), 10);
 
     const fragment = try range.call_extractContents();
     defer {
@@ -121,14 +121,14 @@ test "Range.cloneContents - clones substring from Text node" {
     // Create text node "Hello World"
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "World" (offset 6 to 11)
-    try range.call_setStart(&text.base.base, 6);
-    try range.call_setEnd(&text.base.base, 11);
+    try range.call_setStart((&text), 6);
+    try range.call_setEnd((&text), 11);
 
     // Clone contents
     const fragment = try range.call_cloneContents();
@@ -157,14 +157,14 @@ test "Range.cloneContents - handles entire Text node" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text.base.base);
+    _ = try div.call_appendChild((&text));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select entire text
-    try range.call_setStart(&text.base.base, 0);
-    try range.call_setEnd(&text.base.base, 5);
+    try range.call_setStart((&text), 0);
+    try range.call_setEnd((&text), 5);
 
     const fragment = try range.call_cloneContents();
     defer {
@@ -189,14 +189,14 @@ test "Range.cloneContents - handles Comment node" {
 
     const comment = try doc.call_createComment("This is a comment");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&comment.base.base);
+    _ = try div.call_appendChild((&comment));
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Select "is a" (offset 5 to 10)
-    try range.call_setStart(&comment.base.base, 5);
-    try range.call_setEnd(&comment.base.base, 10);
+    try range.call_setStart((&comment), 5);
+    try range.call_setEnd((&comment), 10);
 
     const fragment = try range.call_cloneContents();
     defer {
@@ -225,14 +225,14 @@ test "Range.extractContents vs cloneContents - different behavior" {
     const text1 = try doc.call_createTextNode("Hello World");
     const text2 = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild(&text1.base.base);
-    _ = try div.call_appendChild(&text2.base.base);
+    _ = try div.call_appendChild((&text1));
+    _ = try div.call_appendChild((&text2));
 
     // Extract from text1
-    var range1 = try dom.Range.init(allocator, &doc.base);
+    var range1 = try dom.Range.init(allocator, (&doc));
     defer range1.deinit();
-    try range1.call_setStart(&text1.base.base, 6);
-    try range1.call_setEnd(&text1.base.base, 11);
+    try range1.call_setStart((&text1), 6);
+    try range1.call_setEnd((&text1), 11);
     const fragment1 = try range1.call_extractContents();
     defer {
         fragment1.deinit();
@@ -240,10 +240,10 @@ test "Range.extractContents vs cloneContents - different behavior" {
     }
 
     // Clone from text2
-    var range2 = try dom.Range.init(allocator, &doc.base);
+    var range2 = try dom.Range.init(allocator, (&doc));
     defer range2.deinit();
-    try range2.call_setStart(&text2.base.base, 6);
-    try range2.call_setEnd(&text2.base.base, 11);
+    try range2.call_setStart((&text2), 6);
+    try range2.call_setEnd((&text2), 11);
     const fragment2 = try range2.call_cloneContents();
     defer {
         fragment2.deinit();
@@ -269,12 +269,12 @@ test "Range.extractContents - empty range returns empty fragment" {
 
     const text = try doc.call_createTextNode("Hello");
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Collapsed range (same start and end)
-    try range.call_setStart(&text.base.base, 2);
-    try range.call_setEnd(&text.base.base, 2);
+    try range.call_setStart((&text), 2);
+    try range.call_setEnd((&text), 2);
 
     const fragment = try range.call_extractContents();
     defer {
@@ -297,12 +297,12 @@ test "Range.cloneContents - empty range returns empty fragment" {
 
     const text = try doc.call_createTextNode("Hello");
 
-    var range = try dom.Range.init(allocator, &doc.base);
+    var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
 
     // Collapsed range
-    try range.call_setStart(&text.base.base, 2);
-    try range.call_setEnd(&text.base.base, 2);
+    try range.call_setStart((&text), 2);
+    try range.call_setEnd((&text), 2);
 
     const fragment = try range.call_cloneContents();
     defer {
