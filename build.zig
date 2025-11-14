@@ -390,6 +390,15 @@ pub fn build(b: *std.Build) void {
     mutation_observer_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
     mutation_observer_mod.addImport("registered_observer", registered_observer_mod);
 
+    // Create mutation module (core mutation algorithms)
+    const mutation_mod = b.createModule(.{
+        .root_source_file = b.path("src/dom/mutation.zig"),
+        .target = target,
+    });
+    mutation_mod.addImport("infra", infra_mod);
+    mutation_mod.addImport("webidl", webidl_mod);
+    mutation_mod.addImport("node", node_mod);
+
     // Create mutation_observer_algorithms module (implementation algorithms)
     const mutation_observer_algorithms_mod = b.createModule(.{
         .root_source_file = b.path("src/dom/mutation_observer_algorithms.zig"),
@@ -541,6 +550,7 @@ pub fn build(b: *std.Build) void {
     processing_instruction_mod.addImport("registered_observer", registered_observer_mod);
     processing_instruction_mod.addImport("node_list", node_list_mod);
     cdata_section_mod.addImport("text", text_mod);
+    cdata_section_mod.addImport("character_data", character_data_mod);
     cdata_section_mod.addImport("event_target", event_target_mod);
     cdata_section_mod.addImport("node", node_mod);
     cdata_section_mod.addImport("document", document_mod);
@@ -569,6 +579,7 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("cdata_section", cdata_section_mod);
     document_mod.addImport("document_type", document_type_mod);
     document_mod.addImport("dom_implementation", dom_implementation_mod);
+    document_mod.addImport("character_data", character_data_mod);
     document_mod.addImport("text", text_mod);
     document_mod.addImport("comment", comment_mod);
     document_mod.addImport("document_fragment", document_fragment_mod);
@@ -585,6 +596,7 @@ pub fn build(b: *std.Build) void {
     attr_mod.addImport("document", document_mod);
     attr_mod.addImport("registered_observer", registered_observer_mod);
     attr_mod.addImport("node_list", node_list_mod);
+    attr_mod.addImport("mutation", mutation_mod);
     named_node_map_mod.addImport("attr", attr_mod);
     named_node_map_mod.addImport("element", element_mod);
     dom_implementation_mod.addImport("document", document_mod);
@@ -643,8 +655,11 @@ pub fn build(b: *std.Build) void {
     xpath_result_mod.addImport("dom", dom_mod); // XPath modules need dom for xpath namespace
     xpath_expression_mod.addImport("dom", dom_mod);
     xpath_evaluator_mod.addImport("dom", dom_mod);
+    element_mod.addImport("text", text_mod);
+    element_mod.addImport("d_o_m_token_list", dom_token_list_mod);
     element_mod.addImport("attr", attr_mod);
     element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
+    text_mod.addImport("dom", dom_mod); // Circular: dom -> text, text -> dom
     document_mod.addImport("dom", dom_mod); // Circular: dom -> document, document -> dom
     document_fragment_mod.addImport("dom", dom_mod); // Circular: dom -> document_fragment, document_fragment -> dom
     dom_implementation_mod.addImport("dom", dom_mod); // dom_implementation needs dom module
