@@ -571,9 +571,14 @@ fn parseClassDefinition(
         return error.InvalidClassDefinition;
     };
 
-    // Find class name (go backwards from webidl.interface to find "const Name =")
-    const name = try extractClassName(allocator, source, class_start);
+    // Find class name and position (go backwards from webidl.interface to find "const Name =")
+    const class_info = try extractClassNameAndPos(allocator, source, class_start);
+    const name = class_info.name;
     errdefer allocator.free(name);
+
+    // Extract doc comment for the class
+    const class_doc_comment = try extractDocComment(allocator, source, class_info.line_start);
+    errdefer if (class_doc_comment) |doc| allocator.free(doc);
 
     // Find the struct body: webidl.interface(struct { ... })
     const struct_start = std.mem.indexOfPos(u8, source, class_start, "struct {") orelse
@@ -645,14 +650,15 @@ fn parseClassDefinition(
         .own_properties = properties,
         .own_constants = constants,
         .required_imports = required_imports,
-        .doc_comment = null, // TODO: extract doc comments
+        .doc_comment = class_doc_comment,
         .source_file = try allocator.dupe(u8, file_path),
         .kind = kind,
     };
 }
 
 /// Extract class name from: const ClassName = webidl.interface(...)
-fn extractClassName(allocator: Allocator, source: []const u8, class_start: usize) ![]const u8 {
+/// Also returns the line start position for doc comment extraction
+fn extractClassNameAndPos(allocator: Allocator, source: []const u8, class_start: usize) !struct { name: []const u8, line_start: usize } {
     // Go backwards to find "const Name ="
     var pos = class_start;
     while (pos > 0) : (pos -= 1) {
@@ -664,16 +670,28 @@ fn extractClassName(allocator: Allocator, source: []const u8, class_start: usize
                 const name_start = const_pos + "pub const ".len;
                 const eq_pos = std.mem.indexOfPos(u8, line, name_start, "=") orelse continue;
                 const name = std.mem.trim(u8, line[name_start..eq_pos], " \t\r");
-                return try allocator.dupe(u8, name);
+                return .{
+                    .name = try allocator.dupe(u8, name),
+                    .line_start = line_start,
+                };
             } else if (std.mem.indexOf(u8, line, "const ")) |const_pos| {
                 const name_start = const_pos + "const ".len;
                 const eq_pos = std.mem.indexOfPos(u8, line, name_start, "=") orelse continue;
                 const name = std.mem.trim(u8, line[name_start..eq_pos], " \t\r");
-                return try allocator.dupe(u8, name);
+                return .{
+                    .name = try allocator.dupe(u8, name),
+                    .line_start = line_start,
+                };
             }
         }
     }
     return error.ClassNameNotFound;
+}
+
+/// Extract class name from: const ClassName = webidl.interface(...)
+fn extractClassName(allocator: Allocator, source: []const u8, class_start: usize) ![]const u8 {
+    const result = try extractClassNameAndPos(allocator, source, class_start);
+    return result.name;
 }
 
 /// Extract parent class from: pub const extends = ParentClass;
@@ -721,6 +739,55 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
     }
 
     return mixins.toOwnedSlice();
+}
+
+/// Extract doc comment from lines immediately preceding the target line.
+/// Doc comments are lines starting with "///" (after trimming whitespace).
+/// Returns null if no doc comment found, or allocated string with the comment.
+fn extractDocComment(allocator: Allocator, source: []const u8, target_line_start: usize) !?[]const u8 {
+    if (target_line_start == 0) return null;
+
+    // Walk backwards to collect all consecutive /// lines
+    var doc_lines = infra.List([]const u8).init(allocator);
+    defer doc_lines.deinit();
+
+    var line_end = target_line_start;
+    while (line_end > 0) {
+        // Find start of previous line
+        var line_start = line_end -| 1;
+        while (line_start > 0 and source[line_start - 1] != '\n') : (line_start -= 1) {}
+
+        const line = std.mem.trim(u8, source[line_start..line_end], " \t\r\n");
+
+        // Check if this is a doc comment line
+        if (std.mem.startsWith(u8, line, "///")) {
+            const comment_content = std.mem.trimLeft(u8, line[3..], " \t");
+            try doc_lines.append(comment_content);
+            line_end = line_start;
+        } else if (line.len == 0) {
+            // Empty line - keep going (doc comments can have blank lines)
+            line_end = line_start;
+        } else {
+            // Hit a non-doc-comment line, stop
+            break;
+        }
+    }
+
+    if (doc_lines.len == 0) return null;
+
+    // Reverse the lines (we collected them backwards) and join with newlines
+    const lines = doc_lines.toSlice();
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+
+    var i: usize = lines.len;
+    while (i > 0) {
+        i -= 1;
+        try result.appendSlice(allocator, lines[i]);
+        if (i > 0) try result.append(allocator, '\n');
+    }
+
+    return try result.toOwnedSlice(allocator);
 }
 
 /// Parse field declarations
@@ -806,10 +873,14 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
                 errdefer allocator.free(type_name);
 
                 if (name.len > 0 and type_name.len > 0) {
+                    // Extract doc comment for this field
+                    const doc_comment = try extractDocComment(allocator, struct_body, line_start);
+                    errdefer if (doc_comment) |doc| allocator.free(doc);
+
                     try fields.append(ir.Field{
                         .name = try allocator.dupe(u8, name),
                         .type_name = type_name,
-                        .doc_comment = null,
+                        .doc_comment = doc_comment,
                         .source_line = line_num,
                     });
                 }
@@ -1059,12 +1130,16 @@ fn parseMethods(allocator: Allocator, struct_body: []const u8) ![]ir.Method {
                 }
             }
 
+            // Extract doc comment for this method
+            const doc_comment = try extractDocComment(allocator, struct_body, fn_start);
+            errdefer if (doc_comment) |doc| allocator.free(doc);
+
             try methods.append(ir.Method{
                 .name = try allocator.dupe(u8, method_name),
                 .signature = try allocator.dupe(u8, signature),
                 .body = try allocator.dupe(u8, body),
                 .referenced_types = referenced_types,
-                .doc_comment = null, // TODO: extract doc comments
+                .doc_comment = doc_comment,
                 .source_line = line_num,
                 .modifiers = .{
                     .is_public = is_public,
