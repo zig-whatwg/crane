@@ -557,7 +557,12 @@ pub const Comment = struct {
 
         // Step 4: Queue mutation record
         const mutation_observer_algs = dom.mutation_observer_algorithms;
-        const empty_nodes: []const *Node = &[_]*Node{};
+        const NodeListType = @import("node_list").NodeList;
+        var empty_added = try NodeListType.init(self_parent.allocator);
+        defer empty_added.deinit();
+        var empty_removed = try NodeListType.init(self_parent.allocator);
+        defer empty_removed.deinit();
+
         const self_node: *Node = @ptrCast(self_parent);
         try mutation_observer_algs.queueMutationRecord(
             self_parent.allocator,
@@ -566,8 +571,8 @@ pub const Comment = struct {
             null,
             null,
             self_parent.data, // oldValue
-            empty_nodes,
-            empty_nodes,
+            &empty_added,
+            &empty_removed,
             null,
             null,
         );
