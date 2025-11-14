@@ -240,12 +240,12 @@ pub fn domainToASCII(
     defer allocator.free(domain_mapped);
 
     // Step 1: Split mapped domain into labels
-    var labels = std.ArrayList([]const u8).empty;
+    var labels = infra.List([]const u8).init(allocator);
     defer {
-        for (labels.items) |label| {
+        for (labels.items()) |label| {
             allocator.free(label);
         }
-        labels.deinit(allocator);
+        labels.deinit();
     }
 
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
@@ -257,21 +257,21 @@ pub fn domainToASCII(
 
         // Process each label
         const processed = try processLabelToASCII(allocator, label, be_strict);
-        try labels.append(allocator, processed);
+        try labels.append(processed);
     }
 
     // Step 2: Join labels with dots
-    var result = std.ArrayList(u8).empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
-    for (labels.items, 0..) |label, i| {
+    for (labels.items(), 0..) |label, i| {
         if (i > 0) {
-            try result.append(allocator, '.');
+            try result.append('.');
         }
-        try result.appendSlice(allocator, label);
+        try result.appendSlice(label);
     }
 
-    const final_domain = try result.toOwnedSlice(allocator);
+    const final_domain = try result.toOwnedSlice();
 
     // Step 3: Validate final domain
     // Check for empty string
@@ -384,12 +384,12 @@ pub fn domainToUnicode(
     defer allocator.free(domain_mapped);
 
     // Step 1: Split mapped domain into labels
-    var labels = std.ArrayList([]const u8).empty;
+    var labels = infra.List([]const u8).init(allocator);
     defer {
-        for (labels.items) |label| {
+        for (labels.items()) |label| {
             allocator.free(label);
         }
-        labels.deinit(allocator);
+        labels.deinit();
     }
 
     var iter = std.mem.splitScalar(u8, domain_mapped, '.');
@@ -401,21 +401,21 @@ pub fn domainToUnicode(
 
         // Process each label
         const processed = try processLabelToUnicode(allocator, label, be_strict);
-        try labels.append(allocator, processed);
+        try labels.append(processed);
     }
 
     // Step 2: Join labels with dots
-    var result = std.ArrayList(u8).empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
-    for (labels.items, 0..) |label, i| {
+    for (labels.items(), 0..) |label, i| {
         if (i > 0) {
-            try result.append(allocator, '.');
+            try result.append('.');
         }
-        try result.appendSlice(allocator, label);
+        try result.appendSlice(label);
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 test "idna - forbidden domain code points" {
