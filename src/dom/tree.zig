@@ -16,9 +16,7 @@ const std = @import("std");
 const infra = @import("infra");
 
 // Import actual Node type from WebIDL generated code via package
-// Node.zig exports both Node interface and NodeBase struct
-pub const NodeBase = @import("node").NodeBase;
-pub const Node = NodeBase;
+pub const Node = @import("node").Node;
 
 /// Get the root of an object
 /// Spec: https://dom.spec.whatwg.org/#concept-tree-root
