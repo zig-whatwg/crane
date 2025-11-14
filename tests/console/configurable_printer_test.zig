@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 
 test "default print_fn uses std.debug.print" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Verify default is std.debug.print
@@ -19,7 +19,7 @@ test "default print_fn uses std.debug.print" {
 
 test "production mode - null print_fn disables immediate output" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Production mode: disable immediate output
@@ -44,7 +44,7 @@ test "production mode - null print_fn disables immediate output" {
 
 test "custom print_fn - capture output to buffer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Set up custom printer that captures output
@@ -75,7 +75,7 @@ test "custom print_fn - capture output to buffer" {
 
 test "switch print_fn at runtime" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Start in production mode (no output)
@@ -101,7 +101,7 @@ test "switch print_fn at runtime" {
 
 test "disabled console with null print_fn - minimal overhead" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Fully disable console
@@ -120,7 +120,7 @@ test "disabled console with null print_fn - minimal overhead" {
 
 test "print_fn with format specifiers in messages" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Capture output
@@ -154,10 +154,10 @@ test "print_fn with format specifiers in messages" {
 test "multiple console instances with different printers" {
     const allocator = std.testing.allocator;
 
-    var console1 = try console_mod.console.init(allocator);
+    var console1 = try console_mod.console.console.init(allocator);
     defer console1.deinit();
 
-    var console2 = try console_mod.console.init(allocator);
+    var console2 = try console_mod.console.console.init(allocator);
     defer console2.deinit();
 
     // Console 1: production mode (no output)

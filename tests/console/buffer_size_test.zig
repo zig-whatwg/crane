@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 
 test "default buffer size is 1000" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     try std.testing.expectEqual(@as(usize, 1000), console_obj.message_buffer.max_size);
@@ -17,7 +17,7 @@ test "default buffer size is 1000" {
 
 test "custom buffer size - small (embedded)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 10);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 10);
     defer console_obj.deinit();
 
     try std.testing.expectEqual(@as(usize, 10), console_obj.message_buffer.max_size);
@@ -39,7 +39,7 @@ test "custom buffer size - small (embedded)" {
 
 test "custom buffer size - large (server)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 5000);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 5000);
     defer console_obj.deinit();
 
     try std.testing.expectEqual(@as(usize, 5000), console_obj.message_buffer.max_size);
@@ -61,7 +61,7 @@ test "custom buffer size - large (server)" {
 
 test "zero buffer size - no buffering (testing mode)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 0);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 0);
     defer console_obj.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), console_obj.message_buffer.max_size);
@@ -78,7 +78,7 @@ test "zero buffer size - no buffering (testing mode)" {
 
 test "buffer size 1 - only keeps most recent message" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 1);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 1);
     defer console_obj.deinit();
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.max_size);
@@ -101,7 +101,7 @@ test "buffer size 1 - only keeps most recent message" {
 
 test "buffer overflow behavior - FIFO (oldest discarded)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 3);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 3);
     defer console_obj.deinit();
 
     // Fill buffer
@@ -132,10 +132,10 @@ test "buffer overflow behavior - FIFO (oldest discarded)" {
 test "multiple consoles with different buffer sizes" {
     const allocator = std.testing.allocator;
 
-    var console_small = try console_mod.console.initWithBufferSize(allocator, 5);
+    var console_small = try console_mod.console.console.initWithBufferSize(allocator, 5);
     defer console_small.deinit();
 
-    var console_large = try console_mod.console.initWithBufferSize(allocator, 100);
+    var console_large = try console_mod.console.console.initWithBufferSize(allocator, 100);
     defer console_large.deinit();
 
     try std.testing.expectEqual(@as(usize, 5), console_small.message_buffer.max_size);
@@ -155,7 +155,7 @@ test "buffer size with disabled console - no allocation waste" {
     const allocator = std.testing.allocator;
 
     // Create disabled console with zero buffer
-    var console_obj = try console_mod.console.initWithBufferSize(allocator, 0);
+    var console_obj = try console_mod.console.console.initWithBufferSize(allocator, 0);
     console_obj.enabled = false;
     console_obj.print_fn = null;
     defer console_obj.deinit();

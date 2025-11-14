@@ -93,7 +93,7 @@ test "LogLevel - severity groupings" {
 
 test "Console - init and deinit" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Verify state is initialized empty
@@ -105,10 +105,10 @@ test "Console - init and deinit" {
 test "Console - multiple instances" {
     const allocator = std.testing.allocator;
 
-    var console1 = try console_mod.console.init(allocator);
+    var console1 = try console_mod.console.console.init(allocator);
     defer console1.deinit();
 
-    var console2 = try console_mod.console.init(allocator);
+    var console2 = try console_mod.console.console.init(allocator);
     defer console2.deinit();
 
     // Verify state isolation

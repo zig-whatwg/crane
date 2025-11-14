@@ -1,6 +1,8 @@
 const std = @import("std");
 const webidl = @import("webidl");
-const TextEncoder = @import("../src/text_encoder.zig").TextEncoder;
+const encoding = @import("encoding");
+
+const TextEncoder = encoding.TextEncoder;
 
 test "TextEncoder - get_encoding returns utf-8 as DOMString" {
     const allocator = std.testing.allocator;
@@ -8,9 +10,9 @@ test "TextEncoder - get_encoding returns utf-8 as DOMString" {
     defer encoder.deinit();
 
     // WebIDL: encoding getter returns DOMString (UTF-16)
-    const encoding = encoder.get_encoding();
+    const encoding_name = encoder.get_encoding();
     const expected: []const u16 = &.{ 'u', 't', 'f', '-', '8' };
-    try std.testing.expectEqualSlices(u16, expected, encoding);
+    try std.testing.expectEqualSlices(u16, expected, encoding_name);
 }
 
 test "TextEncoder - encode ASCII string" {

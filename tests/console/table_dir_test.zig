@@ -8,7 +8,7 @@ const mock_runtime = @import("mock_runtime.zig");
 test "console.table() - without runtime (fallback)" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // No runtime - should fall back to logging
@@ -22,7 +22,7 @@ test "console.table() - without runtime (fallback)" {
 test "console.table() - with runtime (array)" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -45,7 +45,7 @@ test "console.table() - with runtime (array)" {
 test "console.table() - null data" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Null data - should log empty
@@ -57,7 +57,7 @@ test "console.table() - null data" {
 test "console.dir() - without runtime" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // No runtime - should use simple logging
@@ -71,7 +71,7 @@ test "console.dir() - without runtime" {
 test "console.dir() - with runtime" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -90,7 +90,7 @@ test "console.dir() - with runtime" {
 test "console.dir() - with options" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -110,7 +110,7 @@ test "console.dir() - with options" {
 test "console.dir() - null item" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Null item - should log empty
@@ -122,7 +122,7 @@ test "console.dir() - null item" {
 test "console.dir() - number value" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -140,7 +140,7 @@ test "console.dir() - number value" {
 test "console.dir() - boolean value" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);

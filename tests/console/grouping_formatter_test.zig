@@ -9,7 +9,7 @@ const webidl = @import("webidl");
 
 test "group() with format specifier - string substitution" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Group label with %s format specifier
@@ -37,7 +37,7 @@ test "group() with format specifier - string substitution" {
 
 test "group() with multiple format specifiers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Group label with multiple format specifiers
@@ -60,7 +60,7 @@ test "group() with multiple format specifiers" {
 
 test "groupCollapsed() with format specifier" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Collapsed group with format specifier
@@ -83,7 +83,7 @@ test "groupCollapsed() with format specifier" {
 
 test "group() without arguments - no label" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test: Group without label
@@ -101,7 +101,7 @@ test "group() without arguments - no label" {
 
 test "groupEnd() frees allocated labels - no memory leak" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create multiple groups with labels
@@ -127,7 +127,7 @@ test "groupEnd() frees allocated labels - no memory leak" {
 
 test "nested groups with format specifiers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test nested groups

@@ -4,14 +4,13 @@
 //! WHATWG Console Standard lines 145-174.
 
 const std = @import("std");
-const console_lib = @import("console");
+const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_type = console_lib.console;
 
 test "call_count - first call sets count to 1" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "test-counter");
@@ -29,7 +28,7 @@ test "call_count - first call sets count to 1" {
 
 test "call_count - increments existing count" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "increment-counter");
@@ -54,7 +53,7 @@ test "call_count - increments existing count" {
 
 test "call_countReset - resets existing counter to 0" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "reset-counter");
@@ -76,7 +75,7 @@ test "call_countReset - resets existing counter to 0" {
 
 test "call_countReset - missing counter shows warning (no error)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-counter");
@@ -91,7 +90,7 @@ test "call_countReset - missing counter shows warning (no error)" {
 
 test "counting - reset then count starts from 1" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "reset-then-count");
@@ -115,7 +114,7 @@ test "counting - reset then count starts from 1" {
 
 test "counting - multiple independent counters" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const counter1 = try infra.string.utf8ToUtf16(allocator, "counter1");
@@ -147,7 +146,7 @@ test "counting - multiple independent counters" {
 
 test "counting - reset one counter doesn't affect others" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const counter1 = try infra.string.utf8ToUtf16(allocator, "counter1");
@@ -175,7 +174,7 @@ test "counting - reset one counter doesn't affect others" {
 
 test "counting - default label works" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const default_label = try infra.string.utf8ToUtf16(allocator, "default");
@@ -192,7 +191,7 @@ test "counting - default label works" {
 
 test "counting - counter can go very high" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "high-counter");
@@ -209,7 +208,7 @@ test "counting - counter can go very high" {
 
 test "counting - multiple resets work" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "multi-reset");
@@ -237,7 +236,7 @@ test "counting - multiple resets work" {
 
 test "counting - memory safety with many counters" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create many counters
@@ -276,7 +275,7 @@ test "counting - memory safety with many counters" {
 
 test "counting - Unicode labels work" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const unicode_label = try infra.string.utf8ToUtf16(allocator, "カウンター");
@@ -292,7 +291,7 @@ test "counting - Unicode labels work" {
 
 test "counting - empty string label works" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const empty_label = try infra.string.utf8ToUtf16(allocator, "");

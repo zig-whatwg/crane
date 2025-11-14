@@ -9,7 +9,7 @@ const infra = @import("infra");
 
 test "time - warns when timer already exists" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
@@ -39,7 +39,7 @@ test "time - warns when timer already exists" {
 
 test "timeLog - warns when timer doesn't exist" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
@@ -61,7 +61,7 @@ test "timeLog - warns when timer doesn't exist" {
 
 test "timeEnd - warns when timer doesn't exist" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
@@ -83,7 +83,7 @@ test "timeEnd - warns when timer doesn't exist" {
 
 test "timeLog - formats duration correctly with data" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;
@@ -120,7 +120,7 @@ test "timeLog - formats duration correctly with data" {
 
 test "timeEnd - removes timer after logging" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.print_fn = null;

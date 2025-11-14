@@ -4,15 +4,14 @@
 //! WHATWG Console Standard lines 75-79, 176-214.
 
 const std = @import("std");
-const console_lib = @import("console");
+const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_type = console_lib.console;
-const Group = console_lib.Group;
+const Group = console_mod.Group;
 
 test "call_group - pushes group to stack" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Initially empty stack
@@ -29,7 +28,7 @@ test "call_group - pushes group to stack" {
 
 test "call_groupCollapsed - pushes collapsed group to stack" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Initially empty stack
@@ -46,7 +45,7 @@ test "call_groupCollapsed - pushes collapsed group to stack" {
 
 test "call_groupEnd - pops group from stack" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create a group
@@ -62,7 +61,7 @@ test "call_groupEnd - pops group from stack" {
 
 test "call_groupEnd - on empty stack does nothing" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Stack is empty
@@ -77,7 +76,7 @@ test "call_groupEnd - on empty stack does nothing" {
 
 test "grouping - nested groups work (LIFO)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create nested groups
@@ -104,7 +103,7 @@ test "grouping - nested groups work (LIFO)" {
 
 test "grouping - mixed group and groupCollapsed" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create mixed groups
@@ -125,7 +124,7 @@ test "grouping - mixed group and groupCollapsed" {
 
 test "call_clear - empties group stack" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create several groups
@@ -146,7 +145,7 @@ test "call_clear - empties group stack" {
 
 test "call_clear - on empty stack does nothing" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Stack is empty
@@ -161,7 +160,7 @@ test "call_clear - on empty stack does nothing" {
 
 test "grouping - deep nesting" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create deeply nested groups (10 levels)
@@ -180,7 +179,7 @@ test "grouping - deep nesting" {
 
 test "grouping - partial unwinding" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create 5 groups
@@ -205,7 +204,7 @@ test "grouping - partial unwinding" {
 
 test "grouping - group with data (label)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Mock JSValue (opaque type, can't create real instances in tests)
@@ -220,7 +219,7 @@ test "grouping - group with data (label)" {
 
 test "grouping - groupEnd more times than group" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create 2 groups
@@ -239,7 +238,7 @@ test "grouping - groupEnd more times than group" {
 
 test "grouping - memory safety with many groups" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create and end many groups
@@ -261,7 +260,7 @@ test "grouping - memory safety with many groups" {
 
 test "grouping - interleaved group operations" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Interleave group, groupCollapsed, groupEnd
@@ -284,7 +283,7 @@ test "grouping - interleaved group operations" {
 
 test "grouping - clear after partial groups" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Create groups, end some, then clear

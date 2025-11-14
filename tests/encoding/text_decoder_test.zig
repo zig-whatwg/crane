@@ -1,10 +1,12 @@
 const std = @import("std");
-const encoding = @import("zig-whatwg-encoding");
+const text_decoder = @import("text_decoder");
+const text_decoder_options = @import("text_decoder_options");
+const text_decode_options = @import("text_decode_options");
 
-// Re-export from src/ for testing
-const TextDecoder = @import("../src/text_decoder.zig").TextDecoder;
-const TextDecoderOptions = @import("../src/text_decoder_options.zig").TextDecoderOptions;
-const TextDecodeOptions = @import("../src/text_decode_options.zig").TextDecodeOptions;
+// Type aliases for cleaner code
+const TextDecoder = text_decoder.TextDecoder;
+const TextDecoderOptions = text_decoder_options.TextDecoderOptions;
+const TextDecodeOptions = text_decode_options.TextDecodeOptions;
 
 test "TextDecoder - constructor with default label (utf-8)" {
     const allocator = std.testing.allocator;

@@ -10,7 +10,7 @@ const webidl = @import("webidl");
 
 test "assert with true condition - no output" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // True condition - should not log anything
@@ -25,7 +25,7 @@ test "assert with true condition - no output" {
 
 test "assert with false condition - logs 'Assertion failed'" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // False condition - should log
@@ -45,7 +45,7 @@ test "assert with false condition - logs 'Assertion failed'" {
 
 test "assert with false condition and message" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // False condition with message
@@ -67,7 +67,7 @@ test "assert with false condition and message" {
 
 test "assert with false condition and format specifiers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // False condition with format specifiers
@@ -90,7 +90,7 @@ test "assert with false condition and format specifiers" {
 
 test "assert with false condition and multiple args" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // False condition with multiple args
@@ -116,7 +116,7 @@ test "assert with false condition and multiple args" {
 
 test "assert with boolean values" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Test with explicit boolean false
@@ -137,7 +137,7 @@ test "assert with boolean values" {
 
 test "assert message uses correct log level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.call_assert(false, &[_]webidl.JSValue{
@@ -152,7 +152,7 @@ test "assert message uses correct log level" {
 
 test "assert allocation failure gracefully degrades" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // This should still work even if we can't test allocation failure directly
@@ -168,7 +168,7 @@ test "assert allocation failure gracefully degrades" {
 
 test "assert with custom printer - output captured" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Capture output
@@ -199,7 +199,7 @@ test "assert with custom printer - output captured" {
 
 test "multiple assertions - all logged" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Multiple failed assertions

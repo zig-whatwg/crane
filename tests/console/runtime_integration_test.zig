@@ -12,7 +12,7 @@ const Allocator = std.mem.Allocator;
 test "Console with runtime - basic initialization" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -26,7 +26,7 @@ test "Console with runtime - basic initialization" {
 test "Console with runtime - format specifier %s (string)" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -49,7 +49,7 @@ test "Console with runtime - format specifier %s (string)" {
 test "Console with runtime - format specifier %d (integer)" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -71,7 +71,7 @@ test "Console with runtime - format specifier %d (integer)" {
 test "Console with runtime - format specifier %f (float)" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -93,7 +93,7 @@ test "Console with runtime - format specifier %f (float)" {
 test "Console with runtime - multiple format specifiers" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -117,7 +117,7 @@ test "Console with runtime - multiple format specifiers" {
 test "Console with runtime - format specifier with remaining args" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -141,7 +141,7 @@ test "Console with runtime - format specifier with remaining args" {
 test "Console with runtime - type conversion boolean to string" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -163,7 +163,7 @@ test "Console with runtime - type conversion boolean to string" {
 test "Console with runtime - type conversion null to string" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -185,7 +185,7 @@ test "Console with runtime - type conversion null to string" {
 test "Console with runtime - no format specifiers" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -207,7 +207,7 @@ test "Console with runtime - no format specifiers" {
 test "Console without runtime - fallback formatting" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // No runtime set - should use fallback conversions
@@ -226,7 +226,7 @@ test "Console without runtime - fallback formatting" {
 test "Console with runtime - console.trace() with stack capture" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const runtime = try mock_runtime.createMockRuntime(allocator);
@@ -248,7 +248,7 @@ test "Console with runtime - console.trace() with stack capture" {
 test "Console without runtime - console.trace() fallback" {
     const allocator = std.testing.allocator;
 
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // No runtime - should fall back to simple trace

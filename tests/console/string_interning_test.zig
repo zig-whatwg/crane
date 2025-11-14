@@ -10,11 +10,11 @@ const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_type = console.console;
+const console_mod.console = console.console;
 
 test "string interning - default label pre-interned" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // "default" should already be in the pool
@@ -23,7 +23,7 @@ test "string interning - default label pre-interned" {
 
 test "string interning - intern same label multiple times" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Intern the same label twice
@@ -36,7 +36,7 @@ test "string interning - intern same label multiple times" {
 
 test "string interning - different labels have different pointers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label1 = try console_obj.internLabel("timer1");
@@ -48,7 +48,7 @@ test "string interning - different labels have different pointers" {
 
 test "string interning - count uses interned labels" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "counter");
@@ -65,7 +65,7 @@ test "string interning - count uses interned labels" {
 
 test "string interning - time uses interned labels" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "my-timer");
@@ -82,7 +82,7 @@ test "string interning - time uses interned labels" {
 
 test "string interning - default label is zero-cost" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Get "default" multiple times - should always return same pointer
@@ -96,7 +96,7 @@ test "string interning - default label is zero-cost" {
 
 test "string interning - pool grows with unique labels" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Initially has "default"
@@ -115,7 +115,7 @@ test "string interning - pool grows with unique labels" {
 
 test "string interning - memory safety (no leaks)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Intern many labels
@@ -132,7 +132,7 @@ test "string interning - memory safety (no leaks)" {
 
 test "string interning - realistic usage pattern" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Simulate realistic usage: mostly "default", some custom labels

@@ -4,14 +4,13 @@
 //! WHATWG Console Standard lines 49-143.
 
 const std = @import("std");
-const console_lib = @import("console");
+const console_mod = @import("console");
 
-const console_type = console_lib.console;
-const JSValue = console_lib.JSValue;
+const JSValue = console_mod.JSValue;
 
 test "call_log - calls logger with log level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -21,7 +20,7 @@ test "call_log - calls logger with log level" {
 
 test "call_debug - calls logger with debug level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -31,7 +30,7 @@ test "call_debug - calls logger with debug level" {
 
 test "call_info - calls logger with info level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -41,7 +40,7 @@ test "call_info - calls logger with info level" {
 
 test "call_warn - calls logger with warn level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -51,7 +50,7 @@ test "call_warn - calls logger with warn level" {
 
 test "call_error - calls logger with error level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -61,7 +60,7 @@ test "call_error - calls logger with error level" {
 
 test "call_assert - true condition returns immediately" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -71,7 +70,7 @@ test "call_assert - true condition returns immediately" {
 
 test "call_assert - false condition logs" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -81,7 +80,7 @@ test "call_assert - false condition logs" {
 
 test "call_trace - logs with trace level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -91,7 +90,7 @@ test "call_trace - logs with trace level" {
 
 test "call_dir - prints with dir level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // With null item
@@ -103,7 +102,7 @@ test "call_dir - prints with dir level" {
 
 test "call_dirxml - logs with dirxml level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -113,7 +112,7 @@ test "call_dirxml - logs with dirxml level" {
 
 test "call_table - prints with table level" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // With null tabularData
@@ -123,7 +122,7 @@ test "call_table - prints with table level" {
 
 test "logging - disabled console skips all methods" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     console_obj.enabled = false;
@@ -144,7 +143,7 @@ test "logging - disabled console skips all methods" {
 
 test "logging - respects group indentation" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -169,7 +168,7 @@ test "logging - respects group indentation" {
 
 test "logging - multiple methods in sequence" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};
@@ -187,7 +186,7 @@ test "logging - multiple methods in sequence" {
 
 test "logging - memory safety with many calls" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const mock_args: []const JSValue = &.{};

@@ -1,11 +1,12 @@
 const std = @import("std");
+const encoding = @import("encoding");
 
-// Import WebIDL encoding API
-const TextDecoder = @import("../../webidl/src/encoding/TextDecoder.zig").TextDecoder;
-const TextDecoderOptions = @import("../../webidl/src/encoding/TextDecoderOptions.zig").TextDecoderOptions;
-const TextDecodeOptions = @import("../../webidl/src/encoding/TextDecodeOptions.zig").TextDecodeOptions;
-const TextEncoder = @import("../../webidl/src/encoding/TextEncoder.zig").TextEncoder;
-const TextEncoderEncodeIntoResult = @import("../../webidl/src/encoding/TextEncoderEncodeIntoResult.zig").TextEncoderEncodeIntoResult;
+// Type aliases from encoding module
+const TextDecoder = encoding.TextDecoder;
+const TextDecoderOptions = encoding.TextDecoderOptions;
+const TextDecodeOptions = encoding.TextDecodeOptions;
+const TextEncoder = encoding.TextEncoder;
+const TextEncoderEncodeIntoResult = encoding.TextEncoderEncodeIntoResult;
 
 // ============================================================================
 // TextDecoder Tests

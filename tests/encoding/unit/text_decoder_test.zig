@@ -1,7 +1,9 @@
 const std = @import("std");
-const TextDecoder = @import("../../src/text_decoder.zig").TextDecoder;
-const TextDecoderOptions = @import("../../src/text_decoder_options.zig").TextDecoderOptions;
-const TextDecodeOptions = @import("../../src/text_decode_options.zig").TextDecodeOptions;
+const encoding = @import("encoding");
+
+const TextDecoder = encoding.TextDecoder;
+const TextDecoderOptions = encoding.TextDecoderOptions;
+const TextDecodeOptions = encoding.TextDecodeOptions;
 
 test "TextDecoder - constructor with default label (utf-8)" {
     const allocator = std.testing.allocator;

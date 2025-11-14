@@ -4,14 +4,13 @@
 //! WHATWG Console Standard lines 216-272.
 
 const std = @import("std");
-const console_lib = @import("console");
+const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_type = console_lib.console;
 
 test "call_time - starts new timer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "test-timer");
@@ -31,7 +30,7 @@ test "call_time - starts new timer" {
 
 test "call_time - duplicate timer returns without error" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "duplicate-timer");
@@ -57,7 +56,7 @@ test "call_time - duplicate timer returns without error" {
 
 test "call_timeEnd - stops timer and removes from table" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "end-timer");
@@ -79,7 +78,7 @@ test "call_timeEnd - stops timer and removes from table" {
 
 test "call_timeEnd - missing timer returns without error" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-timer");
@@ -94,7 +93,7 @@ test "call_timeEnd - missing timer returns without error" {
 
 test "call_timeLog - logs elapsed time without removing timer" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "log-timer");
@@ -116,7 +115,7 @@ test "call_timeLog - logs elapsed time without removing timer" {
 
 test "call_timeLog - missing timer returns without error" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-log-timer");
@@ -131,7 +130,7 @@ test "call_timeLog - missing timer returns without error" {
 
 test "timing - complete lifecycle (time → timeLog → timeEnd)" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "lifecycle-timer");
@@ -159,7 +158,7 @@ test "timing - complete lifecycle (time → timeLog → timeEnd)" {
 
 test "timing - multiple concurrent timers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const timer1 = try infra.string.utf8ToUtf16(allocator, "timer1");
@@ -196,7 +195,7 @@ test "timing - multiple concurrent timers" {
 
 test "timing - elapsed time increases" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label = try infra.string.utf8ToUtf16(allocator, "elapsed-timer");
@@ -223,7 +222,7 @@ test "timing - elapsed time increases" {
 
 test "timing - timer labels are independent" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const label_a = try infra.string.utf8ToUtf16(allocator, "timerA");
@@ -252,7 +251,7 @@ test "timing - timer labels are independent" {
 
 test "timing - default label can be used" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     const default_label = try infra.string.utf8ToUtf16(allocator, "default");
@@ -271,7 +270,7 @@ test "timing - default label can be used" {
 
 test "timing - memory safety with many timers" {
     const allocator = std.testing.allocator;
-    var console_obj = try console_mod.console.init(allocator);
+    var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Start many timers
