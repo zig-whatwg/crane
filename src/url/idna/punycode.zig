@@ -118,11 +118,11 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         i += cp_len;
     }
 
-    const input_len = codepoints.items.len;
+    const input_len = codepoints.len;
 
     // Copy all basic code points (ASCII) to output
     var basic_count: u32 = 0;
-    for (codepoints.items) |cp| {
+    for (codepoints.items()) |cp| {
         if (cp < 0x80) {
             try output.append( @intCast(cp));
             basic_count += 1;
@@ -151,7 +151,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     while (handled < input_len) {
         // Find the minimum code point >= n in input
         var m: u32 = 0x10FFFF;
-        for (codepoints.items) |cp| {
+        for (codepoints.items()) |cp| {
             if (cp >= n and cp < m) {
                 m = cp;
             }
@@ -166,7 +166,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         delta += diff * mult;
         n = m;
 
-        for (codepoints.items) |cp| {
+        for (codepoints.items()) |cp| {
             if (cp < n) {
                 delta += 1;
                 if (delta == 0) {
@@ -266,7 +266,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
             k += base;
         }
 
-        const out_len: u32 = @intCast(output.items.len);
+        const out_len: u32 = @intCast(output.len);
         bias = adapt(i_var - oldi, out_len + 1, oldi == 0);
 
         if (i_var / (out_len + 1) > std.math.maxInt(u32) - n) {
@@ -287,7 +287,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
-    for (output.items) |cp| {
+    for (output.items()) |cp| {
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(cp, &buf) catch {
             return PunycodeError.BadInput;

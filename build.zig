@@ -429,6 +429,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("webidl/src/html/HTMLSlotElement.zig"),
         .target = target,
     });
+    html_slot_element_mod.addImport("infra", infra_mod);
     html_slot_element_mod.addImport("webidl", webidl_mod);
 
     // Add HTMLSlotElement to shadow_dom_algorithms
