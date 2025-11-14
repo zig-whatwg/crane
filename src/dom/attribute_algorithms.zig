@@ -7,8 +7,9 @@
 
 const std = @import("std");
 const infra = @import("infra");
-const AttrWithBase = @import("attr_with_base.zig").AttrWithBase;
-const ElementWithBase = @import("element_with_base.zig").ElementWithBase;
+const Attr = @import("attr").Attr;
+const Element = @import("element").Element;
+const Node = @import("node").Node;
 const mutation_observer = @import("mutation_observer_algorithms.zig");
 
 // HTML custom elements stub (inline to avoid module path issues)
@@ -35,8 +36,8 @@ const custom_elements = struct {
 ///   - old_value: The old value (null if attribute was just added)
 ///   - new_value: The new value (null if attribute was just removed)
 pub fn handleAttributeChanges(
-    attribute: *AttrWithBase,
-    element: *ElementWithBase,
+    attribute: *Attr,
+    element: *Element,
     old_value: ?[]const u8,
     new_value: ?[]const u8,
 ) !void {
@@ -92,7 +93,7 @@ pub fn handleAttributeChanges(
 ///
 /// This includes the ID attribute change steps defined in the DOM spec.
 fn runAttributeChangeSteps(
-    element: *ElementWithBase,
+    element: *Element,
     local_name: []const u8,
     old_value: ?[]const u8,
     new_value: ?[]const u8,
@@ -130,7 +131,7 @@ fn runAttributeChangeSteps(
 /// Change an attribute to a value
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-change
 pub fn changeAttribute(
-    attribute: *AttrWithBase,
+    attribute: *Attr,
     value: []const u8,
 ) !void {
     // Step 1: Let oldValue be attribute's value
@@ -142,7 +143,7 @@ pub fn changeAttribute(
     // Step 3: Handle attribute changes for attribute
     // with attribute's element, oldValue, and value
     if (attribute.owner_element) |owner_ptr| {
-        const element: *ElementWithBase = @ptrCast(@alignCast(owner_ptr));
+        const element: *Element = @ptrCast(@alignCast(owner_ptr));
         try handleAttributeChanges(attribute, element, old_value, value);
     }
 }
@@ -150,8 +151,8 @@ pub fn changeAttribute(
 /// Append an attribute to an element
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-append
 pub fn appendAttribute(
-    attribute: *AttrWithBase,
-    element: *ElementWithBase,
+    attribute: *Attr,
+    element: *Element,
 ) !void {
     // Step 1: Append attribute to element's attribute list
     try element.attributes.append(attribute);
@@ -170,10 +171,10 @@ pub fn appendAttribute(
 /// Remove an attribute
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-remove
 pub fn removeAttribute(
-    attribute: *AttrWithBase,
+    attribute: *Attr,
 ) !void {
     // Step 1: Let element be attribute's element
-    const element: *ElementWithBase = @ptrCast(@alignCast(attribute.owner_element.?));
+    const element: *Element = @ptrCast(@alignCast(attribute.owner_element.?));
 
     // Store old value before removal
     const old_value = attribute.value;
@@ -204,11 +205,11 @@ pub fn removeAttribute(
 /// Replace an oldAttribute with a newAttribute
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-replace
 pub fn replaceAttribute(
-    old_attribute: *AttrWithBase,
-    new_attribute: *AttrWithBase,
+    old_attribute: *Attr,
+    new_attribute: *Attr,
 ) !void {
     // Step 1: Let element be oldAttribute's element
-    const element: *ElementWithBase = @ptrCast(@alignCast(old_attribute.owner_element.?));
+    const element: *Element = @ptrCast(@alignCast(old_attribute.owner_element.?));
 
     // Find the index of oldAttribute
     var found_index: ?usize = null;
@@ -251,7 +252,7 @@ pub fn replaceAttribute(
 ///
 /// This is a higher-level operation that creates or updates an attribute.
 pub fn setAttributeValue(
-    element: *ElementWithBase,
+    element: *Element,
     local_name: []const u8,
     value: []const u8,
     prefix: ?[]const u8,
@@ -267,10 +268,10 @@ pub fn setAttributeValue(
     // namespace prefix is prefix, local name is localName, value is value,
     // and node document is element's node document, then append this attribute to element, and then return
     if (attribute == null) {
-        const new_attr = try allocator.create(AttrWithBase);
+        const new_attr = try allocator.create(Attr);
         errdefer allocator.destroy(new_attr);
 
-        new_attr.* = try AttrWithBase.init(
+        new_attr.* = try Attr.init(
             allocator,
             local_name,
             value,
@@ -289,10 +290,10 @@ pub fn setAttributeValue(
 /// Get an attribute by namespace and local name
 /// Spec: https://dom.spec.whatwg.org/#concept-element-attributes-get-by-namespace
 fn getAttributeByNamespaceAndLocalName(
-    element: *const ElementWithBase,
+    element: *const Element,
     namespace: ?[]const u8,
     local_name: []const u8,
-) ?*AttrWithBase {
+) ?*Attr {
     // Step 1: If namespace is the empty string, then set it to null
     const ns = if (namespace) |n| (if (n.len == 0) null else namespace) else null;
 
