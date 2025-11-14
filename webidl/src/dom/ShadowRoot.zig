@@ -52,9 +52,6 @@ pub const ShadowRoot = webidl.interface(struct {
 
     allocator: Allocator,
 
-    /// The element that hosts this shadow root (never null)
-    host_element: *Element,
-
     /// The mode of this shadow root ("open" or "closed")
     shadow_mode: ShadowRootMode,
 
@@ -107,11 +104,12 @@ pub const ShadowRoot = webidl.interface(struct {
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
+            // Inherited from DocumentFragment
+            .host = host, // Shadow roots ALWAYS have a host (never null)
             // Mixin from DocumentOrShadowRoot
             .custom_element_registry = null,
             // ShadowRoot own fields
             .allocator = allocator,
-            .host_element = host,
             .shadow_mode = mode,
             .delegates_focus_flag = delegates_focus,
             .slot_assignment_mode = slot_assignment,
@@ -177,7 +175,8 @@ pub const ShadowRoot = webidl.interface(struct {
     ///
     /// Returns the element that hosts this shadow root.
     pub fn get_host(self: *const ShadowRoot) *Element {
-        return self.host_element;
+        // Shadow roots ALWAYS have a host (inherited from DocumentFragment)
+        return self.host.?;
     }
 
     // ========================================================================

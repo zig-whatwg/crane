@@ -51,9 +51,14 @@ pub fn asElementConst(node: *const anyopaque) ?*const Element {
 pub fn asShadowRoot(node: *anyopaque) ?*ShadowRoot {
     const node_ptr: *Node = @ptrCast(@alignCast(node));
     if (node_ptr.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-        // TODO: Additional check to distinguish ShadowRoot from plain DocumentFragment
-        // For now, assume all DocumentFragments with this type are ShadowRoots
-        return @ptrCast(@alignCast(node));
+        // Distinguish ShadowRoot from plain DocumentFragment by checking host field
+        // ShadowRoot extends DocumentFragment and ALWAYS has a non-null host
+        // Plain DocumentFragment has a null host
+        const fragment: *const @import("document_fragment").DocumentFragment = @ptrCast(@alignCast(node));
+        if (fragment.host) |_| {
+            // Has a host, so it's a ShadowRoot
+            return @ptrCast(@alignCast(node));
+        }
     }
     return null;
 }
@@ -63,7 +68,12 @@ pub fn asShadowRoot(node: *anyopaque) ?*ShadowRoot {
 pub fn asShadowRootConst(node: *const anyopaque) ?*const ShadowRoot {
     const node_ptr: *const Node = @ptrCast(@alignCast(node));
     if (node_ptr.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
-        return @ptrCast(@alignCast(node));
+        // Distinguish ShadowRoot from plain DocumentFragment by checking host field
+        const fragment: *const @import("document_fragment").DocumentFragment = @ptrCast(@alignCast(node));
+        if (fragment.host) |_| {
+            // Has a host, so it's a ShadowRoot
+            return @ptrCast(@alignCast(node));
+        }
     }
     return null;
 }
@@ -141,11 +151,10 @@ pub fn setSlottableAssignedSlot(node: *anyopaque, slot: ?*anyopaque) void {
 pub fn getSlotName(slot_element: *const anyopaque) []const u8 {
     if (asElementConst(slot_element)) |element| {
         // Slot name comes from the "name" attribute
-        // For now, since HTMLSlotElement isn't integrated with Element,
-        // we would need to access the "name" attribute
-        // TODO: Access element's "name" attribute when attribute system is available
-        // For now, return empty string (default slot)
-        _ = element;
+        // Per DOM spec: If name attribute is absent, returns empty string (default slot)
+        if (element.call_getAttribute("name")) |name| {
+            return name;
+        }
         return "";
     }
     return "";
