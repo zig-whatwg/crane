@@ -547,6 +547,7 @@ pub fn build(b: *std.Build) void {
     cdata_section_mod.addImport("document", document_mod);
     cdata_section_mod.addImport("registered_observer", registered_observer_mod);
     cdata_section_mod.addImport("node_list", node_list_mod);
+    cdata_section_mod.addImport("dom", dom_mod); // CDATASection needs dom for mutation and tree_helpers
     document_type_mod.addImport("node", node_mod);
     document_type_mod.addImport("dom_types", dom_types_mod);
     document_type_mod.addImport("event_target", event_target_mod);
