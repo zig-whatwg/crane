@@ -145,7 +145,7 @@ pub const MutationObserver = webidl.interface(struct {
                 // transient registered observers whose source is registered
                 // from node's registered observer list.
                 for (self.node_list.toSlice()) |node| {
-                    try node.removeTransientObservers(registered);
+                    node.removeTransientObservers(registered);
                 }
 
                 // Step 7.2: Set registered's options to options.
