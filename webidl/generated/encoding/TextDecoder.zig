@@ -17,6 +17,7 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
 const Encoding = encoding_mod.Encoding;
 const Decoder = encoding_mod.Decoder;
 
@@ -69,11 +70,12 @@ pub const TextDecoderError = error{
 ///   readonly attribute boolean ignoreBOM;
 /// };
 /// ```
+
 /// TextDecoder - decodes bytes to strings using various character encodings
-///
+/// 
 /// WHATWG Encoding Standard § 5
 /// https://encoding.spec.whatwg.org/#interface-textdecoder
-///
+/// 
 /// IDL:
 /// ```
 /// [Exposed=*]
@@ -82,7 +84,7 @@ pub const TextDecoderError = error{
 /// USVString decode(optional AllowSharedBufferSource input, optional TextDecodeOptions options = {});
 /// };
 /// TextDecoder includes TextDecoderCommon;
-///
+/// 
 /// interface mixin TextDecoderCommon {
 /// readonly attribute DOMString encoding;
 /// readonly attribute boolean fatal;
@@ -95,23 +97,23 @@ pub const TextDecoder = struct {
     // ========================================================================
 
     /// The encoding name (WHATWG canonical name, lowercase ASCII)
-    ///
+    /// 
     /// Examples: "utf-8", "windows-1252", "iso-8859-1"
-    ///
+    /// 
     /// This is a readonly attribute - set during construction and never changes.
     encoding: []const u8,
     /// Fatal error mode flag
-    ///
+    /// 
     /// - `true`: Throw TypeError on invalid byte sequences
     /// - `false`: Use U+FFFD replacement character (default)
-    ///
+    /// 
     /// This is a readonly attribute - set during construction and never changes.
     fatal: webidl.boolean,
     /// Byte Order Mark (BOM) handling flag
-    ///
+    /// 
     /// - `true`: Keep BOM in output as U+FEFF (ZERO WIDTH NO-BREAK SPACE)
     /// - `false`: Strip BOM from output (default)
-    ///
+    /// 
     /// This is a readonly attribute - set during construction and never changes.
     ignoreBOM: webidl.boolean,
     allocator: std.mem.Allocator,
@@ -140,14 +142,14 @@ pub const TextDecoder = struct {
     // ========================================================================
 
     /// Constructor - creates a new TextDecoder
-    ///
+    /// 
     /// WHATWG Encoding Standard § 5.1.3
     /// https://encoding.spec.whatwg.org/#dom-textdecoder
-    ///
+    /// 
     /// Creates a decoder for the specified encoding label with optional configuration.
-    ///
+    /// 
     /// ## Parameters
-    ///
+    /// 
     /// - `allocator`: Memory allocator for internal buffers and output strings
     /// - `label`: Encoding label (case-insensitive, whitespace-trimmed)
     /// - Examples: "utf-8", "UTF-8", "windows-1252", "iso-8859-1"
@@ -155,44 +157,44 @@ pub const TextDecoder = struct {
     /// - `options`: Configuration options (see `TextDecoderOptions`)
     /// - `fatal`: If true, throw on invalid sequences; if false, use U+FFFD (default: false)
     /// - `ignoreBOM`: If true, don't strip BOM; if false, strip BOM (default: false)
-    ///
+    /// 
     /// ## Returns
-    ///
+    /// 
     /// New TextDecoder instance configured for the specified encoding.
-    ///
+    /// 
     /// ## Errors
-    ///
+    /// 
     /// - `error.InvalidEncoding`: Label not recognized (maps to WebIDL RangeError)
     /// - `error.ReplacementEncoding`: "replacement" encoding rejected (maps to WebIDL RangeError)
     /// - `error.OutOfMemory`: Allocation failed
-    ///
+    /// 
     /// ## Examples
-    ///
+    /// 
     /// ```zig
     /// // UTF-8 (default)
     /// var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     /// defer decoder.deinit();
-    ///
+    /// 
     /// // Windows-1252 with fatal mode
     /// var decoder2 = try TextDecoder.init(allocator, "windows-1252", .{ .fatal = true });
     /// defer decoder2.deinit();
-    ///
+    /// 
     /// // UTF-8 keeping BOM
     /// var decoder3 = try TextDecoder.init(allocator, "utf-8", .{ .ignoreBOM = true });
     /// defer decoder3.deinit();
     /// ```
-    ///
+    /// 
     /// ## Spec Algorithm
-    ///
+    /// 
     /// The new TextDecoder(label, options) constructor steps are:
     /// 1. Let encoding be the result of getting an encoding from label.
     /// 2. If encoding is failure or replacement, then throw a RangeError.
     /// 3. Set this's encoding to encoding.
     /// 4. If options["fatal"] is true, then set this's error mode to "fatal".
     /// 5. Set this's ignore BOM to options["ignoreBOM"].
-    ///
+    /// 
     /// ## Implementation Notes
-    ///
+    /// 
     /// This implementation uses UTF-8 strings for Zig ergonomics.
     /// For JavaScript bindings, convert DOMString (UTF-16) → UTF-8 before calling this.
     pub fn init(
@@ -228,28 +230,29 @@ pub const TextDecoder = struct {
             .reusableUtf16Buffer = null,
             .reusableUtf8Buffer = null,
         };
+    
     }
 
     /// Cleanup resources
-    ///
+    /// 
     /// Frees internal buffers allocated by the decoder.
-    ///
+    /// 
     /// ## Memory Management
-    ///
+    /// 
     /// - Frees reusable UTF-16 buffer (if allocated)
     /// - Frees reusable UTF-8 buffer (if allocated)
     /// - Does NOT free output strings returned by `decode()` (caller owns those)
-    ///
+    /// 
     /// ## Thread Safety
-    ///
+    /// 
     /// Must be called from the same thread that created the decoder.
-    ///
+    /// 
     /// ## Example
-    ///
+    /// 
     /// ```zig
     /// var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     /// defer decoder.deinit(); // Always pair init with deinit
-    ///
+    /// 
     /// const output = try decoder.decode(input, .{});
     /// defer allocator.free(output); // Caller frees output
     /// ```
@@ -262,139 +265,146 @@ pub const TextDecoder = struct {
         if (self.reusableUtf8Buffer) |buf| {
             self.allocator.free(buf);
         }
+    
     }
 
     /// Get the encoding name (WHATWG canonical name)
-    ///
+    /// 
     /// WHATWG Encoding Standard § 5.1.1
     /// TextDecoderCommon.encoding getter
-    ///
+    /// 
     /// IDL:
     /// ```
     /// readonly attribute DOMString encoding;
     /// ```
-    ///
+    /// 
     /// Note: Returns UTF-8 string. For JavaScript bindings, convert to DOMString (UTF-16).
     pub inline fn get_encoding(self: *const TextDecoder) []const u8 {
+
         return self.encoding;
+    
     }
 
     /// Get the fatal flag
-    ///
+    /// 
     /// WHATWG Encoding Standard § 5.1.1
     /// TextDecoderCommon.fatal getter
-    ///
+    /// 
     /// IDL:
     /// ```
     /// readonly attribute boolean fatal;
     /// ```
     pub inline fn get_fatal(self: *const TextDecoder) webidl.boolean {
+
         return self.fatal;
+    
     }
 
     /// Get the ignoreBOM flag
-    ///
+    /// 
     /// WHATWG Encoding Standard § 5.1.1
     /// TextDecoderCommon.ignoreBOM getter
-    ///
+    /// 
     /// IDL:
     /// ```
     /// readonly attribute boolean ignoreBOM;
     /// ```
     pub inline fn get_ignoreBOM(self: *const TextDecoder) webidl.boolean {
+
         return self.ignoreBOM;
+    
     }
 
     /// decode() - Decodes bytes to a string
-    ///
+    /// 
     /// WHATWG Encoding Standard § 5.1.4
     /// https://encoding.spec.whatwg.org/#dom-textdecoder-decode
-    ///
+    /// 
     /// Decodes a byte sequence using the configured encoding and returns a UTF-8 string.
-    ///
+    /// 
     /// ## Parameters
-    ///
+    /// 
     /// - `input`: Byte sequence to decode
     /// - Empty slice is valid (useful for flushing in streaming mode)
     /// - For JavaScript bindings: extract bytes from AllowSharedBufferSource
     /// - `options`: Decode options (see `TextDecodeOptions`)
     /// - `stream`: If true, additional data expected; if false, flush decoder (default: false)
-    ///
+    /// 
     /// ## Returns
-    ///
+    /// 
     /// Decoded string as UTF-8 bytes. **Caller owns the returned memory** and must free it.
-    ///
+    /// 
     /// ## Errors
-    ///
+    /// 
     /// - `error.DecodingError`: Fatal mode encountered invalid byte sequence (maps to WebIDL TypeError)
     /// - `error.OutOfMemory`: Allocation failed
-    ///
+    /// 
     /// ## Behavior
-    ///
+    /// 
     /// ### Non-Streaming Mode (stream: false, default)
     /// - Resets decoder state before processing
     /// - Processes complete input
     /// - Flushes any pending data
-    ///
+    /// 
     /// ### Streaming Mode (stream: true)
     /// - Preserves decoder state between calls
     /// - Accumulates partial multi-byte sequences
     /// - Final call with stream:false flushes remaining data
-    ///
+    /// 
     /// ### BOM Handling
     /// - By default (ignoreBOM: false): Strips BOM on first decode
     /// - With ignoreBOM: true: Keeps BOM in output as U+FEFF
     /// - BOM only stripped once per decoder instance
-    ///
+    /// 
     /// ### Error Handling
     /// - **Fatal mode** (fatal: true): Throws `error.DecodingError` on invalid sequences
     /// - **Replacement mode** (fatal: false, default): Substitutes U+FFFD for invalid sequences
-    ///
+    /// 
     /// ## Examples
-    ///
+    /// 
     /// ### Basic Decode
     /// ```zig
     /// var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     /// defer decoder.deinit();
-    ///
+    /// 
     /// const bytes = [_]u8{ 0x48, 0x65, 0x6C, 0x6C, 0x6F }; // "Hello"
     /// const text = try decoder.decode(&bytes, .{});
     /// defer allocator.free(text);
     /// // text is "Hello"
     /// ```
-    ///
+    /// 
     /// ### Streaming Decode
     /// ```zig
     /// // Process fragmented input
     /// const chunk1 = try decoder.decode(bytes1, .{ .stream = true });
     /// defer allocator.free(chunk1);
-    ///
+    /// 
     /// const chunk2 = try decoder.decode(bytes2, .{ .stream = true });
     /// defer allocator.free(chunk2);
-    ///
+    /// 
     /// // Flush remaining data
     /// const final = try decoder.decode(&[_]u8{}, .{ .stream = false });
     /// defer allocator.free(final);
     /// ```
-    ///
+    /// 
     /// ### Fatal Mode
     /// ```zig
     /// var decoder = try TextDecoder.init(allocator, "utf-8", .{ .fatal = true });
     /// defer decoder.deinit();
-    ///
+    /// 
     /// const invalid = [_]u8{ 0xFF, 0xFE }; // Invalid UTF-8
     /// const result = decoder.decode(&invalid, .{});
     /// // Returns error.DecodingError
     /// ```
-    ///
+    /// 
     /// ## Performance
-    ///
+    /// 
     /// - **ASCII fast path**: Direct passthrough for ASCII-only input (~10x faster)
     /// - **UTF-8 fast path**: Validation-only for UTF-8 encoding (~5x faster)
     /// - **Buffer reuse**: Internal buffers reused for reduced allocations
-    ///
+    /// 
     /// ## Spec Algorithm
-    ///
+    /// 
     /// The decode(input, options) method steps are:
     /// 1. If this's do not flush is false, reset decoder state
     /// 2. Set this's do not flush to options["stream"]
@@ -402,9 +412,9 @@ pub const TextDecoder = struct {
     /// 4. Let output be the I/O queue of scalar values
     /// 5. Process the queue with encoding's decoder
     /// 6. Return serialized output
-    ///
+    /// 
     /// ## Implementation Notes
-    ///
+    /// 
     /// This implementation uses UTF-8 strings for I/O (Zig native format).
     /// For JavaScript bindings:
     /// - Convert AllowSharedBufferSource → []const u8 before calling
@@ -441,11 +451,7 @@ pub const TextDecoder = struct {
 
         // Step 4: Handle BOM (if not ignoreBOM and not seen yet)
         if (!self.ignoreBOM and !self.bomSeen) {
-            // Strip BOM: UTF-8 BOM is 0xEF 0xBB 0xBF
-            if (bytes.len >= 3 and bytes[0] == 0xEF and bytes[1] == 0xBB and bytes[2] == 0xBF) {
-                bytes = bytes[3..];
-                self.bomSeen = true;
-            }
+            bytes = self.stripBOM(bytes);
         }
 
         // UTF-8 FAST PATH: For UTF-8 encoding, validate and return
@@ -474,5 +480,9 @@ pub const TextDecoder = struct {
         const utf8_output = try infra.string.utf16ToUtf8(self.allocator, utf16_output);
 
         return utf8_output;
+    
     }
+
 };
+
+

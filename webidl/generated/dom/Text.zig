@@ -751,7 +751,7 @@ pub const Text = struct {
         }
 
         // Step 4: Queue mutation record
-        const mutation = @import("dom").mutation;
+        const mutation = @import("mutation");
         const empty_nodes: []const *Node = &[_]*Node{};
         try mutation.queueMutationRecord(
             "characterData",
@@ -805,7 +805,7 @@ pub const Text = struct {
         if (self_parent.base.parent_node) |parent| {
             // Call the mutation module's children changed callback system
             // This will invoke any registered callbacks from other specifications
-            @import("dom").mutation.runChildrenChangedSteps(parent);
+            @import("mutation").runChildrenChangedSteps(parent);
         }
     
     }

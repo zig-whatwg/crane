@@ -26,6 +26,7 @@ pub const DOMException = error{
     NotFoundError,
     NotSupportedError,
     OutOfMemory,
+    IndexOutOfBounds,
 };
 
 /// Children Changed Steps Callback
@@ -1372,7 +1373,7 @@ fn updateRangesForInsertionWithCount(doc: *Document, parent: *Node, child_index:
     doc.ranges_mutex.lock();
     defer doc.ranges_mutex.unlock();
 
-    for (doc.ranges.items) |range| {
+    for (doc.ranges.toSliceMut()) |range| {
         // For each live range whose start node is parent and start offset is greater than child's index,
         // increase its start offset by count
         if (range.start_container == parent and range.start_offset > child_index) {
