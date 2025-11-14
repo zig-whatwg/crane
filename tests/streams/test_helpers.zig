@@ -1,7 +1,7 @@
 //! Test helpers for streams tests
 //! Provides access to internal infrastructure needed for testing
 
-const message_port = @import("../../src/streams/internal/message_port.zig");
+const message_port = @import("message_port");
 
 // Re-export message port utilities
 pub const MessagePort = message_port.MessagePort;
