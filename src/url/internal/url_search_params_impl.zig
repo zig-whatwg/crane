@@ -9,6 +9,7 @@
 //! This is the INTERNAL implementation (not the WebIDL-generated WebIDL interface).
 
 const std = @import("std");
+const infra = @import("infra");
 const Tuple = @import("form_parser").Tuple;
 const form_parser = @import("form_parser");
 const form_serializer = @import("form_serializer");
@@ -29,7 +30,7 @@ pub const URLSearchParamsImpl = struct {
     allocator: std.mem.Allocator,
 
     /// List of name-value tuples (spec line 2038)
-    list: std.ArrayList(Tuple),
+    list: infra.List(Tuple),
 
     /// Associated URL object (spec line 2039)
     /// This is a pointer to avoid circular dependencies
@@ -40,17 +41,17 @@ pub const URLSearchParamsImpl = struct {
     pub fn init(allocator: std.mem.Allocator) URLSearchParamsImpl {
         return .{
             .allocator = allocator,
-            .list = std.ArrayList(Tuple){},
+            .list = infra.List(Tuple).init(allocator),
             .url_object = null,
         };
     }
 
     /// Free resources
     pub fn deinit(self: *URLSearchParamsImpl) void {
-        for (self.list.items) |tuple| {
-            tuple.deinit(self.allocator);
+        for (0..self.list.len) |i| {
+            self.list.get(i).?.deinit(self.allocator);
         }
-        self.list.deinit(self.allocator);
+        self.list.deinit();
     }
 
     /// Initialize from string (spec lines 2041-2056)
@@ -73,7 +74,7 @@ pub const URLSearchParamsImpl = struct {
 
         // Add to list
         for (tuples) |tuple| {
-            try self.list.append(allocator, tuple);
+            try self.list.append(tuple);
         }
 
         allocator.free(tuples); // Free the array but not the tuples (now owned by list)
@@ -93,7 +94,7 @@ pub const URLSearchParamsImpl = struct {
             const value = try allocator.dupe(u8, pair[1]);
             errdefer allocator.free(value);
 
-            try self.list.append(allocator, .{ .name = name, .value = value });
+            try self.list.append(.{ .name = name, .value = value });
         }
 
         return self;
@@ -112,7 +113,7 @@ pub const URLSearchParamsImpl = struct {
             const value = try allocator.dupe(u8, entry.value);
             errdefer allocator.free(value);
 
-            try self.list.append(allocator, .{ .name = name, .value = value });
+            try self.list.append(.{ .name = name, .value = value });
         }
 
         return self;
@@ -127,7 +128,7 @@ pub const URLSearchParamsImpl = struct {
         if (self.url_object == null) return;
 
         // Step 2: Serialize list
-        const serialized = try form_serializer.serialize(self.allocator, self.list.items);
+        const serialized = try form_serializer.serialize(self.allocator, self.list.items());
         defer self.allocator.free(serialized);
 
         // Step 3-4: Set URL's query (empty string becomes null)
@@ -144,7 +145,7 @@ pub const URLSearchParamsImpl = struct {
 
     /// Get size (spec line 2073)
     pub fn size(self: *const URLSearchParamsImpl) usize {
-        return self.list.items.len;
+        return self.list.len;
     }
 
     /// Append name-value pair (spec lines 2075-2079)
@@ -156,7 +157,7 @@ pub const URLSearchParamsImpl = struct {
         const value_copy = try self.allocator.dupe(u8, value);
         errdefer self.allocator.free(value_copy);
 
-        try self.list.append(self.allocator, .{ .name = name_copy, .value = value_copy });
+        try self.list.append(.{ .name = name_copy, .value = value_copy });
 
         // Step 2: Update
         try self.update();
@@ -165,8 +166,8 @@ pub const URLSearchParamsImpl = struct {
     /// Delete name-value pairs (spec lines 2081-2087)
     pub fn delete(self: *URLSearchParamsImpl, name: []const u8, opt_value: ?[]const u8) !void {
         var i: usize = 0;
-        while (i < self.list.items.len) {
-            const tuple = self.list.items[i];
+        while (i < self.list.len) {
+            const tuple = self.list.get(i).?;
 
             const should_remove = if (opt_value) |value|
                 // Step 1: Remove if both name and value match
@@ -190,7 +191,8 @@ pub const URLSearchParamsImpl = struct {
 
     /// Get first value for name (spec line 2089)
     pub fn get(self: *const URLSearchParamsImpl, name: []const u8) ?[]const u8 {
-        for (self.list.items) |tuple| {
+        for (0..self.list.len) |i| {
+            const tuple = self.list.get(i).?;
             if (std.mem.eql(u8, tuple.name, name)) {
                 return tuple.value;
             }
@@ -200,30 +202,33 @@ pub const URLSearchParamsImpl = struct {
 
     /// Get all values for name (spec line 2091)
     pub fn getAll(self: *const URLSearchParamsImpl, allocator: std.mem.Allocator, name: []const u8) ![][]const u8 {
-        var result = std.ArrayList([]const u8){};
-        errdefer result.deinit(allocator);
+        var result = infra.List([]const u8).init(allocator);
+        errdefer result.deinit();
 
-        for (self.list.items) |tuple| {
+        for (0..self.list.len) |i| {
+            const tuple = self.list.get(i).?;
             if (std.mem.eql(u8, tuple.name, name)) {
-                try result.append(allocator, tuple.value);
+                try result.append(tuple.value);
             }
         }
 
-        return try result.toOwnedSlice(allocator);
+        return try result.toOwnedSlice();
     }
 
     /// Check if name exists (spec lines 2093-2099)
     pub fn has(self: *const URLSearchParamsImpl, name: []const u8, opt_value: ?[]const u8) bool {
         if (opt_value) |value| {
             // Step 1: Check if name and value exist
-            for (self.list.items) |tuple| {
+            for (0..self.list.len) |i| {
+                const tuple = self.list.get(i).?;
                 if (std.mem.eql(u8, tuple.name, name) and std.mem.eql(u8, tuple.value, value)) {
                     return true;
                 }
             }
         } else {
             // Step 2: Check if name exists
-            for (self.list.items) |tuple| {
+            for (0..self.list.len) |i| {
+                const tuple = self.list.get(i).?;
                 if (std.mem.eql(u8, tuple.name, name)) {
                     return true;
                 }
@@ -239,8 +244,8 @@ pub const URLSearchParamsImpl = struct {
         var found_first = false;
         var i: usize = 0;
 
-        while (i < self.list.items.len) {
-            const tuple = &self.list.items[i];
+        while (i < self.list.len) {
+            const tuple = self.list.getMut(i).?;
 
             if (std.mem.eql(u8, tuple.name, name)) {
                 if (!found_first) {
@@ -268,7 +273,7 @@ pub const URLSearchParamsImpl = struct {
             const value_copy = try self.allocator.dupe(u8, value);
             errdefer self.allocator.free(value_copy);
 
-            try self.list.append(self.allocator, .{ .name = name_copy, .value = value_copy });
+            try self.list.append(.{ .name = name_copy, .value = value_copy });
         }
 
         // Step 3: Update
@@ -284,7 +289,7 @@ pub const URLSearchParamsImpl = struct {
             }
         };
 
-        std.mem.sort(Tuple, self.list.items, {}, Context.lessThan);
+        std.mem.sort(Tuple, self.list.items(), {}, Context.lessThan);
 
         // Step 2: Update
         try self.update();
@@ -292,7 +297,7 @@ pub const URLSearchParamsImpl = struct {
 
     /// Serialize to string (spec line 2132)
     pub fn toString(self: *const URLSearchParamsImpl, allocator: std.mem.Allocator) ![]u8 {
-        return form_serializer.serialize(allocator, self.list.items);
+        return form_serializer.serialize(allocator, self.list.items());
     }
 };
 

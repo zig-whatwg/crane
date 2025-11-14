@@ -18,6 +18,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// Find the longest sequence of zero pieces for compression (spec lines 718-738)
 ///
@@ -81,8 +82,8 @@ fn findCompressedPieceIndex(address: [8]u16) ?usize {
 /// Example: [0, 0, 0, 0, 0, 0, 0, 1] -> "::1"
 pub fn serializeIPv6(allocator: std.mem.Allocator, address: [8]u16) ![]u8 {
     // Step 1: Let output be the empty string
-    var output = std.ArrayList(u8).empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     // Step 2: Let compress be the result of finding the IPv6 address compressed piece index
     const compress = findCompressedPieceIndex(address);
@@ -109,7 +110,7 @@ pub fn serializeIPv6(allocator: std.mem.Allocator, address: [8]u16) ![]u8 {
             const separator = if (piece_index == 0) "::" else ":";
 
             // Step 4.3.2: Append separator to output
-            try output.appendSlice(allocator, separator);
+            try output.appendSlice(separator);
 
             // Step 4.3.3: Set ignore0 to true and continue
             ignore0 = true;
@@ -119,16 +120,16 @@ pub fn serializeIPv6(allocator: std.mem.Allocator, address: [8]u16) ![]u8 {
         // Step 4.4: Append address[pieceIndex], represented as shortest possible lowercase hex
         const piece_str = try std.fmt.allocPrint(allocator, "{x}", .{address[piece_index]});
         defer allocator.free(piece_str);
-        try output.appendSlice(allocator, piece_str);
+        try output.appendSlice(piece_str);
 
         // Step 4.5: If pieceIndex is not 7, then append U+003A (:) to output
         if (piece_index != 7) {
-            try output.append(allocator, ':');
+            try output.append(':');
         }
     }
 
     // Step 5: Return output
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 test "ipv6 serializer - loopback" {

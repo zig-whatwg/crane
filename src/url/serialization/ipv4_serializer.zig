@@ -16,6 +16,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// Serialize IPv4 address to dotted-decimal notation (spec lines 664-678)
 ///
@@ -24,8 +25,8 @@ const std = @import("std");
 /// Example: 0xC0A80101 -> "192.168.1.1"
 pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
     // Step 1: Let output be the empty string
-    var output = std.ArrayList(u8).empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     // Step 2: Let n be the value of address
     var n = address;
@@ -39,11 +40,11 @@ pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
         defer allocator.free(octet_str);
 
         // Prepend octet to output
-        try output.insertSlice(allocator, 0, octet_str);
+        try output.insertSlice(0, octet_str);
 
         // Step 3.2: If i is not 4, then prepend U+002E (.) to output
         if (i != 4) {
-            try output.insert(allocator, 0, '.');
+            try output.insert(0, '.');
         }
 
         // Step 3.3: Set n to floor(n / 256)
@@ -51,7 +52,7 @@ pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
     }
 
     // Step 4: Return output
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 test "ipv4 serializer - basic" {

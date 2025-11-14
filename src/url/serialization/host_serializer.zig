@@ -30,6 +30,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const host = @import("host");
 const ipv4_serializer = @import("ipv4_serializer");
 const ipv6_serializer = @import("ipv6_serializer");
@@ -48,14 +49,14 @@ pub fn serializeHost(allocator: std.mem.Allocator, h: host.Host) ![]u8 {
             defer allocator.free(ipv6_str);
 
             // Prepend "[" and append "]"
-            var result = try std.ArrayList(u8).initCapacity(allocator, ipv6_str.len + 2);
-            errdefer result.deinit(allocator);
+            var result = infra.List(u8).init(allocator);
+            errdefer result.deinit();
 
-            try result.append(allocator, '[');
-            try result.appendSlice(allocator, ipv6_str);
-            try result.append(allocator, ']');
+            try result.append('[');
+            try result.appendSlice(ipv6_str);
+            try result.append(']');
 
-            return result.toOwnedSlice(allocator);
+            return result.toOwnedSlice();
         },
 
         // Step 3: Otherwise, host is a domain, opaque host, or empty host, return host

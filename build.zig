@@ -744,7 +744,9 @@ pub fn build(b: *std.Build) void {
     const url_search_params_impl_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/url_search_params_impl.zig"),
         .target = target,
-        .imports = &.{},
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     const url_form_parser_mod = b.createModule(.{
@@ -766,11 +768,17 @@ pub fn build(b: *std.Build) void {
     const url_ipv4_serializer_mod = b.createModule(.{
         .root_source_file = b.path("src/url/serialization/ipv4_serializer.zig"),
         .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     const url_ipv6_serializer_mod = b.createModule(.{
         .root_source_file = b.path("src/url/serialization/ipv6_serializer.zig"),
         .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     const url_ipv4_parser_mod = b.createModule(.{
