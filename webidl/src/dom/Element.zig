@@ -575,18 +575,21 @@ pub const Element = webidl.interface(struct {
     ///
     /// These are not guaranteed to be unique.
     ///
-    /// Note: Caller owns returned memory and must free each string and the ArrayList
-    pub fn call_getAttributeNames(self: *const Element) !std.ArrayList([]const u8) {
-        var names = std.ArrayList([]const u8).init(self.allocator);
+    /// Note: Caller owns returned memory and must free each string and the List
+    pub fn call_getAttributeNames(self: *const Element) !infra.List([]const u8) {
+        var names = infra.List([]const u8).init(self.allocator);
         errdefer {
-            for (names.items) |_| {
+            var i: usize = 0;
+            while (i < names.len) : (i += 1) {
                 // Only free if prefix exists (qualified name was allocated)
                 // If no prefix, it's just local_name which is owned by Attr
             }
             names.deinit();
         }
 
-        for (self.attributes.items) |*attr| {
+        var i: usize = 0;
+        while (i < self.attributes.len) : (i += 1) {
+            const attr = self.attributes.getMut(i).?;
             const qualified_name = try attr.get_name();
             // Note: get_name() returns allocated string if prefix exists,
             // otherwise returns local_name directly
