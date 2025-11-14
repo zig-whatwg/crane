@@ -82,19 +82,19 @@ const ParserContext = struct {
 
         // NOTE: Pre-allocation optimization removed - List doesn't support ensureTotalCapacity
 
-        var scheme = infra.List(u8).init(allocator);
-        var username = infra.List(u8).init(allocator);
-        var password = infra.List(u8).init(allocator);
+        const scheme = infra.List(u8).init(allocator);
+        const username = infra.List(u8).init(allocator);
+        const password = infra.List(u8).init(allocator);
 
-        var query = infra.List(u8).init(allocator);
+        const query = infra.List(u8).init(allocator);
 
-        var fragment = infra.List(u8).init(allocator);
+        const fragment = infra.List(u8).init(allocator);
 
-        var buffer = infra.List(u8).init(allocator);
+        const buffer = infra.List(u8).init(allocator);
 
         // P8 Optimization: Pre-allocate path_segments capacity
         // Most URLs have 1-5 path segments, pre-allocate for common case
-        var path_segments = infra.List([]const u8).init(allocator);
+        const path_segments = infra.List([]const u8).init(allocator);
 
         return ParserContext{
             .allocator = allocator,
@@ -509,10 +509,10 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
             // Spec step 2.2 (line 1087): Set url's scheme to buffer
             // In state override mode, clear existing scheme first
             if (ctx.hasStateOverride()) {
-                ctx.scheme.clearRetainingCapacity();
+                ctx.scheme.clear();
             }
             try ctx.scheme.appendSlice(ctx.buffer.items());
-            ctx.buffer.clearRetainingCapacity();
+            ctx.buffer.clear();
 
             // Spec step 2.3 (lines 1089-1093): If state override is given
             if (ctx.hasStateOverride()) {
@@ -565,7 +565,7 @@ fn schemeState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     // Spec step 3 (line 1115): Otherwise, if state override is not given
     if (!ctx.hasStateOverride()) {
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .no_scheme;
         ctx.pointer = 0;
         return;
@@ -669,7 +669,7 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 
     if (char == '?') {
-        ctx.query.clearRetainingCapacity();
+        ctx.query.clear();
         ctx.has_query = true;
         ctx.state = .query;
         return;
@@ -682,7 +682,7 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     }
 
     // Clear query and shorten path
-    ctx.query.clearRetainingCapacity();
+    ctx.query.clear();
     ctx.has_query = false;
     if (ctx.path_segments.pop()) |last| {
         ctx.allocator.free(last);
@@ -753,7 +753,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 };
                 ctx.host = host;
             }
-            ctx.buffer.clearRetainingCapacity();
+            ctx.buffer.clear();
             ctx.state = .path_start;
             return;
         }
@@ -764,7 +764,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
             };
             ctx.host = host;
         }
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .path_start;
         return;
     }
@@ -792,7 +792,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 try ctx.username.appendSlice(encoded);
             }
         }
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         return;
     }
 
@@ -804,7 +804,7 @@ fn authorityState(ctx: *ParserContext, c: ?u8) ParseError!void {
         if (ctx.pointer >= ctx.buffer.items().len) {
             ctx.pointer -= ctx.buffer.items().len + 1;
         }
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .host;
         return;
     }
@@ -839,7 +839,7 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
         // Step 2.5 (line 1244): Set url's host, clear buffer, set state to port
         ctx.host = host;
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .port;
         return;
     }
@@ -873,7 +873,7 @@ fn hostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         }
 
         // Step 3.5 (line 1262): Clear buffer, set state to path start
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .path_start;
 
         // Step 3.6 (line 1264): If state override is given, return (signal completion)
@@ -926,7 +926,7 @@ fn portState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
 
             // Step 2.1.4 (line 1296): Clear buffer
-            ctx.buffer.clearRetainingCapacity();
+            ctx.buffer.clear();
 
             // Step 2.1.5 (line 1298): If state override is given, return (signal completion)
             if (ctx.hasStateOverride()) {
@@ -975,7 +975,7 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
             if (c) |char| {
                 if (char == '?') {
-                    ctx.query.clearRetainingCapacity();
+                    ctx.query.clear();
                     ctx.has_query = true;
                     ctx.state = .query;
                     return;
@@ -988,7 +988,7 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
             }
 
             if (c != null) {
-                ctx.query.clearRetainingCapacity();
+                ctx.query.clear();
                 ctx.has_query = false;
 
                 const remaining_str = ctx.input[ctx.pointer..];
@@ -1000,7 +1000,7 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
                     for (ctx.path_segments.items()) |segment| {
                         ctx.allocator.free(segment);
                     }
-                    ctx.path_segments.clearRetainingCapacity();
+                    ctx.path_segments.clear();
                 }
                 ctx.state = .path;
                 if (ctx.pointer > 0) ctx.pointer -= 1;
@@ -1067,7 +1067,7 @@ fn fileHostState(ctx: *ParserContext, c: ?u8) ParseError!void {
         } else {
             ctx.host = host;
         }
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
         ctx.state = .path_start;
         return;
     }
@@ -1154,7 +1154,7 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, ""));
         }
 
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
 
         if (c) |char| {
             if (char == '?') {
@@ -1241,7 +1241,7 @@ fn queryState(ctx: *ParserContext, c: ?u8) ParseError!void {
         ctx.allocator.free(encoded);
 
         // Step 2.3 (line 1508): Clear buffer
-        ctx.buffer.clearRetainingCapacity();
+        ctx.buffer.clear();
 
         // If c is U+0023 (#), set state to fragment
         if (c != null and c.? == '#') {

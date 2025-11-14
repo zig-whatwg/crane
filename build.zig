@@ -900,6 +900,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Add remaining imports to url_basic_parser_mod now that all dependencies are defined
+    url_basic_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_basic_parser_mod.addImport("encode_sets", url_encode_sets_mod);
+    url_basic_parser_mod.addImport("windows_drive", url_windows_drive_mod);
+
     const url_special_schemes_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/special_schemes.zig"),
         .target = target,

@@ -263,7 +263,7 @@ pub const DOMTokenList = struct {
     /// to return the result of running get an attribute value given
     /// the associated element and the associated attribute's local name"
     fn serialize(self: *const DOMTokenList) []const u8 {
-        return attribute_algorithms.getAttributeValue(
+        return attribute_algorithms.get_attribute_value(
             self.element,
             self.attribute_local_name,
         );
@@ -274,7 +274,7 @@ pub const DOMTokenList = struct {
     fn runUpdateSteps(self: *DOMTokenList) !void {
         // Step 1: If the associated element does not have an associated attribute
         // and token set is empty, then return
-        const current_value = attribute_algorithms.getAttributeValue(
+        const current_value = attribute_algorithms.get_attribute_value(
             self.element,
             self.attribute_local_name,
         );

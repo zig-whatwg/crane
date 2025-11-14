@@ -36,48 +36,20 @@ pub fn expectEqualStrings(allocator: std.mem.Allocator, expected_utf8: []const u
     try std.testing.expectEqualStrings(expected_utf8, actual_utf8);
 }
 
-/// Test helper: Create URL from UTF-8 strings (converts to UTF-16 internally)
-/// This wrapper allows tests to continue using UTF-8 string literals.
+/// Test helper: Create URL from UTF-8 strings
+/// WebIDL now expects UTF-8 strings directly, so this is just a passthrough.
 pub fn initURL(allocator: std.mem.Allocator, url_utf8: []const u8, base_utf8: ?[]const u8) !URL {
-    const url_usv = try usv(allocator, url_utf8);
-    defer allocator.free(url_usv);
-
-    var base_usv: ?webidl.USVString = null;
-    defer if (base_usv) |b| allocator.free(b);
-
-    if (base_utf8) |b| {
-        base_usv = try usv(allocator, b);
-    }
-
-    return URL.init(allocator, url_usv, base_usv);
+    return URL.init(allocator, url_utf8, base_utf8);
 }
 
 /// Test helper: Create URLSearchParams from UTF-8 string
 pub fn initURLSearchParams(allocator: std.mem.Allocator, init_utf8: []const u8) !URLSearchParams {
-    const init_usv = try usv(allocator, init_utf8);
-    defer allocator.free(init_usv);
-
-    return URLSearchParams.init(allocator, init_usv);
+    return URLSearchParams.initWithString(allocator, init_utf8);
 }
 
 /// Test helper: Create URLSearchParams from UTF-8 sequence
 pub fn initURLSearchParamsFromSequence(allocator: std.mem.Allocator, seq_utf8: []const [2][]const u8) !URLSearchParams {
-    // Convert UTF-8 sequence to UTF-16 sequence
-    var seq_usv = try allocator.alloc([2]webidl.USVString, seq_utf8.len);
-    defer {
-        for (seq_usv) |pair| {
-            allocator.free(pair[0]);
-            allocator.free(pair[1]);
-        }
-        allocator.free(seq_usv);
-    }
-
-    for (seq_utf8, 0..) |pair_utf8, i| {
-        seq_usv[i][0] = try usv(allocator, pair_utf8[0]);
-        seq_usv[i][1] = try usv(allocator, pair_utf8[1]);
-    }
-
-    return URLSearchParams.init(allocator, .{ .sequence = seq_usv });
+    return URLSearchParams.initWithSequence(allocator, seq_utf8);
 }
 
 // ============================================================================
