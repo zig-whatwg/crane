@@ -81,7 +81,7 @@ fn getNodeBase(node: anytype) *NodeBase {
     }
 
     // Otherwise assume it has prototype/base at the start
-    return @ptrCast(node);
+    return @ptrCast(@constCast(node));
 }
 
 /// Match a selector against a tree
@@ -145,8 +145,3 @@ fn traverseAndMatch(
 // ============================================================================
 
 const testing = std.testing;
-
-
-
-
-

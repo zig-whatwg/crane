@@ -324,11 +324,11 @@ pub const DOMTokenList = struct {
         self.token_set.clear();
 
         // Convert to u16 for Infra string operations
-        const value_u16 = try infra.String.utf8ToUtf16(self.allocator, value_str);
+        const value_u16 = try infra.string.utf8ToUtf16(self.allocator, value_str);
         defer self.allocator.free(value_u16);
 
         // Split on ASCII whitespace
-        const tokens = try infra.String.splitOnAsciiWhitespace(self.allocator, value_u16);
+        const tokens = try infra.string.splitOnAsciiWhitespace(self.allocator, value_u16);
         defer {
             for (tokens) |token| {
                 self.allocator.free(token);

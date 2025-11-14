@@ -16,7 +16,7 @@ pub fn updateRangesAfterSplit(document: *Document, node: *Node, new_node: *Node,
     document.ranges_mutex.lock();
     defer document.ranges_mutex.unlock();
 
-    for (document.ranges.items) |range| {
+    for (document.ranges.toSliceMut()) |range| {
         // Step 6.2: For each live range whose start node is node and start offset > offset,
         // set its start node to new_node and decrease its start offset by offset
         if (range.start_container == node and range.start_offset > offset) {
@@ -51,7 +51,7 @@ pub fn updateRangesAfterReplace(document: *Document, node: *Node, offset: u32, c
     document.ranges_mutex.lock();
     defer document.ranges_mutex.unlock();
 
-    for (document.ranges.items) |range| {
+    for (document.ranges.toSliceMut()) |range| {
         // Step 8-9: Update ranges whose start container is node
         if (range.start_container == node) {
             if (range.start_offset > offset and range.start_offset <= offset + count) {
