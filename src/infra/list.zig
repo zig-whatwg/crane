@@ -56,6 +56,14 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
         }
 
         pub fn append(self: *Self, item: T) !void {
+            // If we've already transitioned to heap, use heap
+            if (self.heap_storage != null) {
+                try self.heap_storage.?.append(self.allocator, item);
+                self.len += 1;
+                return;
+            }
+
+            // Otherwise try inline storage
             if (comptime inline_capacity > 0) {
                 if (self.len < inline_capacity) {
                     self.inline_storage[self.len] = item;
@@ -63,6 +71,8 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
                     return;
                 }
             }
+
+            // Inline storage full, transition to heap
             try self.ensureHeap();
             try self.heap_storage.?.append(self.allocator, item);
             self.len += 1;
@@ -71,6 +81,14 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
         /// Append multiple items at once (batch operation).
         /// More efficient than calling append() in a loop.
         pub fn appendSlice(self: *Self, slice: []const T) !void {
+            // If we've already transitioned to heap, use heap
+            if (self.heap_storage != null) {
+                try self.heap_storage.?.appendSlice(self.allocator, slice);
+                self.len += slice.len;
+                return;
+            }
+
+            // Otherwise try inline storage
             if (comptime inline_capacity > 0) {
                 if (self.len + slice.len <= inline_capacity) {
                     // Fast path: all fit in inline storage
@@ -95,7 +113,7 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
                     return;
                 }
             }
-            // All in heap
+            // Inline storage full, transition to heap
             try self.ensureHeap();
             try self.heap_storage.?.appendSlice(self.allocator, slice);
             self.len += slice.len;
