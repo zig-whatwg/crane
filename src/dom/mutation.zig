@@ -531,7 +531,7 @@ pub fn insert(
     var nodes_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        nodes = node.child_nodes.toSlice();
+        nodes = node.child_nodes.toSliceMut();
         nodes_count = nodes.len;
     } else {
         nodes_buf[0] = node;
