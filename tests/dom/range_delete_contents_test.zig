@@ -20,7 +20,7 @@ test "Range.deleteContents - deletes text data within same Text node" {
     _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select "o Wor" (offset 4 to 9)
@@ -46,7 +46,7 @@ test "Range.deleteContents - deletes from start of Text node" {
     _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select "Hello " (offset 0 to 6)
@@ -72,7 +72,7 @@ test "Range.deleteContents - deletes to end of Text node" {
     _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select " World" (offset 5 to 11)
@@ -98,7 +98,7 @@ test "Range.deleteContents - deletes entire Text node content" {
     _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select entire text (offset 0 to 5)
@@ -136,7 +136,7 @@ test "Range.deleteContents - deletes contained element nodes" {
     _ = try div.call_appendChild((&span3));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select middle span (offset 1 to 2)
@@ -169,7 +169,7 @@ test "Range.deleteContents - collapsed range does nothing" {
     _ = try div.call_appendChild(@ptrCast(text));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Collapsed range at offset 2
@@ -196,7 +196,7 @@ test "Range.deleteContents - Comment node data deletion" {
     _ = try div.call_appendChild(@ptrCast(comment));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select "is a " (offset 5 to 10)

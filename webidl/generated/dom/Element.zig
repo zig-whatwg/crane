@@ -1013,7 +1013,8 @@ pub const Element = struct {
 
         // Check if self is in the matches list
         for (matches.toSlice()) |match| {
-            if (match == self) {
+            const match_elem: *const Element = @ptrCast(match);
+            if (match_elem == self) {
                 return true;
             }
         }
@@ -1053,7 +1054,8 @@ pub const Element = struct {
 
                 // Check if this element is in the matches
                 for (matches.toSlice()) |match| {
-                    if (match == elem) {
+                    const match_elem: *const Element = @ptrCast(match);
+                    if (match_elem == elem) {
                         // Cast away const - closest returns mutable pointer
                         return @constCast(elem);
                     }

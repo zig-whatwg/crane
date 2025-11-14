@@ -129,8 +129,8 @@ pub const Range = webidl.interface(struct {
         // Step 3: Let bp be boundary point (node, offset)
         // Step 4: Set the start
         const dom = @import("dom");
-        const nodeRoot = dom.tree.getRoot(node);
-        const rangeRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const rangeRoot = dom.tree.root(self.start_container);
 
         // Step 4.1: If range's root is not equal to node's root, or if bp is after range's end
         if (nodeRoot != rangeRoot or self.isAfter(node, offset, self.end_container, self.end_offset)) {
@@ -161,8 +161,8 @@ pub const Range = webidl.interface(struct {
         // Step 3: Let bp be boundary point (node, offset)
         // Step 5: Set the end
         const dom = @import("dom");
-        const nodeRoot = dom.tree.getRoot(node);
-        const rangeRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const rangeRoot = dom.tree.root(self.start_container);
 
         // Step 5.1: If range's root is not equal to node's root, or if bp is before range's start
         if (nodeRoot != rangeRoot or self.isAfter(self.start_container, self.start_offset, node, offset)) {
@@ -264,8 +264,8 @@ pub const Range = webidl.interface(struct {
         const dom = @import("dom");
 
         // Check same root
-        const nodeRoot = dom.tree.getRoot(node);
-        const rangeRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const rangeRoot = dom.tree.root(self.start_container);
         if (nodeRoot != rangeRoot) return false;
 
         // Check (node, 0) is after start
@@ -395,8 +395,8 @@ pub const Range = webidl.interface(struct {
 
         // Step 2: Check same root
         const dom = @import("dom");
-        const thisRoot = dom.tree.getRoot(self.start_container);
-        const sourceRoot = dom.tree.getRoot(sourceRange.start_container);
+        const thisRoot = dom.tree.root(self.start_container);
+        const sourceRoot = dom.tree.root(sourceRange.start_container);
         if (thisRoot != sourceRoot) {
             return error.WrongDocumentError;
         }
@@ -786,8 +786,8 @@ pub const Range = webidl.interface(struct {
         const dom = @import("dom");
 
         // Step 1: Check if node's root is different from this's root
-        const nodeRoot = dom.tree.getRoot(node);
-        const thisRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const thisRoot = dom.tree.root(self.start_container);
         if (nodeRoot != thisRoot) {
             return false;
         }
@@ -822,8 +822,8 @@ pub const Range = webidl.interface(struct {
         const dom = @import("dom");
 
         // Step 1: Check if node's root is different from this's root
-        const nodeRoot = dom.tree.getRoot(node);
-        const thisRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const thisRoot = dom.tree.root(self.start_container);
         if (nodeRoot != thisRoot) {
             return error.WrongDocumentError;
         }
@@ -861,8 +861,8 @@ pub const Range = webidl.interface(struct {
         const dom = @import("dom");
 
         // Step 1: Check if node's root is different from this's root
-        const nodeRoot = dom.tree.getRoot(node);
-        const thisRoot = dom.tree.getRoot(self.start_container);
+        const nodeRoot = dom.tree.root(node);
+        const thisRoot = dom.tree.root(self.start_container);
         if (nodeRoot != thisRoot) {
             return false;
         }

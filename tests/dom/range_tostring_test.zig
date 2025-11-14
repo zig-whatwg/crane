@@ -181,8 +181,8 @@ test "Range.toString - no Text nodes" {
     const span1 = try doc.call_createElement("span");
     const span2 = try doc.call_createElement("span");
 
-    _ = try div.call_appendChild((&span1));
-    _ = try div.call_appendChild((&span2));
+    _ = try div.call_appendChild(@ptrCast(span1));
+    _ = try div.call_appendChild(@ptrCast(span2));
     _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, @ptrCast(doc));
@@ -217,7 +217,7 @@ test "Range.toString - nested elements with text" {
     _ = try div.call_appendChild((&textA).base);
     _ = try div.call_appendChild(@ptrCast(span));
     _ = try span.call_appendChild((&textB).base);
-    _ = try span.call_appendChild((&em));
+    _ = try span.call_appendChild(@ptrCast(em));
     _ = try em.call_appendChild((&textC).base);
     _ = try span.call_appendChild((&textD).base);
     _ = try div.call_appendChild((&textE).base);

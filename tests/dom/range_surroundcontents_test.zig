@@ -18,7 +18,7 @@ test "Range.surroundContents - wraps range content in new parent" {
     const text = try doc.call_createTextNode("Hello World");
     _ = try div.call_appendChild(@ptrCast(text));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select "World" (offset 6 to 11)
@@ -51,7 +51,7 @@ test "Range.surroundContents - clears existing newParent children" {
     const text = try doc.call_createTextNode("Hello");
     _ = try div.call_appendChild(@ptrCast(text));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     try range.call_setStart((&text), 0);
@@ -81,7 +81,7 @@ test "Range.surroundContents - throws for Document parent" {
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     try range.call_setStart((&text), 0);
@@ -105,7 +105,7 @@ test "Range.surroundContents - throws for DocumentFragment parent" {
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
 
-    var range = try dom.Range.init(allocator, (&doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     try range.call_setStart((&text), 0);

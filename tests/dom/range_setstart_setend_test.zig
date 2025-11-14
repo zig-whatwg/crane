@@ -60,8 +60,8 @@ test "Range.setStart - throws IndexSizeError when offset > node length" {
     const element = try doc.call_createElement("div");
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("span");
-    _ = try element.call_appendChild((&child1));
-    _ = try element.call_appendChild((&child2));
+    _ = try element.call_appendChild(@ptrCast(child1));
+    _ = try element.call_appendChild(@ptrCast(child2));
 
     // Create a range
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
@@ -83,8 +83,8 @@ test "Range.setEnd - throws IndexSizeError when offset > node length" {
     const element = try doc.call_createElement("div");
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("span");
-    _ = try element.call_appendChild((&child1));
-    _ = try element.call_appendChild((&child2));
+    _ = try element.call_appendChild(@ptrCast(child1));
+    _ = try element.call_appendChild(@ptrCast(child2));
 
     // Create a range
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
@@ -106,8 +106,8 @@ test "Range.setStart - valid offset within node length" {
     const element = try doc.call_createElement("div");
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("span");
-    _ = try element.call_appendChild((&child1));
-    _ = try element.call_appendChild((&child2));
+    _ = try element.call_appendChild(@ptrCast(child1));
+    _ = try element.call_appendChild(@ptrCast(child2));
 
     // Create a range
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
@@ -130,8 +130,8 @@ test "Range.setEnd - valid offset within node length" {
     const element = try doc.call_createElement("div");
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("span");
-    _ = try element.call_appendChild((&child1));
-    _ = try element.call_appendChild((&child2));
+    _ = try element.call_appendChild(@ptrCast(child1));
+    _ = try element.call_appendChild(@ptrCast(child2));
 
     // Create a range
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
@@ -154,8 +154,8 @@ test "Range.setStart - adjusts end when start is after end" {
     const div = try doc.call_createElement("div");
     const span1 = try doc.call_createElement("span");
     const span2 = try doc.call_createElement("span");
-    _ = try div.call_appendChild((&span1));
-    _ = try div.call_appendChild((&span2));
+    _ = try div.call_appendChild(@ptrCast(span1));
+    _ = try div.call_appendChild(@ptrCast(span2));
 
     // Create a range from (div, 0) to (div, 1)
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
@@ -184,8 +184,8 @@ test "Range.setEnd - adjusts start when end is before start" {
     const div = try doc.call_createElement("div");
     const span1 = try doc.call_createElement("span");
     const span2 = try doc.call_createElement("span");
-    _ = try div.call_appendChild((&span1));
-    _ = try div.call_appendChild((&span2));
+    _ = try div.call_appendChild(@ptrCast(span1));
+    _ = try div.call_appendChild(@ptrCast(span2));
 
     // Create a range from (div, 1) to (div, 2)
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
