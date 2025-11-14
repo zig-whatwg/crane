@@ -20,7 +20,7 @@ test "assert with true condition - no output" {
     console_obj.call_assert(true, args);
 
     // No message should be buffered
-    try std.testing.expectEqual(@as(usize, 0), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.messageBuffer.size());
 }
 
 test "assert with false condition - logs 'Assertion failed'" {
@@ -33,9 +33,9 @@ test "assert with false condition - logs 'Assertion failed'" {
     console_obj.call_assert(false, &args);
 
     // Should have one message
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -54,9 +54,9 @@ test "assert with false condition and message" {
     };
     console_obj.call_assert(false, args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -77,9 +77,9 @@ test "assert with false condition and format specifiers" {
     };
     console_obj.call_assert(false, args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -101,9 +101,9 @@ test "assert with false condition and multiple args" {
     };
     console_obj.call_assert(false, args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -124,7 +124,7 @@ test "assert with boolean values" {
         .{ .string = "Explicitly false" },
     });
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Test with explicit boolean true
     console_obj.call_assert(true, &[_]webidl.JSValue{
@@ -132,7 +132,7 @@ test "assert with boolean values" {
     });
 
     // Still only 1 message (true condition didn't log)
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "assert message uses correct log level" {
@@ -144,10 +144,10 @@ test "assert message uses correct log level" {
         .{ .string = "Test" },
     });
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
 
     // Should use assert_level
-    try std.testing.expectEqual(@as(@TypeOf(msg.log_level), .assert_level), msg.log_level);
+    try std.testing.expectEqual(@as(@TypeOf(msg.logLevel), .assert_level), msg.logLevel);
 }
 
 test "assert allocation failure gracefully degrades" {
@@ -163,7 +163,7 @@ test "assert allocation failure gracefully degrades" {
     console_obj.call_assert(false, args);
 
     // Should still log something
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "assert with custom printer - output captured" {
@@ -184,7 +184,7 @@ test "assert with custom printer - output captured" {
     };
 
     CustomPrinter.capture_buffer = &output;
-    console_obj.print_fn = CustomPrinter.print;
+    console_obj.printFn = CustomPrinter.print;
 
     // Trigger assertion
     console_obj.call_assert(false, &[_]webidl.JSValue{
@@ -208,12 +208,12 @@ test "multiple assertions - all logged" {
     console_obj.call_assert(false, &[_]webidl.JSValue{.{ .string = "Third" }});
 
     // Should have 3 messages
-    try std.testing.expectEqual(@as(usize, 3), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 3), console_obj.messageBuffer.size());
 
     // Each should contain "Assertion failed"
     var i: usize = 0;
     while (i < 3) : (i += 1) {
-        const msg = console_obj.message_buffer.get(i).?;
+        const msg = console_obj.messageBuffer.get(i).?;
         const formatted = try msg.format(allocator);
         defer allocator.free(formatted);
 

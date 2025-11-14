@@ -17,14 +17,14 @@ test "call_time - starts new timer" {
     defer allocator.free(label);
 
     // Initially no timer exists
-    try std.testing.expect(!console_obj.timer_table.contains(label));
+    try std.testing.expect(!console_obj.timerTable.contains(label));
 
     // Start timer
     try console_obj.call_time(label);
 
     // Timer now exists
-    try std.testing.expect(console_obj.timer_table.contains(label));
-    const start_time = console_obj.timer_table.get(label).?;
+    try std.testing.expect(console_obj.timerTable.contains(label));
+    const start_time = console_obj.timerTable.get(label).?;
     try std.testing.expect(start_time.toMilliseconds() > 0);
 }
 
@@ -38,14 +38,14 @@ test "call_time - duplicate timer returns without error" {
 
     // Start timer first time
     try console_obj.call_time(label);
-    const first_start = console_obj.timer_table.get(label).?;
+    const first_start = console_obj.timerTable.get(label).?;
 
     // Wait a tiny bit
     std.time.sleep(1_000_000); // 1ms
 
     // Start timer second time (should return without changing timer)
     try console_obj.call_time(label);
-    const second_start = console_obj.timer_table.get(label).?;
+    const second_start = console_obj.timerTable.get(label).?;
 
     // Timer should be unchanged (same start time)
     try std.testing.expectEqual(
@@ -64,7 +64,7 @@ test "call_timeEnd - stops timer and removes from table" {
 
     // Start timer
     try console_obj.call_time(label);
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Wait a bit
     std.time.sleep(5_000_000); // 5ms
@@ -73,7 +73,7 @@ test "call_timeEnd - stops timer and removes from table" {
     try console_obj.call_timeEnd(label);
 
     // Timer should be removed from table
-    try std.testing.expect(!console_obj.timer_table.contains(label));
+    try std.testing.expect(!console_obj.timerTable.contains(label));
 }
 
 test "call_timeEnd - missing timer returns without error" {
@@ -88,7 +88,7 @@ test "call_timeEnd - missing timer returns without error" {
     try console_obj.call_timeEnd(label);
 
     // Timer table should still be empty
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
 }
 
 test "call_timeLog - logs elapsed time without removing timer" {
@@ -101,7 +101,7 @@ test "call_timeLog - logs elapsed time without removing timer" {
 
     // Start timer
     try console_obj.call_time(label);
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Wait a bit
     std.time.sleep(3_000_000); // 3ms
@@ -110,7 +110,7 @@ test "call_timeLog - logs elapsed time without removing timer" {
     try console_obj.call_timeLog(label, &.{});
 
     // Timer should still exist
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 }
 
 test "call_timeLog - missing timer returns without error" {
@@ -125,7 +125,7 @@ test "call_timeLog - missing timer returns without error" {
     try console_obj.call_timeLog(label, &.{});
 
     // Timer table should still be empty
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
 }
 
 test "timing - complete lifecycle (time → timeLog → timeEnd)" {
@@ -138,22 +138,22 @@ test "timing - complete lifecycle (time → timeLog → timeEnd)" {
 
     // 1. Start timer
     try console_obj.call_time(label);
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 2. Wait and log intermediate time
     std.time.sleep(2_000_000); // 2ms
     try console_obj.call_timeLog(label, &.{});
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 3. Wait more and log again
     std.time.sleep(2_000_000); // 2ms
     try console_obj.call_timeLog(label, &.{});
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 4. End timer
     std.time.sleep(2_000_000); // 2ms
     try console_obj.call_timeEnd(label);
-    try std.testing.expect(!console_obj.timer_table.contains(label));
+    try std.testing.expect(!console_obj.timerTable.contains(label));
 }
 
 test "timing - multiple concurrent timers" {
@@ -176,21 +176,21 @@ test "timing - multiple concurrent timers" {
     try console_obj.call_time(timer3);
 
     // All timers should exist
-    try std.testing.expectEqual(@as(usize, 3), console_obj.timer_table.size());
+    try std.testing.expectEqual(@as(usize, 3), console_obj.timerTable.size());
 
     // End timer2
     try console_obj.call_timeEnd(timer2);
 
     // timer1 and timer3 should still exist
-    try std.testing.expect(console_obj.timer_table.contains(timer1));
-    try std.testing.expect(!console_obj.timer_table.contains(timer2));
-    try std.testing.expect(console_obj.timer_table.contains(timer3));
-    try std.testing.expectEqual(@as(usize, 2), console_obj.timer_table.size());
+    try std.testing.expect(console_obj.timerTable.contains(timer1));
+    try std.testing.expect(!console_obj.timerTable.contains(timer2));
+    try std.testing.expect(console_obj.timerTable.contains(timer3));
+    try std.testing.expectEqual(@as(usize, 2), console_obj.timerTable.size());
 
     // Clean up remaining timers
     try console_obj.call_timeEnd(timer1);
     try console_obj.call_timeEnd(timer3);
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
 }
 
 test "timing - elapsed time increases" {
@@ -203,7 +203,7 @@ test "timing - elapsed time increases" {
 
     // Start timer
     try console_obj.call_time(label);
-    const start_time = console_obj.timer_table.get(label).?;
+    const start_time = console_obj.timerTable.get(label).?;
 
     // Wait
     std.time.sleep(10_000_000); // 10ms
@@ -232,14 +232,14 @@ test "timing - timer labels are independent" {
 
     // Start timerA
     try console_obj.call_time(label_a);
-    const time_a = console_obj.timer_table.get(label_a).?;
+    const time_a = console_obj.timerTable.get(label_a).?;
 
     // Wait
     std.time.sleep(5_000_000); // 5ms
 
     // Start timerB
     try console_obj.call_time(label_b);
-    const time_b = console_obj.timer_table.get(label_b).?;
+    const time_b = console_obj.timerTable.get(label_b).?;
 
     // timerA should have started earlier than timerB
     try std.testing.expect(time_a.isBefore(time_b));
@@ -259,13 +259,13 @@ test "timing - default label can be used" {
 
     // Use "default" as label (WebIDL default parameter)
     try console_obj.call_time(default_label);
-    try std.testing.expect(console_obj.timer_table.contains(default_label));
+    try std.testing.expect(console_obj.timerTable.contains(default_label));
 
     try console_obj.call_timeLog(default_label, &.{});
-    try std.testing.expect(console_obj.timer_table.contains(default_label));
+    try std.testing.expect(console_obj.timerTable.contains(default_label));
 
     try console_obj.call_timeEnd(default_label);
-    try std.testing.expect(!console_obj.timer_table.contains(default_label));
+    try std.testing.expect(!console_obj.timerTable.contains(default_label));
 }
 
 test "timing - memory safety with many timers" {
@@ -284,7 +284,7 @@ test "timing - memory safety with many timers" {
         try console_obj.call_time(label);
     }
 
-    try std.testing.expectEqual(@as(usize, 50), console_obj.timer_table.size());
+    try std.testing.expectEqual(@as(usize, 50), console_obj.timerTable.size());
 
     // End all timers
     i = 0;
@@ -297,6 +297,6 @@ test "timing - memory safety with many timers" {
         try console_obj.call_timeEnd(label);
     }
 
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
     // Test passes if no memory leaks
 }

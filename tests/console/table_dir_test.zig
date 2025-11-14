@@ -16,7 +16,7 @@ test "console.table() - without runtime (fallback)" {
     console_obj.call_table(&data, null);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - with runtime (array)" {
@@ -39,7 +39,7 @@ test "console.table() - with runtime (array)" {
     console_obj.call_table(&data, null);
 
     // Should have logged (fallback since isArray returns false)
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - null data" {
@@ -51,7 +51,7 @@ test "console.table() - null data" {
     // Null data - should log empty
     console_obj.call_table(null, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - without runtime" {
@@ -65,7 +65,7 @@ test "console.dir() - without runtime" {
     console_obj.call_dir(&item, null);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - with runtime" {
@@ -84,7 +84,7 @@ test "console.dir() - with runtime" {
     console_obj.call_dir(&item, null);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - with options" {
@@ -104,7 +104,7 @@ test "console.dir() - with options" {
     console_obj.call_dir(&item, &options);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - null item" {
@@ -116,7 +116,7 @@ test "console.dir() - null item" {
     // Null item - should log empty
     console_obj.call_dir(null, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - number value" {
@@ -134,7 +134,7 @@ test "console.dir() - number value" {
     const item = webidl.JSValue{ .number = 42 };
     console_obj.call_dir(&item, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.dir() - boolean value" {
@@ -151,5 +151,5 @@ test "console.dir() - boolean value" {
     const item = webidl.JSValue{ .boolean = true };
     console_obj.call_dir(&item, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

@@ -30,7 +30,7 @@ test "console.table() - complete implementation with mock data" {
     console_obj.call_table(&data, null);
 
     // Should have logged (fallback behavior)
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - with properties filter" {
@@ -54,7 +54,7 @@ test "console.table() - with properties filter" {
     console_obj.call_table(&data, &properties);
 
     // Should have processed and logged
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - empty array" {
@@ -74,7 +74,7 @@ test "console.table() - empty array" {
     const data = webidl.JSValue{ .string = "empty array" };
     console_obj.call_table(&data, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - table formatting structure" {
@@ -96,10 +96,10 @@ test "console.table() - table formatting structure" {
     console_obj.call_table(&data, null);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Get the message
-    const msg = console_obj.message_buffer.get(0);
+    const msg = console_obj.messageBuffer.get(0);
     try std.testing.expect(msg != null);
 }
 
@@ -123,7 +123,7 @@ test "console.table() - memory safety with large dataset" {
     console_obj.call_table(&data, null);
 
     // Should complete without memory leaks (verified by test allocator)
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - with special characters in keys" {
@@ -144,7 +144,7 @@ test "console.table() - with special characters in keys" {
     const data = webidl.JSValue{ .string = "special chars" };
     console_obj.call_table(&data, null);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "console.table() - properties filter with no matches" {
@@ -171,5 +171,5 @@ test "console.table() - properties filter with no matches" {
     const data = webidl.JSValue{ .string = "filtered data" };
     console_obj.call_table(&data, &properties);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

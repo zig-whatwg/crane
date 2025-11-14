@@ -17,13 +17,13 @@ test "call_count - first call sets count to 1" {
     defer allocator.free(label);
 
     // Initially no count exists
-    try std.testing.expect(!console_obj.count_map.contains(label));
+    try std.testing.expect(!console_obj.countMap.contains(label));
 
     // First count
     try console_obj.call_count(label);
 
     // Count should be 1
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(label));
 }
 
 test "call_count - increments existing count" {
@@ -36,19 +36,19 @@ test "call_count - increments existing count" {
 
     // Count multiple times
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 2), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 2), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 3), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 3), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 4), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 4), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 5), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 5), console_obj.countMap.get(label));
 }
 
 test "call_countReset - resets existing counter to 0" {
@@ -64,13 +64,13 @@ test "call_countReset - resets existing counter to 0" {
     while (i < 10) : (i += 1) {
         try console_obj.call_count(label);
     }
-    try std.testing.expectEqual(@as(?u32, 10), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 10), console_obj.countMap.get(label));
 
     // Reset counter
     try console_obj.call_countReset(label);
 
     // Counter should be 0
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(label));
 }
 
 test "call_countReset - missing counter shows warning (no error)" {
@@ -85,7 +85,7 @@ test "call_countReset - missing counter shows warning (no error)" {
     try console_obj.call_countReset(label);
 
     // Counter should still not exist
-    try std.testing.expect(!console_obj.count_map.contains(label));
+    try std.testing.expect(!console_obj.countMap.contains(label));
 }
 
 test "counting - reset then count starts from 1" {
@@ -101,15 +101,15 @@ test "counting - reset then count starts from 1" {
     while (i < 5) : (i += 1) {
         try console_obj.call_count(label);
     }
-    try std.testing.expectEqual(@as(?u32, 5), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 5), console_obj.countMap.get(label));
 
     // Reset to 0
     try console_obj.call_countReset(label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(label));
 
     // Count again - should go to 1
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(label));
 }
 
 test "counting - multiple independent counters" {
@@ -139,9 +139,9 @@ test "counting - multiple independent counters" {
     try console_obj.call_count(counter3);
 
     // Verify all counters are independent
-    try std.testing.expectEqual(@as(?u32, 3), console_obj.count_map.get(counter1));
-    try std.testing.expectEqual(@as(?u32, 5), console_obj.count_map.get(counter2));
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(counter3));
+    try std.testing.expectEqual(@as(?u32, 3), console_obj.countMap.get(counter1));
+    try std.testing.expectEqual(@as(?u32, 5), console_obj.countMap.get(counter2));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(counter3));
 }
 
 test "counting - reset one counter doesn't affect others" {
@@ -161,15 +161,15 @@ test "counting - reset one counter doesn't affect others" {
     try console_obj.call_count(counter2);
     try console_obj.call_count(counter2);
 
-    try std.testing.expectEqual(@as(?u32, 2), console_obj.count_map.get(counter1));
-    try std.testing.expectEqual(@as(?u32, 3), console_obj.count_map.get(counter2));
+    try std.testing.expectEqual(@as(?u32, 2), console_obj.countMap.get(counter1));
+    try std.testing.expectEqual(@as(?u32, 3), console_obj.countMap.get(counter2));
 
     // Reset counter1
     try console_obj.call_countReset(counter1);
 
     // counter1 should be 0, counter2 unchanged
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(counter1));
-    try std.testing.expectEqual(@as(?u32, 3), console_obj.count_map.get(counter2));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(counter1));
+    try std.testing.expectEqual(@as(?u32, 3), console_obj.countMap.get(counter2));
 }
 
 test "counting - default label works" {
@@ -183,10 +183,10 @@ test "counting - default label works" {
     // Use "default" as label (WebIDL default parameter)
     try console_obj.call_count(default_label);
     try console_obj.call_count(default_label);
-    try std.testing.expectEqual(@as(?u32, 2), console_obj.count_map.get(default_label));
+    try std.testing.expectEqual(@as(?u32, 2), console_obj.countMap.get(default_label));
 
     try console_obj.call_countReset(default_label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(default_label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(default_label));
 }
 
 test "counting - counter can go very high" {
@@ -203,7 +203,7 @@ test "counting - counter can go very high" {
         try console_obj.call_count(label);
     }
 
-    try std.testing.expectEqual(@as(?u32, 1000), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 1000), console_obj.countMap.get(label));
 }
 
 test "counting - multiple resets work" {
@@ -217,21 +217,21 @@ test "counting - multiple resets work" {
     // Count, reset, count, reset, count
     try console_obj.call_count(label);
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 2), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 2), console_obj.countMap.get(label));
 
     try console_obj.call_countReset(label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(label));
 
     try console_obj.call_countReset(label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(label));
 
     try console_obj.call_count(label);
     try console_obj.call_count(label);
     try console_obj.call_count(label);
-    try std.testing.expectEqual(@as(?u32, 3), console_obj.count_map.get(label));
+    try std.testing.expectEqual(@as(?u32, 3), console_obj.countMap.get(label));
 }
 
 test "counting - memory safety with many counters" {
@@ -254,7 +254,7 @@ test "counting - memory safety with many counters" {
         }
     }
 
-    try std.testing.expectEqual(@as(usize, 100), console_obj.count_map.size());
+    try std.testing.expectEqual(@as(usize, 100), console_obj.countMap.size());
 
     // Reset half of them
     i = 0;
@@ -268,7 +268,7 @@ test "counting - memory safety with many counters" {
     }
 
     // All counters still exist (reset sets to 0, doesn't remove)
-    try std.testing.expectEqual(@as(usize, 100), console_obj.count_map.size());
+    try std.testing.expectEqual(@as(usize, 100), console_obj.countMap.size());
 
     // Test passes if no memory leaks
 }
@@ -283,10 +283,10 @@ test "counting - Unicode labels work" {
 
     try console_obj.call_count(unicode_label);
     try console_obj.call_count(unicode_label);
-    try std.testing.expectEqual(@as(?u32, 2), console_obj.count_map.get(unicode_label));
+    try std.testing.expectEqual(@as(?u32, 2), console_obj.countMap.get(unicode_label));
 
     try console_obj.call_countReset(unicode_label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(unicode_label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(unicode_label));
 }
 
 test "counting - empty string label works" {
@@ -298,8 +298,8 @@ test "counting - empty string label works" {
     defer allocator.free(empty_label);
 
     try console_obj.call_count(empty_label);
-    try std.testing.expectEqual(@as(?u32, 1), console_obj.count_map.get(empty_label));
+    try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(empty_label));
 
     try console_obj.call_countReset(empty_label);
-    try std.testing.expectEqual(@as(?u32, 0), console_obj.count_map.get(empty_label));
+    try std.testing.expectEqual(@as(?u32, 0), console_obj.countMap.get(empty_label));
 }

@@ -97,8 +97,8 @@ test "Console - init and deinit" {
     defer console_obj.deinit();
 
     // Verify state is initialized empty
-    try std.testing.expect(console_obj.count_map.isEmpty());
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.countMap.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
     try std.testing.expect(console_obj.group_stack.isEmpty());
 }
 
@@ -112,6 +112,6 @@ test "Console - multiple instances" {
     defer console2.deinit();
 
     // Verify state isolation
-    try std.testing.expect(console1.count_map.isEmpty());
-    try std.testing.expect(console2.count_map.isEmpty());
+    try std.testing.expect(console1.countMap.isEmpty());
+    try std.testing.expect(console2.countMap.isEmpty());
 }

@@ -12,22 +12,22 @@ test "time - warns when timer already exists" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "duplicate-timer");
     defer allocator.free(label);
 
     // Start timer first time (should succeed)
     try console_obj.call_time(label);
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Start same timer again (should warn)
     try console_obj.call_time(label);
 
     // Verify warning was added to message buffer
-    try std.testing.expect(console_obj.message_buffer.size() > 0);
+    try std.testing.expect(console_obj.messageBuffer.size() > 0);
 
-    const last_msg = console_obj.message_buffer.get(console_obj.message_buffer.size() - 1).?;
+    const last_msg = console_obj.messageBuffer.get(console_obj.messageBuffer.size() - 1).?;
     try std.testing.expect(last_msg.args.len == 1);
     try std.testing.expect(last_msg.args[0] == .string);
 
@@ -42,7 +42,7 @@ test "timeLog - warns when timer doesn't exist" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "missing-timer");
     defer allocator.free(label);
@@ -51,9 +51,9 @@ test "timeLog - warns when timer doesn't exist" {
     try console_obj.call_timeLog(label, &.{});
 
     // Verify warning was issued
-    try std.testing.expect(console_obj.message_buffer.size() > 0);
+    try std.testing.expect(console_obj.messageBuffer.size() > 0);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const warning = msg.args[0].string;
     try std.testing.expect(std.mem.indexOf(u8, warning, "does not exist") != null);
     try std.testing.expect(std.mem.indexOf(u8, warning, "missing-timer") != null);
@@ -64,7 +64,7 @@ test "timeEnd - warns when timer doesn't exist" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-timer");
     defer allocator.free(label);
@@ -73,9 +73,9 @@ test "timeEnd - warns when timer doesn't exist" {
     try console_obj.call_timeEnd(label);
 
     // Verify warning was issued
-    try std.testing.expect(console_obj.message_buffer.size() > 0);
+    try std.testing.expect(console_obj.messageBuffer.size() > 0);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const warning = msg.args[0].string;
     try std.testing.expect(std.mem.indexOf(u8, warning, "does not exist") != null);
     try std.testing.expect(std.mem.indexOf(u8, warning, "nonexistent-timer") != null);
@@ -86,7 +86,7 @@ test "timeLog - formats duration correctly with data" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "test-timer");
     defer allocator.free(label);
@@ -105,9 +105,9 @@ test "timeLog - formats duration correctly with data" {
     try console_obj.call_timeLog(label, data);
 
     // Verify message was buffered
-    try std.testing.expect(console_obj.message_buffer.size() > 0);
+    try std.testing.expect(console_obj.messageBuffer.size() > 0);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     // Should have duration + data (1 + 2 = 3 args)
     try std.testing.expectEqual(@as(usize, 3), msg.args.len);
 
@@ -123,20 +123,20 @@ test "timeEnd - removes timer after logging" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "temp-timer");
     defer allocator.free(label);
 
     // Start and end timer
     try console_obj.call_time(label);
-    try std.testing.expect(console_obj.timer_table.contains(label));
+    try std.testing.expect(console_obj.timerTable.contains(label));
 
     try console_obj.call_timeEnd(label);
 
     // Verify timer was removed
-    try std.testing.expect(!console_obj.timer_table.contains(label));
+    try std.testing.expect(!console_obj.timerTable.contains(label));
 
     // Verify message was logged
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

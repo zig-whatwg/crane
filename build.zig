@@ -974,6 +974,10 @@ pub fn build(b: *std.Build) void {
     const console_format_mod = b.createModule(.{
         .root_source_file = b.path("webidl/src/console/format.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        },
     });
 
     const console_console_mod = b.createModule(.{
@@ -1467,6 +1471,7 @@ pub fn build(b: *std.Build) void {
 
         // Add dedicated test files from tests/console/
         const console_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "console", .module = console_mod },
         };

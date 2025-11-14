@@ -13,7 +13,7 @@ test "count - uses printer for output" {
     defer console_obj.deinit();
 
     // Disable printer to verify it's being called (won't crash)
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "test-counter");
     defer allocator.free(label);
@@ -24,7 +24,7 @@ test "count - uses printer for output" {
     try console_obj.call_count(label);
 
     // Verify count is tracked correctly
-    const count = console_obj.count_map.get(label).?;
+    const count = console_obj.countMap.get(label).?;
     try std.testing.expectEqual(@as(u32, 3), count);
 }
 
@@ -34,7 +34,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
     defer console_obj.deinit();
 
     // Disable printer
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "nonexistent");
     defer allocator.free(label);
@@ -43,7 +43,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
     try console_obj.call_countReset(label);
 
     // Verify counter still doesn't exist
-    try std.testing.expect(!console_obj.count_map.contains(label));
+    try std.testing.expect(!console_obj.countMap.contains(label));
 }
 
 test "countReset - resets existing counter to zero" {
@@ -51,7 +51,7 @@ test "countReset - resets existing counter to zero" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "my-counter");
     defer allocator.free(label);
@@ -62,13 +62,13 @@ test "countReset - resets existing counter to zero" {
     try console_obj.call_count(label);
 
     // Verify count is 3
-    try std.testing.expectEqual(@as(u32, 3), console_obj.count_map.get(label).?);
+    try std.testing.expectEqual(@as(u32, 3), console_obj.countMap.get(label).?);
 
     // Reset
     try console_obj.call_countReset(label);
 
     // Verify reset to 0
-    try std.testing.expectEqual(@as(u32, 0), console_obj.count_map.get(label).?);
+    try std.testing.expectEqual(@as(u32, 0), console_obj.countMap.get(label).?);
 }
 
 test "count - message buffering works" {
@@ -76,7 +76,7 @@ test "count - message buffering works" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const label = try infra.string.utf8ToUtf16(allocator, "buffered");
     defer allocator.free(label);
@@ -86,10 +86,10 @@ test "count - message buffering works" {
     try console_obj.call_count(label);
 
     // Verify messages were buffered
-    try std.testing.expectEqual(@as(usize, 2), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.messageBuffer.size());
 
     // Check first message format
-    const msg1 = console_obj.message_buffer.get(0).?;
+    const msg1 = console_obj.messageBuffer.get(0).?;
     try std.testing.expectEqual(@as(usize, 1), msg1.args.len);
     try std.testing.expect(msg1.args[0] == .string);
 

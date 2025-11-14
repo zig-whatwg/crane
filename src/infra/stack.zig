@@ -41,11 +41,9 @@ pub fn Stack(comptime T: type) type {
         pub fn isEmpty(self: *const Self) bool {
             return self.items_list.isEmpty();
         }
+
+        pub fn size(self: *const Self) usize {
+            return self.items_list.size();
+        }
     };
 }
-
-
-
-
-
-

@@ -109,10 +109,10 @@ test "integration - concurrent timers and counters" {
     }
 
     // Verify all timers ended (removed)
-    try std.testing.expect(console_obj.timer_table.isEmpty());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
 
     // Verify all counters exist
-    try std.testing.expectEqual(@as(usize, 10), console_obj.count_map.size());
+    try std.testing.expectEqual(@as(usize, 10), console_obj.countMap.size());
 }
 
 test "integration - disabled console performance" {
@@ -159,13 +159,13 @@ test "integration - state isolation between instances" {
     try console1.call_group(&.{});
 
     // console2 should be unaffected
-    try std.testing.expect(console2.timer_table.isEmpty());
-    try std.testing.expect(console2.count_map.isEmpty());
+    try std.testing.expect(console2.timerTable.isEmpty());
+    try std.testing.expect(console2.countMap.isEmpty());
     try std.testing.expect(console2.group_stack.isEmpty());
 
     // console1 should have state
-    try std.testing.expect(!console1.timer_table.isEmpty());
-    try std.testing.expect(!console1.count_map.isEmpty());
+    try std.testing.expect(!console1.timerTable.isEmpty());
+    try std.testing.expect(!console1.countMap.isEmpty());
     try std.testing.expect(!console1.group_stack.isEmpty());
 }
 
@@ -184,8 +184,8 @@ test "integration - clear resets groups but not timers/counts" {
     try console_obj.call_group(&.{});
 
     // Verify all have state
-    try std.testing.expect(!console_obj.timer_table.isEmpty());
-    try std.testing.expect(!console_obj.count_map.isEmpty());
+    try std.testing.expect(!console_obj.timerTable.isEmpty());
+    try std.testing.expect(!console_obj.countMap.isEmpty());
     try std.testing.expect(!console_obj.group_stack.isEmpty());
 
     // Clear only empties group stack
@@ -195,8 +195,8 @@ test "integration - clear resets groups but not timers/counts" {
     try std.testing.expect(console_obj.group_stack.isEmpty());
 
     // Timers and counters preserved
-    try std.testing.expect(!console_obj.timer_table.isEmpty());
-    try std.testing.expect(!console_obj.count_map.isEmpty());
+    try std.testing.expect(!console_obj.timerTable.isEmpty());
+    try std.testing.expect(!console_obj.countMap.isEmpty());
 }
 
 test "integration - realistic debugging session" {
@@ -245,8 +245,8 @@ test "integration - realistic debugging session" {
     console_obj.call_info(mock_args); // Session complete
 
     // Verify final state
-    try std.testing.expect(console_obj.timer_table.isEmpty()); // All timers ended
-    try std.testing.expectEqual(@as(usize, 1), console_obj.count_map.size()); // One counter
+    try std.testing.expect(console_obj.timerTable.isEmpty()); // All timers ended
+    try std.testing.expectEqual(@as(usize, 1), console_obj.countMap.size()); // One counter
     try std.testing.expect(console_obj.group_stack.isEmpty()); // All groups closed
 }
 
@@ -314,8 +314,8 @@ test "integration - memory stress test" {
     }
 
     // Verify state
-    try std.testing.expect(console_obj.timer_table.isEmpty());
-    try std.testing.expectEqual(@as(usize, 100), console_obj.count_map.size());
+    try std.testing.expect(console_obj.timerTable.isEmpty());
+    try std.testing.expectEqual(@as(usize, 100), console_obj.countMap.size());
     try std.testing.expect(console_obj.group_stack.isEmpty());
 
     // Test passes if no memory leaks

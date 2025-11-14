@@ -150,7 +150,7 @@ test "nested groups with format specifiers" {
     console_obj.call_log(log_args);
 
     // Should be indented 2 levels
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     try std.testing.expectEqual(@as(usize, 2), msg.indent);
 
     // Pop inner group

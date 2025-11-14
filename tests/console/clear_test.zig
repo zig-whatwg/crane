@@ -19,8 +19,8 @@ test "clear - empty console (no-op)" {
     console.call_clear();
 
     // Verify buffer is still empty
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
-    try testing.expect(console.message_buffer.isEmpty());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
+    try testing.expect(console.messageBuffer.isEmpty());
 }
 
 test "clear - removes all messages from buffer" {
@@ -38,14 +38,14 @@ test "clear - removes all messages from buffer" {
     console.call_log(&.{msg3});
 
     // Verify messages were added
-    try testing.expectEqual(@as(usize, 3), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 3), console.messageBuffer.size());
 
     // Clear the console
     console.call_clear();
 
     // Verify buffer is now empty
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
-    try testing.expect(console.message_buffer.isEmpty());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
+    try testing.expect(console.messageBuffer.isEmpty());
 }
 
 test "clear - empties group stack" {
@@ -88,14 +88,14 @@ test "clear - empties both groups and messages" {
 
     // Verify state before clear
     try testing.expectEqual(@as(usize, 1), console.group_stack.items.len);
-    try testing.expectEqual(@as(usize, 2), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 2), console.messageBuffer.size());
 
     // Clear the console
     console.call_clear();
 
     // Verify both are empty
     try testing.expectEqual(@as(usize, 0), console.group_stack.items.len);
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
 }
 
 test "clear - console works after clearing" {
@@ -113,9 +113,9 @@ test "clear - console works after clearing" {
     console.call_log(&.{msg2});
 
     // Verify only new message is in buffer
-    try testing.expectEqual(@as(usize, 1), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 1), console.messageBuffer.size());
 
-    const stored = console.message_buffer.get(0).?;
+    const stored = console.messageBuffer.get(0).?;
     try testing.expect(stored.args.len == 1);
     try testing.expect(stored.args[0] == .string);
     try testing.expectEqualStrings("After clear", stored.args[0].string);
@@ -139,7 +139,7 @@ test "clear - multiple clears are safe" {
     console.call_clear();
 
     // Verify empty
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
     try testing.expectEqual(@as(usize, 0), console.group_stack.items.len);
 }
 
@@ -183,16 +183,16 @@ test "clear - with full message buffer" {
     }
 
     // Verify buffer is full
-    try testing.expect(console.message_buffer.isFull());
-    try testing.expectEqual(@as(usize, 5), console.message_buffer.size());
+    try testing.expect(console.messageBuffer.isFull());
+    try testing.expectEqual(@as(usize, 5), console.messageBuffer.size());
 
     // Clear full buffer
     console.call_clear();
 
     // Verify empty
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
-    try testing.expect(console.message_buffer.isEmpty());
-    try testing.expect(!console.message_buffer.isFull());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
+    try testing.expect(console.messageBuffer.isEmpty());
+    try testing.expect(!console.messageBuffer.isFull());
 }
 
 test "clear - memory leak verification" {
@@ -213,7 +213,7 @@ test "clear - memory leak verification" {
     console.call_clear();
 
     // If there are leaks, std.testing.allocator will catch them
-    try testing.expectEqual(@as(usize, 0), console.message_buffer.size());
+    try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
 }
 
 test "clear - preserves console configuration" {
@@ -222,7 +222,7 @@ test "clear - preserves console configuration" {
     defer console.deinit();
 
     // Get initial buffer capacity
-    const initial_capacity = console.message_buffer.max_size;
+    const initial_capacity = console.messageBuffer.maxSize;
     try testing.expectEqual(@as(usize, 100), initial_capacity);
 
     // Add and clear
@@ -231,5 +231,5 @@ test "clear - preserves console configuration" {
     console.call_clear();
 
     // Verify buffer capacity unchanged
-    try testing.expectEqual(initial_capacity, console.message_buffer.max_size);
+    try testing.expectEqual(initial_capacity, console.messageBuffer.maxSize);
 }

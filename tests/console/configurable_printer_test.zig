@@ -1,29 +1,29 @@
 //! Configurable Printer Tests
 //!
-//! Tests that console.print_fn can be configured to control output destination.
+//! Tests that console.printFn can be configured to control output destination.
 
 const std = @import("std");
 const infra = @import("infra");
 const console_mod = @import("console");
 const webidl = @import("webidl");
 
-test "default print_fn uses std.debug.print" {
+test "default printFn uses std.debug.print" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Verify default is std.debug.print
-    try std.testing.expect(console_obj.print_fn != null);
-    try std.testing.expectEqual(std.debug.print, console_obj.print_fn.?);
+    try std.testing.expect(console_obj.printFn != null);
+    try std.testing.expectEqual(std.debug.print, console_obj.printFn.?);
 }
 
-test "production mode - null print_fn disables immediate output" {
+test "production mode - null printFn disables immediate output" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Production mode: disable immediate output
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     // Log something
     const args = &[_]webidl.JSValue{
@@ -32,17 +32,17 @@ test "production mode - null print_fn disables immediate output" {
     console_obj.call_log(args);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Verify it would format correctly if we asked for it
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
     try std.testing.expect(std.mem.indexOf(u8, formatted, "This should only buffer") != null);
 }
 
-test "custom print_fn - capture output to buffer" {
+test "custom printFn - capture output to buffer" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
@@ -60,7 +60,7 @@ test "custom print_fn - capture output to buffer" {
     };
 
     CustomPrinter.capture_buffer = &output;
-    console_obj.print_fn = CustomPrinter.print;
+    console_obj.printFn = CustomPrinter.print;
 
     // Log something
     const args = &[_]webidl.JSValue{
@@ -73,40 +73,40 @@ test "custom print_fn - capture output to buffer" {
     try std.testing.expect(std.mem.indexOf(u8, output.items(), "Test message") != null);
 }
 
-test "switch print_fn at runtime" {
+test "switch printFn at runtime" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Start in production mode (no output)
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     const args = &[_]webidl.JSValue{
         .{ .string = "Silent message" },
     };
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Switch to development mode (with output)
-    console_obj.print_fn = std.debug.print;
+    console_obj.printFn = std.debug.print;
 
     const args2 = &[_]webidl.JSValue{
         .{ .string = "Loud message" },
     };
     console_obj.call_log(args2);
 
-    try std.testing.expectEqual(@as(usize, 2), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.messageBuffer.size());
 }
 
-test "disabled console with null print_fn - minimal overhead" {
+test "disabled console with null printFn - minimal overhead" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
     // Fully disable console
     console_obj.enabled = false;
-    console_obj.print_fn = null;
+    console_obj.printFn = null;
 
     // These calls should be no-ops
     const args = &[_]webidl.JSValue{
@@ -115,10 +115,10 @@ test "disabled console with null print_fn - minimal overhead" {
     console_obj.call_log(args); // Fast disabled path
 
     // Message buffer should be empty (logger returned early)
-    try std.testing.expectEqual(@as(usize, 0), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.messageBuffer.size());
 }
 
-test "print_fn with format specifiers in messages" {
+test "printFn with format specifiers in messages" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
@@ -136,7 +136,7 @@ test "print_fn with format specifiers in messages" {
     };
 
     CustomPrinter.capture_buffer = &output;
-    console_obj.print_fn = CustomPrinter.print;
+    console_obj.printFn = CustomPrinter.print;
 
     // Log with format specifiers
     const args = &[_]webidl.JSValue{
@@ -161,10 +161,10 @@ test "multiple console instances with different printers" {
     defer console2.deinit();
 
     // Console 1: production mode (no output)
-    console1.print_fn = null;
+    console1.printFn = null;
 
     // Console 2: development mode (has output)
-    console2.print_fn = std.debug.print;
+    console2.printFn = std.debug.print;
 
     const args = &[_]webidl.JSValue{
         .{ .string = "Test" },
@@ -174,11 +174,11 @@ test "multiple console instances with different printers" {
     console2.call_log(args);
 
     // Both should buffer
-    try std.testing.expectEqual(@as(usize, 1), console1.message_buffer.size());
-    try std.testing.expectEqual(@as(usize, 1), console2.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console1.messageBuffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console2.messageBuffer.size());
 
     // But only console2 printed to stderr (we can't test this directly,
     // but the configuration is different)
-    try std.testing.expect(console1.print_fn == null);
-    try std.testing.expect(console2.print_fn != null);
+    try std.testing.expect(console1.printFn == null);
+    try std.testing.expect(console2.printFn != null);
 }

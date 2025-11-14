@@ -43,7 +43,7 @@ test "Console with runtime - format specifier %s (string)" {
     console_obj.call_log(args);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - format specifier %d (integer)" {
@@ -65,7 +65,7 @@ test "Console with runtime - format specifier %d (integer)" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - format specifier %f (float)" {
@@ -87,7 +87,7 @@ test "Console with runtime - format specifier %f (float)" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - multiple format specifiers" {
@@ -111,7 +111,7 @@ test "Console with runtime - multiple format specifiers" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - format specifier with remaining args" {
@@ -135,7 +135,7 @@ test "Console with runtime - format specifier with remaining args" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - type conversion boolean to string" {
@@ -157,7 +157,7 @@ test "Console with runtime - type conversion boolean to string" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - type conversion null to string" {
@@ -179,7 +179,7 @@ test "Console with runtime - type conversion null to string" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - no format specifiers" {
@@ -201,7 +201,7 @@ test "Console with runtime - no format specifiers" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console without runtime - fallback formatting" {
@@ -220,7 +220,7 @@ test "Console without runtime - fallback formatting" {
 
     console_obj.call_log(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console with runtime - console.trace() with stack capture" {
@@ -242,7 +242,7 @@ test "Console with runtime - console.trace() with stack capture" {
     console_obj.call_trace(args);
 
     // Verify trace message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
 
 test "Console without runtime - console.trace() fallback" {
@@ -260,5 +260,5 @@ test "Console without runtime - console.trace() fallback" {
 
     console_obj.call_trace(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

@@ -22,9 +22,9 @@ test "Format specifier %s - string conversion" {
     console_obj.call_log(args);
 
     // Verify message was buffered
-    try std.testing.expectEqual(@as(usize, 1), console_obj.message_buffer.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -44,7 +44,7 @@ test "Format specifier %d - integer conversion" {
     const args = &[_]webidl.JSValue{ format_str, arg1 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -64,7 +64,7 @@ test "Format specifier %i - integer conversion (same as %d)" {
     const args = &[_]webidl.JSValue{ format_str, arg1 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -84,7 +84,7 @@ test "Format specifier %f - float conversion" {
     const args = &[_]webidl.JSValue{ format_str, arg1 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -105,7 +105,7 @@ test "Format specifier - multiple specifiers" {
     const args = &[_]webidl.JSValue{ format_str, arg1, arg2 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -126,7 +126,7 @@ test "Format specifier - extra args after substitution" {
     const args = &[_]webidl.JSValue{ format_str, arg1, arg2 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -147,7 +147,7 @@ test "Format specifier - boolean conversion with %s" {
     const args = &[_]webidl.JSValue{ format_str, arg1 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -167,7 +167,7 @@ test "Format specifier - no specifiers, args unchanged" {
     const args = &[_]webidl.JSValue{ str1, str2 };
     console_obj.call_log(args);
 
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     const formatted = try msg.format(allocator);
     defer allocator.free(formatted);
 
@@ -189,7 +189,7 @@ test "Phase 3 - Lazy formatting only when displayed" {
     console_obj.call_log(args);
 
     // Message should have raw args stored
-    const msg = console_obj.message_buffer.get(0).?;
+    const msg = console_obj.messageBuffer.get(0).?;
     try std.testing.expectEqual(@as(usize, 1), msg.args.len); // After formatting, only 1 arg remains
 
     // Format should work when called
