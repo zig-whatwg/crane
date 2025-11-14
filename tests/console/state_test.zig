@@ -9,6 +9,11 @@ const infra = @import("infra");
 
 const Group = console_mod.Group;
 
+/// Helper to convert UTF-8 string literals to UTF-16 DOMString for testing
+fn utf8ToUtf16(allocator: std.mem.Allocator, utf8: []const u8) !infra.String {
+    return try infra.string.utf8ToUtf16(allocator, utf8);
+}
+
 test "Console - init creates empty state" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);

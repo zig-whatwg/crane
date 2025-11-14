@@ -73,14 +73,14 @@ pub const Group = struct {
     /// Optional label for the group.
     /// If null, an implementation-chosen default label is used.
     /// Owned string - must be freed in deinit().
-    label: ?webidl.DOMString,
+    label: ?[]const u8,
 
     /// Whether the group is collapsed by default (groupCollapsed) or expanded (group).
     /// This is a hint for interactive environments (browser DevTools).
     collapsed: bool,
 
     /// Create a new expanded group with optional label.
-    pub fn init(label: ?webidl.DOMString) Group {
+    pub fn init(label: ?[]const u8) Group {
         return .{
             .label = label,
             .collapsed = false,
@@ -88,7 +88,7 @@ pub const Group = struct {
     }
 
     /// Create a new collapsed group with optional label.
-    pub fn initCollapsed(label: ?webidl.DOMString) Group {
+    pub fn initCollapsed(label: ?[]const u8) Group {
         return .{
             .label = label,
             .collapsed = true,

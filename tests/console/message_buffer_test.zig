@@ -10,8 +10,8 @@ const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_mod.console = console.console;
-const JSValue = console.JSValue;
+const console = console_mod.console;
+const JSValue = console_mod.JSValue;
 
 test "message buffer - basic message storage" {
     const allocator = std.testing.allocator;

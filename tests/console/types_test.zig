@@ -4,14 +4,13 @@
 
 const std = @import("std");
 const console_mod = @import("console");
-const types = console.types;
+const types = console_mod.types;
 const infra = @import("infra");
 
 const Group = types.Group;
 const LogLevel = types.LogLevel;
 
 test "Group - init expanded" {
-    const allocator = std.testing.allocator;
     const label = "Test Group";
 
     const group = Group.init(label);
@@ -20,7 +19,6 @@ test "Group - init expanded" {
 }
 
 test "Group - init collapsed" {
-    const allocator = std.testing.allocator;
     const label = "Test Group";
 
     const group = Group.initCollapsed(label);

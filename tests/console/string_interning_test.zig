@@ -10,7 +10,7 @@ const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
 
-const console_mod.console = console.console;
+const console = console_mod.console;
 
 test "string interning - default label pre-interned" {
     const allocator = std.testing.allocator;
