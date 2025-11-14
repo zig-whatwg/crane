@@ -117,8 +117,8 @@ pub const CharacterData = struct {
 
         return .{
             .event_listener_list = null,
-            .node_type = Node.DOCUMENT_NODE,
-            .node_name = "#document",
+            .node_type = Node.TEXT_NODE,
+            .node_name = "#text",
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,

@@ -135,8 +135,8 @@ pub const Text = struct {
 
         return .{
             .event_listener_list = null,
-            .node_type = Node.DOCUMENT_NODE,
-            .node_name = "#document",
+            .node_type = 0,
+            .node_name = "",
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,

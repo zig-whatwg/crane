@@ -455,6 +455,7 @@ fn synthesizeInitMethod(
     allocator: Allocator,
     struct_fields: []ir.Field,
     method_signature: []const u8,
+    class_name: []const u8,
 ) ![]const u8 {
     var body = infra.List(u8).init(allocator);
     errdefer body.deinit();
@@ -475,9 +476,9 @@ fn synthesizeInitMethod(
     // For each field, generate initialization code
     for (struct_fields) |field| {
         const init_code = if (field.init_expr) |expr|
-            try generateInitCodeFromExpression(allocator, expr, params)
+            try generateInitCodeFromExpression(allocator, expr, params, class_name)
         else
-            try inferDefaultInit(allocator, field.type_name, params);
+            try inferDefaultInit(allocator, field.type_name, params, class_name);
 
         defer allocator.free(init_code);
 
@@ -560,6 +561,7 @@ fn generateInitCodeFromExpression(
     allocator: Allocator,
     expr: ir.Field.InitExpression,
     params: []InitParameter,
+    class_name: []const u8,
 ) ![]const u8 {
     return switch (expr) {
         .literal => |lit| try allocator.dupe(u8, lit),
@@ -588,15 +590,13 @@ fn generateInitCodeFromExpression(
                     break :blk try allocator.dupe(u8, p);
                 }
             }
-            // Parameter not found in current signature - use smart defaults
+            // Parameter not found in current signature - use class-specific defaults
             // This happens when a child class inherits a field that was initialized
             // from a parameter in the parent's init, but child's init doesn't have that param
             if (std.mem.eql(u8, p, "node_type")) {
-                // Default document node type
-                break :blk try allocator.dupe(u8, "Node.DOCUMENT_NODE");
+                break :blk try getDefaultNodeType(allocator, class_name);
             } else if (std.mem.eql(u8, p, "node_name")) {
-                // Default document node name
-                break :blk try allocator.dupe(u8, "\"#document\"");
+                break :blk try getDefaultNodeName(allocator, class_name);
             }
             // Fallback: assume it's available (will cause compile error if not, which is good)
             break :blk try allocator.dupe(u8, p);
@@ -606,13 +606,47 @@ fn generateInitCodeFromExpression(
     };
 }
 
+/// Get default node_type for a class
+fn getDefaultNodeType(allocator: Allocator, class_name: []const u8) ![]const u8 {
+    // Map class names to their node types
+    if (std.mem.eql(u8, class_name, "Document")) {
+        return try allocator.dupe(u8, "Node.DOCUMENT_NODE");
+    } else if (std.mem.eql(u8, class_name, "DocumentType")) {
+        return try allocator.dupe(u8, "Node.DOCUMENT_TYPE_NODE");
+    } else if (std.mem.eql(u8, class_name, "DocumentFragment")) {
+        return try allocator.dupe(u8, "Node.DOCUMENT_FRAGMENT_NODE");
+    } else if (std.mem.eql(u8, class_name, "CharacterData")) {
+        // CharacterData is abstract, should not be instantiated directly
+        // But if it is, use a safe default
+        return try allocator.dupe(u8, "Node.TEXT_NODE");
+    }
+    // Default: 0 (will cause compile error if wrong, which is good)
+    return try allocator.dupe(u8, "0");
+}
+
+/// Get default node_name for a class
+fn getDefaultNodeName(allocator: Allocator, class_name: []const u8) ![]const u8 {
+    // Map class names to their node names
+    if (std.mem.eql(u8, class_name, "Document")) {
+        return try allocator.dupe(u8, "\"#document\"");
+    } else if (std.mem.eql(u8, class_name, "DocumentFragment")) {
+        return try allocator.dupe(u8, "\"#document-fragment\"");
+    } else if (std.mem.eql(u8, class_name, "CharacterData")) {
+        return try allocator.dupe(u8, "\"#text\"");
+    }
+    // Default: empty string
+    return try allocator.dupe(u8, "\"\"");
+}
+
 /// Infer default initialization for a field type
 fn inferDefaultInit(
     allocator: Allocator,
     type_name: []const u8,
     params: []InitParameter,
+    class_name: []const u8,
 ) ![]const u8 {
     _ = params; // May use params for smarter inference later
+    _ = class_name; // May use class_name for smarter inference later
 
     // Optional types → null
     if (type_name.len > 0 and type_name[0] == '?') {
@@ -705,7 +739,7 @@ fn writeMethod(
 
     // Check if this is an init method - synthesize body from field init expressions
     if (std.mem.eql(u8, method.name, "init")) {
-        const synthesized_body = try synthesizeInitMethod(allocator, struct_fields, method.signature);
+        const synthesized_body = try synthesizeInitMethod(allocator, struct_fields, method.signature, class_name);
         defer allocator.free(synthesized_body);
 
         try writer.writeAll(synthesized_body);
