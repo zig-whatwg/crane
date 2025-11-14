@@ -2,6 +2,7 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-text
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
@@ -113,7 +114,7 @@ pub const Text = webidl.interface(struct {
     /// Steps: Return the concatenation of the data of the contiguous Text nodes of this, in tree order.
     pub fn get_wholeText(self: *const Text) ![]const u8 {
         const dom = @import("dom");
-        var result = std.ArrayList(u8).init(self.allocator);
+        var result = infra.List(u8).init(self.allocator);
         errdefer result.deinit();
 
         // Collect all contiguous Text nodes in tree order

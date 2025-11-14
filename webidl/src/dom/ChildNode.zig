@@ -2,6 +2,7 @@
 // https://dom.spec.whatwg.org/#interface-childnode
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("../../root.zig");
 const dom_types = @import("dom_types");
 
@@ -246,7 +247,7 @@ pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_typ
 
     // Step 1: Let node be null
     // Step 2: Build array of actual nodes (converting strings to Text nodes)
-    var node_list = std.ArrayList(*NodeType).init(allocator);
+    var node_list = infra.List(*NodeType).init(allocator);
     defer node_list.deinit();
 
     for (nodes) |item| {

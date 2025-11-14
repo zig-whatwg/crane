@@ -22,7 +22,7 @@ pub fn queueMutationRecord(
     defer interested_observers.deinit();
 
     // Step 2: Let nodes be the inclusive ancestors of target
-    var nodes = std.ArrayList(*Node).init(target.allocator);
+    var nodes = infra.List(*Node).init(target.allocator);
     defer nodes.deinit();
 
     var current: ?*Node = target;
