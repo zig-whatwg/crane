@@ -7,6 +7,7 @@
 //! representing the serialized path.
 
 const std = @import("std");
+const infra = @import("infra");
 const URLRecord = @import("url_record").URLRecord;
 
 /// URL Path Serializer (spec lines 1573-1581)
@@ -31,17 +32,17 @@ pub fn serializePath(allocator: std.mem.Allocator, url: *const URLRecord) ![]con
         // Steps 2-4: Serialize segment path
         .segments => |segments| {
             // Step 2: Let output be empty string
-            var output = std.ArrayList(u8){};
-            errdefer output.deinit(allocator);
+            var output = infra.List(u8).init(allocator);
+            errdefer output.deinit();
 
             // Step 3: For each segment, append "/" followed by segment
-            for (segments.items) |segment| {
-                try output.append(allocator, '/');
-                try output.appendSlice(allocator, segment);
+            for (segments.toSlice()) |segment| {
+                try output.append('/');
+                try output.appendSlice(segment);
             }
 
             // Step 4: Return output
-            return try output.toOwnedSlice(allocator);
+            return output.toOwnedSlice();
         },
     }
 }
@@ -81,7 +82,7 @@ test "url path serializer - empty segments" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "http");
-    var segments = std.ArrayList([]const u8){};
+    var segments = infra.List([]const u8).init(allocator);
     defer segments.deinit();
 
     var url = URLRecord{
@@ -113,8 +114,8 @@ test "url path serializer - single segment" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "http");
-    var segments = std.ArrayList([]const u8){};
-    try segments.append(allocator, try allocator.dupe(u8, "path"));
+    var segments = infra.List([]const u8).init(allocator);
+    try segments.append(try allocator.dupe(u8, "path"));
 
     var url = URLRecord{
         .buffer = buffer,
@@ -145,10 +146,10 @@ test "url path serializer - multiple segments" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "http");
-    var segments = std.ArrayList([]const u8){};
-    try segments.append(allocator, try allocator.dupe(u8, "path"));
-    try segments.append(allocator, try allocator.dupe(u8, "to"));
-    try segments.append(allocator, try allocator.dupe(u8, "file"));
+    var segments = infra.List([]const u8).init(allocator);
+    try segments.append(try allocator.dupe(u8, "path"));
+    try segments.append(try allocator.dupe(u8, "to"));
+    try segments.append(try allocator.dupe(u8, "file"));
 
     var url = URLRecord{
         .buffer = buffer,
@@ -179,9 +180,9 @@ test "url path serializer - segments with empty string" {
     const allocator = std.testing.allocator;
 
     const buffer = try allocator.dupe(u8, "http");
-    var segments = std.ArrayList([]const u8){};
-    try segments.append(allocator, try allocator.dupe(u8, ""));
-    try segments.append(allocator, try allocator.dupe(u8, "path"));
+    var segments = infra.List([]const u8).init(allocator);
+    try segments.append(try allocator.dupe(u8, ""));
+    try segments.append(try allocator.dupe(u8, "path"));
 
     var url = URLRecord{
         .buffer = buffer,
