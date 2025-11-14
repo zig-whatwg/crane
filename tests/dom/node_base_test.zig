@@ -44,8 +44,8 @@ const MockElement = struct {
     }
 
     pub fn deinit(self: *MockElement) void {
-        self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.child_nodes.deinit();
+        self.registered_observers.deinit();
     }
 
     pub fn asNode(self: *MockElement) *NodeBase {
@@ -76,9 +76,9 @@ const MockCharacterData = struct {
     }
 
     pub fn deinit(self: *MockCharacterData) void {
-        self.base.allocator.free(self.data);
-        self.base.child_nodes.deinit();
-        self.base.registered_observers.deinit();
+        self.allocator.free(self.data);
+        self.child_nodes.deinit();
+        self.registered_observers.deinit();
     }
 
     pub fn asNode(self: *MockCharacterData) *NodeBase {

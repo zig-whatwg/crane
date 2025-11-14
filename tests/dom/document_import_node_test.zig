@@ -65,11 +65,11 @@ test "importNode: deep copy of element with children" {
     const source_text = try source_doc.call_createTextNode("Hello");
     
     // Build tree
-    try source_p.base.child_nodes.append(@ptrCast(source_text));
-    source_text.base.parent_node = @ptrCast(source_p);
+    try source_p.child_nodes.append(@ptrCast(source_text));
+    source_text.parent_node = @ptrCast(source_p);
     
-    try source_div.base.child_nodes.append(@ptrCast(source_p));
-    source_p.base.parent_node = @ptrCast(source_div);
+    try source_div.child_nodes.append(@ptrCast(source_p));
+    source_p.parent_node = @ptrCast(source_div);
 
     // Create target document
     var target_doc = try Document.init(allocator);
@@ -80,11 +80,11 @@ test "importNode: deep copy of element with children" {
     defer {
         const imported_div: *Element = @ptrCast(imported_node);
         // Clean up entire tree
-        for (0..imported_div.base.child_nodes.size()) |i| {
-            if (imported_div.base.child_nodes.get(i)) |child| {
+        for (0..imported_div.child_nodes.size()) |i| {
+            if (imported_div.child_nodes.get(i)) |child| {
                 const child_elem: *Element = @ptrCast(child);
-                for (0..child_elem.base.child_nodes.size()) |j| {
-                    if (child_elem.base.child_nodes.get(j)) |grandchild| {
+                for (0..child_elem.child_nodes.size()) |j| {
+                    if (child_elem.child_nodes.get(j)) |grandchild| {
                         const text_node: *Text = @ptrCast(grandchild);
                         text_node.deinit();
                         allocator.destroy(text_node);

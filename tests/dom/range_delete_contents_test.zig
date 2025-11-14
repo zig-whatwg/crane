@@ -18,7 +18,7 @@ test "Range.deleteContents - deletes text data within same Text node" {
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -31,7 +31,7 @@ test "Range.deleteContents - deletes text data within same Text node" {
     try range.call_deleteContents();
 
     // Text should now be "Hellld"
-    const data = text.base.get_data();
+    const data = text.get_data();
     try std.testing.expectEqualStrings("Hellld", data);
 }
 
@@ -44,7 +44,7 @@ test "Range.deleteContents - deletes from start of Text node" {
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -57,7 +57,7 @@ test "Range.deleteContents - deletes from start of Text node" {
     try range.call_deleteContents();
 
     // Text should now be "World"
-    const data = text.base.get_data();
+    const data = text.get_data();
     try std.testing.expectEqualStrings("World", data);
 }
 
@@ -70,7 +70,7 @@ test "Range.deleteContents - deletes to end of Text node" {
     const text = try doc.call_createTextNode("Hello World");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -83,7 +83,7 @@ test "Range.deleteContents - deletes to end of Text node" {
     try range.call_deleteContents();
 
     // Text should now be "Hello"
-    const data = text.base.get_data();
+    const data = text.get_data();
     try std.testing.expectEqualStrings("Hello", data);
 }
 
@@ -96,7 +96,7 @@ test "Range.deleteContents - deletes entire Text node content" {
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -109,7 +109,7 @@ test "Range.deleteContents - deletes entire Text node content" {
     try range.call_deleteContents();
 
     // Text should now be empty
-    const data = text.base.get_data();
+    const data = text.get_data();
     try std.testing.expectEqualStrings("", data);
 }
 
@@ -134,7 +134,7 @@ test "Range.deleteContents - deletes contained element nodes" {
     _ = try div.call_appendChild((&span1));
     _ = try div.call_appendChild((&span2));
     _ = try div.call_appendChild((&span3));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -147,14 +147,14 @@ test "Range.deleteContents - deletes contained element nodes" {
     try range.call_deleteContents();
 
     // Div should now have only 2 children (span1 and span3)
-    try std.testing.expectEqual(@as(usize, 2), div.base.child_nodes.size());
+    try std.testing.expectEqual(@as(usize, 2), div.child_nodes.size());
 
     // First child should be span1
-    const firstChild = div.base.child_nodes.item(0).?;
+    const firstChild = div.child_nodes.item(0).?;
     try std.testing.expectEqual((&span1), firstChild);
 
     // Second child should be span3
-    const secondChild = div.base.child_nodes.item(1).?;
+    const secondChild = div.child_nodes.item(1).?;
     try std.testing.expectEqual((&span3), secondChild);
 }
 
@@ -167,7 +167,7 @@ test "Range.deleteContents - collapsed range does nothing" {
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(text));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();
@@ -180,7 +180,7 @@ test "Range.deleteContents - collapsed range does nothing" {
     try range.call_deleteContents();
 
     // Text should remain unchanged
-    const data = text.base.get_data();
+    const data = text.get_data();
     try std.testing.expectEqualStrings("Hello", data);
 }
 
@@ -194,7 +194,7 @@ test "Range.deleteContents - Comment node data deletion" {
     const comment = try doc.call_createComment("This is a comment");
     const div = try doc.call_createElement("div");
     _ = try div.call_appendChild(@ptrCast(comment));
-    _ = try doc.base.call_appendChild(@ptrCast(div));
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, (&doc));
     defer range.deinit();

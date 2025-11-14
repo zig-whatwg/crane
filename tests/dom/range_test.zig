@@ -689,7 +689,7 @@ test "Range: extractContents returns empty fragment for collapsed range" {
     }
 
     // Fragment should be empty
-    try testing.expectEqual(@as(usize, 0), fragment.base.child_nodes.size());
+    try testing.expectEqual(@as(usize, 0), fragment.child_nodes.size());
 }
 
 test "Range: extractContents moves contained children to fragment" {
@@ -722,7 +722,7 @@ test "Range: extractContents moves contained children to fragment" {
     }
 
     // Fragment should contain extracted children
-    try testing.expectEqual(@as(usize, 2), fragment.base.child_nodes.size());
+    try testing.expectEqual(@as(usize, 2), fragment.child_nodes.size());
     // Parent should only have child3 left
     try testing.expectEqual(@as(usize, 1), parent.child_nodes.size());
 }
@@ -748,7 +748,7 @@ test "Range: cloneContents returns empty fragment for collapsed range" {
     }
 
     // Fragment should be empty
-    try testing.expectEqual(@as(usize, 0), fragment.base.child_nodes.size());
+    try testing.expectEqual(@as(usize, 0), fragment.child_nodes.size());
 }
 
 test "Range: cloneContents copies children without removing them" {
@@ -779,7 +779,7 @@ test "Range: cloneContents copies children without removing them" {
     }
 
     // Fragment should contain clones
-    try testing.expectEqual(@as(usize, 2), fragment.base.child_nodes.size());
+    try testing.expectEqual(@as(usize, 2), fragment.child_nodes.size());
     // Parent should still have original children
     try testing.expectEqual(@as(usize, 2), parent.child_nodes.size());
 }

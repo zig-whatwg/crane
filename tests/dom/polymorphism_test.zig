@@ -16,7 +16,7 @@ test "dom.NodeBase.tryCast - successful downcast to Element with auto-initialize
     defer element.deinit();
 
     // Verify type_tag is automatically set
-    try std.testing.expectEqual(dom.NodeBase.NodeTypeTag.Element, element.base.type_tag);
+    try std.testing.expectEqual(dom.NodeBase.NodeTypeTag.Element, element.type_tag);
 
     const node_base: *dom.NodeBase = element.toBase();
 

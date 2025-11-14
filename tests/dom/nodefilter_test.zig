@@ -89,7 +89,7 @@ test "NodeFilter: isNodeTypeShown works with combined bitmask" {
     try testing.expect(NodeFilter.isNodeTypeShown(showElementAndText, text.node_type));
 
     // Should not match comment
-    try testing.expect(!NodeFilter.isNodeTypeShown(showElementAndText, comment.base.node_type));
+    try testing.expect(!NodeFilter.isNodeTypeShown(showElementAndText, comment.node_type));
 }
 
 test "NodeFilter: filterNode skips non-matching types" {
