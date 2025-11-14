@@ -48,7 +48,7 @@ test "TextDecoder - decode UTF-8 ASCII" {
     defer decoder.deinit();
 
     const input = "Hello, World!";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, World!", output);
@@ -61,7 +61,7 @@ test "TextDecoder - decode UTF-8 with multibyte characters" {
     defer decoder.deinit();
 
     const input = "Hello, 世界!";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, 世界!", output);
@@ -74,7 +74,7 @@ test "TextDecoder - decode UTF-8 with BOM (removed by default)" {
     defer decoder.deinit();
 
     const input = [_]u8{ 0xEF, 0xBB, 0xBF, 'H', 'i' }; // BOM + "Hi"
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hi", output);
@@ -87,7 +87,7 @@ test "TextDecoder - decode UTF-8 with BOM (kept if ignoreBOM=true)" {
     defer decoder.deinit();
 
     const input = [_]u8{ 0xEF, 0xBB, 0xBF, 'H', 'i' }; // BOM + "Hi"
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     // BOM should be kept (U+FEFF)
@@ -103,7 +103,7 @@ test "TextDecoder - decode windows-1252" {
 
     // Windows-1252: 0xA9 = © (copyright sign)
     const input = [_]u8{ 0xA9, ' ', 0x32, 0x30, 0x32, 0x34 }; // "© 2024"
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("© 2024", output);
@@ -117,7 +117,7 @@ test "TextDecoder - decode ISO-8859-2" {
 
     // ISO-8859-2: 0xE1 = á
     const input = [_]u8{ 0xE1, 0x62, 0x63 }; // "ábc"
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("ábc", output);
@@ -145,7 +145,7 @@ test "TextDecoder - empty input" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     defer decoder.deinit();
 
-    const output = try decoder.decode("", .{});
+    const output = try decoder.call_decode("", .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("", output);

@@ -50,7 +50,7 @@ test "TextDecoder - decode UTF-8 ASCII" {
     defer decoder.deinit();
 
     const input = "Hello, World!";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, World!", output);
@@ -63,7 +63,7 @@ test "TextDecoder - decode UTF-8 with multibyte characters" {
     defer decoder.deinit();
 
     const input = "Hello, 世界!";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, 世界!", output);
@@ -76,7 +76,7 @@ test "TextDecoder - decode UTF-8 with BOM (removed by default)" {
     defer decoder.deinit();
 
     const input = [_]u8{ 0xEF, 0xBB, 0xBF, 'H', 'i' };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hi", output);
@@ -89,7 +89,7 @@ test "TextDecoder - decode windows-1252" {
     defer decoder.deinit();
 
     const input = [_]u8{ 0xA9, ' ', 0x32, 0x30, 0x32, 0x34 };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("© 2024", output);
@@ -102,7 +102,7 @@ test "TextDecoder - decode ISO-8859-2" {
     defer decoder.deinit();
 
     const input = [_]u8{ 0xE1, 0x62, 0x63 };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("ábc", output);
@@ -130,7 +130,7 @@ test "TextDecoder - empty input" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     defer decoder.deinit();
 
-    const output = try decoder.decode("", .{});
+    const output = try decoder.call_decode("", .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("", output);
@@ -149,7 +149,7 @@ test "TextDecoder - BOM reset bug (streaming then non-streaming)" {
 
     // Step 1: Streaming decode (stream:true) - should strip BOM
     {
-        const output1 = try decoder.decode(&input_with_bom, .{ .stream = true });
+        const output1 = try decoder.call_decode(&input_with_bom, .{ .stream = true });
         defer allocator.free(output1);
         try std.testing.expectEqualStrings("Hello", output1);
     }
@@ -157,7 +157,7 @@ test "TextDecoder - BOM reset bug (streaming then non-streaming)" {
     // Step 2: Non-streaming decode (stream:false) with BOM again
     // BUG: bom_seen flag is not reset, so BOM won't be stripped!
     {
-        const output2 = try decoder.decode(&input_with_bom, .{ .stream = false });
+        const output2 = try decoder.call_decode(&input_with_bom, .{ .stream = false });
         defer allocator.free(output2);
 
         // Expected: "Hello" (BOM should be stripped because do_not_flush is reset)

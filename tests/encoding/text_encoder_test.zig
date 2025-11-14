@@ -22,7 +22,7 @@ test "TextEncoder - encode ASCII string" {
 
     // WebIDL: input is USVString (UTF-16)
     const input: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o', ',', ' ', 'W', 'o', 'r', 'l', 'd', '!' };
-    const result = try encoder.encode(input);
+    const result = try encoder.call_encode(input);
     defer result.buffer.deinit(allocator);
     defer allocator.destroy(result.buffer);
 
@@ -40,7 +40,7 @@ test "TextEncoder - encode UTF-16 string with emoji" {
     // WebIDL: input is USVString (UTF-16)
     // "Hello 🌍" - emoji U+1F30D requires surrogate pair in UTF-16
     const input: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o', ' ', 0xD83C, 0xDF0D };
-    const result = try encoder.encode(input);
+    const result = try encoder.call_encode(input);
     defer result.buffer.deinit(allocator);
     defer allocator.destroy(result.buffer);
 
@@ -59,7 +59,7 @@ test "TextEncoder - encode handles unpaired surrogates in USVString" {
     // But if they exist, they should be handled gracefully
     // High surrogate without low surrogate: 0xD800
     const input: []const u16 = &.{0xD800};
-    const result = try encoder.encode(input);
+    const result = try encoder.call_encode(input);
     defer result.buffer.deinit(allocator);
     defer allocator.destroy(result.buffer);
 

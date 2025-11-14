@@ -62,7 +62,7 @@ test "WebIDL TextDecoder - decode UTF-8 ASCII" {
     defer decoder.deinit();
 
     const input = "Hello, World!";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, World!", output);
@@ -75,7 +75,7 @@ test "WebIDL TextDecoder - decode UTF-8 with multibyte characters" {
     defer decoder.deinit();
 
     const input = "Hello, 世界! 🌍";
-    const output = try decoder.decode(input, .{});
+    const output = try decoder.call_decode(input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, 世界! 🌍", output);
@@ -89,7 +89,7 @@ test "WebIDL TextDecoder - decode UTF-8 with BOM (default strips BOM)" {
 
     // UTF-8 BOM: EF BB BF
     const input = [_]u8{ 0xEF, 0xBB, 0xBF, 'H', 'i' };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hi", output);
@@ -103,7 +103,7 @@ test "WebIDL TextDecoder - decode UTF-8 with BOM (ignoreBOM keeps BOM)" {
 
     // UTF-8 BOM: EF BB BF (should NOT be stripped)
     const input = [_]u8{ 0xEF, 0xBB, 0xBF, 'H', 'i' };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     // BOM is kept (EF BB BF is valid UTF-8 for U+FEFF)
@@ -118,7 +118,7 @@ test "WebIDL TextDecoder - decode windows-1252" {
 
     // 0xA9 is copyright symbol in windows-1252
     const input = [_]u8{ 0xA9, ' ', '2', '0', '2', '4' };
-    const output = try decoder.decode(&input, .{});
+    const output = try decoder.call_decode(&input, .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("© 2024", output);
@@ -130,7 +130,7 @@ test "WebIDL TextDecoder - decode empty input" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     defer decoder.deinit();
 
-    const output = try decoder.decode("", .{});
+    const output = try decoder.call_decode("", .{});
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("", output);
@@ -172,7 +172,7 @@ test "WebIDL TextEncoder - encode ASCII string" {
     defer encoder.deinit();
 
     const input = "Hello, World!";
-    const output = try encoder.encode(input);
+    const output = try encoder.call_encode(input);
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, World!", output);
@@ -185,7 +185,7 @@ test "WebIDL TextEncoder - encode UTF-8 with multibyte characters" {
     defer encoder.deinit();
 
     const input = "Hello, 世界! 🌍";
-    const output = try encoder.encode(input);
+    const output = try encoder.call_encode(input);
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("Hello, 世界! 🌍", output);
@@ -197,7 +197,7 @@ test "WebIDL TextEncoder - encode empty string" {
     var encoder = TextEncoder.init(allocator);
     defer encoder.deinit();
 
-    const output = try encoder.encode("");
+    const output = try encoder.call_encode("");
     defer allocator.free(output);
 
     try std.testing.expectEqualStrings("", output);
@@ -286,11 +286,11 @@ test "WebIDL - TextDecoder/TextEncoder round-trip" {
     const original = "Hello, 世界! 🌍 © 2024";
 
     // Encode
-    const encoded = try encoder.encode(original);
+    const encoded = try encoder.call_encode(original);
     defer allocator.free(encoded);
 
     // Decode
-    const decoded = try decoder.decode(encoded, .{});
+    const decoded = try decoder.call_decode(encoded, .{});
     defer allocator.free(decoded);
 
     // Should match original
