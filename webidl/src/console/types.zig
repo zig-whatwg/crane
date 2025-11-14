@@ -155,6 +155,8 @@ pub const Message = struct {
                 .null => "null",
                 .undefined => "undefined",
                 .object => "[object Object]",
+                .function => "[Function]",
+                .interface_ptr => "[object]",
             };
             try result.appendSlice(arg_str);
         }

@@ -1161,6 +1161,8 @@ pub const console = struct {
                 .null => try self.allocator.dupe(u8, "null"),
                 .undefined => try self.allocator.dupe(u8, "undefined"),
                 .object => try self.allocator.dupe(u8, "[object Object]"),
+                .function => try self.allocator.dupe(u8, "[Function]"),
+                .interface_ptr => try self.allocator.dupe(u8, "[object]"),
             },
             .integer => switch (value) {
                 .string => |s| blk: {
@@ -1172,6 +1174,8 @@ pub const console = struct {
                 .null => try self.allocator.dupe(u8, "0"),
                 .undefined => try self.allocator.dupe(u8, "NaN"),
                 .object => try self.allocator.dupe(u8, "0"),
+                .function => try self.allocator.dupe(u8, "0"),
+                .interface_ptr => try self.allocator.dupe(u8, "0"),
             },
             .float => switch (value) {
                 .string => |s| blk: {
@@ -1183,6 +1187,8 @@ pub const console = struct {
                 .null => try self.allocator.dupe(u8, "0"),
                 .undefined => try self.allocator.dupe(u8, "NaN"),
                 .object => try self.allocator.dupe(u8, "NaN"),
+                .function => try self.allocator.dupe(u8, "NaN"),
+                .interface_ptr => try self.allocator.dupe(u8, "NaN"),
             },
             .optimal, .object => switch (value) {
                 .string => |s| try self.allocator.dupe(u8, s),
@@ -1190,6 +1196,9 @@ pub const console = struct {
                 .boolean => |b| try self.allocator.dupe(u8, if (b) "true" else "false"),
                 .null => try self.allocator.dupe(u8, "null"),
                 .undefined => try self.allocator.dupe(u8, "undefined"),
+                .object => try self.allocator.dupe(u8, "[object Object]"),
+                .function => try self.allocator.dupe(u8, "[Function]"),
+                .interface_ptr => try self.allocator.dupe(u8, "[object]"),
             },
             .css => try self.allocator.dupe(u8, ""),
         };

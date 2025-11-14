@@ -123,6 +123,8 @@ fn mockToString(
         .null => try allocator.dupe(u8, "null"),
         .undefined => try allocator.dupe(u8, "undefined"),
         .object => try allocator.dupe(u8, "[object Object]"),
+        .function => try allocator.dupe(u8, "[Function]"),
+        .interface_ptr => try allocator.dupe(u8, "[object]"),
     };
 }
 
@@ -137,6 +139,8 @@ fn mockToInteger(
         .null => 0,
         .undefined => 0,
         .object => 0,
+        .function => 0,
+        .interface_ptr => 0,
     };
 }
 
@@ -151,6 +155,8 @@ fn mockToFloat(
         .null => 0.0,
         .undefined => std.math.nan(f64),
         .object => std.math.nan(f64),
+        .function => std.math.nan(f64),
+        .interface_ptr => std.math.nan(f64),
     };
 }
 
