@@ -824,6 +824,7 @@ pub fn build(b: *std.Build) void {
     url_search_params_impl_mod.addImport("form_parser", url_form_parser_mod);
     url_search_params_impl_mod.addImport("form_serializer", url_form_serializer_mod);
 
+    url_ipv4_parser_mod.addImport("infra", infra_mod);
     url_ipv4_parser_mod.addImport("validation", url_validation_mod);
     url_ipv6_parser_mod.addImport("validation", url_validation_mod);
     url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);

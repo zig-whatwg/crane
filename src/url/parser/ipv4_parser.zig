@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const validation = @import("validation");
 
 pub const IPv4Error = error{
@@ -97,28 +98,28 @@ pub fn parseIPv4(
     errors: ?*std.ArrayList(validation.ValidationError),
 ) !u32 {
     // Step 1: Split on '.'
-    var parts = std.ArrayList([]const u8).empty;
-    defer parts.deinit(allocator);
+    var parts = infra.List([]const u8).init(allocator);
+    defer parts.deinit();
 
     var it = std.mem.splitScalar(u8, input, '.');
     while (it.next()) |part| {
-        try parts.append(allocator, part);
+        try parts.append(part);
     }
 
     // Step 2: Handle trailing empty part
-    if (parts.items.len > 0 and parts.items[parts.items.len - 1].len == 0) {
+    if (parts.len > 0 and parts.get(parts.len - 1).?.len == 0) {
         if (errors) |errs| {
             try errs.append(allocator, .{ .type = .ipv4_empty_part });
         }
 
         // Remove last item if there's more than one part
-        if (parts.items.len > 1) {
-            _ = parts.pop();
+        if (parts.len > 1) {
+            _ = parts.remove(parts.len - 1) catch unreachable;
         }
     }
 
     // Step 3: Check for too many parts
-    if (parts.items.len > 4) {
+    if (parts.len > 4) {
         if (errors) |errs| {
             try errs.append(allocator, .{ .type = .ipv4_too_many_parts });
         }
@@ -126,11 +127,11 @@ pub fn parseIPv4(
     }
 
     // Step 4: Parse each part
-    var numbers = std.ArrayList(u64).empty;
-    defer numbers.deinit(allocator);
+    var numbers = infra.List(u64).init(allocator);
+    defer numbers.deinit();
 
     // Step 5: Parse each part
-    for (parts.items) |part| {
+    for (parts.toSlice()) |part| {
         const result = parseIPv4Number(part) catch {
             if (errors) |errs| {
                 try errs.append(allocator, .{ .type = .ipv4_non_numeric_part });
@@ -146,11 +147,11 @@ pub fn parseIPv4(
         }
 
         // Step 5.4: Append to numbers
-        try numbers.append(allocator, result.value);
+        try numbers.append(result.value);
     }
 
     // Step 6: Check if any item > 255 (validation error)
-    for (numbers.items) |n| {
+    for (numbers.toSlice()) |n| {
         if (n > 255) {
             if (errors) |errs| {
                 try errs.append(allocator, .{ .type = .ipv4_out_of_range_part });
@@ -160,24 +161,25 @@ pub fn parseIPv4(
     }
 
     // Step 7: If any but last > 255, failure
-    for (numbers.items[0 .. numbers.items.len - 1]) |n| {
+    const nums_slice = numbers.toSlice();
+    for (nums_slice[0 .. nums_slice.len - 1]) |n| {
         if (n > 255) {
             return IPv4Error.OutOfRange;
         }
     }
 
     // Step 8: Check last item range
-    const max_last = std.math.pow(u64, 256, 5 - numbers.items.len);
-    if (numbers.items[numbers.items.len - 1] >= max_last) {
+    const max_last = std.math.pow(u64, 256, 5 - numbers.len);
+    if (nums_slice[nums_slice.len - 1] >= max_last) {
         return IPv4Error.OutOfRange;
     }
 
     // Step 9: Get last item
-    var ipv4 = numbers.items[numbers.items.len - 1];
+    var ipv4 = nums_slice[nums_slice.len - 1];
 
     // Step 11-12: Accumulate other parts
     var counter: usize = 0;
-    for (numbers.items[0 .. numbers.items.len - 1]) |n| {
+    for (nums_slice[0 .. nums_slice.len - 1]) |n| {
         const shift = std.math.pow(u64, 256, 3 - counter);
         ipv4 += n * shift;
         counter += 1;
@@ -238,14 +240,14 @@ test "ipv4 parser - octal" {
 test "ipv4 parser - trailing dot" {
     const allocator = std.testing.allocator;
 
-    var errors_list = std.ArrayList(validation.ValidationError).empty;
-    defer errors_list.deinit(allocator);
+    var errors_list = infra.List(validation.ValidationError).init(allocator);
+    defer errors_list.deinit();
 
     // 127.0.0.1. should parse and generate validation error
     const addr = try parseIPv4(allocator, "127.0.0.1.", &errors_list);
     try std.testing.expectEqual(@as(u32, 0x7F000001), addr);
-    try std.testing.expectEqual(@as(usize, 1), errors_list.items.len);
-    try std.testing.expectEqual(validation.ErrorType.ipv4_empty_part, errors_list.items[0].type);
+    try std.testing.expectEqual(@as(usize, 1), errors_list.len);
+    try std.testing.expectEqual(validation.ErrorType.ipv4_empty_part, errors_list.get(0).?.type);
 }
 
 test "ipv4 parser - too many parts" {
