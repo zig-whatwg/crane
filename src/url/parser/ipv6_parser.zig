@@ -72,7 +72,7 @@ const Pointer = struct {
 ///
 /// Full spec-compliant implementation with all validation errors.
 pub fn parseIPv6(
-    allocator: std.mem.Allocator,
+    _: std.mem.Allocator,
     input: []const u8,
     errors: ?*infra.List(validation.ValidationError),
 ) ![8]u16 {
