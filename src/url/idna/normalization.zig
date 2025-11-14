@@ -46,7 +46,7 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     }
 
     // Step 3: Canonical ordering by combining class
-    canonicalOrder(decomposed.items());
+    canonicalOrder(decomposed.toSliceMut());
 
     // Step 4: Canonical composition
     var composed = infra.List(u21).init(allocator);
@@ -113,7 +113,7 @@ pub fn normalize(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 if (unicode_data.lookupComposition(current, mark)) |comp| {
                     if (!unicode_data.isCompositionExcluded(comp)) {
                         current = comp;
-                        consumed_marks.getMut(mark_idx).?.* = true;
+                        consumed_marks.toSliceMut()[mark_idx] = true;
                         last_cc = 0;
                         continue;
                     }

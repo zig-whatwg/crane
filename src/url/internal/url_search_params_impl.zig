@@ -245,7 +245,7 @@ pub const URLSearchParamsImpl = struct {
         var i: usize = 0;
 
         while (i < self.list.len) {
-            const tuple = self.list.getMut(i).?;
+            const tuple = &self.list.toSliceMut()[i];
 
             if (std.mem.eql(u8, tuple.name, name)) {
                 if (!found_first) {

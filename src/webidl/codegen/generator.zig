@@ -244,8 +244,8 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
             const name_j = sorted_imports.get(j).?.name;
             if (std.mem.order(u8, name_i, name_j) == .gt) {
                 const temp = sorted_imports.get(i).?;
-                sorted_imports.getMut(i).?.* = sorted_imports.get(j).?;
-                sorted_imports.getMut(j).?.* = temp;
+                sorted_imports.toSliceMut()[i] = sorted_imports.get(j).?;
+                sorted_imports.toSliceMut()[j] = temp;
             }
         }
     }

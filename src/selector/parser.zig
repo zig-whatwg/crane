@@ -331,8 +331,8 @@ pub const Parser = struct {
     pub fn parseSelectorList(self: *Parser) ParserError!SelectorList {
         var selectors = infra.List(ComplexSelector).init(self.allocator);
         errdefer {
-            for (0..selectors.len) |i| {
-                selectors.getMut(i).?.deinit();
+            for (selectors.toSliceMut()) |*selector| {
+                selector.deinit();
             }
             selectors.deinit();
         }
@@ -364,7 +364,7 @@ pub const Parser = struct {
         var selectors = infra.List(ComplexSelector).init(self.allocator);
         errdefer {
             for (0..selectors.len) |i| {
-                selectors.getMut(i).?.deinit();
+                selectors.toSliceMut()[i].deinit();
             }
             selectors.deinit();
         }
@@ -417,7 +417,7 @@ pub const Parser = struct {
         var combinators = infra.List(CombinatorPair).init(self.allocator);
         errdefer {
             for (0..combinators.len) |i| {
-                combinators.getMut(i).?.compound.deinit();
+                combinators.toSliceMut()[i].compound.deinit();
             }
             combinators.deinit();
         }
@@ -504,7 +504,7 @@ pub const Parser = struct {
         var simple_selectors = infra.List(SimpleSelector).init(self.allocator);
         errdefer {
             for (0..simple_selectors.len) |i| {
-                simple_selectors.getMut(i).?.deinit(self.allocator);
+                simple_selectors.toSliceMut()[i].deinit(self.allocator);
             }
             simple_selectors.deinit();
         }

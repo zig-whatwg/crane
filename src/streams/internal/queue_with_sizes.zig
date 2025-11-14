@@ -314,7 +314,7 @@ test "QueueWithSizes - negative total size clamped to zero" {
     try std.testing.expectEqual(@as(f64, 0.1), queue.queue_total_size);
 
     // Manually set a larger size to trigger clamping
-    queue.queue.getMut(0).?.size = 0.2;
+    queue.queue.toSliceMut()[0].size = 0.2;
 
     // Dequeue should clamp to 0
     _ = try queue.dequeueValue();
