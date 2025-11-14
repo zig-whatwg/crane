@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const infra = @import("infra");
 
 // Import stream infrastructure
 const common = @import("common");
@@ -69,7 +70,7 @@ pub const WritableStream = webidl.interface(struct {
     writer: Writer,
 
     /// [[writeRequests]]: list of async promises
-    writeRequests: std.ArrayList(*AsyncPromise(void)),
+    writeRequests: infra.List(*AsyncPromise(void)),
 
     /// Event loop for async operations (borrowed reference)
     eventLoop: eventLoop.EventLoop,
@@ -94,7 +95,7 @@ pub const WritableStream = webidl.interface(struct {
         self.controller.deinit();
         self.allocator.destroy(self.controller);
 
-        self.writeRequests.deinit(self.allocator);
+        self.writeRequests.deinit();
 
         switch (self.writer) {
             .default => |w| {
@@ -168,7 +169,7 @@ pub const WritableStream = webidl.interface(struct {
             .state = .writable,
             .storedError = null,
             .writer = .none,
-            .writeRequests = std.ArrayList(*AsyncPromise(void)){},
+            .writeRequests = infra.List(*AsyncPromise(void)).init(allocator),
             .eventLoop = loop,
             .eventLoop_storage = null,
         };
