@@ -127,10 +127,18 @@ pub const DocumentType = struct {
         // NOTE: Parent Node/EventTarget fields must be initialized here
         return .{
             .event_listener_list = null, // From EventTarget
+            .node_type = 10, // DOCUMENT_TYPE_NODE
+            .node_name = name, // Per DOM spec, DocumentType's nodeName is its name
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             .allocator = allocator,
-            .name = name,
-            .public_id = public_id,
-            .system_id = system_id,
+            .name = try allocator.dupe(u8, name),
+            .public_id = try allocator.dupe(u8, public_id),
+            .system_id = try allocator.dupe(u8, system_id),
         };
     
     }

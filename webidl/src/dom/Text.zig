@@ -2,16 +2,16 @@
 //! Spec: https://dom.spec.whatwg.org/#interface-text
 
 const std = @import("std");
-const infra = @import("infra");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const CharacterData = @import("character_data").CharacterData;
 const ChildNode = @import("child_node").ChildNode;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
 const Slottable = @import("slottable").Slottable;
 const dom_types = @import("dom_types");
-const Node = @import("node").Node;
-const Document = @import("document").Document;
+
 const Allocator = std.mem.Allocator;
+const Node = @import("node").Node;
 
 /// DOM Spec: interface Text : CharacterData
 /// Text extends CharacterData (fields/methods inherited)
@@ -29,7 +29,16 @@ pub const Text = webidl.interface(struct {
         // NOTE: Parent CharacterData/Node/EventTarget fields must be initialized here
         return .{
             .event_listener_list = null, // From EventTarget
+            .node_type = 3, // TEXT_NODE
+            .node_name = "#text",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             .allocator = allocator,
+            .data = try allocator.dupe(u8, ""),
         };
     }
 

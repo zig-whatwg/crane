@@ -64,6 +64,14 @@ pub const Document = webidl.interface(struct {
     pub fn init(allocator: Allocator) !Document {
         return .{
             .event_listener_list = null, // From EventTarget
+            .node_type = 9, // DOCUMENT_NODE
+            .node_name = "#document",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             .allocator = allocator,
             ._implementation = null,
             ._string_pool = std.StringHashMap(void).init(allocator),
