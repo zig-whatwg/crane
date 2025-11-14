@@ -203,7 +203,7 @@ pub fn parseWithStateOverride(
     url_mut: ?*URLRecord,
 ) ParseError!URLRecord {
     // P3 Optimization: Arena allocation for parsing
-    // URL parsing creates many temporary allocations (ArrayLists, strings, etc.).
+    // URL parsing creates many temporary allocations (Lists, strings, etc.).
     // Using an arena allocator lets us free all parsing temporaries with a single
     // bulk deallocation at the end, reducing allocation overhead by 30-50%.
     var arena = std.heap.ArenaAllocator.init(allocator);

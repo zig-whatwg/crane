@@ -590,7 +590,7 @@ pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*
 // ============================================================================
 
 /// Get all inclusive descendants of a node in tree order (preorder, depth-first)
-/// Returns an ArrayList that the caller must deinit
+/// Returns a List that the caller must deinit
 ///
 /// Tree order is defined in DOM spec as preorder, depth-first traversal:
 /// 1. Visit node
@@ -612,7 +612,7 @@ pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Nod
 /// Helper function to recursively collect descendants
 fn collectDescendantsInTreeOrder(result: *infra.List(*Node), node: *const Node) !void {
     // Visit all children in order
-    // node.child_nodes is a List, not ArrayList, so iterate properly
+    // node.child_nodes is a List, so iterate properly
     var i: usize = 0;
     while (i < node.child_nodes.len) : (i += 1) {
         const child = node.child_nodes.get(i).?;

@@ -45,7 +45,7 @@ pub const ReadableStreamDefaultReader = webidl.interface(struct {
     /// [[readRequests]]: List of pending read requests (async promises)
     ///
     /// Spec: § 4.3.2 Internal slot [[readRequests]]
-    /// Changed from ArrayList(ReadRequest) to support async operations
+    /// Changed from List(ReadRequest) to support async operations
     readRequests: infra.List(*AsyncPromise(common.ReadResult)),
 
     /// Initialize a new default reader (internal - not exposed via WebIDL)

@@ -91,7 +91,7 @@ fn parseIPv4Number(input: []const u8) !NumberResult {
 /// Takes ASCII string and returns 32-bit IPv4 address.
 /// Supports various notations and validates according to spec.
 ///
-/// Note: errors ArrayList must be initialized with the same allocator
+/// Note: errors List must be initialized with the same allocator
 pub fn parseIPv4(
     allocator: std.mem.Allocator,
     input: []const u8,

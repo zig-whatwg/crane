@@ -472,7 +472,7 @@ test "Tokenizer: zero-copy design" {
     try testing.expect(@intFromPtr(tok1.value.ptr) < @intFromPtr(input.ptr) + input.len);
 }
 
-// Note: tokenize() test temporarily disabled due to ArrayList API in tests
+// Note: tokenize() test temporarily disabled due to List API in tests
 // The tokenize() function itself works fine when called from other code
 test "Tokenizer: tokenize() full selector" {
     const allocator = testing.allocator;

@@ -30,7 +30,7 @@ const NodeBase = @import("node_base.zig").NodeBase;
 ///    using scoping root node.
 ///
 /// Returns:
-/// - ArrayList of matching elements (in tree order)
+/// - List of matching elements (in tree order)
 /// - error.SyntaxError if parsing fails
 pub fn scopeMatchSelectorsString(
     allocator: std.mem.Allocator,

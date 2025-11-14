@@ -14,7 +14,7 @@ const serializeHost = @import("host_serializer").serializeHost;
 
 /// Calculate estimated capacity needed for URL serialization (Performance Optimization P1.3)
 ///
-/// This provides a capacity hint to avoid ArrayList reallocations during serialization.
+/// This provides a capacity hint to avoid List reallocations during serialization.
 /// We calculate the exact or near-exact size needed for all URL components.
 fn estimateSerializedSize(url: *const URLRecord, exclude_fragment: bool) usize {
     var capacity: usize = 0;
@@ -88,7 +88,7 @@ fn estimateSerializedSize(url: *const URLRecord, exclude_fragment: bool) usize {
 /// Takes a URL and optional exclude_fragment flag (default false).
 /// Returns an ASCII string.
 ///
-/// OPTIMIZED (P1.3): Now pre-calculates capacity to avoid ArrayList reallocations.
+/// OPTIMIZED (P1.3): Now pre-calculates capacity to avoid List reallocations.
 /// Expected improvement: 40% fewer allocations during serialization.
 ///
 /// Steps:
@@ -122,32 +122,32 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
     // Step 2: If url's host is non-null
     if (url.host) |host| {
         // Step 2.1: Append "//"
-        try output.appendSlice( "//");
+        try output.appendSlice("//");
 
         // Step 2.2: If url includes credentials
         if (url.includesCredentials()) {
             // Step 2.2.i: Append username
-            try output.appendSlice( url.username());
+            try output.appendSlice(url.username());
 
             // Step 2.2.ii: If password is not empty, append ":" + password
             const password = url.password();
             if (password.len > 0) {
-                try output.append( ':');
-                try output.appendSlice( password);
+                try output.append(':');
+                try output.appendSlice(password);
             }
 
             // Step 2.2.iii: Append "@"
-            try output.append( '@');
+            try output.append('@');
         }
 
         // Step 2.3: Append host (serialized)
         const host_str = try serializeHost(allocator, host);
         defer allocator.free(host_str);
-        try output.appendSlice( host_str);
+        try output.appendSlice(host_str);
 
         // Step 2.4: If port is non-null, append ":" + port
         if (url.port) |port| {
-            try output.append( ':');
+            try output.append(':');
             try output.writer(allocator).print("{d}", .{port});
         }
     }
@@ -160,26 +160,26 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
         url.path.segments.items.len > 1 and
         url.path.segments.items[0].len == 0)
     {
-        try output.appendSlice( "/.");
+        try output.appendSlice("/.");
     }
 
     // Step 4: Append URL path serialized
     const path_str = try serializePath(allocator, url);
     defer allocator.free(path_str);
-    try output.appendSlice( path_str);
+    try output.appendSlice(path_str);
 
     // Step 5: If query is non-null, append "?" + query
     if (url.query()) |query| {
-        try output.append( '?');
-        try output.appendSlice( query);
+        try output.append('?');
+        try output.appendSlice(query);
     }
 
     // Step 6: If exclude_fragment is false and fragment is non-null,
     // append "#" + fragment
     if (!exclude_fragment) {
         if (url.fragment()) |fragment| {
-            try output.append( '#');
-            try output.appendSlice( fragment);
+            try output.append('#');
+            try output.appendSlice(fragment);
         }
     }
 
@@ -305,9 +305,9 @@ test "url serializer - with path" {
     const host = Host{ .domain = try allocator.dupe(u8, "example.com") };
 
     var segments = infra.List([]const u8).init(allocator);
-    try segments.append( try allocator.dupe(u8, "path"));
-    try segments.append( try allocator.dupe(u8, "to"));
-    try segments.append( try allocator.dupe(u8, "file"));
+    try segments.append(try allocator.dupe(u8, "path"));
+    try segments.append(try allocator.dupe(u8, "to"));
+    try segments.append(try allocator.dupe(u8, "file"));
 
     var url = URLRecord{
         .buffer = buffer,
