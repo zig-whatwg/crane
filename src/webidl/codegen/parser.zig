@@ -777,17 +777,17 @@ fn extractDocComment(allocator: Allocator, source: []const u8, target_line_start
 
     // Reverse the lines (we collected them backwards) and join with newlines
     const lines = doc_lines.toSlice();
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var i: usize = lines.len;
     while (i > 0) {
         i -= 1;
-        try result.appendSlice(allocator, lines[i]);
-        if (i > 0) try result.append(allocator, '\n');
+        try result.appendSlice(lines[i]);
+        if (i > 0) try result.append('\n');
     }
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 /// Parse field declarations
@@ -852,21 +852,21 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
                 const type_text = struct_body[field_start..type_end];
 
                 // Normalize whitespace: collapse newlines/multiple spaces to single space
-                var type_name_buf: std.ArrayList(u8) = .empty;
-                defer type_name_buf.deinit(allocator);
+                var type_name_buf = infra.List(u8).init(allocator);
+                defer type_name_buf.deinit();
                 var last_was_space = false;
                 for (type_text) |c| {
                     if (c == ' ' or c == '\t' or c == '\n' or c == '\r') {
                         if (!last_was_space) {
-                            try type_name_buf.append(allocator, ' ');
+                            try type_name_buf.append(' ');
                             last_was_space = true;
                         }
                     } else {
-                        try type_name_buf.append(allocator, c);
+                        try type_name_buf.append(c);
                         last_was_space = false;
                     }
                 }
-                const type_name_raw = try type_name_buf.toOwnedSlice(allocator);
+                const type_name_raw = try type_name_buf.toOwnedSlice();
                 const type_name_trimmed = std.mem.trim(u8, type_name_raw, " \t");
                 const type_name = try allocator.dupe(u8, type_name_trimmed);
                 allocator.free(type_name_raw);

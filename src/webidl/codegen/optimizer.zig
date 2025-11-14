@@ -640,25 +640,25 @@ fn addImportForType(
     else blk: {
         // Convert PascalCase to snake_case
         // E.g., "EventTarget" -> "event_target", "HTMLCollection" -> "html_collection"
-        var module_name_buf: std.ArrayList(u8) = .empty;
-        defer module_name_buf.deinit(allocator);
+        var module_name_buf = infra.List(u8).init(allocator);
+        defer module_name_buf.deinit();
 
         for (base_type, 0..) |c, i| {
             if (c >= 'A' and c <= 'Z') {
                 // Uppercase letter
                 if (i > 0) {
                     // Add underscore before uppercase (except first letter)
-                    try module_name_buf.append(allocator, '_');
+                    try module_name_buf.append('_');
                 }
                 // Convert to lowercase
-                try module_name_buf.append(allocator, c + 32);
+                try module_name_buf.append(c + 32);
             } else {
                 // Lowercase or other character
-                try module_name_buf.append(allocator, c);
+                try module_name_buf.append(c);
             }
         }
         module_allocated = true;
-        break :blk try module_name_buf.toOwnedSlice(allocator);
+        break :blk try module_name_buf.toOwnedSlice();
     };
     defer if (module_allocated) allocator.free(module);
 

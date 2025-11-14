@@ -28,8 +28,8 @@ pub fn generateEnhancedFile(
     }
 
     // Step 3: Enhance each class (resolve inheritance, imports)
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     const writer = output.writer(allocator);
 
@@ -57,7 +57,7 @@ pub fn generateEnhancedFile(
         try writer.writeAll("\n\n");
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Process all files in a directory using AST/IR pipeline
@@ -106,8 +106,8 @@ pub fn generateAllFiles(
     for (file_irs.items) |file_ir| {
         if (file_ir.classes.len == 0) continue;
 
-        var output: std.ArrayList(u8) = .empty;
-        errdefer output.deinit(allocator);
+        var output = infra.List(u8).init(allocator);
+        errdefer output.deinit();
 
         const writer = output.writer(allocator);
 
@@ -145,6 +145,6 @@ pub fn generateAllFiles(
         const output_file = try std.fs.cwd().createFile(output_path, .{});
         defer output_file.close();
 
-        try output_file.writeAll(output.items);
+        try output_file.writeAll(output.items());
     }
 }
