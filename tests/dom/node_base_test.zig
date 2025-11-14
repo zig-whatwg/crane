@@ -250,14 +250,14 @@ test "NodeBase - real CharacterData integration" {
     defer char_data.deinit();
 
     // Set initial data
-    char_data.base.data = try allocator.dupe(u8, "Hello, world!");
+    char_data.data = try allocator.dupe(u8, "Hello, world!");
 
     // Update node_type to TEXT_NODE for this test
-    char_data.base.node_type = NodeBase.TEXT_NODE;
-    char_data.base.node_name = "#text";
+    char_data.node_type = NodeBase.TEXT_NODE;
+    char_data.node_name = "#text";
 
-    // Get NodeBase pointer (CharacterData has `base: NodeBase`)
-    const node: *NodeBase = &char_data.base;
+    // Get NodeBase pointer (cast CharacterData to NodeBase)
+    const node: *NodeBase = @ptrCast(&char_data);
 
     // Verify node type
     try testing.expectEqual(NodeBase.TEXT_NODE, node.node_type);

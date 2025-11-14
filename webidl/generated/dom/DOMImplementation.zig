@@ -95,7 +95,7 @@ pub const DOMImplementation = struct {
         doctype.* = try DocumentType.init(self.allocator, name, public_id, system_id);
 
         // Set node document
-        doctype.base.owner_document = self.document;
+        doctype.owner_document = self.document;
 
         return doctype;
     

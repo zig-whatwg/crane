@@ -17,7 +17,7 @@ test "Element.insertAdjacentText - beforebegin inserts before element" {
     // Create parent and child elements
     const parent = try doc.call_createElement("div");
     const child = try doc.call_createElement("span");
-    _ = try parent.call_appendChild(&child.base);
+    _ = try parent.call_appendChild((&child));
 
     // Insert text before child
     try child.call_insertAdjacentText("beforebegin", "Hello ");
@@ -35,7 +35,7 @@ test "Element.insertAdjacentText - beforebegin inserts before element" {
 
     // Second child should be the span
     const second = parent.base.child_nodes.item(1).?;
-    try std.testing.expectEqual(&child.base, second);
+    try std.testing.expectEqual((&child), second);
 }
 
 test "Element.insertAdjacentText - afterbegin inserts as first child" {
@@ -46,7 +46,7 @@ test "Element.insertAdjacentText - afterbegin inserts as first child" {
 
     const element = try doc.call_createElement("div");
     const child = try doc.call_createElement("span");
-    _ = try element.call_appendChild(&child.base);
+    _ = try element.call_appendChild((&child));
 
     // Insert text at beginning
     try element.call_insertAdjacentText("afterbegin", "Start");
@@ -70,7 +70,7 @@ test "Element.insertAdjacentText - beforeend inserts as last child" {
 
     const element = try doc.call_createElement("div");
     const child = try doc.call_createElement("span");
-    _ = try element.call_appendChild(&child.base);
+    _ = try element.call_appendChild((&child));
 
     // Insert text at end
     try element.call_insertAdjacentText("beforeend", "End");
@@ -94,7 +94,7 @@ test "Element.insertAdjacentText - afterend inserts after element" {
 
     const parent = try doc.call_createElement("div");
     const child = try doc.call_createElement("span");
-    _ = try parent.call_appendChild(&child.base);
+    _ = try parent.call_appendChild((&child));
 
     // Insert text after child
     try child.call_insertAdjacentText("afterend", " World");

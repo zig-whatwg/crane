@@ -61,7 +61,7 @@ pub const DOMImplementation = webidl.interface(struct {
         doctype.* = try DocumentType.init(self.allocator, name, public_id, system_id);
 
         // Set node document
-        doctype.base.owner_document = self.document;
+        doctype.owner_document = self.document;
 
         return doctype;
     }
@@ -250,10 +250,3 @@ fn isValidDoctypeName(name: []const u8) bool {
     }
     return true;
 }
-
-
-
-
-
-
-

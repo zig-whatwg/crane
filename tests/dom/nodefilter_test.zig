@@ -48,10 +48,10 @@ test "NodeFilter: isNodeTypeShown returns true for matching type" {
     const elem = try doc.call_createElement("div");
 
     // SHOW_ELEMENT should match element nodes
-    try testing.expect(NodeFilter.isNodeTypeShown(NodeFilter.SHOW_ELEMENT, elem.base.node_type));
+    try testing.expect(NodeFilter.isNodeTypeShown(NodeFilter.SHOW_ELEMENT, elem.node_type));
 
     // SHOW_ALL should match all nodes
-    try testing.expect(NodeFilter.isNodeTypeShown(NodeFilter.SHOW_ALL, elem.base.node_type));
+    try testing.expect(NodeFilter.isNodeTypeShown(NodeFilter.SHOW_ALL, elem.node_type));
 }
 
 test "NodeFilter: isNodeTypeShown returns false for non-matching type" {
@@ -63,10 +63,10 @@ test "NodeFilter: isNodeTypeShown returns false for non-matching type" {
     const elem = try doc.call_createElement("div");
 
     // SHOW_TEXT should not match element nodes
-    try testing.expect(!NodeFilter.isNodeTypeShown(NodeFilter.SHOW_TEXT, elem.base.node_type));
+    try testing.expect(!NodeFilter.isNodeTypeShown(NodeFilter.SHOW_TEXT, elem.node_type));
 
     // SHOW_COMMENT should not match element nodes
-    try testing.expect(!NodeFilter.isNodeTypeShown(NodeFilter.SHOW_COMMENT, elem.base.node_type));
+    try testing.expect(!NodeFilter.isNodeTypeShown(NodeFilter.SHOW_COMMENT, elem.node_type));
 }
 
 test "NodeFilter: isNodeTypeShown works with combined bitmask" {
@@ -83,10 +83,10 @@ test "NodeFilter: isNodeTypeShown works with combined bitmask" {
     const showElementAndText = NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT;
 
     // Should match element
-    try testing.expect(NodeFilter.isNodeTypeShown(showElementAndText, elem.base.node_type));
+    try testing.expect(NodeFilter.isNodeTypeShown(showElementAndText, elem.node_type));
 
     // Should match text
-    try testing.expect(NodeFilter.isNodeTypeShown(showElementAndText, text.base.node_type));
+    try testing.expect(NodeFilter.isNodeTypeShown(showElementAndText, text.node_type));
 
     // Should not match comment
     try testing.expect(!NodeFilter.isNodeTypeShown(showElementAndText, comment.base.node_type));
@@ -101,7 +101,7 @@ test "NodeFilter: filterNode skips non-matching types" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_TEXT only (element should be skipped)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
@@ -114,7 +114,7 @@ test "NodeFilter: filterNode accepts matching types with no callback" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_ELEMENT and no callback (should accept)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -134,7 +134,7 @@ test "NodeFilter: filterNode calls callback for matching types" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }
 
@@ -154,7 +154,7 @@ test "NodeFilter: filterNode callback can accept nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -174,7 +174,7 @@ test "NodeFilter: filterNode callback can skip nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
@@ -190,9 +190,9 @@ test "NodeFilter: filterNode with SHOW_ALL and no callback accepts all" {
     const comment = try doc.call_createComment("comment");
 
     // All should be accepted with SHOW_ALL
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, &elem.base));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, &text.base));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, &comment.base));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&elem)));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&text)));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&comment)));
 }
 
 test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
@@ -210,6 +210,6 @@ test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
         }
     }.filter;
 
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, &elem.base);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, (&elem));
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }

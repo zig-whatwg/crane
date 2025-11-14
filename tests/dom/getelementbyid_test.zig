@@ -4,6 +4,7 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const Document = dom.Document;
+const Node = dom.Node;
 
 test "Document.getElementById - finds element by id attribute" {
     const allocator = std.testing.allocator;
@@ -13,7 +14,7 @@ test "Document.getElementById - finds element by id attribute" {
 
     // Create element with id
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     // Set id attribute
     try div.call_setAttribute("id", "test-id");
@@ -21,7 +22,7 @@ test "Document.getElementById - finds element by id attribute" {
     // Find by id
     const found = doc.call_getElementById("test-id");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&div.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
 }
 
 test "Document.getElementById - returns null for non-existent id" {
@@ -31,7 +32,7 @@ test "Document.getElementById - returns null for non-existent id" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
     try div.call_setAttribute("id", "existing");
 
     // Try to find non-existent id
@@ -50,9 +51,9 @@ test "Document.getElementById - finds nested element" {
     const span = try doc.call_createElement("span");
     const em = try doc.call_createElement("em");
 
-    _ = try doc.base.call_appendChild(&div.base);
-    _ = try div.call_appendChild(&span.base);
-    _ = try span.call_appendChild(&em.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
+    _ = try div.call_appendChild(@ptrCast(span));
+    _ = try span.call_appendChild(@ptrCast(em));
 
     // Set id on deeply nested element
     try em.call_setAttribute("id", "nested");
@@ -60,7 +61,7 @@ test "Document.getElementById - finds nested element" {
     // Find by id
     const found = doc.call_getElementById("nested");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&em.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(em)), @ptrCast(found?));
 }
 
 test "Document.getElementById - returns first element when multiple have same id" {
@@ -73,8 +74,8 @@ test "Document.getElementById - returns first element when multiple have same id
     const div1 = try doc.call_createElement("div");
     const div2 = try doc.call_createElement("div");
 
-    _ = try doc.base.call_appendChild(&div1.base);
-    _ = try doc.base.call_appendChild(&div2.base);
+    _ = try doc.call_appendChild(@ptrCast(div1));
+    _ = try doc.call_appendChild(@ptrCast(div2));
 
     try div1.call_setAttribute("id", "duplicate");
     try div2.call_setAttribute("id", "duplicate");
@@ -82,7 +83,7 @@ test "Document.getElementById - returns first element when multiple have same id
     // Should return first in tree order
     const found = doc.call_getElementById("duplicate");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&div1.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div1)), @ptrCast(found?));
 }
 
 test "Document.getElementById - case sensitive matching" {
@@ -92,7 +93,7 @@ test "Document.getElementById - case sensitive matching" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
     try div.call_setAttribute("id", "MyID");
 
     // Case sensitive - should not match
@@ -102,7 +103,7 @@ test "Document.getElementById - case sensitive matching" {
     // Exact match - should match
     const found_exact = doc.call_getElementById("MyID");
     try std.testing.expect(found_exact != null);
-    try std.testing.expectEqual(&div.base, &found_exact.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found_exact?));
 }
 
 test "Document.getElementById - ignores elements without id attribute" {
@@ -116,16 +117,16 @@ test "Document.getElementById - ignores elements without id attribute" {
     const div2 = try doc.call_createElement("div");
     const div3 = try doc.call_createElement("div");
 
-    _ = try doc.base.call_appendChild(&div1.base);
-    _ = try doc.base.call_appendChild(&div2.base);
-    _ = try doc.base.call_appendChild(&div3.base);
+    _ = try doc.call_appendChild(@ptrCast(div1));
+    _ = try doc.call_appendChild(@ptrCast(div2));
+    _ = try doc.call_appendChild(@ptrCast(div3));
 
     // Only middle element has id
     try div2.call_setAttribute("id", "middle");
 
     const found = doc.call_getElementById("middle");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&div2.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div2)), @ptrCast(found?));
 }
 
 test "Document.getElementById - empty id never matches" {
@@ -135,7 +136,7 @@ test "Document.getElementById - empty id never matches" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     // Set empty id attribute
     try div.call_setAttribute("id", "");
@@ -152,7 +153,7 @@ test "Document.getElementById - finds element after id attribute added" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     // Initially no id
     const found_before = doc.call_getElementById("added-later");
@@ -164,7 +165,7 @@ test "Document.getElementById - finds element after id attribute added" {
     // Now should find it
     const found_after = doc.call_getElementById("added-later");
     try std.testing.expect(found_after != null);
-    try std.testing.expectEqual(&div.base, &found_after.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found_after?));
 }
 
 test "Document.getElementById - does not find element after id attribute removed" {
@@ -174,7 +175,7 @@ test "Document.getElementById - does not find element after id attribute removed
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
     try div.call_setAttribute("id", "will-remove");
 
     // Initially should find it
@@ -196,14 +197,14 @@ test "Document.getElementById - special characters in id" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     // Set id with special characters (valid per HTML spec)
     try div.call_setAttribute("id", "my:id-with.special_chars");
 
     const found = doc.call_getElementById("my:id-with.special_chars");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&div.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
 }
 
 test "Document.getElementById - unicode in id" {
@@ -213,12 +214,12 @@ test "Document.getElementById - unicode in id" {
     defer doc.deinit();
 
     const div = try doc.call_createElement("div");
-    _ = try doc.base.call_appendChild(&div.base);
+    _ = try doc.call_appendChild(@ptrCast(div));
 
     // Set id with unicode characters
     try div.call_setAttribute("id", "元素-🌍");
 
     const found = doc.call_getElementById("元素-🌍");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(&div.base, &found.?.base);
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
 }
