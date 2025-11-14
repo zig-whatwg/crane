@@ -14,7 +14,7 @@ test "Text.wholeText - single Text node returns own data" {
 
     const text = try doc.call_createTextNode("Hello");
     const div = try doc.call_createElement("div");
-    _ = try div.call_appendChild((&text));
+    _ = try div.call_appendChild(@ptrCast(text));
 
     const whole = try text.get_wholeText();
     defer allocator.free(whole);

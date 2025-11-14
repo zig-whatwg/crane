@@ -146,16 +146,23 @@ pub const Attr = webidl.interface(struct {
         new_value: []const u8,
     ) !void {
         // Step 1: Queue a mutation record of "attributes"
-        const dom = @import("dom");
-        const empty_nodes: []const *@import("node").Node = &[_]*@import("node").Node{};
-        try dom.mutation.queueMutationRecord(
+        const mutation_observer = @import("mutation_observer_algorithms");
+        const NodeListType = @import("node_list").NodeList;
+
+        var empty_added = try NodeListType.init(element.allocator);
+        defer empty_added.deinit();
+        var empty_removed = try NodeListType.init(element.allocator);
+        defer empty_removed.deinit();
+
+        try mutation_observer.queueMutationRecord(
+            element.allocator,
             "attributes",
-            &element.base,
+            @as(*Node, @ptrCast(element)),
             attribute.local_name,
             attribute.namespace_uri,
             old_value,
-            empty_nodes,
-            empty_nodes,
+            &empty_added,
+            &empty_removed,
             null,
             null,
         );

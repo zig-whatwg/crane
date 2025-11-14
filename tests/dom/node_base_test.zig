@@ -36,7 +36,7 @@ const MockElement = struct {
                 .parent_node = null,
                 .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(dom.RegisteredObserver).init(allocator),
+                .registered_observers = infra.List(dom.RegisteredObserver).init(allocator),
             },
             .tag_name = tag_name,
             .namespace_uri = null,
@@ -69,7 +69,7 @@ const MockCharacterData = struct {
                 .parent_node = null,
                 .child_nodes = infra.List(*NodeBase).init(allocator),
                 .owner_document = null,
-                .registered_observers = std.ArrayList(dom.RegisteredObserver).init(allocator),
+                .registered_observers = infra.List(dom.RegisteredObserver).init(allocator),
             },
             .data = try allocator.dupe(u8, data),
         };

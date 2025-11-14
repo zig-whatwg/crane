@@ -5,8 +5,9 @@ const std = @import("std");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
+const dom_types = @import("dom_types");
 
 test "NodeOrDOMString compiles" {
-    const T = @TypeOf(NodeOrDOMString);
+    const T = @TypeOf(dom_types.NodeOrDOMString);
     try std.testing.expect(T != void);
 }

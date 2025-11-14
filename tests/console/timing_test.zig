@@ -7,7 +7,6 @@ const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
 
-
 test "call_time - starts new timer" {
     const allocator = std.testing.allocator;
     var console_obj = try console_mod.console.console.init(allocator);
@@ -39,7 +38,7 @@ test "call_time - duplicate timer returns without error" {
     const first_start = console_obj.timerTable.get(label).?;
 
     // Wait a tiny bit
-    std.time.sleep(1_000_000); // 1ms
+    std.Thread.sleep(1_000_000); // 1ms
 
     // Start timer second time (should return without changing timer)
     console_obj.call_time(label);
@@ -64,7 +63,7 @@ test "call_timeEnd - stops timer and removes from table" {
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Wait a bit
-    std.time.sleep(5_000_000); // 5ms
+    std.Thread.sleep(5_000_000); // 5ms
 
     // End timer
     console_obj.call_timeEnd(label);
@@ -99,7 +98,7 @@ test "call_timeLog - logs elapsed time without removing timer" {
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Wait a bit
-    std.time.sleep(3_000_000); // 3ms
+    std.Thread.sleep(3_000_000); // 3ms
 
     // Log timer (should not remove it)
     console_obj.call_timeLog(label, &.{});
@@ -134,17 +133,17 @@ test "timing - complete lifecycle (time → timeLog → timeEnd)" {
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 2. Wait and log intermediate time
-    std.time.sleep(2_000_000); // 2ms
+    std.Thread.sleep(2_000_000); // 2ms
     console_obj.call_timeLog(label, &.{});
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 3. Wait more and log again
-    std.time.sleep(2_000_000); // 2ms
+    std.Thread.sleep(2_000_000); // 2ms
     console_obj.call_timeLog(label, &.{});
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // 4. End timer
-    std.time.sleep(2_000_000); // 2ms
+    std.Thread.sleep(2_000_000); // 2ms
     console_obj.call_timeEnd(label);
     try std.testing.expect(!console_obj.timerTable.contains(label));
 }
@@ -160,9 +159,9 @@ test "timing - multiple concurrent timers" {
 
     // Start multiple timers
     console_obj.call_time(timer1);
-    std.time.sleep(1_000_000); // 1ms
+    std.Thread.sleep(1_000_000); // 1ms
     console_obj.call_time(timer2);
-    std.time.sleep(1_000_000); // 1ms
+    std.Thread.sleep(1_000_000); // 1ms
     console_obj.call_time(timer3);
 
     // All timers should exist
@@ -195,7 +194,7 @@ test "timing - elapsed time increases" {
     const start_time = console_obj.timerTable.get(label).?;
 
     // Wait
-    std.time.sleep(10_000_000); // 10ms
+    std.Thread.sleep(10_000_000); // 10ms
 
     // Check elapsed time
     const now = infra.Moment.now();
@@ -222,7 +221,7 @@ test "timing - timer labels are independent" {
     const time_a = console_obj.timerTable.get(label_a).?;
 
     // Wait
-    std.time.sleep(5_000_000); // 5ms
+    std.Thread.sleep(5_000_000); // 5ms
 
     // Start timerB
     console_obj.call_time(label_b);

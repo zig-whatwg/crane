@@ -3,8 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
-
 // Type aliases
 const Element = dom.Element;
 const Node = dom.Node;
@@ -27,8 +25,6 @@ test "Node.cloneNode - element with clonable shadow root is cloned" {
         SlotAssignmentMode.named,
         true, // clonable = true
         false, // serializable
-        false, // available_to_element_internals
-        false, // declarative
     );
     host.shadow_root = &shadow;
 
