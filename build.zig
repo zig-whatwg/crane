@@ -458,6 +458,8 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/dom/shadow_dom_algorithms.zig"),
         .target = target,
     });
+    shadow_dom_algorithms_mod.addImport("infra", infra_mod);
+    shadow_dom_algorithms_mod.addImport("webidl", webidl_mod);
     shadow_dom_algorithms_mod.addImport("element", element_mod);
     shadow_dom_algorithms_mod.addImport("shadow_root", shadow_root_mod);
 
@@ -479,6 +481,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/dom/slot_helpers.zig"),
         .target = target,
     });
+    slot_helpers_mod.addImport("infra", infra_mod);
     slot_helpers_mod.addImport("node", node_mod);
     slot_helpers_mod.addImport("element", element_mod);
     slot_helpers_mod.addImport("shadow_root", shadow_root_mod);

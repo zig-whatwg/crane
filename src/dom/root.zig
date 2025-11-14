@@ -70,8 +70,6 @@ pub const slot_helpers = @import("slot_helpers.zig");
 // Re-export slot_helpers functions
 pub const isElement = slot_helpers.isElement;
 pub const asElement = slot_helpers.asElement;
-pub const isText = slot_helpers.isText;
-pub const asText = slot_helpers.asText;
 
 // Re-export selector functions
 pub const scopeMatchSelectorsString = selectors.scopeMatchSelectorsString;
