@@ -10,8 +10,8 @@
 
 const std = @import("std");
 const url_mod = @import("url");
-const URL = url_mod.URL;
-const helpers = @import("url").test_helpers;
+const URL = @import("url0").URL;
+const helpers = url_mod.test_helpers;
 
 // ============================================================================
 // Basic HTTP/HTTPS Parsing

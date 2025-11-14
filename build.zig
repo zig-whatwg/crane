@@ -713,6 +713,9 @@ pub fn build(b: *std.Build) void {
     const url_internal_path_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/path.zig"),
         .target = target,
+        .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     const url_blob_url_mod = b.createModule(.{

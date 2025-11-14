@@ -19,7 +19,7 @@
 
 const std = @import("std");
 const url_mod = @import("url");
-const URL = url_mod.URL;
+const URL = @import("url0").URL;
 const helpers = @import("url").test_helpers;
 
 test "setProtocol - basic HTTP to HTTPS" {
