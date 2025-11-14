@@ -123,16 +123,6 @@ pub const Comment = struct {
     pub fn init(allocator: std.mem.Allocator) !Comment {
 
         return .{
-            .event_listener_list = null,
-            .node_type = 0,
-            .node_name = "",
-            .parent_node = null,
-            .child_nodes = infra.List(*Node).init(allocator),
-            .owner_document = null,
-            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-            .cloning_steps_hook = null,
-            .cached_child_nodes = null,
-            .data = try allocator.dupe(u8, ""),
             .allocator = allocator,
         };
     

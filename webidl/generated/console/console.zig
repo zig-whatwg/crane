@@ -199,17 +199,7 @@ pub const console = struct {
     /// ```
     pub fn init(allocator: Allocator) !console {
 
-        return .{
-            .allocator = null,
-            .enabled = false,
-            .printFn = null,
-            .runtime = null,
-            .countMap = null,
-            .timerTable = null,
-            .groupStack = null,
-            .messageBuffer = null,
-            .labelPool = std.StringHashMap(void).init(allocator),
-        };
+        return initWithBufferSize(allocator, 1000);
     
     }
 

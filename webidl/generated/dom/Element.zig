@@ -158,19 +158,25 @@ pub const Element = struct {
 
     pub fn init(allocator: Allocator, tag_name: []const u8) !Element {
 
+        // NOTE: Parent Node fields will be flattened by codegen
+        // NOTE: Mixin fields (Slottable) are also flattened by codegen
         return .{
+            // Inherited from EventTarget (via Node)
             .event_listener_list = null,
-            .node_type = 0,
-            .node_name = "",
+            // Inherited from Node
+            .node_type = 1, // ELEMENT_NODE
+            .node_name = tag_name,
             .parent_node = null,
             .child_nodes = infra.List(*Node).init(allocator),
             .owner_document = null,
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
+            // Slottable mixin fields
             .slottable_name = "",
             .assigned_slot = null,
             .manual_slot_assignment = null,
+            // Element own fields
             .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,

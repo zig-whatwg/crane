@@ -737,8 +737,12 @@ fn writeMethod(
         rewritten_signature,
     });
 
-    // Check if this is an init method - synthesize body from field init expressions
-    if (std.mem.eql(u8, method.name, "init")) {
+    // Check if this is an init method - only synthesize if body is empty/missing
+    // If the source file has a custom init implementation, preserve it
+    const should_synthesize_init = std.mem.eql(u8, method.name, "init") and
+        std.mem.trim(u8, method.body, " \t\n\r").len == 0;
+
+    if (should_synthesize_init) {
         const synthesized_body = try synthesizeInitMethod(allocator, struct_fields, method.signature, class_name);
         defer allocator.free(synthesized_body);
 

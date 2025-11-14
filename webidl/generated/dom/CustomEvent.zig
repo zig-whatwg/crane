@@ -61,27 +61,13 @@ pub const CustomEvent = struct {
 
     pub fn init(allocator: std.mem.Allocator, event_type: []const u8, event_init: ?CustomEventInit) !CustomEvent {
 
+        _ = event_type;
+        const custom_init = event_init orelse CustomEventInit{};
+
         return .{
-            .event_type = event_type,
-            .target = null,
-            .current_target = null,
-            .event_phase = NONE,
-            .bubbles = event_init.bubbles,
-            .cancelable = event_init.cancelable,
-            .composed = event_init.composed,
-            .stop_propagation_flag = false,
-            .stop_immediate_propagation_flag = false,
-            .canceled_flag = false,
-            .in_passive_listener_flag = false,
-            .initialized_flag = false,
-            .dispatch_flag = false,
-            .is_trusted = false,
-            .time_stamp = 0,
-            .path = infra.List(EventPathItem).init(allocator),
-            .related_target = null,
-            .touch_target_list = infra.List(*EventTarget).init(allocator),
             .allocator = allocator,
             .detail = custom_init.detail,
+            // NOTE: Parent Event initialization is handled by codegen
         };
     
     }

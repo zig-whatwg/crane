@@ -124,20 +124,13 @@ pub const DocumentType = struct {
         system_id: []const u8,
     ) !DocumentType {
 
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .event_listener_list = null,
-            .node_type = Node.DOCUMENT_TYPE_NODE,
-            .node_name = "",
-            .parent_node = null,
-            .child_nodes = infra.List(*Node).init(allocator),
-            .owner_document = null,
-            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-            .cloning_steps_hook = null,
-            .cached_child_nodes = null,
             .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),
             .system_id = try allocator.dupe(u8, system_id),
+            // NOTE: Parent Node initialization is handled by codegen
         };
     
     }

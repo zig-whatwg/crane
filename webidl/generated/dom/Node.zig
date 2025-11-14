@@ -119,8 +119,9 @@ pub const Node = struct {
 
     pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
 
+        // NOTE: Parent EventTarget fields will be flattened by codegen
+        // Don't manually initialize parent fields here
         return .{
-            .event_listener_list = null,
             .allocator = allocator,
             .node_type = node_type,
             .node_name = node_name,
@@ -130,6 +131,7 @@ pub const Node = struct {
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
+            // NOTE: Parent EventTarget initialization is handled by codegen
         };
     
     }

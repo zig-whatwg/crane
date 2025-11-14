@@ -115,16 +115,8 @@ pub const CharacterData = struct {
 
     pub fn init(allocator: Allocator) !CharacterData {
 
+        // NOTE: Parent Node fields will be flattened by codegen
         return .{
-            .event_listener_list = null,
-            .node_type = Node.TEXT_NODE,
-            .node_name = "#text",
-            .parent_node = null,
-            .child_nodes = infra.List(*Node).init(allocator),
-            .owner_document = null,
-            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-            .cloning_steps_hook = null,
-            .cached_child_nodes = null,
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
         };

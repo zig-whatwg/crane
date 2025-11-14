@@ -77,7 +77,7 @@ pub const TreeWalker = struct {
         return .{
             .allocator = allocator,
             .root = root,
-            .current = root,
+            .current = root, // Start at root
             .what_to_show = what_to_show,
             .filter = filter,
             .active_flag = false,

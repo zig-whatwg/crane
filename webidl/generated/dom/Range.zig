@@ -96,14 +96,23 @@ pub const Range = struct {
     /// (current global object's associated Document, 0).
     pub fn init(allocator: Allocator, document_node: *Node) !Range {
 
-        return .{
-            .start_container = null,
-            .start_offset = 0,
-            .end_container = null,
-            .end_offset = 0,
-            .allocator = null,
-            .owner_document = null,
+        // Get Document from node using asDocument pattern
+        const doc = document_node.asDocument() orelse {
+            return error.InvalidNodeTypeError;
         };
+
+        const range = Range{
+            .allocator = allocator,
+            .owner_document = doc,
+            .start_container = document_node,
+            .start_offset = 0,
+            .end_container = document_node,
+            .end_offset = 0,
+        };
+
+        // Note: Cannot auto-register here since we're in init
+        // Caller must call registerWithDocument after heap allocation
+        return range;
     
     }
 

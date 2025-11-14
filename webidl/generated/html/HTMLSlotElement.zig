@@ -74,8 +74,8 @@ pub const HTMLSlotElement = struct {
     /// Initialize a new HTMLSlotElement
     pub fn init(allocator: std.mem.Allocator) !Self {
 
-        return .{
-            .allocator = null,
+        return Self{
+            .allocator = allocator,
             .name = "",
             .assigned_nodes = infra.List(*anyopaque).init(allocator),
             .manually_assigned_nodes = infra.List(*anyopaque).init(allocator),

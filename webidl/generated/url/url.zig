@@ -54,11 +54,28 @@ pub const URL = struct {
     /// 3. Initialize this with parsedURL.
     pub fn init(allocator: std.mem.Allocator, url: []const u8, base: ?[]const u8) !URL {
 
-        return .{
-            .url_record = null,
-            .query_impl = null,
-            .allocator = null,
+        // Step 1: Parse base URL if provided
+        var base_record: ?URLRecord = null;
+        if (base) |base_str| {
+            base_record = api_parser.parseURL(allocator, base_str, null) catch {
+                return error.TypeError; // Base URL parse failed
+            };
+        }
+        defer if (base_record) |*br| br.deinit();
+
+        // Step 1: Parse URL with optional base
+        const parsed_url = api_parser.parseURL(
+            allocator,
+            url,
+            if (base_record) |*br| br else null,
+        ) catch {
+            // Step 2: If parsedURL is failure, throw TypeError
+            return error.TypeError;
         };
+        errdefer parsed_url.deinit();
+
+        // Step 3: Initialize this with parsedURL
+        return try initializeWithURLRecord(allocator, parsed_url);
     
     }
 

@@ -137,18 +137,18 @@ pub const ReadableStream = struct {
     /// This is NOT recommended for new code - use initWithSource() instead.
     pub fn init(allocator: std.mem.Allocator) !ReadableStream {
 
-        return .{
-            .allocator = null,
-            .controller = null,
-            .detached = false,
-            .disturbed = false,
-            .reader = null,
-            .state = null,
-            .storedError = null,
-            .eventLoop = null,
-            .eventLoop_storage = null,
-            .teeState = null,
-        };
+        // Create an owned event loop for backward compatibility
+        const loop_ptr = try allocator.create(TestEventLoop);
+        errdefer allocator.destroy(loop_ptr);
+
+        loop_ptr.* = TestEventLoop.init(allocator);
+
+        var stream = try initWithSource(allocator, loop_ptr.eventLoop(), null, null);
+
+        // Mark that we own this event loop so deinit() will clean it up
+        stream.eventLoop_storage = loop_ptr;
+
+        return stream;
     
     }
 

@@ -54,6 +54,13 @@ pub const WritableStreamDefaultWriter = struct {
         loop: eventLoop.EventLoop,
     ) !WritableStreamDefaultWriter {
 
+        const closedPromise = try AsyncPromise(void).init(allocator, loop);
+        const readyPromise = try AsyncPromise(void).init(allocator, loop);
+
+        if (!stream.backpressure) {
+            readyPromise.fulfill({});
+        }
+
         return .{
             .allocator = allocator,
             .closedPromise = closedPromise,

@@ -178,7 +178,7 @@ pub const TextEncoder = struct {
     pub fn init(allocator: std.mem.Allocator) TextEncoder {
 
         return .{
-            .encoding = "",
+            .encoding = "utf-8",
             .allocator = allocator,
         };
     

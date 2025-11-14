@@ -81,6 +81,8 @@ pub const Event = struct {
     /// Spec: https://dom.spec.whatwg.org/#dom-event-event
     pub fn init(allocator: Allocator, event_type: []const u8, options: ?EventInit) !Event {
 
+        const event_init = options orelse EventInit{};
+
         return .{
             .allocator = allocator,
             .event_type = event_type,
@@ -90,6 +92,7 @@ pub const Event = struct {
             .bubbles = event_init.bubbles,
             .cancelable = event_init.cancelable,
             .composed = event_init.composed,
+            // DOM §2.3 - All flags initially unset
             .stop_propagation_flag = false,
             .stop_immediate_propagation_flag = false,
             .canceled_flag = false,
@@ -98,8 +101,11 @@ pub const Event = struct {
             .dispatch_flag = false,
             .is_trusted = false,
             .time_stamp = 0,
+            // DOM §2.3 - Path initially empty
             .path = infra.List(EventPathItem).init(allocator),
+            // DOM §2.3 - Related target initially null
             .related_target = null,
+            // DOM §2.3 - Touch target list initially empty
             .touch_target_list = infra.List(*EventTarget).init(allocator),
         };
     

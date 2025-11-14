@@ -64,11 +64,13 @@ pub const ReadableStreamBYOBReader = struct {
         loop: eventLoop.EventLoop,
     ) !ReadableStreamBYOBReader {
 
+        const closedPromise = try AsyncPromise(void).init(allocator, loop);
+
         return .{
-            .allocator = null,
-            .closedPromise = null,
-            .stream = null,
-            .eventLoop = null,
+            .allocator = allocator,
+            .closedPromise = closedPromise,
+            .stream = stream,
+            .eventLoop = loop,
             .readIntoRequests = infra.List(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     

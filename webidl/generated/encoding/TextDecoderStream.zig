@@ -113,11 +113,35 @@ pub const TextDecoderStream = struct {
         options: TextDecoderOptions,
     ) !TextDecoderStream {
 
+        // Get encoding from label
+        const enc = encoding_mod.getEncoding(label) orelse {
+            return error.InvalidEncoding;
+        };
+
+        // Reject replacement encoding
+        if (std.mem.eql(u8, enc.whatwg_name, "replacement")) {
+            return error.ReplacementEncoding;
+        }
+
+        // Create transform stream
+        const transform = try allocator.create(TransformStream);
+        errdefer allocator.destroy(transform);
+
+        transform.* = try TransformStream.init(allocator, .{
+            .transform = transformAlgorithm,
+            .flush = flushAlgorithm,
+        });
+
+        // Create decoder instance
+        const decoder = try allocator.create(Decoder);
+        errdefer allocator.destroy(decoder);
+        decoder.* = enc.newDecoder();
+
         return .{
-            .encoding = "",
-            .fatal = null,
-            .ignoreBOM = null,
-            .transform = null,
+            .encoding = enc.whatwg_name,
+            .fatal = options.fatal,
+            .ignoreBOM = options.ignoreBOM,
+            .transform = transform,
             .allocator = allocator,
             .enc = enc,
             .decoder = decoder,

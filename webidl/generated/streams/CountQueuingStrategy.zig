@@ -45,6 +45,7 @@ pub const CountQueuingStrategy = struct {
     /// Spec: https://streams.spec.whatwg.org/#cqs-constructor
     pub fn init(allocator: std.mem.Allocator, initDict: QueuingStrategyInit) CountQueuingStrategy {
 
+        _ = allocator; // Not needed for this simple structure
         return .{
             ._highWaterMark = initDict.highWaterMark,
         };
