@@ -59,6 +59,7 @@
 //! See IMPLEMENTATION.md for detailed architecture documentation.
 
 const std = @import("std");
+const infra = @import("infra");
 const parser = @import("parser.zig");
 const optimizer = @import("optimizer.zig");
 const generator = @import("generator.zig");
@@ -385,7 +386,7 @@ pub fn generateAllClasses(
         while (it.next()) |entry| {
             allocator.free(entry.key_ptr.*);
             var file_ir = entry.value_ptr.*;
-            file_ir.deinit(allocator);
+            file_ir.deinit();
         }
         file_irs.deinit();
     }
@@ -428,11 +429,11 @@ pub fn generateAllClasses(
         {
             // Parse file into IR
             var file_ir = try parser.parseFile(allocator, source_content, entry.path);
-            errdefer file_ir.deinit(allocator);
+            errdefer file_ir.deinit();
 
             // Skip files with no classes
             if (file_ir.classes.len == 0) {
-                file_ir.deinit(allocator);
+                file_ir.deinit();
                 continue;
             }
 
@@ -462,15 +463,15 @@ pub fn generateAllClasses(
         }
 
         // Generate code using AST/IR pipeline
-        var output: std.ArrayList(u8) = .empty;
-        defer output.deinit(allocator);
+        var output = infra.List(u8).init(allocator);
+        defer output.deinit();
 
         const writer = output.writer(allocator);
 
         // Process each class in the file
         for (file_ir.classes, 0..) |*class, idx| {
             var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants, file_ir.post_class_definitions);
-            defer enhanced.deinit(allocator);
+            defer enhanced.deinit();
 
             // All classes get module definitions (helper functions need to be accessible)
             // Post-class definitions only for the last class
@@ -649,7 +650,7 @@ const BaseTypeInfo = struct {
     /// Name of the base type (e.g., "Node")
     name: []const u8,
     /// List of direct and indirect children (e.g., ["Element", "Text", "Comment"])
-    children: std.ArrayList([]const u8),
+    children: infra.List([]const u8),
     /// File path where the base type is defined
     file_path: []const u8,
     /// Original ClassInfo for the base type
@@ -746,7 +747,7 @@ fn parseManifest(allocator: std.mem.Allocator, json_str: []const u8) !CacheManif
     defer parsed.deinit();
 
     var manifest = CacheManifest.init(allocator);
-    errdefer manifest.deinit(allocator);
+    errdefer manifest.deinit();
 
     const root = parsed.value.object;
     const version = @as(u32, @intCast(root.get("version").?.integer));
@@ -813,8 +814,8 @@ fn writeJsonString(writer: anytype, str: []const u8) !void {
 
 /// Serialize cache manifest to JSON
 fn serializeManifest(allocator: std.mem.Allocator, manifest: *const CacheManifest) ![]const u8 {
-    var json_buf = std.ArrayList(u8){};
-    errdefer json_buf.deinit(allocator);
+    var json_buf = infra.List(u8).init(allocator);
+    errdefer json_buf.deinit();
 
     var writer = json_buf.writer(allocator);
 
@@ -862,7 +863,7 @@ fn serializeManifest(allocator: std.mem.Allocator, manifest: *const CacheManifes
 
     try writer.writeAll("}}");
 
-    return json_buf.toOwnedSlice(allocator);
+    return json_buf.toOwnedSlice();
 }
 
 /// Compute SHA-256 hash of file content
@@ -1057,8 +1058,8 @@ const GlobalRegistry = struct {
 
     /// Build a map of class name -> list of descendant class names
     /// This includes both direct children and all transitive descendants
-    fn buildDescendantMap(self: *GlobalRegistry) !std.StringHashMap(std.ArrayList([]const u8)) {
-        var descendant_map = std.StringHashMap(std.ArrayList([]const u8)).init(self.allocator);
+    fn buildDescendantMap(self: *GlobalRegistry) !std.StringHashMap(infra.List([]const u8)) {
+        var descendant_map = std.StringHashMap(infra.List([]const u8)).init(self.allocator);
         errdefer {
             var it = descendant_map.iterator();
             while (it.next()) |entry| {
@@ -1083,17 +1084,18 @@ const GlobalRegistry = struct {
 
         // Second pass: add transitive descendants
         // For each class, recursively add descendants of its children
-        var class_names = std.ArrayList([]const u8){};
-        defer class_names.deinit(self.allocator);
+        var class_names = infra.List([]const u8).init(self.allocator);
+        defer class_names.deinit();
 
         var keys_it = descendant_map.keyIterator();
         while (keys_it.next()) |key| {
-            try class_names.append(self.allocator, key.*);
+            try class_names.append(key.*);
         }
 
-        for (class_names.items) |class_name| {
-            var all_descendants = std.ArrayList([]const u8){};
-            defer all_descendants.deinit(self.allocator);
+        for (0..class_names.len) |i| {
+            const class_name = class_names.get(i).?;
+            var all_descendants = infra.List([]const u8).init(self.allocator);
+            defer all_descendants.deinit();
 
             try collectAllDescendants(self.allocator, class_name, &descendant_map, &all_descendants);
 
@@ -1110,8 +1112,8 @@ const GlobalRegistry = struct {
     fn collectAllDescendants(
         allocator: std.mem.Allocator,
         class_name: []const u8,
-        descendant_map: *std.StringHashMap(std.ArrayList([]const u8)),
-        result: *std.ArrayList([]const u8),
+        descendant_map: *std.StringHashMap(infra.List([]const u8)),
+        result: *infra.List([]const u8),
     ) !void {
         const direct_children = descendant_map.get(class_name) orelse return;
 
@@ -1125,7 +1127,7 @@ const GlobalRegistry = struct {
                 }
             }
             if (!already_added) {
-                try result.append(allocator, child);
+                try result.append(child);
                 // Recursively add descendants of this child
                 try collectAllDescendants(allocator, child, descendant_map, result);
             }
@@ -1179,8 +1181,8 @@ const GlobalRegistry = struct {
                     if (std.fs.path.dirname(file_path)) |dir| {
                         const basename = std.fs.path.basename(file_path);
                         // Convert snake_case to PascalCase
-                        var pascal_name: std.ArrayList(u8) = .empty;
-                        defer pascal_name.deinit(self.allocator);
+                        var pascal_name = infra.List(u8).init(self.allocator);
+                        defer pascal_name.deinit();
 
                         var capitalize_next = true;
                         for (basename) |c| {
@@ -1276,11 +1278,11 @@ fn flattenMixinsForClass(
     const allocator = registry.allocator;
 
     // Build new flattened fields/properties lists
-    var new_fields: std.ArrayList(FieldDef) = .empty;
-    errdefer new_fields.deinit(allocator);
+    var new_fields = infra.List(FieldDef).init(allocator);
+    errdefer new_fields.deinit();
 
-    var new_properties: std.ArrayList(PropertyDef) = .empty;
-    errdefer new_properties.deinit(allocator);
+    var new_properties = infra.List(PropertyDef).init(allocator);
+    errdefer new_properties.deinit();
 
     // Step 1: Collect mixin fields FIRST (so they appear before own fields)
     for (class_info.mixin_names) |mixin_name| {
@@ -1291,7 +1293,7 @@ fn flattenMixinsForClass(
 
         // Deep copy mixin fields (duplicate FieldDef structs)
         for (mixin_info.fields) |field| {
-            try new_fields.append(allocator, FieldDef{
+            try new_fields.append(FieldDef{
                 .name = field.name,
                 .type_name = field.type_name,
                 .default_value = field.default_value,
@@ -1305,7 +1307,7 @@ fn flattenMixinsForClass(
 
         // Deep copy mixin properties
         for (mixin_info.properties) |prop| {
-            try new_properties.append(allocator, PropertyDef{
+            try new_properties.append(PropertyDef{
                 .name = prop.name,
                 .type_name = prop.type_name,
                 .access = prop.access,
@@ -1320,20 +1322,20 @@ fn flattenMixinsForClass(
 
     // Step 2: Append own fields AFTER mixin fields
     for (class_info.fields) |field| {
-        try new_fields.append(allocator, field);
+        try new_fields.append(field);
     }
 
     for (class_info.properties) |prop| {
-        try new_properties.append(allocator, prop);
+        try new_properties.append(prop);
     }
 
     // Step 3: Replace class_info fields with flattened fields
     // Free old arrays (but not the doc_comments, they're still referenced)
     allocator.free(class_info.fields);
-    class_info.fields = try new_fields.toOwnedSlice(allocator);
+    class_info.fields = try new_fields.toOwnedSlice();
 
     allocator.free(class_info.properties);
-    class_info.properties = try new_properties.toOwnedSlice(allocator);
+    class_info.properties = try new_properties.toOwnedSlice();
 }
 
 /// Detect base types (interfaces with no parent but have children)
@@ -1353,7 +1355,7 @@ fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
     errdefer {
         var it = base_types.iterator();
         while (it.next()) |entry| {
-            entry.value_ptr.children.deinit(allocator);
+            entry.value_ptr.children.deinit();
         }
         base_types.deinit();
     }
@@ -1387,15 +1389,15 @@ fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
         const base_name = base_entry.key_ptr.*;
         const base_data = base_entry.value_ptr.*;
 
-        var children: std.ArrayList([]const u8) = .empty;
-        errdefer children.deinit(allocator);
+        var children = infra.List([]const u8).init(allocator);
+        errdefer children.deinit();
 
         // Find all classes that extend this base (directly or indirectly)
         var file_it2 = registry.files.iterator();
         while (file_it2.next()) |file_entry| {
             for (file_entry.value_ptr.classes.items) |class_info| {
                 if (try extendsBase(allocator, registry, &class_info, base_name, file_entry.key_ptr.*)) {
-                    try children.append(allocator, class_info.name);
+                    try children.append(class_info.name);
                 }
             }
         }
@@ -1409,7 +1411,7 @@ fn detectBaseTypes(registry: *GlobalRegistry) !std.StringHashMap(BaseTypeInfo) {
                 .class_info = base_data.class_info,
             });
         } else {
-            children.deinit(allocator);
+            children.deinit();
         }
     }
 
@@ -1457,25 +1459,25 @@ fn extendsBase(
 /// Convert PascalCase to snake_case for module names
 /// Example: "ReadableStreamGenericReader" -> "readable_stream_generic_reader"
 fn pascalToSnakeCase(allocator: std.mem.Allocator, pascal: []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var prev_was_upper = false;
     for (pascal, 0..) |c, i| {
         if (std.ascii.isUpper(c)) {
             // Add underscore before uppercase if previous wasn't uppercase (except at start)
             if (i > 0 and result.items.len > 0 and !prev_was_upper) {
-                try result.append(allocator, '_');
+                try result.append('_');
             }
-            try result.append(allocator, std.ascii.toLower(c));
+            try result.append(std.ascii.toLower(c));
             prev_was_upper = true;
         } else {
-            try result.append(allocator, c);
+            try result.append(c);
             prev_was_upper = false;
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 fn parseImports(
@@ -1572,7 +1574,7 @@ fn scanFileForClasses(
     allocator: std.mem.Allocator,
     source: []const u8,
     file_path: []const u8,
-    classes: *std.ArrayListUnmanaged(ClassInfo),
+    classes: *infra.ListUnmanaged(ClassInfo),
     registry: *GlobalRegistry,
 ) !void {
     var pos: usize = 0;
@@ -1705,7 +1707,7 @@ fn scanFileForClasses(
             }
 
             // Always add to classes list (mixins can also be processed as classes for generation)
-            try classes.append(allocator, class_info);
+            try classes.append(class_info);
             pos = parsed.source_end;
         } else {
             pos = next_start + 1;
@@ -1758,8 +1760,8 @@ fn stripTrailingDocComments(source: []const u8) []const u8 {
 }
 
 fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_names: []const []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
 
     var pos: usize = 0;
     var line_start: usize = 0;
@@ -1842,16 +1844,16 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
                 // Struct-level consts have 0-4 spaces, function-level have 8+ spaces
                 if (leading_whitespace.len <= 4) {
                     // Struct-level import - make it public
-                    try result.appendSlice(allocator, leading_whitespace);
-                    try result.appendSlice(allocator, "pub ");
-                    try result.appendSlice(allocator, trimmed_line);
-                    if (line_end < source.len) try result.append(allocator, '\n');
+                    try result.appendSlice(leading_whitespace);
+                    try result.appendSlice("pub ");
+                    try result.appendSlice(trimmed_line);
+                    if (line_end < source.len) try result.append('\n');
                 } else {
                     // Function-level import - keep as-is
-                    try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
+                    try result.appendSlice(source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
                 }
             } else {
-                try result.appendSlice(allocator, source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
+                try result.appendSlice(source[line_start..if (line_end < source.len) line_end + 1 else line_end]);
             }
         }
 
@@ -1860,7 +1862,7 @@ fn filterWebIDLImport(allocator: std.mem.Allocator, source: []const u8, mixin_na
         line_start = pos;
     }
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 fn processSourceFileWithRegistry(
@@ -1894,8 +1896,8 @@ fn processSourceFileWithRegistry(
     }
 
     // Collect all mixin names from all classes in this file
-    var all_mixin_names: std.ArrayList([]const u8) = .empty;
-    defer all_mixin_names.deinit(allocator);
+    var all_mixin_names = infra.List([]const u8).init(allocator);
+    defer all_mixin_names.deinit();
 
     for (file_info.classes.items) |class_info| {
         for (class_info.mixin_names) |mixin_name| {
@@ -1908,15 +1910,15 @@ fn processSourceFileWithRegistry(
                 }
             }
             if (!found) {
-                try all_mixin_names.append(allocator, mixin_name);
+                try all_mixin_names.append(mixin_name);
             }
         }
     }
 
-    var output: std.ArrayList(u8) = .empty;
-    defer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    defer output.deinit();
 
-    try output.appendSlice(allocator,
+    try output.appendSlice(
         \\// Auto-generated by webidl-codegen
         \\// DO NOT EDIT - changes will be overwritten
         \\//
@@ -1983,7 +1985,7 @@ fn processSourceFileWithRegistry(
         const segment_no_docs = stripTrailingDocComments(raw_segment);
         const segment = try filterWebIDLImport(allocator, segment_no_docs, all_mixin_names.items);
         defer allocator.free(segment);
-        try output.appendSlice(allocator, segment);
+        try output.appendSlice(segment);
 
         if (try parseClassDefinition(allocator, source, next_start)) |parsed| {
             defer {
@@ -1994,7 +1996,7 @@ fn processSourceFileWithRegistry(
             const enhanced = try generateEnhancedClassWithRegistry(allocator, parsed, config, file_path, registry, base_types);
             defer allocator.free(enhanced);
 
-            try output.appendSlice(allocator, enhanced);
+            try output.appendSlice(enhanced);
 
             last_class_end = parsed.source_end;
             pos = parsed.source_end;
@@ -2005,9 +2007,9 @@ fn processSourceFileWithRegistry(
 
     const final_segment = try filterWebIDLImport(allocator, source[last_class_end..], all_mixin_names.items);
     defer allocator.free(final_segment);
-    try output.appendSlice(allocator, final_segment);
+    try output.appendSlice(final_segment);
 
-    return try output.toOwnedSlice(allocator);
+    return try output.toOwnedSlice();
 }
 
 /// Detect circular inheritance with O(n) complexity and depth tracking.
@@ -2109,8 +2111,8 @@ fn extractDocComment(source: []const u8, pos: usize, allocator: std.mem.Allocato
     }
 
     // Collect doc comment lines going backwards
-    var doc_lines: std.ArrayList([]const u8) = .empty;
-    defer doc_lines.deinit(allocator);
+    var doc_lines = infra.List([]const u8).init(allocator);
+    defer doc_lines.deinit();
 
     var search_pos = line_start;
     while (search_pos > 0) {
@@ -2142,22 +2144,22 @@ fn extractDocComment(source: []const u8, pos: usize, allocator: std.mem.Allocato
     if (doc_lines.items.len == 0) return null;
 
     // Join lines with newlines
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     for (doc_lines.items, 0..) |line, i| {
-        if (i > 0) try result.append(allocator, '\n');
-        try result.appendSlice(allocator, line);
+        if (i > 0) try result.append('\n');
+        try result.appendSlice(line);
     }
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 /// Extract file-level doc comment (//!) at the start of the file.
 /// Returns the doc comment text without the //! prefix, or null if none found.
 fn extractFileDocComment(source: []const u8, allocator: std.mem.Allocator) !?[]const u8 {
-    var doc_lines: std.ArrayList([]const u8) = .empty;
-    defer doc_lines.deinit(allocator);
+    var doc_lines = infra.List([]const u8).init(allocator);
+    defer doc_lines.deinit();
 
     var pos: usize = 0;
     while (pos < source.len) {
@@ -2167,7 +2169,7 @@ fn extractFileDocComment(source: []const u8, allocator: std.mem.Allocator) !?[]c
 
         if (std.mem.startsWith(u8, line, "//!")) {
             const comment_text = std.mem.trimLeft(u8, line[3..], " \t");
-            try doc_lines.append(allocator, comment_text);
+            try doc_lines.append(comment_text);
         } else if (line.len > 0) {
             // Non-doc-comment, non-empty line - stop
             break;
@@ -2179,15 +2181,15 @@ fn extractFileDocComment(source: []const u8, allocator: std.mem.Allocator) !?[]c
     if (doc_lines.items.len == 0) return null;
 
     // Join lines with newlines
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     for (doc_lines.items, 0..) |line, i| {
-        if (i > 0) try result.append(allocator, '\n');
-        try result.appendSlice(allocator, line);
+        if (i > 0) try result.append('\n');
+        try result.appendSlice(line);
     }
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 /// Parse WebIDL extended attributes from options block (}, .{ ... });
@@ -2209,29 +2211,29 @@ fn parseWebIDLOptions(allocator: std.mem.Allocator, options_area: []const u8) !W
                 const scopes_text = options_content[amp_start + 3 .. scope_end];
 
                 // Parse exposure scopes
-                var scopes: std.ArrayList(ExposureScope) = .empty;
-                defer scopes.deinit(allocator);
+                var scopes = infra.List(ExposureScope).init(allocator);
+                defer scopes.deinit();
 
                 var scope_it = std.mem.splitSequence(u8, scopes_text, ",");
                 while (scope_it.next()) |scope_part| {
                     const trimmed = std.mem.trim(u8, scope_part, " \t\r\n.");
                     if (std.mem.eql(u8, trimmed, "global")) {
-                        try scopes.append(allocator, .global);
+                        try scopes.append(.global);
                     } else if (std.mem.eql(u8, trimmed, "Window")) {
-                        try scopes.append(allocator, .Window);
+                        try scopes.append(.Window);
                     } else if (std.mem.eql(u8, trimmed, "Worker")) {
-                        try scopes.append(allocator, .Worker);
+                        try scopes.append(.Worker);
                     } else if (std.mem.eql(u8, trimmed, "DedicatedWorker")) {
-                        try scopes.append(allocator, .DedicatedWorker);
+                        try scopes.append(.DedicatedWorker);
                     } else if (std.mem.eql(u8, trimmed, "SharedWorker")) {
-                        try scopes.append(allocator, .SharedWorker);
+                        try scopes.append(.SharedWorker);
                     } else if (std.mem.eql(u8, trimmed, "ServiceWorker")) {
-                        try scopes.append(allocator, .ServiceWorker);
+                        try scopes.append(.ServiceWorker);
                     }
                 }
 
                 if (scopes.items.len > 0) {
-                    result.exposed = try scopes.toOwnedSlice(allocator);
+                    result.exposed = try scopes.toOwnedSlice();
                 }
             }
         }
@@ -2396,12 +2398,12 @@ fn parseClassDefinition(
     }
 
     // Parse includes: pub const includes = .{ Mixin1, Mixin2 };
-    var mixin_names: std.ArrayList([]const u8) = .empty;
+    var mixin_names = infra.List([]const u8).init(allocator);
     errdefer {
         for (mixin_names.items) |mixin| {
             allocator.free(mixin);
         }
-        mixin_names.deinit(allocator);
+        mixin_names.deinit();
     }
 
     if (std.mem.indexOf(u8, class_body, "pub const includes")) |includes_pos| {
@@ -2415,7 +2417,7 @@ fn parseClassDefinition(
                     while (it.next()) |mixin_part| {
                         const mixin_name = std.mem.trim(u8, mixin_part, " \t\r\n");
                         if (mixin_name.len > 0) {
-                            try mixin_names.append(allocator, try allocator.dupe(u8, mixin_name));
+                            try mixin_names.append(try allocator.dupe(u8, mixin_name));
                         }
                     }
                 }
@@ -2423,22 +2425,22 @@ fn parseClassDefinition(
         }
     }
 
-    var fields: std.ArrayList(FieldDef) = .empty;
-    errdefer fields.deinit(allocator);
+    var fields = infra.List(FieldDef).init(allocator);
+    errdefer fields.deinit();
 
-    var methods: std.ArrayList(MethodDef) = .empty;
-    errdefer methods.deinit(allocator);
+    var methods = infra.List(MethodDef).init(allocator);
+    errdefer methods.deinit();
 
-    var properties: std.ArrayList(PropertyDef) = .empty;
-    errdefer properties.deinit(allocator);
+    var properties = infra.List(PropertyDef).init(allocator);
+    errdefer properties.deinit();
 
-    var constants: std.ArrayList([]const u8) = .empty;
-    errdefer constants.deinit(allocator);
+    var constants = infra.List([]const u8).init(allocator);
+    errdefer constants.deinit();
 
     const has_self_type = try parseStructBody(allocator, class_body, &fields, &methods, &properties, &constants);
 
     // Convert to owned slices with proper error handling to prevent leaks
-    const mixin_names_slice = try mixin_names.toOwnedSlice(allocator);
+    const mixin_names_slice = try mixin_names.toOwnedSlice();
     errdefer {
         for (mixin_names_slice) |mixin| {
             allocator.free(mixin);
@@ -2446,16 +2448,16 @@ fn parseClassDefinition(
         allocator.free(mixin_names_slice);
     }
 
-    const fields_slice = try fields.toOwnedSlice(allocator);
+    const fields_slice = try fields.toOwnedSlice();
     errdefer allocator.free(fields_slice);
 
-    const methods_slice = try methods.toOwnedSlice(allocator);
+    const methods_slice = try methods.toOwnedSlice();
     errdefer allocator.free(methods_slice);
 
-    const properties_slice = try properties.toOwnedSlice(allocator);
+    const properties_slice = try properties.toOwnedSlice();
     errdefer allocator.free(properties_slice);
 
-    const constants_slice = try constants.toOwnedSlice(allocator);
+    const constants_slice = try constants.toOwnedSlice();
     errdefer allocator.free(constants_slice);
 
     return .{
@@ -2563,8 +2565,8 @@ fn extractParamNames(allocator: std.mem.Allocator, signature: []const u8) ![]con
 
     const params_section = std.mem.trim(u8, inner[first_comma + 1 ..], " \t");
 
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
 
     var it = std.mem.splitSequence(u8, params_section, ",");
     var first = true;
@@ -2576,13 +2578,13 @@ fn extractParamNames(allocator: std.mem.Allocator, signature: []const u8) ![]con
         const param_name = std.mem.trim(u8, trimmed[0..colon_pos], " \t");
 
         if (!first) {
-            try result.appendSlice(allocator, ", ");
+            try result.appendSlice(", ");
         }
-        try result.appendSlice(allocator, param_name);
+        try result.appendSlice(param_name);
         first = false;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Substitute all occurrences of old_type_name with new_type_name in source code
@@ -2596,7 +2598,7 @@ fn substituteTypeName(
 ) ![]const u8 {
     // Simple but safe approach: use mem.replace
     // This handles all occurrences in signatures and method bodies
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     defer result.deinit();
 
     var pos: usize = 0;
@@ -2719,10 +2721,10 @@ fn isStaticMethod(signature: []const u8) bool {
 pub fn parseStructBody(
     allocator: std.mem.Allocator,
     body: []const u8,
-    fields: *std.ArrayList(FieldDef),
-    methods: *std.ArrayList(MethodDef),
-    properties: *std.ArrayList(PropertyDef),
-    constants: *std.ArrayList([]const u8),
+    fields: *infra.List(FieldDef),
+    methods: *infra.List(MethodDef),
+    properties: *infra.List(PropertyDef),
+    constants: *infra.List([]const u8),
 ) !bool {
     var pos: usize = 0;
     var has_self_type = false;
@@ -2845,7 +2847,7 @@ pub fn parseStructBody(
             // Extract doc comment before the method
             const doc_comment = try extractDocComment(body, fn_start, allocator);
 
-            try methods.append(allocator, .{
+            try methods.append(.{
                 .name = method_name,
                 .source = method_source,
                 .signature = signature,
@@ -2873,7 +2875,7 @@ pub fn parseStructBody(
             };
 
             const props_body = body[open_brace + 1 .. close_brace];
-            try parsePropertyBlock(allocator, props_body, properties);
+            try parsePropertyBlock(props_body, properties);
 
             pos = close_brace + 1;
         } else {
@@ -2901,7 +2903,7 @@ pub fn parseStructBody(
                 const remaining = body[pos..];
                 const eq_pos = std.mem.indexOf(u8, remaining, "=") orelse {
                     // No equals sign found, treat as constant
-                    try constants.append(allocator, try allocator.dupe(u8, line));
+                    try constants.append(try allocator.dupe(u8, line));
                     pos = line_end + 1;
                     continue;
                 };
@@ -2948,7 +2950,7 @@ pub fn parseStructBody(
                     // Extract the entire struct declaration and add it to constants
                     // This preserves the nested type in the generated output
                     const struct_decl = body[pos..end_pos];
-                    try constants.append(allocator, try allocator.dupe(u8, struct_decl));
+                    try constants.append(try allocator.dupe(u8, struct_decl));
 
                     // Skip past this struct
                     pos = end_pos;
@@ -2956,7 +2958,7 @@ pub fn parseStructBody(
                 }
 
                 // This is a constant declaration like "pub const NONE: u16 = 0;"
-                try constants.append(allocator, try allocator.dupe(u8, line));
+                try constants.append(try allocator.dupe(u8, line));
                 pos = line_end + 1;
                 continue;
             }
@@ -2967,7 +2969,7 @@ pub fn parseStructBody(
                 std.mem.indexOf(u8, line, "@import") != null)
             {
                 // This is a type alias like "const EventTarget = @import("event_target").EventTarget;"
-                try constants.append(allocator, try allocator.dupe(u8, line));
+                try constants.append(try allocator.dupe(u8, line));
                 pos = line_end + 1;
                 continue;
             }
@@ -3029,7 +3031,7 @@ pub fn parseStructBody(
                     // Extract doc comment before the field
                     const field_doc = try extractDocComment(body, pos, allocator);
 
-                    try fields.append(allocator, .{
+                    try fields.append(.{
                         .name = field_name,
                         .type_name = field_type,
                         .default_value = default_value,
@@ -3046,9 +3048,8 @@ pub fn parseStructBody(
 }
 
 fn parsePropertyBlock(
-    allocator: std.mem.Allocator,
     props_body: []const u8,
-    properties: *std.ArrayList(PropertyDef),
+    properties: *infra.List(PropertyDef),
 ) !void {
     var pos: usize = 0;
 
@@ -3120,7 +3121,7 @@ fn parsePropertyBlock(
         }
 
         if (prop_name.len > 0 and prop_type.len > 0) {
-            try properties.append(allocator, .{
+            try properties.append(.{
                 .name = prop_name,
                 .type_name = prop_type,
                 .access = prop_access,
@@ -3136,17 +3137,17 @@ fn collectAllParentFields(
     allocator: std.mem.Allocator,
     parent_name: ?[]const u8,
     class_registry: *std.StringHashMap(ClassInfo),
-    fields_out: *std.ArrayList(FieldDef),
+    fields_out: *infra.List(FieldDef),
 ) !void {
     if (parent_name == null) return;
 
-    var hierarchy: std.ArrayList(ClassInfo) = .empty;
-    defer hierarchy.deinit(allocator);
+    var hierarchy = infra.List(ClassInfo).init(allocator);
+    defer hierarchy.deinit();
 
     var current_parent = parent_name;
     while (current_parent) |parent| {
         if (class_registry.get(parent)) |parent_info| {
-            try hierarchy.append(allocator, parent_info);
+            try hierarchy.append(parent_info);
             current_parent = parent_info.parent_name;
         } else {
             break;
@@ -3158,7 +3159,7 @@ fn collectAllParentFields(
         i -= 1;
         const parent_info = hierarchy.items[i];
         for (parent_info.fields) |field| {
-            try fields_out.append(allocator, field);
+            try fields_out.append(field);
         }
     }
 }
@@ -3171,8 +3172,8 @@ fn adaptInitDeinit(
     // Validate type name to prevent injection
     if (!isValidTypeName(child_type)) return error.InvalidTypeName;
 
-    var buf: std.ArrayList(u8) = .empty;
-    defer buf.deinit(allocator);
+    var buf = infra.List(u8).init(allocator);
+    defer buf.deinit();
     const writer = buf.writer(allocator);
 
     var pos: usize = 0;
@@ -3243,7 +3244,7 @@ fn adaptInitDeinit(
         }
     }
 
-    return try buf.toOwnedSlice(allocator);
+    return try buf.toOwnedSlice();
 }
 
 /// Generate a smart init function that takes parent args + child fields
@@ -3257,8 +3258,8 @@ fn generateSmartInit(
     all_fields: []const FieldDef,
     all_properties: []const PropertyDef,
 ) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
 
     const writer = result.writer(allocator);
 
@@ -3410,7 +3411,7 @@ fn generateSmartInit(
             }
             try writer.writeAll("        };\n");
             try writer.writeAll("    }");
-            return try result.toOwnedSlice(allocator);
+            return try result.toOwnedSlice();
         };
 
         // Find the .{ after initFields(allocator,
@@ -3449,7 +3450,7 @@ fn generateSmartInit(
             }
             try writer.writeAll("        };\n");
             try writer.writeAll("    }");
-            return try result.toOwnedSlice(allocator);
+            return try result.toOwnedSlice();
         };
 
         // Find the closing } of the struct literal (before the );)
@@ -3497,7 +3498,7 @@ fn generateSmartInit(
             }
             try writer.writeAll("        };\n");
             try writer.writeAll("    }");
-            return try result.toOwnedSlice(allocator);
+            return try result.toOwnedSlice();
         };
 
         // Copy everything up to (but not including) the struct literal closing }
@@ -3616,7 +3617,7 @@ fn generateSmartInit(
         try writer.writeAll("        };\n");
         try writer.writeAll("    }");
 
-        return try result.toOwnedSlice(allocator);
+        return try result.toOwnedSlice();
     }
 
     // Parent doesn't use initFields - fall back to old behavior (extend struct literal)
@@ -3635,7 +3636,7 @@ fn generateSmartInit(
         }
         try writer.writeAll("        };\n");
         try writer.writeAll("    }");
-        return try result.toOwnedSlice(allocator);
+        return try result.toOwnedSlice();
     };
 
     // Find the struct literal in the return statement: return .{ or return Parent{
@@ -3651,7 +3652,7 @@ fn generateSmartInit(
         // Couldn't find struct literal, fall back to simple generation
         try writer.writeAll(parent_body);
         try writer.writeAll("    }");
-        return try result.toOwnedSlice(allocator);
+        return try result.toOwnedSlice();
     };
 
     // Find the closing brace of the struct literal
@@ -3669,7 +3670,7 @@ fn generateSmartInit(
         // Couldn't find closing brace
         try writer.writeAll(parent_body);
         try writer.writeAll("    }");
-        return try result.toOwnedSlice(allocator);
+        return try result.toOwnedSlice();
     };
 
     // Copy everything before the struct literal's closing brace
@@ -3716,7 +3717,7 @@ fn generateSmartInit(
     try writer.writeAll(parent_body[struct_init_end..]);
     try writer.writeAll("    }");
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 /// Generate asXxx() casting methods for safe downcasting.
@@ -3811,14 +3812,14 @@ fn injectBaseFieldInit(allocator: std.mem.Allocator, method_source: []const u8, 
         try std.fmt.allocPrint(allocator, "\n            .base = {s}Base.initFor{s}(allocator),", .{ base_type_name, class_name });
     defer allocator.free(base_init);
 
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
 
-    try result.appendSlice(allocator, method_source[0..after_return_brace]);
-    try result.appendSlice(allocator, base_init);
-    try result.appendSlice(allocator, method_source[after_return_brace..]);
+    try result.appendSlice(method_source[0..after_return_brace]);
+    try result.appendSlice(base_init);
+    try result.appendSlice(method_source[after_return_brace..]);
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Inject base field cleanup into deinit() methods for classes with inheritance.
@@ -3843,17 +3844,17 @@ fn injectBaseFieldDeinit(
         return try allocator.dupe(u8, method_source);
     };
 
-    var cleanup_code: std.ArrayList(u8) = .empty;
-    errdefer cleanup_code.deinit(allocator);
+    var cleanup_code = infra.List(u8).init(allocator);
+    errdefer cleanup_code.deinit();
 
-    try cleanup_code.appendSlice(allocator, "\n        \n");
-    try cleanup_code.appendSlice(allocator, "        // Clean up base fields\n");
+    try cleanup_code.appendSlice("\n        \n");
+    try cleanup_code.appendSlice("        // Clean up base fields\n");
 
     var needs_cleanup = false;
 
     if (std.mem.eql(u8, parent_info.name, "Node")) {
         // Node classes have event_listener_list, child_nodes, and registered_observers
-        try cleanup_code.appendSlice(allocator,
+        try cleanup_code.appendSlice(
             \\        if (self.base.event_listener_list) |list| {
             \\            list.deinit(self.allocator);
             \\            self.allocator.destroy(list);
@@ -3865,7 +3866,7 @@ fn injectBaseFieldDeinit(
         needs_cleanup = true;
     } else if (std.mem.eql(u8, parent_info.name, "EventTarget")) {
         // EventTarget classes only have event_listener_list
-        try cleanup_code.appendSlice(allocator,
+        try cleanup_code.appendSlice(
             \\        if (self.base.event_listener_list) |list| {
             \\            list.deinit(self.allocator);
             \\            self.allocator.destroy(list);
@@ -3876,20 +3877,20 @@ fn injectBaseFieldDeinit(
     }
 
     if (!needs_cleanup) {
-        cleanup_code.deinit(allocator);
+        cleanup_code.deinit();
         return try allocator.dupe(u8, method_source);
     }
 
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
-    try result.appendSlice(allocator, method_source[0..last_brace_pos]);
-    const cleanup_slice = try cleanup_code.toOwnedSlice(allocator);
+    try result.appendSlice(method_source[0..last_brace_pos]);
+    const cleanup_slice = try cleanup_code.toOwnedSlice();
     defer allocator.free(cleanup_slice);
-    try result.appendSlice(allocator, cleanup_slice);
-    try result.appendSlice(allocator, method_source[last_brace_pos..]);
+    try result.appendSlice(cleanup_slice);
+    try result.appendSlice(method_source[last_brace_pos..]);
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Generate XxxBase struct for polymorphism support.
@@ -4178,10 +4179,10 @@ fn generateBaseStruct(
     };
 
     // Collect parent fields (if any)
-    var all_parent_fields: std.ArrayList(FieldDef) = .empty;
-    defer all_parent_fields.deinit(allocator);
-    var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
-    defer all_parent_properties.deinit(allocator);
+    var all_parent_fields = infra.List(FieldDef).init(allocator);
+    defer all_parent_fields.deinit();
+    var all_parent_properties = infra.List(PropertyDef).init(allocator);
+    defer all_parent_properties.deinit();
     var has_parent_allocator = false;
 
     if (parsed.parent_name) |parent_ref| {
@@ -4241,7 +4242,7 @@ fn generateBaseStruct(
                 // Skip if we've already seen this field name
                 const gop = try seen_field_names.getOrPut(field.name);
                 if (!gop.found_existing) {
-                    try all_parent_fields.append(allocator, field);
+                    try all_parent_fields.append(field);
                 } else {
                     std.debug.print("    Skipping duplicate field: {s}\n", .{field.name});
                 }
@@ -4250,7 +4251,7 @@ fn generateBaseStruct(
                 // Skip if we've already seen this property name
                 const gop = try seen_property_names.getOrPut(prop.name);
                 if (!gop.found_existing) {
-                    try all_parent_properties.append(allocator, prop);
+                    try all_parent_properties.append(prop);
                 } else {
                     std.debug.print("    Skipping duplicate property: {s}\n", .{prop.name});
                 }
@@ -4377,16 +4378,16 @@ fn generateEnhancedClassWithRegistry(
     const is_base_type = base_types.contains(parsed.name);
 
     // Resolve all mixins and detect conflicts early
-    var mixin_infos: std.ArrayList(ClassInfo) = .empty;
-    defer mixin_infos.deinit(allocator);
+    var mixin_infos = infra.List(ClassInfo).init(allocator);
+    defer mixin_infos.deinit();
 
     for (parsed.mixin_names) |mixin_ref| {
         // First try to get from mixins registry
         if (registry.getMixin(mixin_ref)) |mixin_info| {
-            try mixin_infos.append(allocator, mixin_info);
+            try mixin_infos.append(mixin_info);
         } else if (try registry.resolveParentReference(mixin_ref, current_file)) |mixin_info| {
             // Fallback to resolveParentReference for cross-file mixin references
-            try mixin_infos.append(allocator, mixin_info);
+            try mixin_infos.append(mixin_info);
         } else {
             // Mixin not found
             std.debug.print("error: Cannot resolve mixin '{s}' in interface '{s}'\n", .{ mixin_ref, parsed.name });
@@ -4408,8 +4409,8 @@ fn generateEnhancedClassWithRegistry(
         parsed.methods,
     );
 
-    var code: std.ArrayList(u8) = .empty;
-    defer code.deinit(allocator);
+    var code = infra.List(u8).init(allocator);
+    defer code.deinit();
 
     const writer = code.writer(allocator);
 
@@ -4511,18 +4512,18 @@ fn generateEnhancedClassWithRegistry(
 
     // Add common imports based on field and method usage
     // Collect all type references from fields AND methods
-    var type_references: std.ArrayList([]const u8) = .empty;
-    defer type_references.deinit(allocator);
+    var type_references = infra.List([]const u8).init(allocator);
+    defer type_references.deinit();
 
     // Collect from fields
     for (parsed.fields) |field| {
-        try type_references.append(allocator, field.type_name);
+        try type_references.append(field.type_name);
     }
 
     // Collect from methods (source code contains parameter and return types)
     for (parsed.methods) |method| {
         // Method source contains type names - just add it to search
-        try type_references.append(allocator, method.source);
+        try type_references.append(method.source);
     }
 
     // Now analyze all collected type references
@@ -4634,20 +4635,20 @@ fn generateEnhancedClassWithRegistry(
             var current_file_path = current_file;
 
             // Collect all parent fields by walking up the hierarchy
-            var all_parent_fields: std.ArrayList(FieldDef) = .empty;
-            defer all_parent_fields.deinit(allocator);
-            var all_parent_properties: std.ArrayList(PropertyDef) = .empty;
-            defer all_parent_properties.deinit(allocator);
+            var all_parent_fields = infra.List(FieldDef).init(allocator);
+            defer all_parent_fields.deinit();
+            var all_parent_properties = infra.List(PropertyDef).init(allocator);
+            defer all_parent_properties.deinit();
 
             while (current_parent) |parent| {
                 const parent_info = (try registry.resolveParentReference(parent, current_file_path)) orelse break;
 
                 // Add parent fields (in reverse order, will reverse later)
                 for (parent_info.fields) |field| {
-                    try all_parent_fields.append(allocator, field);
+                    try all_parent_fields.append(field);
                 }
                 for (parent_info.properties) |prop| {
-                    try all_parent_properties.append(allocator, prop);
+                    try all_parent_properties.append(prop);
                 }
 
                 current_parent = parent_info.parent_name;
@@ -4844,8 +4845,8 @@ fn generateEnhancedClassWithRegistry(
             parent_type: []const u8,
         };
 
-        var parent_methods: std.ArrayList(ParentMethod) = .empty;
-        defer parent_methods.deinit(allocator);
+        var parent_methods = infra.List(ParentMethod).init(allocator);
+        defer parent_methods.deinit();
 
         var current_parent: ?[]const u8 = parent_ref;
         var current_file_path = current_file;
@@ -4872,7 +4873,7 @@ fn generateEnhancedClassWithRegistry(
                 if (method.is_static and !is_init_or_deinit) continue;
 
                 // Copy all methods including init and deinit
-                try parent_methods.append(allocator, .{
+                try parent_methods.append(.{
                     .method = method,
                     .parent_type = parent_info.name,
                 });
@@ -4948,10 +4949,10 @@ fn generateEnhancedClassWithRegistry(
 
             // Collect fields that need to be in init params
             // These are fields from ancestors without init + current class fields
-            var init_param_fields: std.ArrayList(FieldDef) = .empty;
-            defer init_param_fields.deinit(allocator);
-            var init_param_props: std.ArrayList(PropertyDef) = .empty;
-            defer init_param_props.deinit(allocator);
+            var init_param_fields = infra.List(FieldDef).init(allocator);
+            defer init_param_fields.deinit();
+            var init_param_props = infra.List(PropertyDef).init(allocator);
+            defer init_param_props.deinit();
 
             // Walk hierarchy and collect fields from classes that don't have init
             curr_parent = parent_ref;
@@ -4971,10 +4972,10 @@ fn generateEnhancedClassWithRegistry(
                 // If no init, need params for these fields
                 if (!has_own_init) {
                     for (parent_info.fields) |field| {
-                        try init_param_fields.append(allocator, field);
+                        try init_param_fields.append(field);
                     }
                     for (parent_info.properties) |prop| {
-                        try init_param_props.append(allocator, prop);
+                        try init_param_props.append(prop);
                     }
                 } else {
                     // Found parent with init, stop here
@@ -4991,18 +4992,18 @@ fn generateEnhancedClassWithRegistry(
 
             // Add current class fields to params
             for (parsed.fields) |field| {
-                try init_param_fields.append(allocator, field);
+                try init_param_fields.append(field);
             }
             for (parsed.properties) |prop| {
-                try init_param_props.append(allocator, prop);
+                try init_param_props.append(prop);
             }
 
             // For initialization body, we need ALL fields (parent + current)
             // Collect all parent fields again
-            var all_init_fields: std.ArrayList(FieldDef) = .empty;
-            defer all_init_fields.deinit(allocator);
-            var all_init_props: std.ArrayList(PropertyDef) = .empty;
-            defer all_init_props.deinit(allocator);
+            var all_init_fields = infra.List(FieldDef).init(allocator);
+            defer all_init_fields.deinit();
+            var all_init_props = infra.List(PropertyDef).init(allocator);
+            defer all_init_props.deinit();
 
             // Walk up entire parent hierarchy to collect all fields
             curr_parent = parent_ref;
@@ -5011,10 +5012,10 @@ fn generateEnhancedClassWithRegistry(
                 const parent_info = (try registry.resolveParentReference(parent, curr_file)) orelse break;
 
                 for (parent_info.fields) |field| {
-                    try all_init_fields.append(allocator, field);
+                    try all_init_fields.append(field);
                 }
                 for (parent_info.properties) |prop| {
-                    try all_init_props.append(allocator, prop);
+                    try all_init_props.append(prop);
                 }
 
                 curr_parent = parent_info.parent_name;
@@ -5027,10 +5028,10 @@ fn generateEnhancedClassWithRegistry(
 
             // Add current class fields
             for (parsed.fields) |field| {
-                try all_init_fields.append(allocator, field);
+                try all_init_fields.append(field);
             }
             for (parsed.properties) |prop| {
-                try all_init_props.append(allocator, prop);
+                try all_init_props.append(prop);
             }
 
             const smart_init = try generateSmartInit(
@@ -5075,10 +5076,10 @@ fn generateEnhancedClassWithRegistry(
         // Skip generating init for mixins - they're meant to be included, not instantiated
         if (!has_init and !has_parent_init and parsed.class_kind != .mixin) {
             // Collect ALL fields (parent + own) for init parameters
-            var all_fields_for_init: std.ArrayList(FieldDef) = .empty;
-            defer all_fields_for_init.deinit(allocator);
-            var all_props_for_init: std.ArrayList(PropertyDef) = .empty;
-            defer all_props_for_init.deinit(allocator);
+            var all_fields_for_init = infra.List(FieldDef).init(allocator);
+            defer all_fields_for_init.deinit();
+            var all_props_for_init = infra.List(PropertyDef).init(allocator);
+            defer all_props_for_init.deinit();
 
             // Collect parent fields
             if (parsed.parent_name) |parent_ref| {
@@ -5087,10 +5088,10 @@ fn generateEnhancedClassWithRegistry(
                 while (curr_parent) |parent| {
                     const parent_info = (try registry.resolveParentReference(parent, curr_file)) orelse break;
                     for (parent_info.fields) |field| {
-                        try all_fields_for_init.append(allocator, field);
+                        try all_fields_for_init.append(field);
                     }
                     for (parent_info.properties) |prop| {
-                        try all_props_for_init.append(allocator, prop);
+                        try all_props_for_init.append(prop);
                     }
                     curr_parent = parent_info.parent_name;
                     curr_file = parent_info.file_path;
@@ -5104,16 +5105,16 @@ fn generateEnhancedClassWithRegistry(
             for (parsed.mixin_names) |mixin_ref| {
                 const mixin_info = (try registry.resolveParentReference(mixin_ref, current_file)) orelse continue;
                 for (mixin_info.fields) |field| {
-                    try all_fields_for_init.append(allocator, field);
+                    try all_fields_for_init.append(field);
                 }
                 for (mixin_info.properties) |prop| {
-                    try all_props_for_init.append(allocator, prop);
+                    try all_props_for_init.append(prop);
                 }
             }
 
             // Add own fields
-            try all_fields_for_init.appendSlice(allocator, parsed.fields);
-            try all_props_for_init.appendSlice(allocator, parsed.properties);
+            try all_fields_for_init.appendSlice(parsed.fields);
+            try all_props_for_init.appendSlice(parsed.properties);
 
             // Check if we actually need init - only if there are fields or writable properties
             // Read-only properties alone don't need initialization
@@ -5264,8 +5265,8 @@ fn generateEnhancedClassWithRegistry(
 
     {
         // Collect all string fields that need freeing (from entire hierarchy)
-        var string_fields: std.ArrayList([]const u8) = .empty;
-        defer string_fields.deinit(allocator);
+        var string_fields = infra.List([]const u8).init(allocator);
+        defer string_fields.deinit();
 
         // Collect parent string fields
         if (parsed.parent_name) |parent_ref| {
@@ -5273,22 +5274,22 @@ fn generateEnhancedClassWithRegistry(
             var curr_file = current_file;
 
             // Walk up hierarchy to collect all string fields
-            var all_parent_string_fields: std.ArrayList([]const u8) = .empty;
-            defer all_parent_string_fields.deinit(allocator);
+            var all_parent_string_fields = infra.List([]const u8).init(allocator);
+            defer all_parent_string_fields.deinit();
 
             while (curr_parent) |parent| {
                 const parent_info = (try registry.resolveParentReference(parent, curr_file)) orelse break;
 
                 for (parent_info.fields) |field| {
                     if (std.mem.eql(u8, field.type_name, "[]const u8") or std.mem.eql(u8, field.type_name, "[]u8")) {
-                        try all_parent_string_fields.append(allocator, field.name);
+                        try all_parent_string_fields.append(field.name);
                     }
                 }
                 for (parent_info.properties) |prop| {
                     // Only free read-write properties (read-only are borrowed, not owned)
                     const is_string_type = std.mem.eql(u8, prop.type_name, "[]const u8") or std.mem.eql(u8, prop.type_name, "[]u8");
                     if (is_string_type and prop.access == .read_write) {
-                        try all_parent_string_fields.append(allocator, prop.name);
+                        try all_parent_string_fields.append(prop.name);
                     }
                 }
 
@@ -5298,7 +5299,7 @@ fn generateEnhancedClassWithRegistry(
 
             // Reverse to get correct order
             std.mem.reverse([]const u8, all_parent_string_fields.items);
-            try string_fields.appendSlice(allocator, all_parent_string_fields.items);
+            try string_fields.appendSlice(all_parent_string_fields.items);
         }
 
         // Collect mixin string fields
@@ -5306,14 +5307,14 @@ fn generateEnhancedClassWithRegistry(
             const mixin_info = (try registry.resolveParentReference(mixin_ref, current_file)) orelse continue;
             for (mixin_info.fields) |field| {
                 if (std.mem.eql(u8, field.type_name, "[]const u8") or std.mem.eql(u8, field.type_name, "[]u8")) {
-                    try string_fields.append(allocator, field.name);
+                    try string_fields.append(field.name);
                 }
             }
             for (mixin_info.properties) |prop| {
                 // Only free read-write properties (read-only are borrowed, not owned)
                 const is_string_type = std.mem.eql(u8, prop.type_name, "[]const u8") or std.mem.eql(u8, prop.type_name, "[]u8");
                 if (is_string_type and prop.access == .read_write) {
-                    try string_fields.append(allocator, prop.name);
+                    try string_fields.append(prop.name);
                 }
             }
         }
@@ -5321,14 +5322,14 @@ fn generateEnhancedClassWithRegistry(
         // Add own string fields
         for (parsed.fields) |field| {
             if (std.mem.eql(u8, field.type_name, "[]const u8") or std.mem.eql(u8, field.type_name, "[]u8")) {
-                try string_fields.append(allocator, field.name);
+                try string_fields.append(field.name);
             }
         }
         for (parsed.properties) |prop| {
             // Only free read-write properties (read-only are borrowed, not owned)
             const is_string_type = std.mem.eql(u8, prop.type_name, "[]const u8") or std.mem.eql(u8, prop.type_name, "[]u8");
             if (is_string_type and prop.access == .read_write) {
-                try string_fields.append(allocator, prop.name);
+                try string_fields.append(prop.name);
             }
         }
 
@@ -5437,8 +5438,8 @@ fn generateEnhancedClassWithRegistry(
             parent_type: []const u8,
         };
 
-        var parent_methods_for_other: std.ArrayList(ParentMethodForOther) = .empty;
-        defer parent_methods_for_other.deinit(allocator);
+        var parent_methods_for_other = infra.List(ParentMethodForOther).init(allocator);
+        defer parent_methods_for_other.deinit();
 
         var curr_parent: ?[]const u8 = parent_ref;
         var curr_file = current_file;
@@ -5455,7 +5456,7 @@ fn generateEnhancedClassWithRegistry(
                 if (method.is_static and !is_init_or_deinit) continue;
                 if (is_init_or_deinit) continue; // Already emitted
 
-                try parent_methods_for_other.append(allocator, .{
+                try parent_methods_for_other.append(.{
                     .method = method,
                     .parent_type = parent_info.name,
                 });
@@ -5554,7 +5555,7 @@ fn generateEnhancedClassWithRegistry(
 
     try writer.writeAll("};\n");
 
-    return try code.toOwnedSlice(allocator);
+    return try code.toOwnedSlice();
 }
 // ============================================================================
 // DEAD CODE REMOVED (~220 lines)
@@ -5579,8 +5580,8 @@ fn rewriteMixinMethod(
     if (!isValidTypeName(mixin_type_name)) return error.InvalidTypeName;
     if (!isValidTypeName(child_type_name)) return error.InvalidTypeName;
 
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var pos: usize = 0;
     var in_string: bool = false;
@@ -5591,7 +5592,7 @@ fn rewriteMixinMethod(
             if (method_source[pos] == '"' and (pos == 0 or method_source[pos - 1] != '\\')) {
                 in_string = false;
             }
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
@@ -5600,21 +5601,21 @@ fn rewriteMixinMethod(
             if (method_source[pos] == '\n') {
                 in_comment = false;
             }
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
 
         if (method_source[pos] == '"') {
             in_string = true;
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
 
         if (pos + 1 < method_source.len and method_source[pos] == '/' and method_source[pos + 1] == '/') {
             in_comment = true;
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
@@ -5625,17 +5626,17 @@ fn rewriteMixinMethod(
             const after_ok = after_pos >= method_source.len or !isIdentifierChar(method_source[after_pos]);
 
             if (before_ok and after_ok) {
-                try result.appendSlice(allocator, child_type_name);
+                try result.appendSlice(child_type_name);
                 pos += mixin_type_name.len;
                 continue;
             }
         }
 
-        try result.append(allocator, method_source[pos]);
+        try result.append(method_source[pos]);
         pos += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Rename reserved parameter names (init, deinit) to avoid shadowing conflicts
@@ -5694,8 +5695,8 @@ fn renameParameter(
     }
 
     // Replace all occurrences of the parameter name throughout the method
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var pos: usize = 0;
     var in_string = false;
@@ -5707,7 +5708,7 @@ fn renameParameter(
             if (method_source[pos] == '"' and (pos == 0 or method_source[pos - 1] != '\\')) {
                 in_string = false;
             }
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
@@ -5717,21 +5718,21 @@ fn renameParameter(
             if (method_source[pos] == '\n') {
                 in_comment = false;
             }
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
 
         if (method_source[pos] == '"') {
             in_string = true;
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
 
         if (pos + 1 < method_source.len and method_source[pos] == '/' and method_source[pos + 1] == '/') {
             in_comment = true;
-            try result.append(allocator, method_source[pos]);
+            try result.append(method_source[pos]);
             pos += 1;
             continue;
         }
@@ -5743,17 +5744,17 @@ fn renameParameter(
             const after_ok = after_pos >= method_source.len or !isIdentifierChar(method_source[after_pos]);
 
             if (before_ok and after_ok) {
-                try result.appendSlice(allocator, new_name);
+                try result.appendSlice(new_name);
                 pos += param_name.len;
                 continue;
             }
         }
 
-        try result.append(allocator, method_source[pos]);
+        try result.append(method_source[pos]);
         pos += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 fn isIdentifierChar(c: u8) bool {
