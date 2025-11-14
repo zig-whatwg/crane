@@ -142,14 +142,14 @@ pub const ReadableByteStreamController = struct {
         self.abortController.deinit();
 
         // Clean up byte queue buffers
-        for (self.byteQueue.items) |entry| {
+        for (self.byteQueue.toSlice()) |entry| {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
         self.byteQueue.deinit(self.allocator);
 
         // Clean up pending pull-intos
-        for (self.pendingPullIntos.items) |descriptor| {
+        for (self.pendingPullIntos.toSlice()) |descriptor| {
             descriptor.buffer.deinit(self.allocator);
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
@@ -177,7 +177,7 @@ pub const ReadableByteStreamController = struct {
     pub fn get_desiredSize(self: *const ReadableByteStreamController) ?f64 {
 
         // If stream is closed, return 0
-        if (self.closeRequested and self.byteQueue.items.len == 0) {
+        if (self.closeRequested and self.byteQueue.toSlice().len == 0) {
             return 0.0;
         }
 
@@ -296,7 +296,7 @@ pub const ReadableByteStreamController = struct {
             const promise = try AsyncPromise(common.ReadResult).init(self.allocator, self.eventLoop);
 
             // Dequeue a chunk from the byte queue
-            if (self.byteQueue.items.len > 0) {
+            if (self.byteQueue.toSlice().len > 0) {
                 const entry = self.byteQueue.orderedRemove(0);
 
                 // Update queue total size
@@ -484,7 +484,7 @@ pub const ReadableByteStreamController = struct {
         self.invalidateBYOBRequest();
 
         // Step 2: Clear the list
-        for (self.pendingPullIntos.items) |descriptor| {
+        for (self.pendingPullIntos.toSlice()) |descriptor| {
             descriptor.buffer.deinit(self.allocator);
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
@@ -543,7 +543,7 @@ pub const ReadableByteStreamController = struct {
 
         // Step 11: Copy bytes from queue
         while (total_bytes_to_copy_remaining > 0) {
-            var head_of_queue = &self.byteQueue.items[0];
+            var head_of_queue = &self.byteQueue.toSlice()[0];
             const bytes_to_copy = @min(total_bytes_to_copy_remaining, head_of_queue.byteLength);
 
             const dest_start = pullIntoDescriptor.byte_offset + pullIntoDescriptor.bytes_filled;
@@ -626,7 +626,7 @@ pub const ReadableByteStreamController = struct {
         self.clearPendingPullIntos();
 
         // Step 4: Reset queue
-        for (self.byteQueue.items) |entry| {
+        for (self.byteQueue.toSlice()) |entry| {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
@@ -674,8 +674,8 @@ pub const ReadableByteStreamController = struct {
         }
 
         // Step 4: If pendingPullIntos not empty, check alignment
-        if (self.pendingPullIntos.items.len > 0) {
-            const first_pending = self.pendingPullIntos.items[0];
+        if (self.pendingPullIntos.toSlice().len > 0) {
+            const first_pending = self.pendingPullIntos.toSlice()[0];
 
             if (first_pending.bytes_filled % first_pending.element_size != 0) {
                 const e = common.JSValue{ .string = "Incomplete byte fill in pending pull-into" };
@@ -730,8 +730,8 @@ pub const ReadableByteStreamController = struct {
         self.allocator.destroy(internal_buffer);
 
         // Step 8: If pendingPullIntos not empty, handle specially
-        if (self.pendingPullIntos.items.len > 0) {
-            const first_pending = self.pendingPullIntos.items[0];
+        if (self.pendingPullIntos.toSlice().len > 0) {
+            const first_pending = self.pendingPullIntos.toSlice()[0];
 
             if (first_pending.buffer.isDetached()) {
                 return error.TypeError;
@@ -759,7 +759,7 @@ pub const ReadableByteStreamController = struct {
             if (stream.getNumReadRequests() == 0) {
                 try self.enqueueChunkToQueue(buffer_ptr, byteOffset, byteLength);
             } else {
-                if (self.pendingPullIntos.items.len > 0) {
+                if (self.pendingPullIntos.toSlice().len > 0) {
                     _ = self.shiftPendingPullInto();
                 }
 
@@ -782,7 +782,7 @@ pub const ReadableByteStreamController = struct {
             var filled_pull_intos = try self.processPullIntoDescriptorsUsingQueue();
             defer filled_pull_intos.deinit(self.allocator);
 
-            for (filled_pull_intos.items) |filled_pull_into| {
+            for (filled_pull_intos.toSlice()) |filled_pull_into| {
                 try self.commitPullIntoDescriptor(filled_pull_into);
             }
         } else {
@@ -885,12 +885,12 @@ pub const ReadableByteStreamController = struct {
     pub fn respond(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         // Step 1: Assert controller.[[pendingPullIntos]] is not empty
-        if (self.pendingPullIntos.items.len == 0) {
+        if (self.pendingPullIntos.toSlice().len == 0) {
             return error.InvalidState;
         }
 
         // Step 2: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-        const firstDescriptor = self.pendingPullIntos.items[0];
+        const firstDescriptor = self.pendingPullIntos.toSlice()[0];
 
         // Step 3: Let state be controller.[[stream]].[[state]]
         const stream_ptr = self.stream orelse return error.NoStream;
@@ -948,7 +948,7 @@ pub const ReadableByteStreamController = struct {
     pub fn respondWithNewView(self: *ReadableByteStreamController, view: webidl.ArrayBufferView) !void {
 
         // Step 1: Assert: controller.[[pendingPullIntos]] is not empty
-        if (self.pendingPullIntos.items.len == 0) {
+        if (self.pendingPullIntos.toSlice().len == 0) {
             return error.InvalidState;
         }
 
@@ -958,7 +958,7 @@ pub const ReadableByteStreamController = struct {
         }
 
         // Step 3: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-        const firstDescriptor = self.pendingPullIntos.items[0];
+        const firstDescriptor = self.pendingPullIntos.toSlice()[0];
 
         // Step 4: Let state be controller.[[stream]].[[state]]
         const stream_ptr = self.stream orelse return error.NoStream;
@@ -1044,7 +1044,7 @@ pub const ReadableByteStreamController = struct {
     fn respondInternal(self: *ReadableByteStreamController, bytesWritten: u64) !void {
 
         // Step 1: Let firstDescriptor be controller.[[pendingPullIntos]][0]
-        const firstDescriptor = self.pendingPullIntos.items[0];
+        const firstDescriptor = self.pendingPullIntos.toSlice()[0];
 
         // Step 2: Assert: ! CanTransferArrayBuffer(firstDescriptor's buffer) is true
         // (Already transferred in respond())
@@ -1104,7 +1104,7 @@ pub const ReadableByteStreamController = struct {
             defer filled_pull_intos.deinit(self.allocator);
 
             // Step 4.2: While filledPullIntos's size < ! ReadableStreamGetNumReadIntoRequests(stream)
-            while (filled_pull_intos.items.len < stream.getNumReadIntoRequests()) {
+            while (filled_pull_intos.toSlice().len < stream.getNumReadIntoRequests()) {
                 // Step 4.2.1: Let pullIntoDescriptor be ! ReadableByteStreamControllerShiftPendingPullInto(controller)
                 const pull_into_descriptor = self.shiftPendingPullInto();
 
@@ -1113,7 +1113,7 @@ pub const ReadableByteStreamController = struct {
             }
 
             // Step 4.3: For each filledPullInto of filledPullIntos
-            for (filled_pull_intos.items) |filled_pull_into| {
+            for (filled_pull_intos.toSlice()) |filled_pull_into| {
                 // Step 4.3.1: Perform ! ReadableByteStreamControllerCommitPullIntoDescriptor(stream, filledPullInto)
                 self.commitPullIntoDescriptor(filled_pull_into) catch continue;
             }
@@ -1312,14 +1312,14 @@ pub const ReadableByteStreamController = struct {
         errdefer filled_pull_intos.deinit(self.allocator);
 
         // Step 3: Process pending pull-intos
-        while (self.pendingPullIntos.items.len > 0) {
+        while (self.pendingPullIntos.toSlice().len > 0) {
             // Step 3.1: If queue is empty, break
             if (self.queueTotalSize == 0) {
                 break;
             }
 
             // Step 3.2: Get first descriptor
-            const pullIntoDescriptor = self.pendingPullIntos.items[0];
+            const pullIntoDescriptor = self.pendingPullIntos.toSlice()[0];
 
             // Step 3.3: Try to fill from queue
             if (self.fillPullIntoDescriptorFromQueue(pullIntoDescriptor)) {
@@ -1385,7 +1385,7 @@ pub const ReadableByteStreamController = struct {
     fn fillReadRequestFromQueue(self: *ReadableByteStreamController) !void {
 
         // Step 2: Remove first queue entry
-        const entry = self.byteQueue.items[0];
+        const entry = self.byteQueue.toSlice()[0];
         _ = self.byteQueue.orderedRemove(0);
 
         // Step 4: Update queue size
@@ -1423,8 +1423,8 @@ pub const ReadableByteStreamController = struct {
     pub fn call_getBYOBRequest(self: *ReadableByteStreamController) !?*ReadableStreamBYOBRequest {
 
         // Step 1: If byobRequest is null and pendingPullIntos is not empty
-        if (self.byobRequest == null and self.pendingPullIntos.items.len > 0) {
-            const firstDescriptor = self.pendingPullIntos.items[0];
+        if (self.byobRequest == null and self.pendingPullIntos.toSlice().len > 0) {
+            const firstDescriptor = self.pendingPullIntos.toSlice()[0];
 
             // Create Uint8Array view for the BYOB request
             const view_byteOffset = firstDescriptor.byte_offset + firstDescriptor.bytes_filled;

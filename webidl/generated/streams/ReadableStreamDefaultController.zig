@@ -276,7 +276,7 @@ pub const ReadableStreamDefaultController = struct {
                 switch (stream.reader) {
                     .none => {},
                     .default => |reader| {
-                        while (reader.readRequests.items.len > 0) {
+                        while (reader.readRequests.toSlice().len > 0) {
                             const promise = reader.readRequests.orderedRemove(0);
                             promise.fulfill(.{
                                 .value = null,

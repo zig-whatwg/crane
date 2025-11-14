@@ -590,7 +590,7 @@ pub const WritableStream = struct {
         const stored_exception = stored_error.toException(self.allocator) catch return;
 
         // Spec step 6-7: Reject all pending write requests
-        while (self.writeRequests.items.len > 0) {
+        while (self.writeRequests.toSlice().len > 0) {
             const write_request = self.writeRequests.orderedRemove(0);
             write_request.reject(stored_exception);
         }

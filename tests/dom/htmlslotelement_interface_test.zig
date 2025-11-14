@@ -17,7 +17,7 @@ test "dom.HTMLSlotElement - initialization" {
 
     // Lists are initially empty
     try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.size());
-    try std.testing.expectEqual(@as(usize, 0), slot.manually_assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), slot.manually_assigned_nodes.toSlice().len);
     try std.testing.expect(!slot.hasAssignedNodes());
 }
 test "dom.HTMLSlotElement - set and get name" {

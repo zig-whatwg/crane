@@ -243,7 +243,7 @@ pub const Element = struct {
         try self.attributes.append(attribute.*);
 
         // Get pointer to the appended attribute
-        const appended_attr = &self.attributes.items[self.attributes.len - 1];
+        const appended_attr = &self.attributes.toSlice()[self.attributes.len - 1];
 
         // Step 2: Set attribute's element
         appended_attr.owner_element = self;
@@ -270,7 +270,7 @@ pub const Element = struct {
         const old_value = attr_to_remove.value;
 
         // Step 2: Remove from attribute list
-        for (self.attributes.items, 0..) |*attr, i| {
+        for (self.attributes.toSlice(), 0..) |*attr, i| {
             if (attr == attr_to_remove) {
                 _ = self.attributes.orderedRemove(i);
                 break;
@@ -381,7 +381,7 @@ pub const Element = struct {
         } else qualified_name;
 
         // Step 2: Find first attribute with matching qualified name
-        for (self.attributes.items) |*attr| {
+        for (self.attributes.toSlice()) |*attr| {
             const attr_qualified_name = attr.get_name() catch continue;
             defer if (attr.prefix != null) self.allocator.free(attr_qualified_name); // Free if allocated
 
@@ -411,7 +411,7 @@ pub const Element = struct {
         const ns = if (namespace) |n| if (n.len == 0) null else n else null;
 
         // Step 2: Find attribute with matching namespace and local name
-        for (self.attributes.items) |*attr| {
+        for (self.attributes.toSlice()) |*attr| {
             // Check namespace match
             const ns_match = if (ns == null and attr.namespace_uri == null)
                 true
@@ -879,7 +879,7 @@ pub const Element = struct {
 
     fn collectByTagName(self: *const Element, node: *Node, qualified_name: []const u8, collection: *HTMLCollection) !void {
 
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -922,7 +922,7 @@ pub const Element = struct {
 
     fn collectByTagNameNS(self: *const Element, node: *Node, namespace: ?[]const u8, local_name: []const u8, collection: *HTMLCollection) !void {
 
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -961,7 +961,7 @@ pub const Element = struct {
 
     fn collectByClassName(self: *const Element, node: *Node, class_names: []const u8, collection: *HTMLCollection) !void {
 
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -1012,7 +1012,7 @@ pub const Element = struct {
         defer matches.deinit();
 
         // Check if self is in the matches list
-        for (matches.items) |match| {
+        for (matches.toSlice()) |match| {
             if (match == self) {
                 return true;
             }
@@ -1052,7 +1052,7 @@ pub const Element = struct {
                 const elem: *const Element = @ptrCast(node);
 
                 // Check if this element is in the matches
-                for (matches.items) |match| {
+                for (matches.toSlice()) |match| {
                     if (match == elem) {
                         // Cast away const - closest returns mutable pointer
                         return @constCast(elem);
@@ -1087,8 +1087,8 @@ pub const Element = struct {
             return try mutation.preInsert(node, parent, element);
         } else if (eqlIgnoreCase(where, "afterbegin")) {
             // Return the result of pre-inserting node into element before element's first child
-            const first_child = if (element.child_nodes.items.len > 0)
-                element.child_nodes.items[0]
+            const first_child = if (element.child_nodes.toSlice().len > 0)
+                element.child_nodes.toSlice()[0]
             else
                 null;
             return try mutation.preInsert(node, @ptrCast(element), first_child);
@@ -2059,9 +2059,9 @@ pub const Element = struct {
                 if (elem_a.attributes.len != elem_b.attributes.len) return false;
 
                 // Step 3: Each attribute in A's list has an equal attribute in B's list
-                for (elem_a.attributes.items) |attr_a| {
+                for (elem_a.attributes.toSlice()) |attr_a| {
                     var found = false;
-                    for (elem_b.attributes.items) |attr_b| {
+                    for (elem_b.attributes.toSlice()) |attr_b| {
                         if (Node.attributeEquals(&attr_a, &attr_b)) {
                             found = true;
                             break;
@@ -2103,8 +2103,8 @@ pub const Element = struct {
         if (a.child_nodes.len != b.child_nodes.len) return false;
 
         // Step 5: Each child of A equals the child of B at the identical index
-        for (a.child_nodes.items, 0..) |child_a, i| {
-            const child_b = b.child_nodes.items[i];
+        for (a.child_nodes.toSlice(), 0..) |child_a, i| {
+            const child_b = b.child_nodes.toSlice()[i];
             if (!Node.nodeEquals(child_a, child_b)) return false;
         }
 
@@ -2213,7 +2213,7 @@ pub const Element = struct {
 
         // Step 5: If subtree is true, clone all children recursively
         if (subtree) {
-            for (node.child_nodes.items) |child| {
+            for (node.child_nodes.toSlice()) |child| {
                 _ = try Node.cloneNodeInternal(child, document, subtree, copy, fallback_registry);
             }
         }
@@ -2267,7 +2267,7 @@ pub const Element = struct {
 
                     // Step 6.6: Clone shadow root children
                     const shadow_node = shadow.asNode();
-                    for (shadow_node.child_nodes.items) |child| {
+                    for (shadow_node.child_nodes.toSlice()) |child| {
                         const copy_shadow_node = copy_shadow.asNode();
                         _ = try Node.cloneNodeInternal(child, document, subtree, copy_shadow_node, null);
                     }
@@ -2301,7 +2301,7 @@ pub const Element = struct {
                 copy_elem.namespace_uri = elem.namespace_uri;
 
                 // Clone attributes
-                for (elem.attributes.items) |attr| {
+                for (elem.attributes.toSlice()) |attr| {
                     const copy_attr = Attr{
                         .allocator = elem.allocator,
                         .namespace_uri = attr.namespace_uri,
@@ -2445,8 +2445,8 @@ pub const Element = struct {
 
             // Step 4: Replace data with node, offset length, count 0, and data
             // This appends the concatenated data to the current node's data
-            if (contiguous_data.items.len > 0) {
-                try cd.call_replaceData(@intCast(length), 0, contiguous_data.items);
+            if (contiguous_data.toSlice().len > 0) {
+                try cd.call_replaceData(@intCast(length), 0, contiguous_data.toSlice());
             }
 
             // Step 5: Let currentNode be node's next sibling
@@ -2596,7 +2596,7 @@ pub const Element = struct {
         list.* = try NodeList.init(self_parent.allocator);
 
         // Populate with current children (live view will track changes)
-        for (self_parent.child_nodes.items) |child| {
+        for (self_parent.child_nodes.toSlice()) |child| {
             try list.addNode(child);
         }
 
@@ -2636,10 +2636,10 @@ pub const Element = struct {
         const self_parent: *const Node = @ptrCast(self);
 
         const parent = self_parent.parent_node orelse return null;
-        for (parent.child_nodes.items, 0..) |child, i| {
+        for (parent.child_nodes.toSlice(), 0..) |child, i| {
             if (child == self_parent) {
                 if (i == 0) return null;
-                return parent.child_nodes.items[i - 1];
+                return parent.child_nodes.toSlice()[i - 1];
             }
         }
         return null;
@@ -2650,10 +2650,10 @@ pub const Element = struct {
         const self_parent: *const Node = @ptrCast(self);
 
         const parent = self_parent.parent_node orelse return null;
-        for (parent.child_nodes.items, 0..) |child, i| {
+        for (parent.child_nodes.toSlice(), 0..) |child, i| {
             if (child == self_parent) {
-                if (i + 1 >= parent.child_nodes.items.len) return null;
-                return parent.child_nodes.items[i + 1];
+                if (i + 1 >= parent.child_nodes.toSlice().len) return null;
+                return parent.child_nodes.toSlice()[i + 1];
             }
         }
         return null;
@@ -2966,7 +2966,7 @@ pub const Element = struct {
         }
 
         // Step 2: If element has attribute with prefix "xmlns" and value namespace, return local name
-        for (elem.attributes.items) |attr| {
+        for (elem.attributes.toSlice()) |attr| {
             if (attr.prefix) |attr_prefix| {
                 if (std.mem.eql(u8, attr_prefix, "xmlns") and std.mem.eql(u8, attr.value, namespace)) {
                     return attr.local_name;
@@ -3018,7 +3018,7 @@ pub const Element = struct {
                 // and local name is prefix, return its value if not empty string, else null.
                 // Or if prefix is null and it has an attribute whose namespace is XMLNS namespace,
                 // prefix is null, and local name is "xmlns", return its value if not empty, else null.
-                for (elem.attributes.items) |attr| {
+                for (elem.attributes.toSlice()) |attr| {
                     const xmlns_ns = "http://www.w3.org/2000/xmlns/";
 
                     if (attr.namespace_uri) |attr_ns| {
@@ -3099,8 +3099,8 @@ pub const Element = struct {
         const self_parent: *Node = @ptrCast(self);
 
         var i: usize = 0;
-        while (i < self_parent.registered_observers.items.len) {
-            if (self_parent.registered_observers.items[i].observer == observer) {
+        while (i < self_parent.registered_observers.toSlice().len) {
+            if (self_parent.registered_observers.toSlice()[i].observer == observer) {
                 _ = self_parent.registered_observers.orderedRemove(i);
                 // Don't increment i, we just shifted everything down
             } else {

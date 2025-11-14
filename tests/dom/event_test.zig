@@ -236,7 +236,7 @@ test "Event: event path manipulation" {
     defer event.deinit();
 
     // Initially empty
-    try testing.expectEqual(@as(usize, 0), event.path.items.len);
+    try testing.expectEqual(@as(usize, 0), event.path.toSlice().len);
 
     // Can append to path
     var target = try EventTarget.init(allocator);
@@ -257,8 +257,8 @@ test "Event: event path manipulation" {
 
     try event.path.append(path_item);
 
-    try testing.expectEqual(@as(usize, 1), event.path.items.len);
-    try testing.expect(event.path.items[0].invocation_target == &target);
+    try testing.expectEqual(@as(usize, 1), event.path.toSlice().len);
+    try testing.expect(event.path.toSlice()[0].invocation_target == &target);
 }
 
 test "Event dispatch: basic tree traversal" {
@@ -296,7 +296,7 @@ test "Event dispatch: basic tree traversal" {
 
     // Event path should contain both child and parent
     // Path is built from target up to root
-    try testing.expect(event.path.items.len >= 1);
+    try testing.expect(event.path.toSlice().len >= 1);
 
     // Verify dispatch flag was set
     try testing.expect(event.dispatch_flag);

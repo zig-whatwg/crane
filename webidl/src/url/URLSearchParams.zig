@@ -72,7 +72,7 @@ pub const URLSearchParams = webidl.interface(struct {
     /// size attribute getter
     /// Spec: https://url.spec.whatwg.org/#dom-urlsearchparams-size (line 2062)
     pub fn size(self: *const URLSearchParams) usize {
-        return self.impl.list.items.len;
+        return self.impl.list.toSlice().len;
     }
 
     // ========================================================================
@@ -154,8 +154,8 @@ pub const URLSearchParams = webidl.interface(struct {
         index: usize,
 
         pub fn next(self: *EntriesIterator) ?Entry {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
+            if (self.index >= self.params.impl.list.toSlice().len) return null;
+            const tuple = self.params.impl.list.toSlice()[self.index];
             self.index += 1;
             return Entry{
                 .name = tuple.name,
@@ -170,8 +170,8 @@ pub const URLSearchParams = webidl.interface(struct {
         index: usize,
 
         pub fn next(self: *KeysIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
+            if (self.index >= self.params.impl.list.toSlice().len) return null;
+            const tuple = self.params.impl.list.toSlice()[self.index];
             self.index += 1;
             return tuple.name;
         }
@@ -183,8 +183,8 @@ pub const URLSearchParams = webidl.interface(struct {
         index: usize,
 
         pub fn next(self: *ValuesIterator) ?[]const u8 {
-            if (self.index >= self.params.impl.list.items.len) return null;
-            const tuple = self.params.impl.list.items[self.index];
+            if (self.index >= self.params.impl.list.toSlice().len) return null;
+            const tuple = self.params.impl.list.toSlice()[self.index];
             self.index += 1;
             return tuple.value;
         }
@@ -221,7 +221,7 @@ pub const URLSearchParams = webidl.interface(struct {
     /// Calls callback for each [name, value] pair in the list
     /// Note: Parameters are (value, name, this) per WebIDL/JavaScript convention
     pub fn forEach(self: *const URLSearchParams, callback: ForEachCallback) void {
-        for (self.impl.list.items) |tuple| {
+        for (self.impl.list.toSlice()) |tuple| {
             callback(tuple.value, tuple.name, self);
         }
     }

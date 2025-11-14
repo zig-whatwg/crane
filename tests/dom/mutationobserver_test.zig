@@ -136,7 +136,7 @@ test "MutationObserverAgent - initialization" {
 
     const agent = try mutation_observer_algorithms.getAgent(allocator);
     try std.testing.expectEqual(false, agent.microtask_queued);
-    try std.testing.expectEqual(@as(usize, 0), agent.pending_observers.items.len);
+    try std.testing.expectEqual(@as(usize, 0), agent.pending_observers.toSlice().len);
 }
 
 test "MutationObserverAgent - reset clears state" {
@@ -150,7 +150,7 @@ test "MutationObserverAgent - reset clears state" {
     // After reset, should get fresh agent
     const agent = try mutation_observer_algorithms.getAgent(allocator);
     try std.testing.expectEqual(false, agent.microtask_queued);
-    try std.testing.expectEqual(@as(usize, 0), agent.pending_observers.items.len);
+    try std.testing.expectEqual(@as(usize, 0), agent.pending_observers.toSlice().len);
 
     mutation_observer_algorithms.resetAgent();
 }

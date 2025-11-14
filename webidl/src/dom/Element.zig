@@ -145,7 +145,7 @@ pub const Element = webidl.interface(struct {
         try self.attributes.append(attribute.*);
 
         // Get pointer to the appended attribute
-        const appended_attr = &self.attributes.items[self.attributes.len - 1];
+        const appended_attr = &self.attributes.toSlice()[self.attributes.len - 1];
 
         // Step 2: Set attribute's element
         appended_attr.owner_element = self;
@@ -170,7 +170,7 @@ pub const Element = webidl.interface(struct {
         const old_value = attr_to_remove.value;
 
         // Step 2: Remove from attribute list
-        for (self.attributes.items, 0..) |*attr, i| {
+        for (self.attributes.toSlice(), 0..) |*attr, i| {
             if (attr == attr_to_remove) {
                 _ = self.attributes.orderedRemove(i);
                 break;
@@ -273,7 +273,7 @@ pub const Element = webidl.interface(struct {
         } else qualified_name;
 
         // Step 2: Find first attribute with matching qualified name
-        for (self.attributes.items) |*attr| {
+        for (self.attributes.toSlice()) |*attr| {
             const attr_qualified_name = attr.get_name() catch continue;
             defer if (attr.prefix != null) self.allocator.free(attr_qualified_name); // Free if allocated
 
@@ -301,7 +301,7 @@ pub const Element = webidl.interface(struct {
         const ns = if (namespace) |n| if (n.len == 0) null else n else null;
 
         // Step 2: Find attribute with matching namespace and local name
-        for (self.attributes.items) |*attr| {
+        for (self.attributes.toSlice()) |*attr| {
             // Check namespace match
             const ns_match = if (ns == null and attr.namespace_uri == null)
                 true
@@ -723,7 +723,7 @@ pub const Element = webidl.interface(struct {
     }
 
     fn collectByTagName(self: *const Element, node: *Node, qualified_name: []const u8, collection: *HTMLCollection) !void {
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -762,7 +762,7 @@ pub const Element = webidl.interface(struct {
     }
 
     fn collectByTagNameNS(self: *const Element, node: *Node, namespace: ?[]const u8, local_name: []const u8, collection: *HTMLCollection) !void {
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -797,7 +797,7 @@ pub const Element = webidl.interface(struct {
     }
 
     fn collectByClassName(self: *const Element, node: *Node, class_names: []const u8, collection: *HTMLCollection) !void {
-        for (node.child_nodes.items()) |child| {
+        for (node.child_nodes.toSlice()()) |child| {
             if (child.node_type == Node.ELEMENT_NODE) {
                 const elem: *Element = @ptrCast(child);
 
@@ -846,7 +846,7 @@ pub const Element = webidl.interface(struct {
         defer matches.deinit();
 
         // Check if self is in the matches list
-        for (matches.items) |match| {
+        for (matches.toSlice()) |match| {
             if (match == self) {
                 return true;
             }
@@ -884,7 +884,7 @@ pub const Element = webidl.interface(struct {
                 const elem: *const Element = @ptrCast(node);
 
                 // Check if this element is in the matches
-                for (matches.items) |match| {
+                for (matches.toSlice()) |match| {
                     if (match == elem) {
                         // Cast away const - closest returns mutable pointer
                         return @constCast(elem);
@@ -917,8 +917,8 @@ pub const Element = webidl.interface(struct {
             return try mutation.preInsert(node, parent, element);
         } else if (eqlIgnoreCase(where, "afterbegin")) {
             // Return the result of pre-inserting node into element before element's first child
-            const first_child = if (element.child_nodes.items.len > 0)
-                element.child_nodes.items[0]
+            const first_child = if (element.child_nodes.toSlice().len > 0)
+                element.child_nodes.toSlice()[0]
             else
                 null;
             return try mutation.preInsert(node, @ptrCast(element), first_child);

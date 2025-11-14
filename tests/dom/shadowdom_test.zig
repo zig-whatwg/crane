@@ -414,7 +414,7 @@ test "HTMLSlotElement - initialization with default values" {
     try std.testing.expect(!slot.hasAssignedNodes());
 
     // Manually assigned nodes list is initially empty
-    try std.testing.expectEqual(@as(usize, 0), slot.manually_assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), slot.manually_assigned_nodes.toSlice().len);
 }
 
 test "HTMLSlotElement - set and get slot name" {
@@ -477,7 +477,7 @@ test "HTMLSlotElement - manually assigned nodes tracking" {
     try slot.manually_assigned_nodes.append(@ptrCast(&dummy1));
     try slot.manually_assigned_nodes.append(@ptrCast(&dummy2));
 
-    try std.testing.expectEqual(@as(usize, 2), slot.manually_assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 2), slot.manually_assigned_nodes.toSlice().len);
 }
 
 test "HTMLSlotElement - multiple slots with different names" {

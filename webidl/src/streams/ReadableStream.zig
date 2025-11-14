@@ -1029,7 +1029,7 @@ pub const ReadableStream = webidl.interface(struct {
     pub fn getNumReadRequests(self: *const ReadableStream) usize {
         return switch (self.reader) {
             .none => 0,
-            .default => |reader| reader.readRequests.items.len,
+            .default => |reader| reader.readRequests.toSlice().len,
             .byob => 0, // BYOB reader uses read-into requests, not read requests
         };
     }
@@ -1061,7 +1061,7 @@ pub const ReadableStream = webidl.interface(struct {
         return switch (self.reader) {
             .none => 0,
             .default => 0, // Default reader doesn't have read-into requests
-            .byob => |reader| reader.readIntoRequests.items.len,
+            .byob => |reader| reader.readIntoRequests.toSlice().len,
         };
     }
 
@@ -1073,7 +1073,7 @@ pub const ReadableStream = webidl.interface(struct {
             .none => return, // No reader, nothing to fulfill
             .default => |reader| {
                 // Remove the first read request
-                if (reader.readRequests.items.len == 0) return;
+                if (reader.readRequests.toSlice().len == 0) return;
 
                 const promise = reader.readRequests.orderedRemove(0);
 
@@ -1103,7 +1103,7 @@ pub const ReadableStream = webidl.interface(struct {
             .default => return, // Default reader doesn't have read-into requests
             .byob => |reader| {
                 // Remove the first read-into request
-                if (reader.readIntoRequests.items.len == 0) return;
+                if (reader.readIntoRequests.toSlice().len == 0) return;
 
                 const request = reader.readIntoRequests.orderedRemove(0);
 
@@ -1156,7 +1156,7 @@ pub const ReadableStream = webidl.interface(struct {
                 // Spec step 6.1: Let readRequests be reader.[[readRequests]]
                 // Spec step 6.2: Set reader.[[readRequests]] to an empty list
                 // Spec step 6.3: For each readRequest of readRequests, perform readRequest's close steps
-                while (reader.readRequests.items.len > 0) {
+                while (reader.readRequests.toSlice().len > 0) {
                     const read_promise = reader.readRequests.orderedRemove(0);
                     // Close steps: fulfill with { value: undefined, done: true }
                     read_promise.fulfill(.{
@@ -1170,7 +1170,7 @@ pub const ReadableStream = webidl.interface(struct {
                 reader.closedPromise.fulfill({});
 
                 // Spec: Respond to all pending readIntoRequests with done=true
-                while (reader.readIntoRequests.items.len > 0) {
+                while (reader.readIntoRequests.toSlice().len > 0) {
                     const request = reader.readIntoRequests.orderedRemove(0);
                     // Close steps should return the view with done=true
                     // For now, execute close steps with empty view
@@ -1205,7 +1205,7 @@ pub const ReadableStream = webidl.interface(struct {
                 reader.closedPromise.reject(exception);
 
                 // Reject all pending read requests
-                while (reader.readRequests.items.len > 0) {
+                while (reader.readRequests.toSlice().len > 0) {
                     const promise = reader.readRequests.orderedRemove(0);
                     promise.reject(exception);
                 }
@@ -1215,7 +1215,7 @@ pub const ReadableStream = webidl.interface(struct {
                 reader.closedPromise.reject(exception);
 
                 // Spec: Reject all pending readIntoRequests
-                while (reader.readIntoRequests.items.len > 0) {
+                while (reader.readIntoRequests.toSlice().len > 0) {
                     const request = reader.readIntoRequests.orderedRemove(0);
                     request.reject(exception);
                 }
@@ -2077,8 +2077,8 @@ pub const ByteTeeReaderUnion = union(enum) {
     /// Check if reader has pending requests
     pub fn hasPendingRequests(self: ByteTeeReaderUnion) bool {
         return switch (self) {
-            .default => |reader| reader.readRequests.items.len > 0,
-            .byob => |reader| reader.readIntoRequests.items.len > 0,
+            .default => |reader| reader.readRequests.toSlice().len > 0,
+            .byob => |reader| reader.readIntoRequests.toSlice().len > 0,
         };
     }
 };
@@ -2232,7 +2232,7 @@ pub const ByteTeeState = struct {
             const byobReader = self.reader.byob;
 
             // Step 15.1.1: Assert readIntoRequests is empty
-            if (byobReader.readIntoRequests.items.len > 0) {
+            if (byobReader.readIntoRequests.toSlice().len > 0) {
                 return error.InvalidState;
             }
 
@@ -2386,13 +2386,13 @@ pub const ByteTeeState = struct {
 
         // Step 4-5: Handle pendingPullIntos
         if (self.branch1) |b1| {
-            if (b1.controller == .byte and b1.controller.byte.pendingPullIntos.items.len > 0) {
+            if (b1.controller == .byte and b1.controller.byte.pendingPullIntos.toSlice().len > 0) {
                 try b1.controller.byte.respond(0);
             }
         }
 
         if (self.branch2) |b2| {
-            if (b2.controller == .byte and b2.controller.byte.pendingPullIntos.items.len > 0) {
+            if (b2.controller == .byte and b2.controller.byte.pendingPullIntos.toSlice().len > 0) {
                 try b2.controller.byte.respond(0);
             }
         }
@@ -2414,7 +2414,7 @@ pub const ByteTeeState = struct {
             const defaultReader = self.reader.default;
 
             // Step 16.1.1: Assert readRequests is empty
-            if (defaultReader.readRequests.items.len > 0) {
+            if (defaultReader.readRequests.toSlice().len > 0) {
                 return error.InvalidState;
             }
 
@@ -2649,7 +2649,7 @@ pub const ByteTeeState = struct {
             // Step 6.3: Handle pendingPullIntos for other branch
             if (!otherCanceled and otherBranch != null) {
                 const ob = otherBranch.?;
-                if (ob.controller == .byte and ob.controller.byte.pendingPullIntos.items.len > 0) {
+                if (ob.controller == .byte and ob.controller.byte.pendingPullIntos.toSlice().len > 0) {
                     try ob.controller.byte.respond(0);
                 }
             }
