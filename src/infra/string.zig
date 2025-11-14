@@ -31,6 +31,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const List = @import("list.zig").List;
 
 pub const String = []const u16;
 
@@ -90,8 +91,8 @@ fn isAsciiSimd(bytes: []const u8) bool {
 }
 
 fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
-    var result = try std.ArrayList(u16).initCapacity(allocator, utf8.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, utf8.len);
+    errdefer result.deinit();
 
     var i: usize = 0;
     while (i < utf8.len) {
@@ -108,12 +109,12 @@ fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
         };
 
         if (codepoint <= 0xFFFF) {
-            try result.append(allocator, @intCast(codepoint));
+            try result.append(@intCast(codepoint));
         } else if (codepoint <= 0x10FFFF) {
             const high = @as(u16, @intCast(0xD800 + ((codepoint - 0x10000) >> 10)));
             const low = @as(u16, @intCast(0xDC00 + ((codepoint - 0x10000) & 0x3FF)));
-            try result.append(allocator, high);
-            try result.append(allocator, low);
+            try result.append(high);
+            try result.append(low);
         } else {
             return InfraError.InvalidUtf8;
         }
@@ -121,7 +122,7 @@ fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
         i += len;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 pub fn utf16ToUtf8(allocator: Allocator, utf16: String) ![]const u8 {
@@ -129,8 +130,8 @@ pub fn utf16ToUtf8(allocator: Allocator, utf16: String) ![]const u8 {
         return &[_]u8{};
     }
 
-    var result = try std.ArrayList(u8).initCapacity(allocator, utf16.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u8).initCapacity(allocator, utf16.len);
+    errdefer result.deinit();
 
     var i: usize = 0;
     while (i < utf16.len) {
@@ -160,12 +161,12 @@ pub fn utf16ToUtf8(allocator: Allocator, utf16: String) ![]const u8 {
         const len = std.unicode.utf8Encode(codepoint, &buf) catch {
             return InfraError.InvalidCodePoint;
         };
-        try result.appendSlice(allocator, buf[0..len]);
+        try result.appendSlice(buf[0..len]);
 
         i += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// ASCII lowercase a string.
@@ -421,16 +422,16 @@ pub fn stripNewlines(allocator: Allocator, string: String) !String {
         return &[_]u16{};
     }
 
-    var result = try std.ArrayList(u16).initCapacity(allocator, string.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, string.len);
+    errdefer result.deinit();
 
     for (string) |c| {
         if (c != 0x000A and c != 0x000D) {
-            try result.append(allocator, c);
+            try result.append(c);
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 pub fn normalizeNewlines(allocator: Allocator, string: String) !String {
@@ -438,8 +439,8 @@ pub fn normalizeNewlines(allocator: Allocator, string: String) !String {
         return &[_]u16{};
     }
 
-    var result = try std.ArrayList(u16).initCapacity(allocator, string.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, string.len);
+    errdefer result.deinit();
 
     var i: usize = 0;
     while (i < string.len) {
@@ -448,14 +449,14 @@ pub fn normalizeNewlines(allocator: Allocator, string: String) !String {
             if (i + 1 < string.len and string[i + 1] == 0x000A) {
                 i += 1;
             }
-            try result.append(allocator, 0x000A);
+            try result.append(0x000A);
         } else {
-            try result.append(allocator, c);
+            try result.append(c);
         }
         i += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Split a string on ASCII whitespace.
@@ -466,12 +467,12 @@ pub fn splitOnAsciiWhitespace(allocator: Allocator, input: String) ![]String {
     }
 
     var position: usize = 0;
-    var tokens = try std.ArrayList(String).initCapacity(allocator, 0);
+    var tokens = try List(String).initCapacity(allocator, 0);
     errdefer {
-        for (tokens.items) |token| {
+        for (tokens.items()) |token| {
             allocator.free(token);
         }
-        tokens.deinit(allocator);
+        tokens.deinit();
     }
 
     skipAsciiWhitespace(input, &position);
@@ -482,11 +483,11 @@ pub fn splitOnAsciiWhitespace(allocator: Allocator, input: String) ![]String {
                 return !isAsciiWhitespace(c);
             }
         }.notWhitespace);
-        try tokens.append(allocator, token);
+        try tokens.append(token);
         skipAsciiWhitespace(input, &position);
     }
 
-    return tokens.toOwnedSlice(allocator);
+    return tokens.toOwnedSlice();
 }
 
 /// Split a string on commas.
@@ -497,12 +498,12 @@ pub fn splitOnCommas(allocator: Allocator, input: String) ![]String {
     }
 
     var position: usize = 0;
-    var tokens = try std.ArrayList(String).initCapacity(allocator, 0);
+    var tokens = try List(String).initCapacity(allocator, 0);
     errdefer {
-        for (tokens.items) |token| {
+        for (tokens.items()) |token| {
             allocator.free(token);
         }
-        tokens.deinit(allocator);
+        tokens.deinit();
     }
 
     while (position < input.len) {
@@ -513,28 +514,28 @@ pub fn splitOnCommas(allocator: Allocator, input: String) ![]String {
         }.notComma);
         const stripped = try stripLeadingAndTrailingAsciiWhitespace(allocator, token);
         allocator.free(token);
-        try tokens.append(allocator, stripped);
+        try tokens.append(stripped);
 
         if (position < input.len) {
             position += 1;
         }
     }
 
-    return tokens.toOwnedSlice(allocator);
+    return tokens.toOwnedSlice();
 }
 
 /// Collect a sequence of code points meeting a condition.
 /// WHATWG Infra Standard §4.6 line 723-737
 pub fn collectSequence(allocator: Allocator, input: String, position: *usize, condition: fn (u16) bool) !String {
-    var result = try std.ArrayList(u16).initCapacity(allocator, 0);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, 0);
+    errdefer result.deinit();
 
     while (position.* < input.len and condition(input[position.*])) {
-        try result.append(allocator, input[position.*]);
+        try result.append(input[position.*]);
         position.* += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 pub fn skipAsciiWhitespace(input: String, position: *usize) void {
@@ -554,45 +555,45 @@ pub fn strictlySplit(allocator: Allocator, input: String, delimiter: u16) ![]Str
     };
 
     var position: usize = 0;
-    var tokens = try std.ArrayList(String).initCapacity(allocator, 0);
+    var tokens = try List(String).initCapacity(allocator, 0);
     errdefer {
-        for (tokens.items) |token| {
+        for (tokens.items()) |token| {
             allocator.free(token);
         }
-        tokens.deinit(allocator);
+        tokens.deinit();
     }
 
     const checker = NotDelimiter{ .delim = delimiter };
-    var result = try std.ArrayList(u16).initCapacity(allocator, 0);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, 0);
+    errdefer result.deinit();
 
     while (position < input.len and checker.check(input[position])) {
-        try result.append(allocator, input[position]);
+        try result.append(input[position]);
         position += 1;
     }
-    try tokens.append(allocator, try result.toOwnedSlice(allocator));
+    try tokens.append(try result.toOwnedSlice());
 
     while (position < input.len) {
         position += 1;
-        var token_result = try std.ArrayList(u16).initCapacity(allocator, 0);
-        errdefer token_result.deinit(allocator);
+        var token_result = try List(u16).initCapacity(allocator, 0);
+        errdefer token_result.deinit();
 
         while (position < input.len and checker.check(input[position])) {
-            try token_result.append(allocator, input[position]);
+            try token_result.append(input[position]);
             position += 1;
         }
-        try tokens.append(allocator, try token_result.toOwnedSlice(allocator));
+        try tokens.append(try token_result.toOwnedSlice());
     }
 
-    return tokens.toOwnedSlice(allocator);
+    return tokens.toOwnedSlice();
 }
 
 pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, length: usize) !String {
     // Bounds validation assertions
     std.debug.assert(start <= std.math.maxInt(usize) - length); // Prevent overflow in start + length
 
-    var result = try std.ArrayList(u16).initCapacity(allocator, length * 2);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, length * 2);
+    errdefer result.deinit();
 
     var code_point_index: usize = 0;
     var i: usize = 0;
@@ -617,19 +618,19 @@ pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, le
         if (c >= 0xD800 and c <= 0xDBFF and i + 1 < string.len) {
             const low = string[i + 1];
             if (low >= 0xDC00 and low <= 0xDFFF) {
-                try result.append(allocator, c);
-                try result.append(allocator, low);
+                try result.append(c);
+                try result.append(low);
                 i += 2;
                 collected += 1;
                 continue;
             }
         }
-        try result.append(allocator, c);
+        try result.append(c);
         i += 1;
         collected += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 pub fn codePointSubstringByPositions(allocator: Allocator, string: String, start: usize, end: usize) !String {
@@ -727,8 +728,8 @@ pub fn convertToScalarValueString(allocator: Allocator, string: String) !String 
         return &[_]u16{};
     }
 
-    var result = try std.ArrayList(u16).initCapacity(allocator, string.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, string.len);
+    errdefer result.deinit();
 
     var i: usize = 0;
     while (i < string.len) {
@@ -737,23 +738,23 @@ pub fn convertToScalarValueString(allocator: Allocator, string: String) !String 
         if (c >= 0xD800 and c <= 0xDBFF and i + 1 < string.len) {
             const low = string[i + 1];
             if (low >= 0xDC00 and low <= 0xDFFF) {
-                try result.append(allocator, c);
-                try result.append(allocator, low);
+                try result.append(c);
+                try result.append(low);
                 i += 2;
                 continue;
             }
         }
 
         if (c >= 0xD800 and c <= 0xDFFF) {
-            try result.append(allocator, 0xFFFD);
+            try result.append(0xFFFD);
         } else {
-            try result.append(allocator, c);
+            try result.append(c);
         }
 
         i += 1;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Strip and collapse ASCII whitespace in a string.
@@ -763,23 +764,23 @@ pub fn stripAndCollapseAsciiWhitespace(allocator: Allocator, string: String) !St
         return &[_]u16{};
     }
 
-    var result = try std.ArrayList(u16).initCapacity(allocator, string.len);
-    errdefer result.deinit(allocator);
+    var result = try List(u16).initCapacity(allocator, string.len);
+    errdefer result.deinit();
 
     var in_whitespace = false;
     for (string) |c| {
         if (isAsciiWhitespace(c)) {
             in_whitespace = true;
         } else {
-            if (in_whitespace and result.items.len > 0) {
-                try result.append(allocator, 0x0020);
+            if (in_whitespace and result.len > 0) {
+                try result.append(0x0020);
             }
-            try result.append(allocator, c);
+            try result.append(c);
             in_whitespace = false;
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 pub fn asciiEncode(allocator: Allocator, string: String) ![]const u8 {
