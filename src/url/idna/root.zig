@@ -295,8 +295,6 @@ fn processLabelToUnicode(
     label: []const u8,
     be_strict: bool,
 ) ![]u8 {
-    _ = be_strict; // TODO: Use for strict validation
-
     // Check if label starts with "xn--" (Punycode)
     if (std.mem.startsWith(u8, label, "xn--") or
         std.mem.startsWith(u8, label, "XN--") or
@@ -311,12 +309,50 @@ fn processLabelToUnicode(
             // If Punycode decode fails, return original label
             return try allocator.dupe(u8, label);
         };
+        errdefer allocator.free(decoded);
+
+        // Validate decoded label if strict mode enabled
+        // Per UTS46: CheckBidi, CheckJoiners, UseSTD3ASCIIRules
+        if (be_strict) {
+            // Validate bidi rules
+            bidi.validateBidi(decoded) catch {
+                return IDNAError.BidiError;
+            };
+
+            // Validate contextual rules (joiners)
+            context.validateContext(decoded) catch {
+                return IDNAError.ContextError;
+            };
+
+            // Validate label structure
+            idna_validation.validateLabel(decoded, be_strict) catch {
+                return IDNAError.ValidationError;
+            };
+        }
 
         return decoded;
     }
 
-    // Not Punycode - return as-is
-    return try allocator.dupe(u8, label);
+    // Not Punycode - validate and return as-is
+    const result = try allocator.dupe(u8, label);
+    errdefer allocator.free(result);
+
+    if (be_strict) {
+        // Validate non-Punycode labels in strict mode
+        idna_validation.validateLabel(result, be_strict) catch {
+            return IDNAError.ValidationError;
+        };
+
+        bidi.validateBidi(result) catch {
+            return IDNAError.BidiError;
+        };
+
+        context.validateContext(result) catch {
+            return IDNAError.ContextError;
+        };
+    }
+
+    return result;
 }
 
 /// Domain to Unicode algorithm (spec lines 381-383)
