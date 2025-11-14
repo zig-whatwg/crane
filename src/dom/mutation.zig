@@ -1159,6 +1159,10 @@ pub fn move(
     // Step 13: Remove node from oldParent's children
     removeFromChildrenList(node, old_parent);
 
+    // Step 13.1: Run children changed steps for oldParent
+    // (Node was removed from oldParent's children)
+    runChildrenChangedSteps(old_parent);
+
     // Step 14: If node is assigned, then run assign slottables for node's assigned slot
     // TODO: Shadow DOM - check if node is assigned and run assign slottables
 
@@ -1191,6 +1195,10 @@ pub fn move(
     // Step 19: If child is null, then append node to newParent's children
     // Step 20: Otherwise, insert node into newParent's children before child's index
     insertIntoChildrenList(node, new_parent, child);
+
+    // Step 20.1: Run children changed steps for newParent
+    // (Node was added to newParent's children)
+    runChildrenChangedSteps(new_parent);
 
     // Step 21: If newParent is a shadow host whose shadow root's slot assignment is "named"
     // and node is a slottable, then assign a slot for node
