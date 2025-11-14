@@ -104,6 +104,44 @@ fn filePathToModuleName(allocator: std.mem.Allocator, path: []const u8) ![]const
     return result.toOwnedSlice(allocator);
 }
 
+/// Helper function to add all .zig test files from a directory
+fn addTestFilesFromDir(
+    builder: *std.Build,
+    step: *std.Build.Step,
+    dir_path: []const u8,
+    modules: []const std.Build.Module.Import,
+) !void {
+    const allocator = builder.allocator;
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |err| {
+        // Directory might not exist yet, skip silently
+        if (err == error.FileNotFound) return;
+        return err;
+    };
+    defer dir.close();
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.path, "_test.zig")) continue;
+
+        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ dir_path, entry.path });
+        defer allocator.free(full_path);
+
+        const test_exe = builder.addTest(.{
+            .root_module = builder.createModule(.{
+                .root_source_file = builder.path(full_path),
+                .target = builder.host,
+                .imports = modules,
+            }),
+        });
+
+        const run_test = builder.addRunArtifact(test_exe);
+        step.dependOn(&run_test.step);
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -1344,48 +1382,163 @@ pub fn build(b: *std.Build) void {
         const webidl_tests = b.addTest(.{ .root_module = webidl_mod });
         const run_webidl_tests = b.addRunArtifact(webidl_tests);
         test_step.dependOn(&run_webidl_tests.step);
+
+        // Add dedicated test files from tests/webidl/
+        const webidl_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/webidl", &webidl_imports) catch |err| {
+            std.debug.print("Warning: Failed to add webidl test files: {}\n", .{err});
+        };
     }
 
     if (test_dom) {
         const dom_tests = b.addTest(.{ .root_module = dom_mod });
         const run_dom_tests = b.addRunArtifact(dom_tests);
         test_step.dependOn(&run_dom_tests.step);
+
+        // Add dedicated test files from tests/dom/
+        const dom_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "selector", .module = selector_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/dom", &dom_imports) catch |err| {
+            std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
+        };
     }
 
     if (test_selector) {
         const selector_tests = b.addTest(.{ .root_module = selector_mod });
         const run_selector_tests = b.addRunArtifact(selector_tests);
         test_step.dependOn(&run_selector_tests.step);
+
+        // Add dedicated test files from tests/selector/
+        const selector_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "selector", .module = selector_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/selector", &selector_imports) catch |err| {
+            std.debug.print("Warning: Failed to add selector test files: {}\n", .{err});
+        };
     }
 
     if (test_encoding) {
         const encoding_tests = b.addTest(.{ .root_module = encoding_mod });
         const run_encoding_tests = b.addRunArtifact(encoding_tests);
         test_step.dependOn(&run_encoding_tests.step);
+
+        // Add dedicated test files from tests/encoding/
+        const encoding_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "encoding", .module = encoding_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/encoding", &encoding_imports) catch |err| {
+            std.debug.print("Warning: Failed to add encoding test files: {}\n", .{err});
+        };
     }
 
     if (test_url) {
         const url_tests = b.addTest(.{ .root_module = url_mod });
         const run_url_tests = b.addRunArtifact(url_tests);
         test_step.dependOn(&run_url_tests.step);
+
+        // Add dedicated test files from tests/url/
+        const url_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "encoding", .module = encoding_mod },
+            .{ .name = "url", .module = url_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/url", &url_imports) catch |err| {
+            std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
+        };
     }
 
     if (test_console) {
         const console_tests = b.addTest(.{ .root_module = console_mod });
         const run_console_tests = b.addRunArtifact(console_tests);
         test_step.dependOn(&run_console_tests.step);
+
+        // Add dedicated test files from tests/console/
+        const console_imports = [_]std.Build.Module.Import{
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "console", .module = console_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/console", &console_imports) catch |err| {
+            std.debug.print("Warning: Failed to add console test files: {}\n", .{err});
+        };
     }
 
     if (test_streams) {
         const streams_tests = b.addTest(.{ .root_module = streams_mod });
         const run_streams_tests = b.addRunArtifact(streams_tests);
         test_step.dependOn(&run_streams_tests.step);
+
+        // Add dedicated test files from tests/streams/
+        const streams_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "streams", .module = streams_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/streams", &streams_imports) catch |err| {
+            std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
+        };
     }
 
     if (test_mimesniff) {
         const mimesniff_tests = b.addTest(.{ .root_module = mimesniff_mod });
         const run_mimesniff_tests = b.addRunArtifact(mimesniff_tests);
         test_step.dependOn(&run_mimesniff_tests.step);
+
+        // Add dedicated test files from tests/mimesniff/
+        const mimesniff_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "mimesniff", .module = mimesniff_mod },
+        };
+        addTestFilesFromDir(b, test_step, "tests/mimesniff", &mimesniff_imports) catch |err| {
+            std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
+        };
+    }
+
+    // Add root-level test files (for whatwg root module)
+    if (test_all) {
+        const root_imports = [_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+            .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "encoding", .module = encoding_mod },
+            .{ .name = "url", .module = url_mod },
+            .{ .name = "console", .module = console_mod },
+            .{ .name = "streams", .module = streams_mod },
+            .{ .name = "mimesniff", .module = mimesniff_mod },
+            .{ .name = "selector", .module = selector_mod },
+            .{ .name = "whatwg", .module = whatwg_mod },
+        };
+
+        // Add root_test.zig and main_test.zig
+        const root_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/root_test.zig"),
+                .target = target,
+                .imports = &root_imports,
+            }),
+        });
+        test_step.dependOn(&b.addRunArtifact(root_test).step);
+
+        const main_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/main_test.zig"),
+                .target = target,
+                .imports = &root_imports,
+            }),
+        });
+        test_step.dependOn(&b.addRunArtifact(main_test).step);
     }
 
     // ========================================================================
