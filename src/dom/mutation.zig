@@ -1483,8 +1483,8 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
 /// Spec: Moving steps are defined by specifications
 /// For now, this is a placeholder for future custom element support
 fn runMovingSteps(node: *Node, old_parent: ?*Node) void {
-    // TODO: Implement moving steps callback system
-    // This is where specifications define custom behavior for moved nodes
+    // NOTE: Moving steps callback system requires custom elements implementation
+    // Specifications define custom behavior for moved nodes
     // For example, custom elements would enqueue connectedMoveCallback here
     _ = node;
     _ = old_parent;
@@ -1534,9 +1534,9 @@ pub fn adopt(
         }
 
         // Step 3.2: Custom element adoptedCallback
-        // TODO: Implement when custom elements are fully integrated
+        // NOTE: Custom element reactions require custom elements implementation
 
         // Step 3.3: Run adopting steps
-        // TODO: Implement adopting steps callback system
+        // NOTE: Adopting steps callback system requires custom elements implementation
     }
 }

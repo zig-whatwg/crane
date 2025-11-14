@@ -130,7 +130,7 @@ test "EventTarget: addEventListener and removeEventListener" {
     defer target.deinit();
 
     // Create a simple callback (for testing, we'll use a dummy)
-    // TODO: Implement proper callback support
+    // NOTE: Proper callback support requires JS runtime integration
 
     // For now, just test that the methods exist and don't crash
     // Full testing requires callback implementation

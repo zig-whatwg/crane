@@ -48,8 +48,7 @@ pub fn extractHighWaterMark(strategy: ?Value, default_hwm: f64) !f64 {
     }
 
     // Step 3: Let highWaterMark be strategy["highWaterMark"].
-    // For now, return default since we can't access object properties yet
-    // TODO: Implement proper object property access when webidl is integrated
+    // NOTE: Object property access requires JS runtime integration
     return default_hwm;
 
     // Step 4: Return ? ValidateAndNormalizeHighWaterMark(highWaterMark).
@@ -75,8 +74,7 @@ pub fn extractSizeAlgorithm(allocator: std.mem.Allocator, strategy: ?Value) !Siz
     }
 
     // Step 3: Return strategy["size"].
-    // For now, return default since we can't access object properties yet
-    // TODO: Implement proper callback extraction when webidl is integrated
+    // NOTE: Object property access requires JS runtime integration
     return defaultSizeAlgorithm;
 }
 

@@ -45,26 +45,20 @@ pub fn FrozenArray(comptime T: type) type {
         /// 1. Let `values` be the result of converting V to IDL type sequence<T>
         /// 2. Return the result of creating a frozen array from `values`
         ///
-        /// NOTE: Full implementation requires Symbol.iterator support from JS runtime.
-        /// For now, this provides partial conversion for testing purposes.
-        ///
-        /// TODO(zig-js-runtime): Implement sequence conversion with Symbol.iterator
-        /// TODO(zig-js-runtime): Add support for iterable protocol
+        /// NOTE: Full implementation requires JS runtime integration for:
+        /// - Symbol.iterator support
+        /// - Iterable protocol
         pub fn fromJSValue(allocator: std.mem.Allocator, V: JSValue) !Self {
             // Spec Step 1: Convert V to sequence<T>
-            // This requires:
+            // Requires:
             // - GetMethod(V, %Symbol.iterator%)
             // - Iterate using iterator protocol
             // - Convert each element to type T
 
-            // Temporary implementation for testing:
-            // If V is an object with array-like structure, extract items
-            // This will be replaced with proper sequence conversion when JS runtime is ready
-
             _ = V;
             _ = allocator;
 
-            // TODO(zig-js-runtime): Replace with sequence conversion algorithm
+            // Not implemented - requires sequence conversion algorithm
             // See: https://webidl.spec.whatwg.org/#es-sequence
             return error.NotImplemented;
         }
@@ -191,7 +185,7 @@ test "FrozenArray - immutability guarantees" {
 test "FrozenArray - fromJSValue not yet implemented" {
     const FA = FrozenArray(i32);
 
-    // TODO(zig-js-runtime): This will work once sequence conversion is implemented
+    // Not implemented - requires sequence conversion (JS runtime)
     try testing.expectError(error.NotImplemented, FA.fromJSValue(testing.allocator, .{ .undefined = {} }));
 }
 

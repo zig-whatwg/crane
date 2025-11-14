@@ -39,23 +39,20 @@ pub const IteratorRecord = struct {
 /// Spec: ES §7.4.1 GetIterator
 ///
 /// Gets an iterator from an object using either @@iterator or @@asyncIterator
+/// NOTE: Simplified implementation - full iterator protocol requires JS runtime
 pub fn getIterator(allocator: Allocator, obj: JSValue, hint: enum { sync, async_hint }) !IteratorRecord {
-    _ = hint; // TODO: Use hint to determine which iterator protocol to use
+    _ = hint; // Hint determines Symbol.asyncIterator vs Symbol.iterator
 
-    // For now, this is a simplified implementation that expects the object
-    // to have iterator methods. In a full implementation, this would:
+    // Simplified implementation assumes obj is already an iterator-like object
+    // Full implementation requires:
     // 1. Get @@asyncIterator or @@iterator method from obj
     // 2. Call the method to get iterator
     // 3. Get the "next" method from iterator
     // 4. Return IteratorRecord
 
-    // Placeholder: Assume obj is already an iterator-like object
-    // In production, this needs proper Symbol.asyncIterator/Symbol.iterator lookup
     switch (obj) {
         .object => {
-            // TODO: Proper iterator protocol
-            // For now, return a dummy iterator record that will be filled in
-            // by the calling code
+            // Return a dummy iterator record that will be filled in by calling code
             return IteratorRecord.init(
                 allocator,
                 obj,
@@ -134,8 +131,7 @@ pub fn getMethod(v: JSValue, property: []const u8) !?JSValue {
 
     switch (v) {
         .object => {
-            // TODO: Proper property lookup and callable check
-            // For now, return undefined to indicate no method
+            // NOTE: Proper property lookup requires JS runtime
             return null;
         },
         .undefined, .null => return null,

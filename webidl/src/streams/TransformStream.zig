@@ -143,7 +143,7 @@ pub const TransformStream = webidl.interface(struct {
 
         // Spec step 12-13: If transformerDict["start"] exists, invoke it with controller
         if (transformer_dict.start) |start_callback| {
-            // TODO: Invoke start_callback with controller argument when zig-js-runtime is available
+            // NOTE: Start callback invocation requires JS runtime integration
             // For now, we skip invocation since we can't call JavaScript callbacks yet
             _ = start_callback;
         }

@@ -61,7 +61,7 @@ pub const ByteLengthQueuingStrategy = struct {
 
     pub fn call_size(_: *const ByteLengthQueuingStrategy, chunk: webidl.JSValue) f64 {
 
-        // TODO: Implement chunk.byteLength extraction from JSValue
+        // NOTE: Property extraction requires JS runtime integration
         // For now, return 1.0 as placeholder until JSValue type is fully implemented
         _ = chunk;
         return 1.0;

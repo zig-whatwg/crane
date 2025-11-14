@@ -588,8 +588,8 @@ fn invokeCallback(
     _ = legacy_flag;
 
     if (callback) |_| {
-        // TODO: Replace with actual callback invocation
-        // JavaScript engine should:
+        // NOTE: Actual callback invocation requires JS runtime integration
+        // JS engine would:
         // 1. Resolve callback to actual function
         // 2. Call function with event as parameter
         // 3. Handle exceptions and report them

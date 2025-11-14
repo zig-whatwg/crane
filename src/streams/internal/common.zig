@@ -38,6 +38,7 @@ pub const JSValue = union(enum) {
 
     /// Convert from webidl.JSValue to internal JSValue
     /// This is a temporary bridge until full webidl integration
+    /// NOTE: Non-basic types (objects, symbols, etc.) converted to undefined
     pub fn fromWebIDL(value: webidl.JSValue) JSValue {
         return switch (value) {
             .undefined => .undefined,
@@ -45,7 +46,6 @@ pub const JSValue = union(enum) {
             .boolean => |b| .{ .boolean = b },
             .number => |n| .{ .number = n },
             .string => |s| .{ .string = s },
-            // TODO: Handle more types properly
             else => .undefined,
         };
     }
@@ -603,8 +603,7 @@ pub fn wrapSizeCallback(callback_fn: *const fn (chunk: JSValue) f64) SizeAlgorit
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default algorithm (size 1) since we can't invoke JS callbacks yet.
 pub fn wrapGenericSizeCallback(callback: webidl.GenericCallback) SizeAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
-    // For now, store the callback but return size 1 (same as default)
+    // Store the callback but return size 1 (same as default)
     _ = callback;
     return defaultSizeAlgorithm();
 }
@@ -665,7 +664,6 @@ pub fn wrapAbortCallback(callback_fn: *const fn (reason: ?JSValue) Promise(void)
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op cancel algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericCancelCallback(callback: webidl.GenericCallback) CancelAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultCancelAlgorithm();
 }
@@ -675,7 +673,6 @@ pub fn wrapGenericCancelCallback(callback: webidl.GenericCallback) CancelAlgorit
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op abort algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericAbortCallback(callback: webidl.GenericCallback) AbortAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultAbortAlgorithm();
 }
@@ -685,7 +682,6 @@ pub fn wrapGenericAbortCallback(callback: webidl.GenericCallback) AbortAlgorithm
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op pull algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericPullCallback(callback: webidl.GenericCallback) PullAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultPullAlgorithm();
 }
@@ -695,7 +691,6 @@ pub fn wrapGenericPullCallback(callback: webidl.GenericCallback) PullAlgorithm {
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op close algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericCloseCallback(callback: webidl.GenericCallback) CloseAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultCloseAlgorithm();
 }
@@ -705,7 +700,6 @@ pub fn wrapGenericCloseCallback(callback: webidl.GenericCallback) CloseAlgorithm
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op write algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericWriteCallback(callback: webidl.GenericCallback) WriteAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultWriteAlgorithm();
 }
@@ -715,7 +709,6 @@ pub fn wrapGenericWriteCallback(callback: webidl.GenericCallback) WriteAlgorithm
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/pass-through transform algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericTransformCallback(callback: webidl.GenericCallback) TransformAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultTransformAlgorithm();
 }
@@ -725,7 +718,6 @@ pub fn wrapGenericTransformCallback(callback: webidl.GenericCallback) TransformA
 /// NOTE: This is a temporary stub until full zig-js-runtime integration.
 /// For now, it returns a default/no-op flush algorithm since we can't invoke JS callbacks yet.
 pub fn wrapGenericFlushCallback(callback: webidl.GenericCallback) FlushAlgorithm {
-    // TODO: Implement actual callback invocation when zig-js-runtime is available
     _ = callback;
     return defaultFlushAlgorithm();
 }

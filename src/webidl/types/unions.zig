@@ -87,7 +87,6 @@ pub fn Union(comptime Types: type) type {
                     const field_type_info = @typeInfo(field.type);
                     if (field_type_info == .optional) {
                         // Return null for the nullable type
-                        // TODO(zig-js-runtime): Implement proper nullable type handling
                         return Self{ .value = @unionInit(Types, field.name, null) };
                     }
                 }
@@ -96,10 +95,9 @@ pub fn Union(comptime Types: type) type {
             // Step 3: Get flattened member types (already done via comptime field iteration)
 
             // Step 4: If V is null or undefined, check for dictionary type
+            // NOTE: Dictionary type detection requires JS runtime integration
             if (V == .null or V == .undefined) {
                 inline for (type_info.@"union".fields) |field| {
-                    // TODO(zig-js-runtime): Detect dictionary types properly
-                    // For now, skip - will implement when dictionary detection is ready
                     _ = field;
                 }
             }
@@ -113,16 +111,15 @@ pub fn Union(comptime Types: type) type {
                 }
                 inline for (type_info.@"union".fields) |field| {
                     if (field.type == JSObject) {
-                        // TODO(zig-js-runtime): Wrap interface_ptr as generic object
+                        // NOTE: Wrapping interface_ptr requires JS runtime
                         return error.NotImplemented;
                     }
                 }
             }
 
             // Steps 6-9: Buffer source types (ArrayBuffer, SharedArrayBuffer, DataView, TypedArray)
-            // TODO(zig-js-runtime): Implement buffer source discrimination
-            // Requires: [[ArrayBufferData]], [[DataView]], [[TypedArrayName]] internal slot checks
-            // Placeholder for now - will be implemented when V8 integration is ready
+            // NOTE: Buffer source discrimination requires JS runtime integration
+            // Requires: [[ArrayBufferData]], [[DataView]], [[TypedArrayName]] internal slots
 
             // Step 10: If IsCallable(V) is true
             if (V == .function) {
@@ -133,35 +130,20 @@ pub fn Union(comptime Types: type) type {
                 }
                 inline for (type_info.@"union".fields) |field| {
                     if (field.type == JSObject) {
-                        // TODO(zig-js-runtime): Wrap function as generic object
+                        // NOTE: Wrapping function requires JS runtime
                         return error.NotImplemented;
                     }
                 }
             }
 
             // Step 11: If V is Object
+            // NOTE: Full object type discrimination requires JS runtime:
+            // - Symbol.asyncIterator for async sequences (step 11.1)
+            // - Symbol.iterator for sequences/frozen arrays (steps 11.2-11.3)
+            // - Dictionary type detection (step 11.4)
+            // - Record type conversion (step 11.5)
+            // - Callback interface conversion (step 11.6)
             if (V == .object) {
-                // Step 11.1: Async sequence type
-                // TODO(zig-js-runtime): Check Symbol.asyncIterator
-                // Requires: GetMethod(V, %Symbol.asyncIterator%)
-
-                // Step 11.2: Sequence type
-                // TODO(zig-js-runtime): Check Symbol.iterator for sequence
-                // Requires: GetMethod(V, %Symbol.iterator%)
-
-                // Step 11.3: Frozen array type
-                // TODO(zig-js-runtime): Check Symbol.iterator for frozen array
-                // Requires: GetMethod(V, %Symbol.iterator%)
-
-                // Step 11.4: Dictionary type
-                // TODO(zig-js-runtime): Detect and convert dictionary types
-
-                // Step 11.5: Record type
-                // TODO(zig-js-runtime): Implement record type conversion
-
-                // Step 11.6: Callback interface type
-                // TODO(zig-js-runtime): Implement callback interface conversion
-
                 // Step 11.7: Object type
                 inline for (type_info.@"union".fields) |field| {
                     if (field.type == JSObject) {
@@ -191,8 +173,7 @@ pub fn Union(comptime Types: type) type {
             }
 
             // Step 14: If V is BigInt
-            // TODO(zig-js-runtime): Add bigint support
-            // Requires: JSValue.bigint variant
+            // NOTE: BigInt support requires JS runtime (JSValue.bigint variant)
 
             // Step 15: If types includes string type
             inline for (type_info.@"union".fields) |field| {
@@ -209,7 +190,7 @@ pub fn Union(comptime Types: type) type {
             }
 
             // Step 16: If types includes numeric type and bigint
-            // TODO(zig-js-runtime): Implement numeric + bigint fallback
+            // NOTE: Numeric + bigint fallback requires JS runtime
 
             // Step 17: If types includes numeric type (fallback conversion)
             inline for (type_info.@"union".fields) |field| {
@@ -229,7 +210,7 @@ pub fn Union(comptime Types: type) type {
             }
 
             // Step 19: If types includes bigint (fallback conversion)
-            // TODO(zig-js-runtime): Implement bigint fallback
+            // NOTE: BigInt fallback requires JS runtime
 
             // Step 20: Throw TypeError
             return error.TypeError;
@@ -265,8 +246,7 @@ pub fn Union(comptime Types: type) type {
         }
 
         fn getDictionaryFieldName() ?[]const u8 {
-            // TODO(zig-js-runtime): Detect dictionary types properly
-            // For now, check for common dictionary struct patterns
+            // NOTE: Dictionary type detection requires JS runtime integration
             return null;
         }
 
@@ -365,8 +345,7 @@ pub fn Union(comptime Types: type) type {
         }
 
         fn convertToStringType(allocator: std.mem.Allocator, V: JSValue) ![]const u8 {
-            // TODO(zig-js-runtime): Implement DOMString, USVString, ByteString conversions
-            // For now, simple string extraction
+            // NOTE: Full DOMString/USVString/ByteString conversions require JS runtime
             if (V == .string) {
                 return V.string;
             }

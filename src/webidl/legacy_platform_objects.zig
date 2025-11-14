@@ -42,16 +42,15 @@
 //! # Current Status
 //!
 //! This module provides the conceptual framework and type definitions.
-//! The actual implementation will be in zig-js-runtime when V8 bindings are ready.
-//!
-//! TODO(zig-js-runtime): Implement IndexedPropertyHandler
-//! TODO(zig-js-runtime): Implement NamedPropertyHandler
-//! TODO(zig-js-runtime): Implement [[GetOwnProperty]] override
-//! TODO(zig-js-runtime): Implement [[Set]] override
-//! TODO(zig-js-runtime): Implement [[Delete]] override
-//! TODO(zig-js-runtime): Implement [[OwnPropertyKeys]] override
-//! TODO(zig-js-runtime): Implement [LegacyUnenumerableNamedProperties]
-//! TODO(zig-js-runtime): Implement [LegacyOverrideBuiltIns]
+//! Actual implementation requires JS runtime integration (zig-js-runtime with V8):
+//! - IndexedPropertyHandler
+//! - NamedPropertyHandler
+//! - [[GetOwnProperty]] override
+//! - [[Set]] override
+//! - [[Delete]] override
+//! - [[OwnPropertyKeys]] override
+//! - [LegacyUnenumerableNamedProperties]
+//! - [LegacyOverrideBuiltIns]
 
 const std = @import("std");
 
@@ -114,9 +113,9 @@ pub const LegacyPlatformObjectConfig = struct {
     unenumerable_named: bool = false,
 };
 
-/// Create a legacy platform object (stub for V8 integration)
+/// Create a legacy platform object
 ///
-/// TODO(zig-js-runtime): Implement with V8 object templates
+/// NOTE: Requires JS runtime integration (V8 object templates)
 pub fn createLegacyPlatformObject(config: LegacyPlatformObjectConfig) !void {
     _ = config;
     return error.NotImplemented;

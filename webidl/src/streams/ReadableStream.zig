@@ -224,7 +224,7 @@ pub const ReadableStream = webidl.interface(struct {
         else
             common.defaultPullAlgorithm();
 
-        // TODO: Implement start callback invocation when zig-js-runtime is available
+        // NOTE: Start callback invocation requires JS runtime integration
         _ = source_dict.start; // Acknowledge but don't use
 
         controller.* = try ReadableStreamDefaultController.init(

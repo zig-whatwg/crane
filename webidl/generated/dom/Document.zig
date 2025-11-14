@@ -41,7 +41,6 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
-
 /// Document format type enumeration
 pub const DocType = enum {
     html,
@@ -49,7 +48,6 @@ pub const DocType = enum {
 };
 
 /// DOM Spec: interface Document : Node
-
 /// Compare two callbacks for equality (from EventTarget)
 pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     if (a == null and b == null) return true;
@@ -136,7 +134,6 @@ pub const Document = struct {
             .ranges = std.ArrayList(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
         };
-    
     }
 
     pub fn deinit(self: *Document) void {
@@ -157,7 +154,7 @@ pub const Document = struct {
         self.ranges.deinit();
 
         // NOTE: Parent Node cleanup is handled by codegen
-    
+
     }
 
     pub fn internString(self: *Document, str: []const u8) ![]const u8 {
@@ -173,20 +170,16 @@ pub const Document = struct {
 
         try self._string_pool.put(owned, {});
         return owned;
-    
     }
 
     pub fn registerRange(self: *Document, range: *Range) !void {
-
         self.ranges_mutex.lock();
         defer self.ranges_mutex.unlock();
 
         try self.ranges.append(range);
-    
     }
 
     pub fn unregisterRange(self: *Document, range: *Range) void {
-
         self.ranges_mutex.lock();
         defer self.ranges_mutex.unlock();
 
@@ -198,11 +191,9 @@ pub const Document = struct {
             }
             i += 1;
         }
-    
     }
 
     pub fn get_implementation(self: *Document) !DOMImplementation {
-
         if (self._implementation) |impl| {
             return impl;
         }
@@ -210,7 +201,6 @@ pub const Document = struct {
         const impl = try DOMImplementation.init(self.allocator, self);
         self._implementation = impl;
         return impl;
-    
     }
 
     pub fn call_createElement(self: *Document, local_name: []const u8) !*Element {
@@ -221,11 +211,9 @@ pub const Document = struct {
         const element = try self.allocator.create(Element);
         element.* = try Element.init(self.allocator, interned_name);
         return element;
-    
     }
 
     pub fn call_createTextNode(self: *Document, data: []const u8) !*Text {
-
         const text = try self.allocator.create(Text);
         text.* = try Text.init(self.allocator);
 
@@ -234,11 +222,9 @@ pub const Document = struct {
         cd.data = try self.allocator.dupe(u8, data);
 
         return text;
-    
     }
 
     pub fn call_createComment(self: *Document, data: []const u8) !*Comment {
-
         const comment = try self.allocator.create(Comment);
         comment.* = try Comment.init(self.allocator);
 
@@ -247,7 +233,6 @@ pub const Document = struct {
         cd.data = try self.allocator.dupe(u8, data);
 
         return comment;
-    
     }
 
     pub fn call_createProcessingInstruction(
@@ -255,19 +240,15 @@ pub const Document = struct {
         target: []const u8,
         data: []const u8,
     ) !*ProcessingInstruction {
-
         const pi = try self.allocator.create(ProcessingInstruction);
         pi.* = try ProcessingInstruction.init(self.allocator, target, data);
         return pi;
-    
     }
 
     pub fn call_createCDATASection(self: *Document, data: []const u8) !*CDATASection {
-
         const cdata = try self.allocator.create(CDATASection);
         cdata.* = try CDATASection.init(self.allocator, data);
         return cdata;
-    
     }
 
     pub fn call_createDocumentType(
@@ -276,19 +257,15 @@ pub const Document = struct {
         public_id: []const u8,
         system_id: []const u8,
     ) !*DocumentType {
-
         const doctype = try self.allocator.create(DocumentType);
         doctype.* = try DocumentType.init(self.allocator, qualified_name, public_id, system_id);
         return doctype;
-    
     }
 
     pub fn call_createDocumentFragment(self: *Document) !*DocumentFragment {
-
         const fragment = try self.allocator.create(DocumentFragment);
         fragment.* = try DocumentFragment.init(self.allocator);
         return fragment;
-    
     }
 
     pub fn call_createElementNS(
@@ -320,15 +297,12 @@ pub const Document = struct {
         element.local_name = try self.allocator.dupe(u8, local_name);
 
         return element;
-    
     }
 
     pub fn call_createAttribute(self: *Document, local_name: []const u8) !*Attr {
-
         _ = self;
         _ = local_name;
         return error.NotImplemented;
-    
     }
 
     pub fn call_createAttributeNS(
@@ -336,12 +310,10 @@ pub const Document = struct {
         namespace: ?[]const u8,
         qualified_name: []const u8,
     ) !*Attr {
-
         _ = self;
         _ = namespace;
         _ = qualified_name;
         return error.NotImplemented;
-    
     }
 
     pub fn call_importNode(self: *Document, node: *Node, deep: bool) !*Node {
@@ -354,7 +326,6 @@ pub const Document = struct {
 
         // Step 2: Clone the node
         return self.cloneNode(node, deep, null);
-    
     }
 
     fn cloneNode(self: *Document, node: *Node, subtree: bool, parent: ?*Node) !*Node {
@@ -380,11 +351,9 @@ pub const Document = struct {
         }
 
         return copy;
-    
     }
 
     fn cloneSingleNode(self: *Document, node: *Node) !*Node {
-
         switch (node.node_type) {
             Node.ELEMENT_NODE => {
                 const elem: *Element = @ptrCast(node);
@@ -448,11 +417,9 @@ pub const Document = struct {
                 return error.NotSupportedError;
             },
         }
-    
     }
 
     fn destroyNode(self: *Document, node: *Node) void {
-
         switch (node.node_type) {
             Node.ELEMENT_NODE => {
                 const elem: *Element = @ptrCast(node);
@@ -481,11 +448,9 @@ pub const Document = struct {
             },
             else => {},
         }
-    
     }
 
     pub fn call_adoptNode(self: *Document, node: *Node) !*Node {
-
         const mutation = @import("dom").mutation;
 
         // Step 1: If node is a document, throw "NotSupportedError"
@@ -508,7 +473,65 @@ pub const Document = struct {
 
         // Step 5: Return node
         return node;
-    
+    }
+
+    pub fn call_createEvent(self: *Document, interface: []const u8) !*@import("event").Event {
+
+        // Step 2: Check ASCII case-insensitive match against known event types
+        // Convert to lowercase for comparison
+        var lowercase_buf: [64]u8 = undefined;
+        if (interface.len > lowercase_buf.len) {
+            return error.NotSupportedError;
+        }
+
+        for (interface, 0..) |c, i| {
+            lowercase_buf[i] = std.ascii.toLower(c);
+        }
+        const lowercase_interface = lowercase_buf[0..interface.len];
+
+        // Step 2: Match against known event type strings
+        // For now, we only support basic Event type
+        // Full spec requires: BeforeUnloadEvent, CompositionEvent, CustomEvent,
+        // DeviceMotionEvent, DeviceOrientationEvent, DragEvent, Event, FocusEvent,
+        // HashChangeEvent, KeyboardEvent, MessageEvent, MouseEvent, StorageEvent,
+        // TextEvent, TouchEvent, UIEvent
+
+        const is_event = std.mem.eql(u8, lowercase_interface, "event") or
+            std.mem.eql(u8, lowercase_interface, "events") or
+            std.mem.eql(u8, lowercase_interface, "htmlevents") or
+            std.mem.eql(u8, lowercase_interface, "svgevents");
+
+        const is_uievent = std.mem.eql(u8, lowercase_interface, "uievent") or
+            std.mem.eql(u8, lowercase_interface, "uievents");
+
+        const is_mouseevent = std.mem.eql(u8, lowercase_interface, "mouseevent") or
+            std.mem.eql(u8, lowercase_interface, "mouseevents");
+
+        const is_customevent = std.mem.eql(u8, lowercase_interface, "customevent");
+
+        // TODO: Add support for other event types when they're implemented:
+        // - KeyboardEvent, FocusEvent, TouchEvent, etc.
+
+        // Step 3: If constructor is null, throw "NotSupportedError"
+        if (!is_event and !is_uievent and !is_mouseevent and !is_customevent) {
+            return error.NotSupportedError;
+        }
+
+        // Step 4: Interface exposure check (skipped for now - all Event types are exposed)
+
+        // Step 5: Create an event
+        // For now, we create a basic Event for all types
+        // Proper implementation would create specific event subtypes
+        const event = try self.allocator.create(Event);
+        errdefer self.allocator.destroy(event);
+
+        event.* = try Event.init(self.allocator);
+
+        // Note: The created event will be in uninitialized state
+        // The caller must call initEvent() or similar to initialize it
+        // This matches legacy behavior per spec
+
+        return event;
     }
 
     pub fn get_children(self: Document) !*HTMLCollection {
@@ -530,7 +553,6 @@ pub const Document = struct {
         }
 
         return collection;
-    
     }
 
     pub fn get_firstElementChild(self: Document) ?*Element {
@@ -547,7 +569,6 @@ pub const Document = struct {
         }
 
         return null;
-    
     }
 
     pub fn get_lastElementChild(self: Document) ?*Element {
@@ -567,7 +588,6 @@ pub const Document = struct {
         }
 
         return null;
-    
     }
 
     pub fn get_childElementCount(self: Document) u32 {
@@ -585,7 +605,6 @@ pub const Document = struct {
         }
 
         return count;
-    
     }
 
     pub fn call_prepend(self: Document, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -605,7 +624,6 @@ pub const Document = struct {
         // Step 2: Pre-insert node into this before this's first child
         const first_child = this_node.get_firstChild();
         _ = try mutation.preInsert(node, this_node, first_child);
-    
     }
 
     pub fn call_append(self: Document, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -624,7 +642,6 @@ pub const Document = struct {
 
         // Step 2: Append node to this
         _ = try mutation.append(node, this_node);
-    
     }
 
     pub fn call_replaceChildren(self: Document, nodes: []const dom_types.NodeOrDOMString) !void {
@@ -646,7 +663,6 @@ pub const Document = struct {
 
         // Step 3: Replace all with node within this
         try mutation.replaceAll(node, this_node);
-    
     }
 
     pub fn call_moveBefore(self: Document, node: anytype, child: anytype) !void {
@@ -669,7 +685,6 @@ pub const Document = struct {
 
         // Step 3: Move node into this before referenceChild
         try mutation.move(moved_node, parent_node, reference_child);
-    
     }
 
     pub fn call_querySelector(self: Document, allocator: std.mem.Allocator, selectors: []const u8) !?*Element {
@@ -685,7 +700,6 @@ pub const Document = struct {
         }
 
         return null;
-    
     }
 
     pub fn call_querySelectorAll(self: Document, allocator: std.mem.Allocator, selectors: []const u8) !*NodeList {
@@ -707,7 +721,6 @@ pub const Document = struct {
         }
 
         return node_list;
-    
     }
 
     pub fn call_getElementById(self: Document, allocator: std.mem.Allocator, element_id: []const u8) !?*Element {
@@ -749,7 +762,6 @@ pub const Document = struct {
 
         // Traverse descendants in tree order (preorder depth-first)
         return SearchHelper.findById(self_parent.child_nodes.items, element_id);
-    
     }
 
     pub fn get_customElementRegistry(self: *const Document) ?*anyopaque {
@@ -761,21 +773,18 @@ pub const Document = struct {
 
         // Both cases just return the custom_element_registry field
         return self_parent.custom_element_registry;
-    
     }
 
     pub fn getCustomElementRegistry(self: *const Document) ?*anyopaque {
         const self_parent: *const @This() = @ptrCast(self);
 
         return self_parent.custom_element_registry;
-    
     }
 
     pub fn setCustomElementRegistry(self: *Document, registry: ?*anyopaque) void {
         const self_parent: *@This() = @ptrCast(self);
 
         self_parent.custom_element_registry = registry;
-    
     }
 
     pub fn call_insertBefore(self: *Document, node: *Node, child: ?*Node) !*Node {
@@ -788,7 +797,6 @@ pub const Document = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
         };
-    
     }
 
     pub fn call_appendChild(self: *Document, node: *Node) !*Node {
@@ -801,7 +809,6 @@ pub const Document = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
         };
-    
     }
 
     pub fn call_replaceChild(self: *Document, node: *Node, child: *Node) !*Node {
@@ -814,7 +821,6 @@ pub const Document = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
         };
-    
     }
 
     pub fn call_removeChild(self: *Document, child: *Node) !*Node {
@@ -828,7 +834,6 @@ pub const Document = struct {
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
         };
-    
     }
 
     pub fn call_getRootNode(self: *Document, options: ?GetRootNodeOptions) *Node {
@@ -865,7 +870,6 @@ pub const Document = struct {
             // Return regular root
             return tree.root(self_parent);
         }
-    
     }
 
     pub fn call_contains(self: *const Document, other: ?*const Node) bool {
@@ -876,7 +880,6 @@ pub const Document = struct {
         const tree = @import("dom").tree;
         const other_node = other.?;
         return tree.isInclusiveDescendant(other_node, self_parent);
-    
     }
 
     pub fn call_compareDocumentPosition(self: *const Document, other: *const Node) u16 {
@@ -928,7 +931,6 @@ pub const Document = struct {
 
         // Step 10: Return DOCUMENT_POSITION_FOLLOWING
         return Node.DOCUMENT_POSITION_FOLLOWING;
-    
     }
 
     pub fn call_isEqualNode(self: *const Document, other_node: ?*const Node) bool {
@@ -937,7 +939,6 @@ pub const Document = struct {
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
         return Node.nodeEquals(self_parent, other_node.?);
-    
     }
 
     pub fn nodeEquals(a: *const Node, b: *const Node) bool {
@@ -949,7 +950,7 @@ pub const Document = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
+                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 
                 // Check name
@@ -1030,7 +1031,6 @@ pub const Document = struct {
         }
 
         return true;
-    
     }
 
     pub fn attributeEquals(a: *const @import("attr").Attr, b: *const @import("attr").Attr) bool {
@@ -1049,7 +1049,6 @@ pub const Document = struct {
         if (!std.mem.eql(u8, a.value, b.value)) return false;
 
         return true;
-    
     }
 
     pub fn call_isSameNode(self: *const Document, other_node: ?*const Node) bool {
@@ -1058,14 +1057,12 @@ pub const Document = struct {
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
         return self_parent == other_node.?;
-    
     }
 
     pub fn call_hasChildNodes(self: *const Document) bool {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.child_nodes.len > 0;
-    
     }
 
     pub fn call_cloneNode(self: *Document, deep: bool) !*Node {
@@ -1087,7 +1084,6 @@ pub const Document = struct {
 
         // Step 2: Return the result of cloning this node with subtree set to deep
         return try Node.cloneNodeInternal(self_parent, self_parent.owner_document, deep, null, null);
-    
     }
 
     pub fn cloneNodeInternal(
@@ -1185,7 +1181,6 @@ pub const Document = struct {
 
         // Step 7: Return copy
         return copy;
-    
     }
 
     pub fn call_normalize(self: *Document) !void {
@@ -1272,14 +1267,12 @@ pub const Document = struct {
                 remove_node = next_remove;
             }
         }
-    
     }
 
     fn isExclusiveTextNode(node: *Node) bool {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
         return node.node_type == Node.TEXT_NODE;
-    
     }
 
     fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
@@ -1293,7 +1286,6 @@ pub const Document = struct {
         for (node.child_nodes.items) |child| {
             try collectDescendantExclusiveTextNodes(child, list);
         }
-    
     }
 
     fn updateRangesForNormalize(doc: *Document, node: *Node, current_node: *Node, length: usize) void {
@@ -1323,28 +1315,25 @@ pub const Document = struct {
         // TODO: Implement range updates once Range tracking is fully integrated
         // For now, this is a placeholder. Range tracking will be added when
         // Phase 5 (Range Operations) is implemented.
-    
+
     }
 
     pub fn get_nodeType(self: *const Document) u16 {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.node_type;
-    
     }
 
     pub fn get_nodeName(self: *const Document) []const u8 {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.node_name;
-    
     }
 
     pub fn get_parentNode(self: *const Document) ?*Node {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.parent_node;
-    
     }
 
     pub fn get_parentElement(self: *const Document) ?*Element {
@@ -1357,7 +1346,6 @@ pub const Document = struct {
             return @ptrCast(@alignCast(parent));
         }
         return null;
-    
     }
 
     pub fn get_childNodes(self: *Document) !*@import("node_list").NodeList {
@@ -1381,7 +1369,6 @@ pub const Document = struct {
 
         self_parent.cached_child_nodes = list;
         return list;
-    
     }
 
     pub fn get_firstChild(self: *const Document) ?*Node {
@@ -1391,7 +1378,6 @@ pub const Document = struct {
             return self_parent.child_nodes.get(0);
         }
         return null;
-    
     }
 
     pub fn get_lastChild(self: *const Document) ?*Node {
@@ -1401,14 +1387,12 @@ pub const Document = struct {
             return self_parent.child_nodes.get(self_parent.child_nodes.len - 1);
         }
         return null;
-    
     }
 
     pub fn get_ownerDocument(self: *const Document) ?*Document {
         const self_parent: *const Node = @ptrCast(self);
 
         return self_parent.owner_document;
-    
     }
 
     pub fn get_previousSibling(self: *const Document) ?*Node {
@@ -1422,7 +1406,6 @@ pub const Document = struct {
             }
         }
         return null;
-    
     }
 
     pub fn get_nextSibling(self: *const Document) ?*Node {
@@ -1436,7 +1419,6 @@ pub const Document = struct {
             }
         }
         return null;
-    
     }
 
     pub fn get_isConnected(self: *const Document) bool {
@@ -1450,7 +1432,6 @@ pub const Document = struct {
         const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return root_node.node_type == DOCUMENT_NODE;
-    
     }
 
     pub fn get_baseURI(self: *const Document) []const u8 {
@@ -1464,7 +1445,6 @@ pub const Document = struct {
 
         // Return document's base URI
         return doc.base_uri;
-    
     }
 
     pub fn get_nodeValue(self: *const Document) ?[]const u8 {
@@ -1492,7 +1472,6 @@ pub const Document = struct {
                 return null;
             },
         }
-    
     }
 
     pub fn set_nodeValue(self: *Document, value: ?[]const u8) !void {
@@ -1524,7 +1503,6 @@ pub const Document = struct {
                 // All other node types do nothing
             },
         }
-    
     }
 
     pub fn get_textContent(self: *const Document) !?[]const u8 {
@@ -1533,7 +1511,6 @@ pub const Document = struct {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
         return Node.getTextContent(self_parent, self_parent.allocator);
-    
     }
 
     pub fn set_textContent(self: *Document, value: ?[]const u8) !void {
@@ -1543,11 +1520,9 @@ pub const Document = struct {
         // If the given value is null, act as if it was the empty string instead
         const str_value = value orelse "";
         try Node.setTextContent(self_parent, str_value);
-    
     }
 
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
-
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // Return descendant text content (allocated)
@@ -1568,18 +1543,15 @@ pub const Document = struct {
                 return null;
             },
         }
-    
     }
 
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
-
         var result = std.ArrayList(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
-    
     }
 
     fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
@@ -1596,11 +1568,9 @@ pub const Document = struct {
                 try collectDescendantText(child, result);
             }
         }
-    
     }
 
     pub fn setTextContent(node: *Node, value: []const u8) !void {
-
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // String replace all with value within node
@@ -1622,7 +1592,6 @@ pub const Document = struct {
                 // Document, DocumentType, etc: do nothing
             },
         }
-    
     }
 
     pub fn stringReplaceAll(parent: *Node, string: []const u8) !void {
@@ -1645,7 +1614,6 @@ pub const Document = struct {
         // Step 3: Replace all with node within parent
         const mutation = @import("dom").mutation;
         try mutation.replaceAll(node_opt, parent);
-    
     }
 
     pub fn call_lookupPrefix(self: *const Document, namespace_param: ?[]const u8) ?[]const u8 {
@@ -1676,7 +1644,6 @@ pub const Document = struct {
                 return parent.base.locateNamespacePrefix(namespace);
             },
         }
-    
     }
 
     pub fn call_lookupNamespaceURI(self: *const Document, prefix_param: ?[]const u8) ?[]const u8 {
@@ -1686,7 +1653,6 @@ pub const Document = struct {
 
         // Spec step 2: Return result of locating a namespace
         return self.locateNamespace(prefix);
-    
     }
 
     pub fn call_isDefaultNamespace(self: *const Document, namespace_param: ?[]const u8) bool {
@@ -1701,7 +1667,6 @@ pub const Document = struct {
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
-    
     }
 
     fn locateNamespacePrefix(self: *const Document, namespace: []const u8) ?[]const u8 {
@@ -1734,7 +1699,6 @@ pub const Document = struct {
 
         // Step 4: Return null
         return null;
-    
     }
 
     fn locateNamespace(self: *const Document, prefix: ?[]const u8) ?[]const u8 {
@@ -1826,21 +1790,18 @@ pub const Document = struct {
                 return parent.base.locateNamespace(prefix);
             },
         }
-    
     }
 
     pub fn getRegisteredObservers(self: *Document) *std.ArrayList(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
         return &self_parent.registered_observers;
-    
     }
 
     pub fn addRegisteredObserver(self: *Document, registered: RegisteredObserver) !void {
         const self_parent: *Node = @ptrCast(self);
 
         try self_parent.registered_observers.append(registered);
-    
     }
 
     pub fn removeRegisteredObserver(self: *Document, observer: *const @import("mutation_observer").MutationObserver) void {
@@ -1855,7 +1816,6 @@ pub const Document = struct {
                 i += 1;
             }
         }
-    
     }
 
     pub fn removeTransientObservers(self: *Document, source: *const RegisteredObserver) void {
@@ -1872,7 +1832,6 @@ pub const Document = struct {
         // and remove them here.
         _ = self_parent;
         _ = source;
-    
     }
 
     fn ensureEventListenerList(self: *Document) !*std.ArrayList(EventListener) {
@@ -1887,7 +1846,6 @@ pub const Document = struct {
         list.* = std.ArrayList(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
-    
     }
 
     fn getEventListenerList(self: *const Document) []const EventListener {
@@ -1897,11 +1855,9 @@ pub const Document = struct {
             return list.items;
         }
         return &[_]EventListener{};
-    
     }
 
     fn flattenOptions(options: anytype) bool {
-
         const OptionsType = @TypeOf(options);
 
         // Step 1: If options is a boolean, return it
@@ -1916,11 +1872,9 @@ pub const Document = struct {
 
         // Default: return false
         return false;
-    
     }
 
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-
         const OptionsType = @TypeOf(options);
 
         // If options is a boolean, only capture is set to that value
@@ -1950,11 +1904,9 @@ pub const Document = struct {
             .once = false,
             .signal = null,
         };
-    
     }
 
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
-
         _ = event_target;
         // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
         // AND eventTarget is Window or specific node conditions
@@ -1969,7 +1921,6 @@ pub const Document = struct {
         }
         // Step 2: Return false
         return false;
-    
     }
 
     fn addAnEventListener(self: *Document, listener: EventListener) !void {
@@ -2021,7 +1972,6 @@ pub const Document = struct {
             };
             try signal.addEventListenerRemoval(removal_context);
         }
-    
     }
 
     pub fn call_addEventListener(
@@ -2045,7 +1995,6 @@ pub const Document = struct {
         };
 
         try self.addAnEventListener(listener);
-    
     }
 
     fn removeAnEventListener(self: *Document, listener: EventListener) void {
@@ -2072,7 +2021,6 @@ pub const Document = struct {
             }
             i += 1;
         }
-    
     }
 
     pub fn call_removeEventListener(
@@ -2093,7 +2041,6 @@ pub const Document = struct {
         };
 
         self.removeAnEventListener(listener);
-    
     }
 
     pub fn call_dispatchEvent(self: *Document, event: *Event) !bool {
@@ -2113,11 +2060,8 @@ pub const Document = struct {
             // Handle dispatch errors
             return err;
         };
-    
     }
-
 };
-
 
 // ============================================================================
 // Tests for string interning
@@ -2203,5 +2147,3 @@ test "Document - string interning memory cleanup" {
 
     // std.testing.allocator will fail if there are memory leaks
 }
-
-

@@ -152,7 +152,7 @@ pub const Attr = webidl.interface(struct {
         );
 
         // Step 2: If element is custom, enqueue custom element callback reaction
-        // TODO: Implement custom element callback when custom elements are supported
+        // NOTE: Custom element callback requires custom elements implementation
         _ = new_value;
 
         // Step 3: Run the attribute change steps

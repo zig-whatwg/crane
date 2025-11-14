@@ -123,20 +123,19 @@ pub const ResolutionResult = struct {
 /// 6-12. Perform type discrimination at distinguishing argument index
 /// 13. Convert all arguments and return selected operation + values
 ///
-/// TODO(zig-js-runtime): Implement full algorithm with all discrimination steps
-/// TODO(zig-js-runtime): Add buffer source type discrimination (steps 6-9)
-/// TODO(zig-js-runtime): Add callback discrimination (step 10)
-/// TODO(zig-js-runtime): Add async sequence discrimination (step 11)
-/// TODO(zig-js-runtime): Add sequence discrimination (step 12)
-/// TODO(zig-js-runtime): Add dictionary/record/callback interface discrimination (step 13)
-/// TODO(zig-js-runtime): Add boolean/numeric/bigint/string discrimination (steps 14-17)
+/// NOTE: Full implementation requires JS runtime integration for:
+/// - Buffer source type discrimination (steps 6-9)
+/// - Callback discrimination (step 10)
+/// - Async sequence discrimination (step 11)
+/// - Sequence discrimination (step 12)
+/// - Dictionary/record/callback interface discrimination (step 13)
+/// - Boolean/numeric/bigint/string discrimination (steps 14-17)
 pub fn resolveOverload(
     allocator: std.mem.Allocator,
     set: EffectiveOverloadSet,
     args: []const JSValue,
 ) !ResolutionResult {
-    // TODO(zig-js-runtime): Implement full overload resolution algorithm
-    // For now, return NotImplemented - this will be completed when needed for codegen
+    // Not implemented - requires JS runtime for type discrimination
     _ = allocator;
     _ = set;
     _ = args;
@@ -196,6 +195,6 @@ test "resolveOverload - not yet implemented" {
     const set = EffectiveOverloadSet{ .entries = &entries };
     const args = [_]JSValue{.{ .string = "test" }};
 
-    // TODO: This will work once full algorithm is implemented
+    // Not implemented until JS runtime integration
     try testing.expectError(error.NotImplemented, resolveOverload(testing.allocator, set, &args));
 }

@@ -16,14 +16,13 @@
 //! - [[BackingObject]] - Reference to the platform object
 //!
 //! The Proxy intercepts array operations (get, set, deleteProperty) and calls
-//! the change handlers. This requires JS runtime integration.
-//!
-//! TODO(zig-js-runtime): Implement exotic object creation
-//! TODO(zig-js-runtime): Implement Proxy handler with proper traps
-//! TODO(zig-js-runtime): Wire up [[Handler]].[[Get]], [[Set]], [[Delete]]
-//! TODO(zig-js-runtime): Implement "set the length" algorithm from spec
-//! TODO(zig-js-runtime): Implement "set the indexed value" algorithm from spec
-//! TODO(zig-js-runtime): Implement "delete the indexed value" algorithm from spec
+//! the change handlers. This requires JS runtime integration:
+//! - Exotic object creation
+//! - Proxy handler with proper traps
+//! - [[Handler]].[[Get]], [[Set]], [[Delete]] wiring
+//! - "set the length" algorithm from spec
+//! - "set the indexed value" algorithm from spec
+//! - "delete the indexed value" algorithm from spec
 //!
 //! # Current Implementation
 //!
@@ -51,7 +50,7 @@ pub fn ObservableArray(comptime T: type) type {
         /// elements are modified. In browsers, this notifies the platform
         /// object that owns the array.
         ///
-        /// TODO(zig-js-runtime): Wire these up to Proxy handler traps
+        /// NOTE: Proxy trap wiring requires JS runtime integration
         pub const Handlers = struct {
             set_indexed_value: ?*const fn (index: usize, value: T) void = null,
             delete_indexed_value: ?*const fn (index: usize, old_value: T) void = null,

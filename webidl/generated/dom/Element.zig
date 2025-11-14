@@ -199,51 +199,367 @@ pub const Element = struct {
     
     }
 
-    pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {
+    fn appendAttribute(self: *Element, attribute: *Attr) !void {
 
-        for (self.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                return attr.value;
+        // Step 1: Append to attribute list
+        try self.attributes.append(attribute.*);
+
+        // Get pointer to the appended attribute
+        const appended_attr = &self.attributes.items[self.attributes.len - 1];
+
+        // Step 2: Set attribute's element
+        appended_attr.owner_element = self;
+
+        // Step 3: Set attribute's node document
+        // TODO: Set node_document when Attr has that field
+
+        // Step 4: Handle attribute changes
+        try Attr.handleAttributeChanges(appended_attr, self, null, appended_attr.value);
+    
+    }
+
+    fn removeAttributeInternal(self: *Element, attr_to_remove: *Attr) !void {
+
+        // Step 1: element is self
+        const old_value = attr_to_remove.value;
+
+        // Step 2: Remove from attribute list
+        for (self.attributes.items, 0..) |*attr, i| {
+            if (attr == attr_to_remove) {
+                _ = self.attributes.orderedRemove(i);
+                break;
+            }
+        }
+
+        // Step 3: Set attribute's element to null
+        attr_to_remove.owner_element = null;
+
+        // Step 4: Handle attribute changes
+        // Note: Pass empty string for new_value since attribute is being removed
+        try Attr.handleAttributeChanges(attr_to_remove, self, old_value, "");
+    
+    }
+
+    fn setAttributeValue(
+        self: *Element,
+        local_name: []const u8,
+        value: []const u8,
+        prefix: ?[]const u8,
+        namespace: ?[]const u8,
+    ) !void {
+
+        // Step 1: Get existing attribute
+        const existing = self.getAttributeByNamespaceAndLocalName(namespace, local_name);
+
+        if (existing) |attr| {
+            // Step 3: Change attribute to value
+            try Attr.changeAttribute(attr, value);
+        } else {
+            // Step 2: Create new attribute and append
+            const new_attr = try Attr.init(
+                self.allocator,
+                namespace,
+                prefix,
+                local_name,
+                value,
+            );
+            try self.appendAttribute(&new_attr);
+        }
+    
+    }
+
+    fn removeAttributeByName(self: *Element, qualified_name: []const u8) !void {
+
+        if (self.getAttributeByName(qualified_name)) |attr| {
+            try self.removeAttributeInternal(attr);
+        }
+    
+    }
+
+    fn removeAttributeByNamespaceAndLocalName(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !void {
+
+        if (self.getAttributeByNamespaceAndLocalName(namespace, local_name)) |attr| {
+            try self.removeAttributeInternal(attr);
+        }
+    
+    }
+
+    fn getAttributeByName(self: *const Element, qualified_name: []const u8) ?*Attr {
+
+        // Step 1: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const search_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            // ASCII lowercase the qualified name
+            if (qualified_name.len > lowercased_buf.len) {
+                // Name too long for stack buffer, use heap
+                // For now, just use original (this is edge case)
+                break :blk qualified_name;
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 2: Find first attribute with matching qualified name
+        for (self.attributes.items) |*attr| {
+            const attr_qualified_name = attr.get_name() catch continue;
+            defer if (attr.prefix != null) self.allocator.free(attr_qualified_name); // Free if allocated
+
+            if (std.mem.eql(u8, attr_qualified_name, search_name)) {
+                return attr;
             }
         }
         return null;
     
     }
 
-    pub fn call_setAttribute(self: *Element, qualified_name: []const u8, value: []const u8) !void {
+    fn getAttributeByNamespaceAndLocalName(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) ?*Attr {
 
+        // Step 1: Empty string namespace becomes null
+        const ns = if (namespace) |n| if (n.len == 0) null else n else null;
+
+        // Step 2: Find attribute with matching namespace and local name
         for (self.attributes.items) |*attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                attr.value = value;
-                return;
+            // Check namespace match
+            const ns_match = if (ns == null and attr.namespace_uri == null)
+                true
+            else if (ns != null and attr.namespace_uri != null)
+                std.mem.eql(u8, ns.?, attr.namespace_uri.?)
+            else
+                false;
+
+            // Check local name match
+            const name_match = std.mem.eql(u8, attr.local_name, local_name);
+
+            if (ns_match and name_match) {
+                return attr;
             }
         }
-        try self.attributes.append(Attr{
-            .name = qualified_name,
-            .value = value,
-        });
+        return null;
     
     }
 
-    pub fn call_removeAttribute(self: *Element, qualified_name: []const u8) void {
+    fn isHTMLElementInHTMLDocument(self: *const Element) bool {
 
-        for (self.attributes.items, 0..) |attr, i| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                _ = self.attributes.orderedRemove(i);
-                return;
-            }
+        // Check if element is in HTML namespace
+        const html_ns = "http://www.w3.org/1999/xhtml";
+        const in_html_namespace = if (self.namespace_uri) |ns|
+            std.mem.eql(u8, ns, html_ns)
+        else
+            false;
+
+        if (!in_html_namespace) return false;
+
+        // Check if node document is an HTML document
+        // For now, we'll assume documents are HTML unless explicitly XML
+        // Full implementation would check document.type
+        // TODO: Check owner_document.type when Document is fully implemented
+        return true;
+    
+    }
+
+    pub fn call_getAttribute(self: *const Element, qualified_name: []const u8) ?[]const u8 {
+
+        // Step 1: Get attribute by name
+        const attr = self.getAttributeByName(qualified_name) orelse return null;
+
+        // Step 3: Return attr's value
+        return attr.value;
+    
+    }
+
+    pub fn call_getAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) ?[]const u8 {
+
+        // Step 1: Get attribute by namespace and local name
+        const attr = self.getAttributeByNamespaceAndLocalName(namespace, local_name) orelse return null;
+
+        // Step 3: Return attr's value
+        return attr.value;
+    
+    }
+
+    pub fn call_setAttribute(self: *Element, qualified_name: []const u8, value: []const u8) !void {
+
+        // Step 1: Validate qualified name (simplified - check not empty and valid chars)
+        if (qualified_name.len == 0) {
+            return error.InvalidCharacterError;
         }
+
+        // Step 2: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const normalized_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            if (qualified_name.len > lowercased_buf.len) {
+                break :blk qualified_name; // Edge case: name too long
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 3: Find existing attribute
+        const existing = self.getAttributeByName(normalized_name);
+
+        if (existing) |attr| {
+            // Step 5: Change attribute to value
+            try Attr.changeAttribute(attr, value);
+        } else {
+            // Step 4: Create new attribute and append
+            // For setAttribute, we create with null namespace and prefix
+            const new_attr = try Attr.init(
+                self.allocator,
+                null, // namespace
+                null, // prefix
+                normalized_name,
+                value,
+            );
+            try self.appendAttribute(&new_attr);
+        }
+    
+    }
+
+    pub fn call_setAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        qualified_name: []const u8,
+        value: []const u8,
+    ) !void {
+
+        // Step 1: Validate and extract namespace/qualifiedName
+        // For now, simplified: split on ':' if present
+        var prefix: ?[]const u8 = null;
+        var local_name: []const u8 = qualified_name;
+
+        if (std.mem.indexOfScalar(u8, qualified_name, ':')) |colon_idx| {
+            prefix = qualified_name[0..colon_idx];
+            local_name = qualified_name[colon_idx + 1 ..];
+        }
+
+        // Step 2: Set attribute value
+        try self.setAttributeValue(local_name, value, prefix, namespace);
+    
+    }
+
+    pub fn call_removeAttribute(self: *Element, qualified_name: []const u8) !void {
+
+        try self.removeAttributeByName(qualified_name);
+    
+    }
+
+    pub fn call_removeAttributeNS(
+        self: *Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) !void {
+
+        try self.removeAttributeByNamespaceAndLocalName(namespace, local_name);
+    
+    }
+
+    pub fn call_toggleAttribute(
+        self: *Element,
+        qualified_name: []const u8,
+        force: ?bool,
+    ) !bool {
+
+        // Step 1: Validate qualified name
+        if (qualified_name.len == 0) {
+            return error.InvalidCharacterError;
+        }
+
+        // Step 2: ASCII lowercase if HTML element in HTML document
+        var lowercased_buf: [256]u8 = undefined;
+        const normalized_name = if (self.isHTMLElementInHTMLDocument()) blk: {
+            if (qualified_name.len > lowercased_buf.len) {
+                break :blk qualified_name; // Edge case: name too long
+            }
+            for (qualified_name, 0..) |c, i| {
+                lowercased_buf[i] = std.ascii.toLower(c);
+            }
+            break :blk lowercased_buf[0..qualified_name.len];
+        } else qualified_name;
+
+        // Step 3: Find existing attribute
+        const existing = self.getAttributeByName(normalized_name);
+
+        // Step 4: If attribute is null
+        if (existing == null) {
+            // Step 4a: If force not given or is true, create and append
+            if (force == null or force.? == true) {
+                const new_attr = try Attr.init(
+                    self.allocator,
+                    null, // namespace
+                    null, // prefix
+                    normalized_name,
+                    "", // empty value
+                );
+                try self.appendAttribute(&new_attr);
+                return true;
+            }
+            // Step 4b: Return false
+            return false;
+        }
+
+        // Step 5: Otherwise, if force not given or is false, remove attribute
+        if (force == null or force.? == false) {
+            try self.removeAttributeByName(normalized_name);
+            return false;
+        }
+
+        // Step 6: Return true (attribute exists and force is true)
+        return true;
     
     }
 
     pub fn call_hasAttribute(self: *const Element, qualified_name: []const u8) bool {
 
-        for (self.attributes.items) |attr| {
-            if (std.mem.eql(u8, attr.name, qualified_name)) {
-                return true;
+        return self.getAttributeByName(qualified_name) != null;
+    
+    }
+
+    pub fn call_hasAttributeNS(
+        self: *const Element,
+        namespace: ?[]const u8,
+        local_name: []const u8,
+    ) bool {
+
+        return self.getAttributeByNamespaceAndLocalName(namespace, local_name) != null;
+    
+    }
+
+    pub fn call_getAttributeNames(self: *const Element) !std.ArrayList([]const u8) {
+
+        var names = std.ArrayList([]const u8).init(self.allocator);
+        errdefer {
+            for (names.items) |_| {
+                // Only free if prefix exists (qualified name was allocated)
+                // If no prefix, it's just local_name which is owned by Attr
             }
+            names.deinit();
         }
-        return false;
+
+        for (self.attributes.items) |*attr| {
+            const qualified_name = try attr.get_name();
+            // Note: get_name() returns allocated string if prefix exists,
+            // otherwise returns local_name directly
+            // The caller is responsible for freeing if needed
+            try names.append(qualified_name);
+        }
+
+        return names;
     
     }
 
