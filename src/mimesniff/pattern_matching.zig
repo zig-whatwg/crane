@@ -362,7 +362,8 @@ pub fn matchAudioOrVideoTypePattern(input: []const u8) ?MimeType {
 /// "compatible brands" list. We check if "mp4" appears in either.
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#signature-for-mp4
-fn matchesMp4Signature(sequence: []const u8) bool {
+// Exported for testing
+pub fn matchesMp4Signature(sequence: []const u8) bool {
     // 1. Let sequence be the byte sequence to be matched
     // 2. Let length be the number of bytes in sequence
     const length = sequence.len;
@@ -414,7 +415,8 @@ fn matchesMp4Signature(sequence: []const u8) bool {
 /// that should contain "webm".
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#signature-for-webm
-fn matchesWebmSignature(sequence: []const u8) bool {
+// Exported for testing
+pub fn matchesWebmSignature(sequence: []const u8) bool {
     // 1. Let sequence be the byte sequence to be matched
     // 2. Let length be the number of bytes in sequence
     const length = sequence.len;
@@ -548,7 +550,8 @@ fn parseVint(sequence: []const u8, length: usize, iter: usize) VintResult {
 /// eventually preceded by bytes with a value of 0x00.
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#matching-a-padded-sequence
-fn matchPaddedSequence(
+// Exported for testing
+pub fn matchPaddedSequence(
     sequence: []const u8,
     pattern: []const u8,
     offset: usize,
@@ -576,7 +579,8 @@ fn matchPaddedSequence(
 /// We validate two consecutive frames to avoid false positives.
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#signature-for-mp3-without-id3
-fn matchesMp3Signature(sequence: []const u8) bool {
+// Exported for testing
+pub fn matchesMp3Signature(sequence: []const u8) bool {
     // 1. Let sequence be the byte sequence to be matched
     // 2. Let length be the number of bytes in sequence
     const length = sequence.len;
@@ -616,7 +620,8 @@ const Mp3Frame = struct {
 /// Match MP3 header
 ///
 /// Spec: https://mimesniff.spec.whatwg.org/#match-an-mp3-header
-fn matchMp3Header(sequence: []const u8, length: usize, s: usize) bool {
+// Exported for testing
+pub fn matchMp3Header(sequence: []const u8, length: usize, s: usize) bool {
     // 1. If length is less than 4, return false
     if (length < 4)
         return false;
@@ -851,7 +856,8 @@ pub fn matchArchiveTypePattern(input: []const u8) ?MimeType {
 // ============================================================================
 
 /// Helper to check MimeType essence matches expected type/subtype (for tests)
-fn expectEssence(mime: MimeType, expected_type: []const u8, expected_subtype: []const u8) !void {
+// Exported for testing
+pub fn expectEssence(mime: MimeType, expected_type: []const u8, expected_subtype: []const u8) !void {
     // Compare type
     try std.testing.expectEqual(expected_type.len, mime.type.len);
     for (mime.type, 0..) |c, i| {

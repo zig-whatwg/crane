@@ -109,6 +109,7 @@ fn addTestFilesFromDir(
     builder: *std.Build,
     step: *std.Build.Step,
     dir_path: []const u8,
+    target: std.Build.ResolvedTarget,
     modules: []const std.Build.Module.Import,
 ) !void {
     const allocator = builder.allocator;
@@ -132,7 +133,7 @@ fn addTestFilesFromDir(
         const test_exe = builder.addTest(.{
             .root_module = builder.createModule(.{
                 .root_source_file = builder.path(full_path),
-                .target = builder.host,
+                .target = target,
                 .imports = modules,
             }),
         });
@@ -1388,7 +1389,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/webidl", &webidl_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/webidl", target, &webidl_imports) catch |err| {
             std.debug.print("Warning: Failed to add webidl test files: {}\n", .{err});
         };
     }
@@ -1405,7 +1406,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "selector", .module = selector_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/dom", &dom_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/dom", target, &dom_imports) catch |err| {
             std.debug.print("Warning: Failed to add dom test files: {}\n", .{err});
         };
     }
@@ -1421,7 +1422,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "selector", .module = selector_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/selector", &selector_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/selector", target, &selector_imports) catch |err| {
             std.debug.print("Warning: Failed to add selector test files: {}\n", .{err});
         };
     }
@@ -1437,7 +1438,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/encoding", &encoding_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/encoding", target, &encoding_imports) catch |err| {
             std.debug.print("Warning: Failed to add encoding test files: {}\n", .{err});
         };
     }
@@ -1454,7 +1455,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "encoding", .module = encoding_mod },
             .{ .name = "url", .module = url_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/url", &url_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
         };
     }
@@ -1469,7 +1470,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "console", .module = console_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/console", &console_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/console", target, &console_imports) catch |err| {
             std.debug.print("Warning: Failed to add console test files: {}\n", .{err});
         };
     }
@@ -1486,7 +1487,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "dom", .module = dom_mod },
             .{ .name = "streams", .module = streams_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/streams", &streams_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/streams", target, &streams_imports) catch |err| {
             std.debug.print("Warning: Failed to add streams test files: {}\n", .{err});
         };
     }
@@ -1501,7 +1502,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "mimesniff", .module = mimesniff_mod },
         };
-        addTestFilesFromDir(b, test_step, "tests/mimesniff", &mimesniff_imports) catch |err| {
+        addTestFilesFromDir(b, test_step, "tests/mimesniff", target, &mimesniff_imports) catch |err| {
             std.debug.print("Warning: Failed to add mimesniff test files: {}\n", .{err});
         };
     }
