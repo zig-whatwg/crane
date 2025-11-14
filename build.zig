@@ -891,6 +891,12 @@ pub fn build(b: *std.Build) void {
     });
     url_host_parser_mod.addImport("infra", infra_mod);
     url_host_parser_mod.addImport("idna", url_idna_mod);
+    url_host_parser_mod.addImport("validation", url_validation_mod);
+    url_host_parser_mod.addImport("host", url_internal_host_mod);
+    url_host_parser_mod.addImport("ipv4_parser", url_ipv4_parser_mod);
+    url_host_parser_mod.addImport("ipv6_parser", url_ipv6_parser_mod);
+    url_host_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
+    url_host_parser_mod.addImport("encode_sets", url_encode_sets_mod);
 
     // Add host_parser import to url_basic_parser_mod now that it's defined
     url_basic_parser_mod.addImport("host_parser", url_host_parser_mod);
@@ -898,6 +904,9 @@ pub fn build(b: *std.Build) void {
     const url_windows_drive_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/windows_drive.zig"),
         .target = target,
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     // Add remaining imports to url_basic_parser_mod now that all dependencies are defined

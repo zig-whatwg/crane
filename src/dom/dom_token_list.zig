@@ -217,15 +217,16 @@ pub const DOMTokenList = struct {
         }
 
         // Step 4: Replace token in this's token set with newToken
-        const new_token_u16 = try infra.string.utf8ToUtf16(new_token);
+        const new_token_u16 = try infra.string.utf8ToUtf16(self.allocator, new_token);
         errdefer self.allocator.free(new_token_u16);
 
         // Find and replace in place to maintain order
-        const items = self.token_set.items_list.items();
+        const items = self.token_set.items_list.toSlice();
         for (items, 0..) |existing_token, i| {
             if (std.mem.eql(u16, existing_token, token_u16)) {
                 self.allocator.free(existing_token);
-                self.token_set.items_list.items_list.items[i] = new_token_u16;
+                // Access the underlying List's mutable slice
+                self.token_set.items_list.toSliceMut()[i] = new_token_u16;
                 break;
             }
         }
@@ -263,10 +264,7 @@ pub const DOMTokenList = struct {
     /// to return the result of running get an attribute value given
     /// the associated element and the associated attribute's local name"
     fn serialize(self: *const DOMTokenList) []const u8 {
-        return attribute_algorithms.get_attribute_value(
-            self.element,
-            self.attribute_local_name,
-        );
+        return self.element.getAttribute(self.attribute_local_name) orelse "";
     }
 
     /// Update steps
@@ -274,12 +272,10 @@ pub const DOMTokenList = struct {
     fn runUpdateSteps(self: *DOMTokenList) !void {
         // Step 1: If the associated element does not have an associated attribute
         // and token set is empty, then return
-        const current_value = attribute_algorithms.get_attribute_value(
-            self.element,
-            self.attribute_local_name,
-        );
+        const current_value_opt = self.element.getAttribute(self.attribute_local_name);
+        const has_attribute = current_value_opt != null;
 
-        if (current_value.len == 0 and self.token_set.isEmpty()) {
+        if (!has_attribute and self.token_set.isEmpty()) {
             return;
         }
 
@@ -289,13 +285,7 @@ pub const DOMTokenList = struct {
         const serialized = try self.serializeTokenSet();
         defer self.allocator.free(serialized);
 
-        try attribute_algorithms.setAttributeValue(
-            self.element,
-            self.attribute_local_name,
-            serialized,
-            null,
-            null,
-        );
+        try self.element.setAttribute(self.attribute_local_name, serialized);
     }
 
     /// Serialize the token set to a space-separated string
@@ -305,12 +295,12 @@ pub const DOMTokenList = struct {
             return try self.allocator.dupe(u8, "");
         }
 
-        // Use Infra's serializeStringSet
-        const serialized_u16 = try infra.serializeStringSet(self.allocator, &self.token_set);
+        // Use Infra's serializeStringSet from set.zig
+        const serialized_u16 = try infra.set.serializeStringSet(self.allocator, &self.token_set);
         defer self.allocator.free(serialized_u16);
 
         // Convert back to UTF-8
-        return try infra.String.toBytes(self.allocator, serialized_u16);
+        return try infra.string.utf16ToUtf8(self.allocator, serialized_u16);
     }
 
     /// Parse a value string into tokens and set the token set

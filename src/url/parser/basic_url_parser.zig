@@ -684,7 +684,8 @@ fn relativeState(ctx: *ParserContext, c: ?u8) ParseError!void {
     // Clear query and shorten path
     ctx.query.clear();
     ctx.has_query = false;
-    if (ctx.path_segments.pop()) |last| {
+    if (ctx.path_segments.size() > 0) {
+        const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
         ctx.allocator.free(last);
     }
     ctx.state = .path;
@@ -993,7 +994,8 @@ fn fileState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
                 const remaining_str = ctx.input[ctx.pointer..];
                 if (!windows_drive.startsWithWindowsDriveLetter(remaining_str)) {
-                    if (ctx.path_segments.pop()) |last| {
+                    if (ctx.path_segments.size() > 0) {
+                        const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
                         ctx.allocator.free(last);
                     }
                 } else {
@@ -1028,9 +1030,9 @@ fn fileSlashState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
             const remaining_str = ctx.input[ctx.pointer..];
             if (!windows_drive.startsWithWindowsDriveLetter(remaining_str) and
-                base.path.segments.items.len > 0)
+                base.path.segments.toSlice().len > 0)
             {
-                const first_segment = base.path.segments.items[0];
+                const first_segment = base.path.segments.toSlice()[0];
                 if (windows_drive.isNormalizedWindowsDriveLetter(first_segment)) {
                     try ctx.path_segments.append(try ctx.allocator.dupe(u8, first_segment));
                 }
@@ -1124,7 +1126,8 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
 
     if (is_terminator) {
         if (path_helpers.isDoubleDotPathSegment(ctx.buffer.items())) {
-            if (ctx.path_segments.pop()) |last| {
+            if (ctx.path_segments.size() > 0) {
+                const last = ctx.path_segments.remove(ctx.path_segments.size() - 1) catch unreachable;
                 ctx.allocator.free(last);
             }
             const should_append_empty = !(c != null and c.? == '/') and
@@ -1145,7 +1148,7 @@ fn pathState(ctx: *ParserContext, c: ?u8) ParseError!void {
                 windows_drive.isWindowsDriveLetter(ctx.buffer.items()))
             {
                 // Normalize: replace second char with ':'
-                ctx.buffer.items()[1] = ':';
+                ctx.buffer.toSliceMut()[1] = ':';
             }
             try ctx.path_segments.append(try ctx.allocator.dupe(u8, ctx.buffer.items()));
         } else if (c == null and ctx.buffer.items().len == 0) {
