@@ -28,19 +28,20 @@ pub const encode_sets = @import("encode_sets");
 pub const percent_encoding = @import("percent_encoding");
 
 // Phase 2: IDNA modules (Phase 2B: Full UTS46 implementation complete ✅)
-pub const punycode = @import("idna/punycode.zig");
-pub const idna = @import("idna/root.zig");
-pub const idna_normalization = @import("idna/normalization.zig");
-pub const idna_mapping = @import("idna/mapping.zig");
-pub const idna_bidi = @import("idna/bidi.zig");
-pub const idna_context = @import("idna/context.zig");
-pub const idna_validation = @import("idna/validation.zig");
+const idna_module = @import("idna");
+pub const idna = idna_module;
+pub const punycode = idna_module.punycode_mod;
+pub const idna_normalization = idna_module.normalization_mod;
+pub const idna_mapping = idna_module.mapping_mod;
+pub const idna_bidi = idna_module.bidi_mod;
+pub const idna_context = idna_module.context_mod;
+pub const idna_validation = idna_module.validation_mod;
 
 // Phase 3: Host parsing modules
 pub const host = @import("host");
 pub const ipv4_parser = @import("ipv4_parser");
 pub const ipv6_parser = @import("ipv6_parser");
-pub const host_parser = @import("parser/host_parser.zig");
+pub const host_parser = @import("host_parser");
 
 // Phase 3: Host serialization modules
 pub const ipv4_serializer = @import("ipv4_serializer");

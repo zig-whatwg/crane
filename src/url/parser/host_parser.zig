@@ -32,7 +32,7 @@ const ipv4_parser = @import("ipv4_parser");
 const ipv6_parser = @import("ipv6_parser");
 const percent_encoding = @import("percent_encoding");
 const encode_sets = @import("encode_sets");
-const idna = @import("../idna/root.zig");
+const idna = @import("idna");
 const validation = @import("validation");
 
 pub const HostParseError = error{
@@ -192,10 +192,3 @@ pub fn parseHost(
     const domain_copy = try allocator.dupe(u8, ascii_domain);
     return host.Host{ .domain = domain_copy };
 }
-
-
-
-
-
-
-

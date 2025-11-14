@@ -42,6 +42,14 @@ const bidi = @import("bidi.zig");
 const context = @import("context.zig");
 const idna_validation = @import("validation.zig");
 
+// Re-export submodules for external use
+pub const validation_mod = validation;
+pub const punycode_mod = punycode;
+pub const normalization_mod = normalization;
+pub const mapping_mod = mapping;
+pub const bidi_mod = bidi;
+pub const context_mod = context;
+
 pub const IDNAError = error{
     InvalidDomain,
     ForbiddenCodePoint,
@@ -417,14 +425,3 @@ pub fn domainToUnicode(
 
     return result.toOwnedSlice();
 }
-
-
-
-
-
-
-
-
-
-
-
