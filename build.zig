@@ -733,7 +733,9 @@ pub fn build(b: *std.Build) void {
     const url_percent_encoding_mod = b.createModule(.{
         .root_source_file = b.path("src/url/encoding/percent_encoding.zig"),
         .target = target,
-        .imports = &.{},
+        .imports = &[_]std.Build.Module.Import{
+            .{ .name = "infra", .module = infra_mod },
+        },
     });
 
     const url_encode_sets_mod = b.createModule(.{

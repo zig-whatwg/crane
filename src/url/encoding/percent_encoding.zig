@@ -36,6 +36,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const encode_sets = @import("encode_sets");
 
 /// Percent-encode a single byte (spec line 124)
@@ -99,8 +100,8 @@ fn parseHexByte(first: u8, second: u8) u8 {
 ///
 /// Example: "%25%20" -> "% " (0x25 0x20)
 pub fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     var i: usize = 0;
     while (i < input.len) : (i += 1) {
@@ -108,23 +109,23 @@ pub fn percentDecode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
         // Step 2.1: If byte is not 0x25 (%), append to output
         if (byte != '%') {
-            try output.append(allocator, byte);
+            try output.append(byte);
             continue;
         }
 
         // Step 2.2: If % but next two aren't hex digits, append %
         if (!isValidPercentEncoding(input, i)) {
-            try output.append(allocator, byte);
+            try output.append(byte);
             continue;
         }
 
         // Step 2.3: Decode hex bytes
         const decoded_byte = parseHexByte(input[i + 1], input[i + 2]);
-        try output.append(allocator, decoded_byte);
+        try output.append(decoded_byte);
         i += 2; // Skip next two bytes
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Percent-decode a UTF-8 string (spec lines 148-152)
@@ -149,21 +150,21 @@ inline fn utf8PercentEncodeAscii(
     input: []const u8,
     encode_set: encode_sets.EncodeSet,
 ) ![]u8 {
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     // Fast path: Process bytes directly (all are single-byte code points)
     for (input) |byte| {
         // Check if byte should be encoded (cast to u21 for API compatibility)
         if (encode_sets.shouldEncode(@as(u21, byte), encode_set)) {
             const encoded = percentEncodeByte(byte);
-            try output.appendSlice(allocator, &encoded);
+            try output.appendSlice(&encoded);
         } else {
-            try output.append(allocator, byte);
+            try output.append(byte);
         }
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// UTF-8 percent-encode a string using a percent-encode set (spec line 218)
@@ -196,15 +197,15 @@ pub fn utf8PercentEncode(
     }
 
     // UTF-8 slow path for non-ASCII input
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     var i: usize = 0;
     while (i < input.len) {
         const cp_len = std.unicode.utf8ByteSequenceLength(input[i]) catch {
             // Invalid UTF-8, encode the byte
             const encoded = percentEncodeByte(input[i]);
-            try output.appendSlice(allocator, &encoded);
+            try output.appendSlice(&encoded);
             i += 1;
             continue;
         };
@@ -213,7 +214,7 @@ pub fn utf8PercentEncode(
             // Truncated UTF-8, encode remaining bytes
             while (i < input.len) : (i += 1) {
                 const encoded = percentEncodeByte(input[i]);
-                try output.appendSlice(allocator, &encoded);
+                try output.appendSlice(&encoded);
             }
             break;
         }
@@ -223,7 +224,7 @@ pub fn utf8PercentEncode(
             var j: usize = 0;
             while (j < cp_len) : (j += 1) {
                 const encoded = percentEncodeByte(input[i + j]);
-                try output.appendSlice(allocator, &encoded);
+                try output.appendSlice(&encoded);
             }
             i += cp_len;
             continue;
@@ -235,17 +236,17 @@ pub fn utf8PercentEncode(
             var j: usize = 0;
             while (j < cp_len) : (j += 1) {
                 const encoded = percentEncodeByte(input[i + j]);
-                try output.appendSlice(allocator, &encoded);
+                try output.appendSlice(&encoded);
             }
         } else {
             // Append code point as-is
-            try output.appendSlice(allocator, input[i..][0..cp_len]);
+            try output.appendSlice(input[i..][0..cp_len]);
         }
 
         i += cp_len;
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 test "percent encoding - encode byte" {

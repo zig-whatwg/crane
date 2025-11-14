@@ -5,6 +5,7 @@
 //! Uses generated Unicode data from unicode_data.zig
 
 const std = @import("std");
+const infra = @import("infra");
 const unicode_data = @import("unicode_data.zig");
 
 pub const MappingError = error{
@@ -29,8 +30,8 @@ pub const Status = enum {
 /// Parameters:
 /// - `use_std3_ascii_rules`: If true, reject disallowed_std3_* characters
 pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii_rules: bool) ![]u8 {
-    var result = std.ArrayList(u8).empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var i: usize = 0;
     outer: while (i < input.len) {
@@ -74,19 +75,19 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
         switch (lookup.status) {
             .valid => {
                 // Copy original code point
-                try result.appendSlice(allocator, input[i .. i + cp_len]);
+                try result.appendSlice(input[i .. i + cp_len]);
             },
             .deviation => {
                 // Transitional_Processing=false: treat as valid, don't map
-                try result.appendSlice(allocator, input[i .. i + cp_len]);
+                try result.appendSlice(input[i .. i + cp_len]);
             },
             .mapped => {
                 // Use mapped character(s)
                 if (lookup.mapping) |mapping| {
-                    try result.appendSlice(allocator, mapping);
+                    try result.appendSlice(mapping);
                 } else {
                     // No mapping provided - copy original
-                    try result.appendSlice(allocator, input[i .. i + cp_len]);
+                    try result.appendSlice(input[i .. i + cp_len]);
                 }
             },
             .ignored => {
@@ -96,14 +97,14 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
                 // Per UTS46, disallowed characters are kept as-is during mapping
                 // They will be flagged with validation status V7, but not rejected
                 // This allows Punycode encoding to work for tests with disallowed chars
-                try result.appendSlice(allocator, input[i .. i + cp_len]);
+                try result.appendSlice(input[i .. i + cp_len]);
             },
             .disallowed_std3_valid => {
                 if (use_std3_ascii_rules) {
                     return MappingError.DisallowedCharacter;
                 }
                 // When not using STD3 rules, treat as valid - copy as-is
-                try result.appendSlice(allocator, input[i .. i + cp_len]);
+                try result.appendSlice(input[i .. i + cp_len]);
             },
             .disallowed_std3_mapped => {
                 if (use_std3_ascii_rules) {
@@ -111,9 +112,9 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
                 }
                 // When not using STD3 rules, use the mapping
                 if (lookup.mapping) |map| {
-                    try result.appendSlice(allocator, map);
+                    try result.appendSlice(map);
                 } else {
-                    try result.appendSlice(allocator, input[i .. i + cp_len]);
+                    try result.appendSlice(input[i .. i + cp_len]);
                 }
             },
         }
@@ -121,7 +122,7 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
         i += cp_len;
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 test "mapping - ASCII lowercase" {

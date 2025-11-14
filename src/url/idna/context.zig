@@ -3,6 +3,7 @@
 //! Implements CONTEXTO and CONTEXTJ rules for specific characters.
 
 const std = @import("std");
+const infra = @import("infra");
 
 pub const ContextError = error{
     InvalidContext,
@@ -43,8 +44,8 @@ fn isJoiningScript(cp: u21) bool {
 
 /// Validate contextual rules for a label
 pub fn validateContext(label: []const u8) !void {
-    var codepoints = std.ArrayList(u21).empty;
-    defer codepoints.deinit(std.heap.page_allocator);
+    var codepoints = infra.List(u21).init(std.heap.page_allocator);
+    defer codepoints.deinit();
 
     // Decode to codepoints
     var i: usize = 0;
@@ -61,12 +62,13 @@ pub fn validateContext(label: []const u8) !void {
             continue;
         };
 
-        codepoints.append(std.heap.page_allocator, cp) catch return;
+        codepoints.append(cp) catch return;
         i += cp_len;
     }
 
     // Check context rules for each codepoint
-    for (codepoints.items, 0..) |cp, idx| {
+    for (0..codepoints.len) |idx| {
+        const cp = codepoints.get(idx).?;
         switch (cp) {
             ZERO_WIDTH_NON_JOINER => {
                 // ZWNJ must be preceded by a character from a joining script
@@ -75,7 +77,7 @@ pub fn validateContext(label: []const u8) !void {
                 var has_joiner_before = false;
                 var j: usize = 0;
                 while (j < idx) : (j += 1) {
-                    if (isJoiningScript(codepoints.items[j])) {
+                    if (isJoiningScript(codepoints.get(j).?)) {
                         has_joiner_before = true;
                         break;
                     }
@@ -87,22 +89,23 @@ pub fn validateContext(label: []const u8) !void {
                 // ZWJ must be preceded by a character from a joining script
                 if (idx == 0) return ContextError.InvalidContext;
 
-                if (idx > 0 and !isJoiningScript(codepoints.items[idx - 1])) {
+                if (idx > 0 and !isJoiningScript(codepoints.get(idx - 1).?)) {
                     return ContextError.InvalidContext;
                 }
             },
             MIDDLE_DOT => {
                 // Middle dot: must be between 'l' characters (Catalan)
-                if (idx == 0 or idx + 1 >= codepoints.items.len) {
+                if (idx == 0 or idx + 1 >= codepoints.len) {
                     return ContextError.InvalidContext;
                 }
-                if (codepoints.items[idx - 1] != 'l' or codepoints.items[idx + 1] != 'l') {
+                if (codepoints.get(idx - 1).? != 'l' or codepoints.get(idx + 1).? != 'l') {
                     // Be lenient - allow if surrounded by letters
                 }
             },
             ARABIC_INDIC_DIGIT_ZERO...0x0669 => {
                 // Arabic-Indic digits cannot mix with Extended Arabic-Indic
-                for (codepoints.items) |other_cp| {
+                for (0..codepoints.len) |k| {
+                    const other_cp = codepoints.get(k).?;
                     if (isExtendedArabicIndicDigit(other_cp)) {
                         return ContextError.InvalidContext;
                     }
@@ -110,7 +113,8 @@ pub fn validateContext(label: []const u8) !void {
             },
             EXTENDED_ARABIC_INDIC_DIGIT_ZERO...0x06F9 => {
                 // Extended Arabic-Indic digits cannot mix with Arabic-Indic
-                for (codepoints.items) |other_cp| {
+                for (0..codepoints.len) |k| {
+                    const other_cp = codepoints.get(k).?;
                     if (isArabicIndicDigit(other_cp)) {
                         return ContextError.InvalidContext;
                     }
