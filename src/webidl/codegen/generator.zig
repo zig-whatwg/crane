@@ -22,8 +22,8 @@ pub fn generateCode(
     module_definitions: ?[]const u8,
     post_class_definitions: ?[]const u8,
 ) ![]const u8 {
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     const writer = output.writer(allocator);
 
@@ -100,7 +100,7 @@ pub fn generateCode(
         }
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Check if class needs callbackEquals helper function
@@ -160,8 +160,8 @@ fn writeHeader(writer: anytype) !void {
 
 /// Extract names of constants/types defined in module definitions
 fn extractModuleDefinitionNames(allocator: Allocator, defs: []const u8) ![][]const u8 {
-    var names: std.ArrayList([]const u8) = .empty;
-    errdefer names.deinit(allocator);
+    var names = infra.List([]const u8).init(allocator);
+    errdefer names.deinit();
 
     var lines = std.mem.splitScalar(u8, defs, '\n');
     while (lines.next()) |line| {
@@ -179,12 +179,12 @@ fn extractModuleDefinitionNames(allocator: Allocator, defs: []const u8) ![][]con
         if (std.mem.indexOfAny(u8, after_const, " =:")) |end_pos| {
             const name = after_const[0..end_pos];
             if (name.len > 0) {
-                try names.append(allocator, try allocator.dupe(u8, name));
+                try names.append(try allocator.dupe(u8, name));
             }
         }
     }
 
-    return try names.toOwnedSlice(allocator);
+    return try names.toOwnedSlice();
 }
 
 /// Write all imports (filtered to exclude class constants and module-level definitions)
@@ -224,32 +224,35 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
     }
 
     // Sort imports by name for consistent output
-    var sorted_imports: std.ArrayList(ir.Import) = .empty;
-    defer sorted_imports.deinit(std.heap.page_allocator);
+    var sorted_imports = infra.List(ir.Import).init(std.heap.page_allocator);
+    defer sorted_imports.deinit();
 
     for (imports) |import| {
         // Skip imports that match excluded names
         if (excluded_names.contains(import.name)) {
             continue;
         }
-        try sorted_imports.append(std.heap.page_allocator, import);
+        try sorted_imports.append(import);
     }
 
     // Simple bubble sort (small lists)
     var i: usize = 0;
-    while (i < sorted_imports.items.len) : (i += 1) {
+    while (i < sorted_imports.len) : (i += 1) {
         var j: usize = i + 1;
-        while (j < sorted_imports.items.len) : (j += 1) {
-            if (std.mem.order(u8, sorted_imports.items[i].name, sorted_imports.items[j].name) == .gt) {
-                const temp = sorted_imports.items[i];
-                sorted_imports.items[i] = sorted_imports.items[j];
-                sorted_imports.items[j] = temp;
+        while (j < sorted_imports.len) : (j += 1) {
+            const name_i = sorted_imports.get(i).?.name;
+            const name_j = sorted_imports.get(j).?.name;
+            if (std.mem.order(u8, name_i, name_j) == .gt) {
+                const temp = sorted_imports.get(i).?;
+                sorted_imports.getMut(i).?.* = sorted_imports.get(j).?;
+                sorted_imports.getMut(j).?.* = temp;
             }
         }
     }
 
     // Write sorted imports
-    for (sorted_imports.items) |import| {
+    for (0..sorted_imports.len) |idx| {
+        const import = sorted_imports.get(idx).?;
         const vis = if (import.visibility == .public) "pub " else "";
 
         // Special case: std.mem aliases (Allocator, ArrayList, etc.)
@@ -437,14 +440,14 @@ fn rewriteSelfParameterType(allocator: Allocator, signature: []const u8, target_
     }
 
     // Build rewritten signature
-    var result: std.ArrayList(u8) = .empty;
-    defer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
 
-    try result.appendSlice(allocator, signature[0..type_start]); // Up to and including "self: *" or "self: *const "
-    try result.appendSlice(allocator, target_class); // New type name
-    try result.appendSlice(allocator, signature[type_end..]); // Rest of signature (including closing paren if @This())
+    try result.appendSlice( signature[0..type_start]); // Up to and including "self: *" or "self: *const "
+    try result.appendSlice( target_class); // New type name
+    try result.appendSlice( signature[type_end..]); // Rest of signature (including closing paren if @This())
 
-    return try result.toOwnedSlice(allocator);
+    return try result.toOwnedSlice();
 }
 
 /// Write a single method
@@ -556,26 +559,26 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
     try imported_names.put(class_name, {});
 
     // Scan for local imports: `const Name = @import("...")`
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var pos: usize = 0;
     while (pos < body.len) {
         // Look for pattern: const Name = @import(
         const const_pos = std.mem.indexOfPos(u8, body, pos, "const ") orelse {
             // No more consts, append rest
-            try result.appendSlice(allocator, body[pos..]);
+            try result.appendSlice( body[pos..]);
             break;
         };
 
         // Append everything before this const
-        try result.appendSlice(allocator, body[pos..const_pos]);
+        try result.appendSlice( body[pos..const_pos]);
 
         // Check if this is an import statement
         const after_const = const_pos + "const ".len;
         const eq_pos = std.mem.indexOfScalarPos(u8, body, after_const, '=') orelse {
             // No = sign, not an import, keep it
-            try result.appendSlice(allocator, "const ");
+            try result.appendSlice( "const ");
             pos = after_const;
             continue;
         };
@@ -593,7 +596,7 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
         const after_eq = eq_pos + 1;
         const import_pos = std.mem.indexOfPos(u8, body, after_eq, "@import(") orelse {
             // Not an import, keep it
-            try result.appendSlice(allocator, body[const_pos..after_eq]);
+            try result.appendSlice( body[const_pos..after_eq]);
             pos = after_eq;
             continue;
         };
@@ -602,7 +605,7 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
         // Find the semicolon
         const semicolon_pos = std.mem.indexOfScalarPos(u8, body, import_pos, ';') orelse {
             // No semicolon found, keep it
-            try result.appendSlice(allocator, body[const_pos..]);
+            try result.appendSlice( body[const_pos..]);
             pos = body.len;
             break;
         };
@@ -616,12 +619,12 @@ fn stripShadowingImports(allocator: Allocator, body: []const u8, top_level_impor
             if (pos < body.len and body[pos] == '\n') pos += 1; // Skip the newline
         } else {
             // Keep this import (not shadowing)
-            try result.appendSlice(allocator, body[const_pos .. semicolon_pos + 1]);
+            try result.appendSlice( body[const_pos .. semicolon_pos + 1]);
             pos = semicolon_pos + 1;
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
 
 /// Filter module definitions to remove type aliases that duplicate top-level imports
@@ -635,8 +638,8 @@ fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imp
         try imported_names.put(import.name, {});
     }
 
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     // Process line by line
     var lines = std.mem.splitScalar(u8, defs, '\n');
@@ -674,13 +677,13 @@ fn filterModuleDefinitions(allocator: Allocator, defs: []const u8, top_level_imp
         }
 
         if (!should_skip) {
-            try result.appendSlice(allocator, line);
-            try result.append(allocator, '\n');
+            try result.appendSlice( line);
+            try result.append( '\n');
         }
     }
 
     // Trim trailing whitespace
-    const full_result = try result.toOwnedSlice(allocator);
+    const full_result = try result.toOwnedSlice();
     const trimmed_result = std.mem.trim(u8, full_result, " \t\r\n");
     const final = try allocator.dupe(u8, trimmed_result);
     allocator.free(full_result);
@@ -750,15 +753,15 @@ fn extractSelfTypeInfo(allocator: Allocator, signature: []const u8) !?SelfTypeIn
 /// Method calls (self.methodName()) are kept as "self" because inherited methods
 /// exist in the child class and should be called on self, not self_parent.
 fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     var pos: usize = 0;
     while (pos < body.len) {
         // Look for "self" keyword
         const self_pos = std.mem.indexOfPos(u8, body, pos, "self") orelse {
             // No more self references, append rest
-            try result.appendSlice(allocator, body[pos..]);
+            try result.appendSlice( body[pos..]);
             break;
         };
 
@@ -793,7 +796,7 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
         };
 
         // Append everything before this self
-        try result.appendSlice(allocator, body[pos..self_pos]);
+        try result.appendSlice( body[pos..self_pos]);
 
         if (is_valid_self) {
             // Check if this is a method call: self.methodName(
@@ -854,18 +857,18 @@ fn rewriteSelfReferences(allocator: Allocator, body: []const u8, new_name: []con
 
             if (is_method_call) {
                 // Keep as "self" for method calls (inherited methods are in child class)
-                try result.appendSlice(allocator, "self");
+                try result.appendSlice( "self");
             } else {
                 // Replace with new name for field access
-                try result.appendSlice(allocator, new_name);
+                try result.appendSlice( new_name);
             }
             pos = self_pos + 4; // Skip "self"
         } else {
             // Keep original "self" (it's part of another word)
-            try result.appendSlice(allocator, "self");
+            try result.appendSlice( "self");
             pos = self_pos + 4;
         }
     }
 
-    return result.toOwnedSlice(allocator);
+    return result.toOwnedSlice();
 }
