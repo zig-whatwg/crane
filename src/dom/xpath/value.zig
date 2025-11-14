@@ -341,10 +341,10 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
     switch (node.node_type) {
         NodeBase.ELEMENT_NODE, NodeBase.DOCUMENT_NODE, NodeBase.DOCUMENT_FRAGMENT_NODE => {
             // Concatenate all descendant text nodes
-            var result: std.ArrayList(u8) = .empty;
-            defer result.deinit(allocator);
+            var result = infra.List(u8).init(allocator);
+            defer result.deinit();
             try collectTextContent(allocator, node, &result);
-            return try result.toOwnedSlice(allocator);
+            return result.toOwnedSlice();
         },
         NodeBase.TEXT_NODE, NodeBase.CDATA_SECTION_NODE, NodeBase.COMMENT_NODE => {
             // For character data nodes, access the data field using NodeBase.asCharacterData
@@ -376,11 +376,11 @@ fn getStringValue(allocator: std.mem.Allocator, node: *NodeBase) ![]const u8 {
 }
 
 /// Helper to collect text content from all descendant text nodes
-fn collectTextContent(allocator: std.mem.Allocator, node: *const NodeBase, result: *std.ArrayList(u8)) !void {
+fn collectTextContent(allocator: std.mem.Allocator, node: *const NodeBase, result: *infra.List(u8)) !void {
     // If this is a text node, add its content
     if (node.node_type == NodeBase.TEXT_NODE or node.node_type == NodeBase.CDATA_SECTION_NODE) {
         if (NodeBase.asCharacterDataConst(node)) |char_data| {
-            try result.appendSlice(allocator, char_data.get_data());
+            try result.appendSlice(char_data.get_data());
         }
     }
 
