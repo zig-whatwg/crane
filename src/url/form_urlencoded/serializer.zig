@@ -6,6 +6,7 @@
 //! Serializes a list of name-value tuples into application/x-www-form-urlencoded format.
 
 const std = @import("std");
+const infra = @import("infra");
 const Tuple = @import("form_parser").Tuple;
 const percentEncodeAfterEncoding = @import("percent_encoding").percentEncodeAfterEncoding;
 const EncodeSet = @import("encode_sets").EncodeSet;
@@ -31,8 +32,8 @@ const EncodeSet = @import("encode_sets").EncodeSet;
 /// ```
 pub fn serialize(allocator: std.mem.Allocator, tuples: []const Tuple) ![]u8 {
     // Step 2: Empty output
-    var output = std.ArrayList(u8){};
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     // Step 3: For each tuple
     for (tuples) |tuple| {
@@ -47,18 +48,18 @@ pub fn serialize(allocator: std.mem.Allocator, tuples: []const Tuple) ![]u8 {
         defer allocator.free(value);
 
         // Step 3.4: Append "&" if output not empty
-        if (output.items.len > 0) {
-            try output.append(allocator, '&');
+        if (output.len > 0) {
+            try output.append('&');
         }
 
         // Step 3.5: Append name=value
-        try output.appendSlice(allocator, name);
-        try output.append(allocator, '=');
-        try output.appendSlice(allocator, value);
+        try output.appendSlice(name);
+        try output.append('=');
+        try output.appendSlice(value);
     }
 
     // Step 4: Return output
-    return try output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Percent-encode string with form_urlencoded encode set and space_as_plus=true
@@ -66,13 +67,13 @@ pub fn serialize(allocator: std.mem.Allocator, tuples: []const Tuple) ![]u8 {
 /// This is a simplified version that handles the form encoding directly.
 /// For now, we'll use a basic implementation that handles common cases.
 fn percentEncodeWithPlus(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var output = std.ArrayList(u8){};
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     for (input) |byte| {
         // Space becomes +
         if (byte == ' ') {
-            try output.append(allocator, '+');
+            try output.append('+');
             continue;
         }
 
@@ -80,15 +81,15 @@ fn percentEncodeWithPlus(allocator: std.mem.Allocator, input: []const u8) ![]u8 
         if (shouldEncodeForForm(byte)) {
             // Percent-encode
             const hex = "0123456789ABCDEF";
-            try output.append(allocator, '%');
-            try output.append(allocator, hex[byte >> 4]);
-            try output.append(allocator, hex[byte & 0x0F]);
+            try output.append('%');
+            try output.append(hex[byte >> 4]);
+            try output.append(hex[byte & 0x0F]);
         } else {
-            try output.append(allocator, byte);
+            try output.append(byte);
         }
     }
 
-    return try output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Check if byte should be percent-encoded for form_urlencoded
