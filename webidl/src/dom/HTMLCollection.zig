@@ -39,6 +39,9 @@ pub const HTMLCollection = webidl.interface(struct {
         return .{
             .allocator = allocator,
             .elements = infra.List(*Element).init(allocator),
+            .root = null,
+            .filter_fn = null,
+            .filter_context = null,
         };
     }
 

@@ -298,9 +298,8 @@ pub const CharacterData = struct {
         // Steps 8-11 - Update ranges
         if (self_node.owner_document) |doc| {
             // owner_document is already *Document, no conversion needed
-            const range_tracking = @import("range_tracking");
             const new_length = @as(u32, @intCast(data.len));
-            range_tracking.updateRangesAfterReplace(doc, self_node, offset, count, new_length);
+            dom.range_tracking.updateRangesAfterReplace(doc, self_node, offset, count, new_length);
         }
 
         // Step 12 - Run children changed steps for parent
