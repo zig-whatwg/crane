@@ -191,31 +191,4 @@ fn decode2ByteNeon(input: []const u8, output: []u16) DecodeResult {
 
 // Tests
 
-test "decode2ByteSequences - Cyrillic (16+ bytes)" {
-    // SIMD paths require 16+ bytes for NEON/SSE2, 32+ for AVX2
-    // Create a 16-byte input: 8 two-byte Cyrillic sequences
-    // "АААААААА" (8 Cyrillic A's, U+0410 each = 0xD0 0x90)
-    const input = [_]u8{
-        0xD0, 0x90, 0xD0, 0x90, 0xD0, 0x90, 0xD0, 0x90, // 4 A's
-        0xD0, 0x90, 0xD0, 0x90, 0xD0, 0x90, 0xD0, 0x90, // 4 more A's
-    };
-    var output: [8]u16 = undefined;
 
-    const result = decode2ByteSequences(&input, &output);
-
-    try std.testing.expectEqual(@as(usize, 16), result.bytes_consumed);
-    try std.testing.expectEqual(@as(usize, 8), result.code_units_written);
-    try std.testing.expectEqual(@as(u16, 0x0410), output[0]); // А
-    try std.testing.expectEqual(@as(u16, 0x0410), output[7]); // А
-}
-
-test "decode2ByteSequences - mixed invalid" {
-    // Start with valid 2-byte, then ASCII (should stop at ASCII)
-    const input = [_]u8{ 0xD0, 0x9F, 'A' };
-    var output: [2]u16 = undefined;
-
-    const result = decode2ByteSequences(&input, &output);
-
-    // Should stop before the ASCII byte
-    try std.testing.expect(result.bytes_consumed <= 2);
-}

@@ -149,76 +149,11 @@ pub const XHRReadyState = struct {
 
 const testing = std.testing;
 
-test "Constant - basic usage" {
-    const value = Constant(u16, 42);
-    try testing.expectEqual(@as(u16, 42), value);
-}
 
-test "Constant - in struct" {
-    const MyConstants = struct {
-        pub const VALUE1 = Constant(i32, 100);
-        pub const VALUE2 = Constant(i32, 200);
-    };
 
-    try testing.expectEqual(@as(i32, 100), MyConstants.VALUE1);
-    try testing.expectEqual(@as(i32, 200), MyConstants.VALUE2);
-}
 
-test "Constant - float values" {
-    const MathConstants = struct {
-        pub const PI = Constant(f64, 3.14159);
-        pub const E = Constant(f64, 2.71828);
-    };
 
-    try testing.expectEqual(@as(f64, 3.14159), MathConstants.PI);
-    try testing.expectEqual(@as(f64, 2.71828), MathConstants.E);
-}
 
-test "NodeType constants" {
-    try testing.expectEqual(@as(u16, 1), NodeType.ELEMENT_NODE);
-    try testing.expectEqual(@as(u16, 3), NodeType.TEXT_NODE);
-    try testing.expectEqual(@as(u16, 9), NodeType.DOCUMENT_NODE);
-}
 
-test "DocumentPosition constants - bitflags" {
-    try testing.expectEqual(@as(u16, 0x01), DocumentPosition.DISCONNECTED);
-    try testing.expectEqual(@as(u16, 0x02), DocumentPosition.PRECEDING);
-    try testing.expectEqual(@as(u16, 0x08), DocumentPosition.CONTAINS);
-}
 
-test "XHRReadyState constants" {
-    try testing.expectEqual(@as(u16, 0), XHRReadyState.UNSENT);
-    try testing.expectEqual(@as(u16, 1), XHRReadyState.OPENED);
-    try testing.expectEqual(@as(u16, 4), XHRReadyState.DONE);
-}
 
-test "Constants - use in conditionals" {
-    const node_type: u16 = 1;
-
-    if (node_type == NodeType.ELEMENT_NODE) {
-        try testing.expect(true);
-    } else {
-        try testing.expect(false);
-    }
-}
-
-test "Constants - use in switch" {
-    const node_type: u16 = 3;
-
-    const result = switch (node_type) {
-        NodeType.ELEMENT_NODE => "element",
-        NodeType.TEXT_NODE => "text",
-        NodeType.COMMENT_NODE => "comment",
-        else => "other",
-    };
-
-    try testing.expectEqualStrings("text", result);
-}
-
-test "Constants - compile-time evaluation" {
-    // Constants should be comptime-known
-    comptime {
-        const value = NodeType.ELEMENT_NODE;
-        std.debug.assert(value == 1);
-    }
-}

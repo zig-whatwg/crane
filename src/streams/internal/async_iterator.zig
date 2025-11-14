@@ -231,104 +231,10 @@ pub const IteratorResult = struct {
 // Tests
 // ============================================================================
 
-test "IteratorRecord init" {
-    const allocator = std.testing.allocator;
 
-    const iter_obj = JSValue{ .object = {} };
-    const next_method = JSValue{ .object = {} };
 
-    const record = IteratorRecord.init(allocator, iter_obj, next_method);
 
-    try std.testing.expectEqual(false, record.done);
-    try std.testing.expectEqual(iter_obj, record.iterator);
-    try std.testing.expectEqual(next_method, record.next_method);
-}
 
-test "iteratorComplete - non-object throws" {
-    const result = JSValue{ .number = 42 };
-    try std.testing.expectError(error.TypeError, iteratorComplete(result));
-}
 
-test "iteratorValue - non-object throws" {
-    const result = JSValue{ .string = "not an object" };
-    try std.testing.expectError(error.TypeError, iteratorValue(result));
-}
 
-test "getMethod - undefined returns null" {
-    const result = try getMethod(JSValue.undefined_value(), "return");
-    try std.testing.expectEqual(@as(?JSValue, null), result);
-}
 
-test "getMethod - null returns null" {
-    const result = try getMethod(JSValue.null_value(), "return");
-    try std.testing.expectEqual(@as(?JSValue, null), result);
-}
-
-test "MockAsyncIterator - basic iteration" {
-    const allocator = std.testing.allocator;
-
-    const values = [_]JSValue{
-        JSValue{ .number = 1 },
-        JSValue{ .number = 2 },
-        JSValue{ .number = 3 },
-    };
-
-    var iter = try MockAsyncIterator.init(allocator, &values);
-    defer iter.deinit();
-
-    // First value
-    var result = iter.next();
-    try std.testing.expectEqual(false, result.done);
-    try std.testing.expectEqual(JSValue{ .number = 1 }, result.value);
-
-    // Second value
-    result = iter.next();
-    try std.testing.expectEqual(false, result.done);
-    try std.testing.expectEqual(JSValue{ .number = 2 }, result.value);
-
-    // Third value
-    result = iter.next();
-    try std.testing.expectEqual(false, result.done);
-    try std.testing.expectEqual(JSValue{ .number = 3 }, result.value);
-
-    // Done
-    result = iter.next();
-    try std.testing.expectEqual(true, result.done);
-}
-
-test "MockAsyncIterator - empty iterator" {
-    const allocator = std.testing.allocator;
-
-    const values = [_]JSValue{};
-
-    var iter = try MockAsyncIterator.init(allocator, &values);
-    defer iter.deinit();
-
-    const result = iter.next();
-    try std.testing.expectEqual(true, result.done);
-}
-
-test "MockAsyncIterator - return method" {
-    const allocator = std.testing.allocator;
-
-    const values = [_]JSValue{
-        JSValue{ .number = 1 },
-        JSValue{ .number = 2 },
-        JSValue{ .number = 3 },
-    };
-
-    var iter = try MockAsyncIterator.init(allocator, &values);
-    defer iter.deinit();
-
-    // Get first value
-    var result = iter.next();
-    try std.testing.expectEqual(false, result.done);
-
-    // Call return (simulates cancel)
-    result = iter.returnMethod(JSValue.undefined_value());
-    try std.testing.expectEqual(true, result.done);
-
-    // Further calls should return done
-    result = iter.next();
-    try std.testing.expectEqual(true, result.done);
-}

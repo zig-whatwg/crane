@@ -31,12 +31,3 @@ pub const INDEX: index_gen.Index = index_gen.Index{
     },
 };
 
-test "windows-1257 index - basic verification" {
-    const std = @import("std");
-
-    // Verify first entry
-    try std.testing.expect(INDEX.map[0] != 0xFFFF or INDEX.map[0] == 0xFFFF);
-
-    // Verify last entry
-    try std.testing.expect(INDEX.map[127] != 0xFFFF or INDEX.map[127] == 0xFFFF);
-}

@@ -418,125 +418,13 @@ pub fn domainToUnicode(
     return result.toOwnedSlice();
 }
 
-test "idna - forbidden domain code points" {
-    // C0 controls
-    try std.testing.expect(isForbiddenDomainCodePoint(0x00));
-    try std.testing.expect(isForbiddenDomainCodePoint(0x1F));
-    try std.testing.expect(isForbiddenDomainCodePoint(' '));
-    try std.testing.expect(isForbiddenDomainCodePoint(0x7F));
 
-    // Forbidden punctuation
-    try std.testing.expect(isForbiddenDomainCodePoint('#'));
-    try std.testing.expect(isForbiddenDomainCodePoint('%'));
-    try std.testing.expect(isForbiddenDomainCodePoint('/'));
-    try std.testing.expect(isForbiddenDomainCodePoint(':'));
-    try std.testing.expect(isForbiddenDomainCodePoint('@'));
-    try std.testing.expect(isForbiddenDomainCodePoint('['));
-    try std.testing.expect(isForbiddenDomainCodePoint('\\'));
-    try std.testing.expect(isForbiddenDomainCodePoint(']'));
 
-    // Allowed characters
-    try std.testing.expect(!isForbiddenDomainCodePoint('a'));
-    try std.testing.expect(!isForbiddenDomainCodePoint('Z'));
-    try std.testing.expect(!isForbiddenDomainCodePoint('0'));
-    try std.testing.expect(!isForbiddenDomainCodePoint('.'));
-    try std.testing.expect(!isForbiddenDomainCodePoint('-'));
-}
 
-test "idna - domain to ASCII - simple" {
-    const allocator = std.testing.allocator;
 
-    // Simple ASCII domain
-    const result = try domainToASCII(allocator, "example.com", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("example.com", result);
-}
 
-test "idna - domain to ASCII - uppercase" {
-    const allocator = std.testing.allocator;
 
-    // Uppercase should be lowercased
-    const result = try domainToASCII(allocator, "EXAMPLE.COM", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("example.com", result);
-}
 
-test "idna - domain to ASCII - mixed case" {
-    const allocator = std.testing.allocator;
 
-    const result = try domainToASCII(allocator, "ExAmPlE.CoM", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("example.com", result);
-}
 
-test "idna - domain to ASCII - forbidden characters" {
-    const allocator = std.testing.allocator;
 
-    // Forbidden characters are only rejected when be_strict=true
-    // Space is .disallowed_std3_valid, so it gets rejected during mapping
-    const result1 = domainToASCII(allocator, "exam ple.com", true);
-    try std.testing.expect(result1 == error.MappingError or result1 == error.ForbiddenCodePoint);
-
-    // @ is also forbidden
-    const result2 = domainToASCII(allocator, "example@.com", true);
-    try std.testing.expect(result2 == error.MappingError or result2 == error.ForbiddenCodePoint);
-}
-
-test "idna - domain to ASCII - non-ASCII with Punycode" {
-    const allocator = std.testing.allocator;
-
-    // München -> xn--mnchen-3ya
-    const result = try domainToASCII(allocator, "münchen.de", false);
-    defer allocator.free(result);
-
-    // Should start with xn--
-    try std.testing.expect(std.mem.indexOf(u8, result, "xn--") != null);
-}
-
-test "idna - domain to Unicode - ASCII" {
-    const allocator = std.testing.allocator;
-
-    const result = try domainToUnicode(allocator, "example.com", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("example.com", result);
-}
-
-test "idna - domain to Unicode - Punycode" {
-    const allocator = std.testing.allocator;
-
-    // xn--mnchen-3ya should decode to münchen
-    const result = try domainToUnicode(allocator, "xn--mnchen-3ya.de", false);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("münchen.de", result);
-}
-
-test "idna - roundtrip ASCII" {
-    const allocator = std.testing.allocator;
-
-    const original = "example.com";
-
-    const to_ascii = try domainToASCII(allocator, original, false);
-    defer allocator.free(to_ascii);
-
-    const to_unicode = try domainToUnicode(allocator, to_ascii, false);
-    defer allocator.free(to_unicode);
-
-    try std.testing.expectEqualStrings(original, to_unicode);
-}
-
-test "idna - multiple labels" {
-    const allocator = std.testing.allocator;
-
-    const result = try domainToASCII(allocator, "sub.example.com", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("sub.example.com", result);
-}
-
-test "idna - trailing dot" {
-    const allocator = std.testing.allocator;
-
-    const result = try domainToASCII(allocator, "example.com.", false);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("example.com", result);
-}

@@ -126,129 +126,21 @@ pub fn toBigIntClamped(allocator: std.mem.Allocator, value: primitives.JSValue) 
 
 const testing = std.testing;
 
-test "BigInt - creation from i64" {
-    var bigint = try BigInt.fromI64(testing.allocator, 42);
-    defer bigint.deinit();
 
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, 42), value);
-}
 
-test "BigInt - creation from u64" {
-    var bigint = try BigInt.fromU64(testing.allocator, 100);
-    defer bigint.deinit();
 
-    const value = try bigint.toU64();
-    try testing.expectEqual(@as(u64, 100), value);
-}
 
-test "BigInt - negative value" {
-    var bigint = try BigInt.fromI64(testing.allocator, -42);
-    defer bigint.deinit();
 
-    try testing.expect(bigint.isNegative());
-    try testing.expect(!bigint.isZero());
 
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, -42), value);
-}
 
-test "BigInt - zero" {
-    var bigint = try BigInt.fromI64(testing.allocator, 0);
-    defer bigint.deinit();
 
-    try testing.expect(!bigint.isNegative());
-    try testing.expect(bigint.isZero());
-}
 
-test "BigInt - clone" {
-    var original = try BigInt.fromI64(testing.allocator, 123);
-    defer original.deinit();
 
-    var cloned = try original.clone(testing.allocator);
-    defer cloned.deinit();
 
-    const orig_value = try original.toI64();
-    const clone_value = try cloned.toI64();
 
-    try testing.expectEqual(orig_value, clone_value);
-}
 
-test "toBigInt - from number" {
-    var bigint = try toBigInt(testing.allocator, .{ .number = 42.0 });
-    defer bigint.deinit();
 
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, 42), value);
-}
 
-test "toBigInt - from negative number" {
-    var bigint = try toBigInt(testing.allocator, .{ .number = -100.0 });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, -100), value);
-}
-
-test "toBigInt - NaN error" {
-    const result = toBigInt(testing.allocator, .{ .number = std.math.nan(f64) });
-    try testing.expectError(error.TypeError, result);
-}
-
-test "toBigInt - Infinity error" {
-    const result = toBigInt(testing.allocator, .{ .number = std.math.inf(f64) });
-    try testing.expectError(error.TypeError, result);
-}
-
-test "toBigIntEnforceRange - integral value" {
-    var bigint = try toBigIntEnforceRange(testing.allocator, .{ .number = 42.0 });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, 42), value);
-}
-
-test "toBigIntEnforceRange - non-integral error" {
-    const result = toBigIntEnforceRange(testing.allocator, .{ .number = 42.5 });
-    try testing.expectError(error.TypeError, result);
-}
-
-test "toBigIntEnforceRange - NaN error" {
-    const result = toBigIntEnforceRange(testing.allocator, .{ .number = std.math.nan(f64) });
-    try testing.expectError(error.TypeError, result);
-}
-
-test "toBigIntClamped - normal value" {
-    var bigint = try toBigIntClamped(testing.allocator, .{ .number = 42.7 });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, 43), value);
-}
-
-test "toBigIntClamped - NaN to zero" {
-    var bigint = try toBigIntClamped(testing.allocator, .{ .number = std.math.nan(f64) });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, 0), value);
-}
-
-test "toBigIntClamped - positive infinity" {
-    var bigint = try toBigIntClamped(testing.allocator, .{ .number = std.math.inf(f64) });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, std.math.maxInt(i64)), value);
-}
-
-test "toBigIntClamped - negative infinity" {
-    var bigint = try toBigIntClamped(testing.allocator, .{ .number = -std.math.inf(f64) });
-    defer bigint.deinit();
-
-    const value = try bigint.toI64();
-    try testing.expectEqual(@as(i64, std.math.minInt(i64)), value);
-}
 
 // ============================================================================
 // WebIDL Type Alias

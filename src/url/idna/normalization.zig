@@ -281,39 +281,6 @@ fn normalizeCodePoint(cp: u21) u21 {
     };
 }
 
-test "normalization - ASCII lowercase" {
-    const allocator = std.testing.allocator;
 
-    const result = try normalize(allocator, "EXAMPLE.COM");
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("example.com", result);
-}
 
-test "normalization - mixed case" {
-    const allocator = std.testing.allocator;
-
-    const result = try normalize(allocator, "ExAmPlE.CoM");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("example.com", result);
-}
-
-test "normalization - already lowercase" {
-    const allocator = std.testing.allocator;
-
-    const result = try normalize(allocator, "example.com");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("example.com", result);
-}
-
-test "normalization - Latin-1 uppercase" {
-    const allocator = std.testing.allocator;
-
-    // Ü -> ü
-    const result = try normalize(allocator, "M\u{00DC}NCHEN");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("m\u{00FC}nchen", result);
-}

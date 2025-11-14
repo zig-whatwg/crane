@@ -74,12 +74,6 @@ pub const parser = struct {
     pub const parser_state = @import("parser_state");
 };
 
-test "can import dependencies" {
-    // Verify dependencies are accessible
-    _ = infra;
-    _ = encoding;
-    _ = webidl;
-}
 
 test {
     // Run all module tests

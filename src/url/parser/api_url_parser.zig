@@ -132,142 +132,16 @@ pub fn parseURLStrict(
 // Tests
 // ============================================================================
 
-test "api parser - simple HTTP URL" {
-    const allocator = std.testing.allocator;
 
-    const url = try parseURL(allocator, "http://example.com", null);
-    defer url.deinit();
 
-    try std.testing.expectEqualStrings("http", url.scheme());
-    try std.testing.expect(url.host != null);
-}
 
-test "api parser - with leading/trailing spaces" {
-    const allocator = std.testing.allocator;
 
-    const url = try parseURL(allocator, "  http://example.com  ", null);
-    defer url.deinit();
 
-    try std.testing.expectEqualStrings("http", url.scheme());
-}
 
-test "api parser - with tab characters" {
-    const allocator = std.testing.allocator;
 
-    const url = try parseURL(allocator, "http://exam\tple.com", null);
-    defer url.deinit();
 
-    try std.testing.expectEqualStrings("http", url.scheme());
-    // Tab should be removed from host
-    try std.testing.expect(url.host != null);
-}
 
-test "api parser - with newline characters" {
-    const allocator = std.testing.allocator;
 
-    const url = try parseURL(allocator, "http://example.com/pa\nth", null);
-    defer url.deinit();
 
-    try std.testing.expectEqualStrings("http", url.scheme());
-    // Newline should be removed from path
-}
 
-test "api parser - full URL with all components" {
-    const allocator = std.testing.allocator;
 
-    const url = try parseURL(allocator, "https://user:pass@example.com:8080/path?query#frag", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("https", url.scheme());
-    try std.testing.expectEqualStrings("user", url.username());
-    try std.testing.expectEqualStrings("pass", url.password());
-    try std.testing.expectEqual(@as(?u16, 8080), url.port);
-    try std.testing.expectEqualStrings("query", url.query().?);
-    try std.testing.expectEqualStrings("frag", url.fragment().?);
-}
-
-test "api parser - relative URL" {
-    const allocator = std.testing.allocator;
-
-    const base = try parseURL(allocator, "http://example.com/base/", null);
-    defer base.deinit();
-
-    const url = try parseURL(allocator, "../other", &base);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("http", url.scheme());
-    try std.testing.expect(url.host != null);
-}
-
-test "api parser - file URL" {
-    const allocator = std.testing.allocator;
-
-    const url = try parseURL(allocator, "file:///path/to/file", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("file", url.scheme());
-}
-
-test "api parser - mailto URL (opaque path)" {
-    const allocator = std.testing.allocator;
-
-    const url = try parseURL(allocator, "mailto:user@example.com", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("mailto", url.scheme());
-    try std.testing.expect(url.hasOpaquePath());
-}
-
-test "api parser - strict validation" {
-    const allocator = std.testing.allocator;
-
-    const url = try parseURLStrict(allocator, "http://example.com", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("http", url.scheme());
-}
-
-test "preprocessing - strip leading spaces" {
-    const allocator = std.testing.allocator;
-
-    const result = try preprocessInput(allocator, "   test");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("test", result);
-}
-
-test "preprocessing - strip trailing spaces" {
-    const allocator = std.testing.allocator;
-
-    const result = try preprocessInput(allocator, "test   ");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("test", result);
-}
-
-test "preprocessing - remove tabs" {
-    const allocator = std.testing.allocator;
-
-    const result = try preprocessInput(allocator, "te\tst");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("test", result);
-}
-
-test "preprocessing - remove newlines" {
-    const allocator = std.testing.allocator;
-
-    const result = try preprocessInput(allocator, "te\nst");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("test", result);
-}
-
-test "preprocessing - multiple operations" {
-    const allocator = std.testing.allocator;
-
-    const result = try preprocessInput(allocator, "  te\tst\n  ");
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("test", result);
-}

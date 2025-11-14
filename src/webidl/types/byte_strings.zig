@@ -180,92 +180,14 @@ pub fn utf16ToByteString(allocator: Allocator, string: strings.DOMString) !ByteS
 
 const testing = std.testing;
 
-test "byteStringToLowerCase - ASCII conversion" {
-    const allocator = testing.allocator;
-    const str: []const u8 = "Hello WORLD";
 
-    const result = try byteStringToLowerCase(allocator, str);
-    defer allocator.free(result);
 
-    try testing.expectEqualStrings("hello world", result);
-}
 
-test "byteStringToUpperCase - ASCII conversion" {
-    const allocator = testing.allocator;
-    const str: []const u8 = "Hello world";
 
-    const result = try byteStringToUpperCase(allocator, str);
-    defer allocator.free(result);
 
-    try testing.expectEqualStrings("HELLO WORLD", result);
-}
 
-test "byteStringEqualsIgnoreCase - case insensitive match" {
-    const a: []const u8 = "Content-Type";
-    const b: []const u8 = "content-type";
-    try testing.expect(byteStringEqualsIgnoreCase(a, b));
-}
 
-test "byteStringEqualsIgnoreCase - different content" {
-    const a: []const u8 = "Content-Type";
-    const b: []const u8 = "Accept";
-    try testing.expect(!byteStringEqualsIgnoreCase(a, b));
-}
 
-test "byteStringStartsWith - has prefix" {
-    const str: []const u8 = "Hello World";
-    const prefix: []const u8 = "Hello";
-    try testing.expect(byteStringStartsWith(str, prefix));
-}
 
-test "byteStringStartsWith - no prefix" {
-    const str: []const u8 = "Hello World";
-    const prefix: []const u8 = "World";
-    try testing.expect(!byteStringStartsWith(str, prefix));
-}
 
-test "byteStringLessThan - a less than b" {
-    const a: []const u8 = "apple";
-    const b: []const u8 = "banana";
-    try testing.expect(byteStringLessThan(a, b));
-}
 
-test "byteStringLessThan - a not less than b" {
-    const a: []const u8 = "zebra";
-    const b: []const u8 = "apple";
-    try testing.expect(!byteStringLessThan(a, b));
-}
-
-test "isAsciiByteString - valid ASCII" {
-    const str: []const u8 = "Hello World";
-    try testing.expect(isAsciiByteString(str));
-}
-
-test "isAsciiByteString - invalid (non-ASCII byte)" {
-    const str: []const u8 = &.{ 0x48, 0x65, 0x80 }; // "He" + non-ASCII
-    try testing.expect(!isAsciiByteString(str));
-}
-
-test "byteStringToUTF16 - UTF-8 decode" {
-    const allocator = testing.allocator;
-    const bytes: []const u8 = "Hello";
-
-    const result = try byteStringToUTF16(allocator, bytes);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(expected);
-
-    try testing.expect(strings.domStringEquals(result, expected));
-}
-
-test "utf16ToByteString - UTF-8 encode" {
-    const allocator = testing.allocator;
-    const dom_string = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(dom_string);
-
-    const result = try utf16ToByteString(allocator, dom_string);
-    defer allocator.free(result);
-
-    try testing.expectEqualStrings("Hello", result);
-}

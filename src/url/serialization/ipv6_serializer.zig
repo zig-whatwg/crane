@@ -132,95 +132,10 @@ pub fn serializeIPv6(allocator: std.mem.Allocator, address: [8]u16) ![]u8 {
     return output.toOwnedSlice();
 }
 
-test "ipv6 serializer - loopback" {
-    const allocator = std.testing.allocator;
 
-    const addr: [8]u16 = .{ 0, 0, 0, 0, 0, 0, 0, 1 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("::1", result);
-}
 
-test "ipv6 serializer - all zeros" {
-    const allocator = std.testing.allocator;
 
-    const addr: [8]u16 = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("::", result);
-}
 
-test "ipv6 serializer - no compression" {
-    const allocator = std.testing.allocator;
 
-    const addr: [8]u16 = .{ 0x2001, 0xdb8, 0x1234, 0x5678, 0x9abc, 0xdef0, 0x1234, 0x5678 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("2001:db8:1234:5678:9abc:def0:1234:5678", result);
-}
-
-test "ipv6 serializer - leading zeros compression" {
-    const allocator = std.testing.allocator;
-
-    const addr: [8]u16 = .{ 0, 0, 0, 0, 0, 0, 0xc0a8, 0x101 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("::c0a8:101", result);
-}
-
-test "ipv6 serializer - middle zeros compression" {
-    const allocator = std.testing.allocator;
-
-    const addr: [8]u16 = .{ 0x2001, 0xdb8, 0, 0, 0, 0, 0x1234, 0x5678 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("2001:db8::1234:5678", result);
-}
-
-test "ipv6 serializer - trailing zeros compression" {
-    const allocator = std.testing.allocator;
-
-    const addr: [8]u16 = .{ 0x2001, 0xdb8, 0x1234, 0x5678, 0, 0, 0, 0 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("2001:db8:1234:5678::", result);
-}
-
-test "ipv6 serializer - multiple zero runs, compress longest" {
-    const allocator = std.testing.allocator;
-
-    // Two runs of zeros: [2] and [5,6,7] - should compress the longer one
-    const addr: [8]u16 = .{ 0x2001, 0xdb8, 0, 0x1234, 0x5678, 0, 0, 0 };
-    const result = try serializeIPv6(allocator, addr);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("2001:db8:0:1234:5678::", result);
-}
-
-test "ipv6 serializer - find compressed piece index" {
-    // No compression (no run > 1)
-    const addr1: [8]u16 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
-    try std.testing.expect(findCompressedPieceIndex(addr1) == null);
-
-    // Single zero (no compression, need > 1)
-    const addr2: [8]u16 = .{ 1, 0, 3, 4, 5, 6, 7, 8 };
-    try std.testing.expect(findCompressedPieceIndex(addr2) == null);
-
-    // Run of 2 zeros at start
-    const addr3: [8]u16 = .{ 0, 0, 3, 4, 5, 6, 7, 8 };
-    try std.testing.expectEqual(@as(usize, 0), findCompressedPieceIndex(addr3).?);
-
-    // Run of 3 zeros in middle
-    const addr4: [8]u16 = .{ 1, 2, 0, 0, 0, 6, 7, 8 };
-    try std.testing.expectEqual(@as(usize, 2), findCompressedPieceIndex(addr4).?);
-
-    // All zeros
-    const addr5: [8]u16 = .{ 0, 0, 0, 0, 0, 0, 0, 0 };
-    try std.testing.expectEqual(@as(usize, 0), findCompressedPieceIndex(addr5).?);
-}

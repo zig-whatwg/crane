@@ -173,29 +173,6 @@ pub fn isBufferShared(buffer: anytype) bool {
 
 const testing = std.testing;
 
-test "IntegerExtAttr enum" {
-    const attr = IntegerExtAttr.clamp;
-    try testing.expectEqual(IntegerExtAttr.clamp, attr);
-}
 
-test "StringExtAttr enum" {
-    const attr = StringExtAttr.legacy_null_to_empty_string;
-    try testing.expectEqual(StringExtAttr.legacy_null_to_empty_string, attr);
-}
 
-test "BufferExtAttr packed struct" {
-    var attrs = BufferExtAttr{};
-    try testing.expect(!attrs.allow_shared);
-    try testing.expect(!attrs.allow_resizable);
 
-    attrs.allow_shared = true;
-    try testing.expect(attrs.allow_shared);
-}
-
-test "buffer utility functions compile" {
-    // These are placeholders, just verify they compile
-    const dummy: u8 = 0;
-    _ = isBufferDetached(dummy);
-    _ = isBufferResizable(dummy);
-    _ = isBufferShared(dummy);
-}

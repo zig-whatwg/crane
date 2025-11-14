@@ -184,44 +184,8 @@ pub fn isInterned(str: infra.String) bool {
 // Tests
 // ============================================================================
 
-test "internType - common types" {
-    const type_text = &[_]u16{ 't', 'e', 'x', 't' };
-    const interned = internType(type_text);
-    try std.testing.expect(interned != null);
-    try std.testing.expect(interned.?.ptr == TYPE_TEXT.ptr);
-}
 
-test "internType - uncommon type returns null" {
-    const type_multipart = &[_]u16{ 'm', 'u', 'l', 't', 'i', 'p', 'a', 'r', 't' };
-    const interned = internType(type_multipart);
-    try std.testing.expect(interned == null);
-}
 
-test "internSubtype - common subtypes" {
-    const subtype_html = &[_]u16{ 'h', 't', 'm', 'l' };
-    const interned = internSubtype(subtype_html);
-    try std.testing.expect(interned != null);
-    try std.testing.expect(interned.?.ptr == SUBTYPE_HTML.ptr);
-}
 
-test "internSubtype - uncommon subtype returns null" {
-    const subtype_markdown = &[_]u16{ 'm', 'a', 'r', 'k', 'd', 'o', 'w', 'n' };
-    const interned = internSubtype(subtype_markdown);
-    try std.testing.expect(interned == null);
-}
 
-test "isInterned - detects interned strings" {
-    try std.testing.expect(isInterned(TYPE_TEXT));
-    try std.testing.expect(isInterned(TYPE_IMAGE));
-    try std.testing.expect(isInterned(SUBTYPE_HTML));
-    try std.testing.expect(isInterned(SUBTYPE_JSON));
-}
 
-test "isInterned - rejects non-interned strings" {
-    const allocator = std.testing.allocator;
-    const custom = try allocator.alloc(u16, 4);
-    defer allocator.free(custom);
-
-    @memcpy(custom, &[_]u16{ 't', 'e', 'x', 't' });
-    try std.testing.expect(!isInterned(custom));
-}

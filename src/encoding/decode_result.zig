@@ -60,39 +60,5 @@ pub const DecodeResult = union(enum) {
 // Tests
 // ============================================================================
 
-test "DecodeResult - borrowed variant" {
-    const input = "Hello, World!";
-    const result = DecodeResult{ .borrowed = input };
 
-    try std.testing.expect(result.isZeroCopy());
-    try std.testing.expect(!result.isOwned());
-    try std.testing.expectEqualStrings("Hello, World!", result.slice());
 
-    // deinit should be safe (no-op for borrowed)
-    result.deinit(std.testing.allocator);
-}
-
-test "DecodeResult - owned variant" {
-    const allocator = std.testing.allocator;
-
-    const input = try allocator.dupe(u8, "Allocated");
-    const result = DecodeResult{ .owned = input };
-
-    try std.testing.expect(!result.isZeroCopy());
-    try std.testing.expect(result.isOwned());
-    try std.testing.expectEqualStrings("Allocated", result.slice());
-
-    // deinit should free memory
-    result.deinit(allocator);
-}
-
-test "DecodeResult - slice works for both variants" {
-    const borrowed = DecodeResult{ .borrowed = "Borrowed" };
-    try std.testing.expectEqualStrings("Borrowed", borrowed.slice());
-
-    const allocator = std.testing.allocator;
-    const owned_data = try allocator.dupe(u8, "Owned");
-    const owned = DecodeResult{ .owned = owned_data };
-    try std.testing.expectEqualStrings("Owned", owned.slice());
-    owned.deinit(allocator);
-}

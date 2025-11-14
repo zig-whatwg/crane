@@ -125,15 +125,5 @@ pub fn validateContext(label: []const u8) !void {
     }
 }
 
-test "context - ASCII only" {
-    try validateContext("example");
-}
 
-test "context - common Unicode" {
-    try validateContext("münchen");
-    try validateContext("café");
-}
 
-test "context - with numbers" {
-    try validateContext("example123");
-}

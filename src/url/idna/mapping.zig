@@ -125,52 +125,8 @@ pub fn mapString(allocator: std.mem.Allocator, input: []const u8, use_std3_ascii
     return result.toOwnedSlice();
 }
 
-test "mapping - ASCII lowercase" {
-    const allocator = std.testing.allocator;
 
-    const result = try mapString(allocator, "example", true);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("example", result);
-}
 
-test "mapping - ASCII uppercase" {
-    const allocator = std.testing.allocator;
 
-    const result = try mapString(allocator, "EXAMPLE", true);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("example", result);
-}
-
-test "mapping - mixed case" {
-    const allocator = std.testing.allocator;
-
-    const result = try mapString(allocator, "ExAmPlE", true);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("example", result);
-}
-
-test "mapping - with hyphens" {
-    const allocator = std.testing.allocator;
-
-    const result = try mapString(allocator, "ex-am-ple", true);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("ex-am-ple", result);
-}
-
-test "mapping - disallowed space" {
-    const allocator = std.testing.allocator;
-
-    const result = mapString(allocator, "exam ple", true);
-    try std.testing.expectError(MappingError.DisallowedCharacter, result);
-}
-
-test "mapping - disallowed control" {
-    const allocator = std.testing.allocator;
-
-    const result = mapString(allocator, "exam\x00ple", true);
-    try std.testing.expectError(MappingError.DisallowedCharacter, result);
-}

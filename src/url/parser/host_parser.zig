@@ -193,67 +193,9 @@ pub fn parseHost(
     return host.Host{ .domain = domain_copy };
 }
 
-test "host parser - domain" {
-    const allocator = std.testing.allocator;
 
-    const h = try parseHost(allocator, "example.com", false, null);
-    defer h.deinit(allocator);
 
-    try std.testing.expect(h.isDomain());
-    try std.testing.expectEqualStrings("example.com", h.domain);
-}
 
-test "host parser - domain uppercase" {
-    const allocator = std.testing.allocator;
 
-    const h = try parseHost(allocator, "EXAMPLE.COM", false, null);
-    defer h.deinit(allocator);
 
-    try std.testing.expect(h.isDomain());
-    try std.testing.expectEqualStrings("example.com", h.domain);
-}
 
-test "host parser - ipv4" {
-    const allocator = std.testing.allocator;
-
-    const h = try parseHost(allocator, "192.168.1.1", false, null);
-    defer h.deinit(allocator);
-
-    try std.testing.expect(h.isIpAddress());
-    try std.testing.expectEqual(@as(u32, 0xC0A80101), h.ipv4);
-}
-
-test "host parser - ipv6 loopback" {
-    const allocator = std.testing.allocator;
-
-    const h = try parseHost(allocator, "[::1]", false, null);
-    defer h.deinit(allocator);
-
-    try std.testing.expect(h.isIpAddress());
-    try std.testing.expectEqual(@as(u16, 1), h.ipv6[7]);
-}
-
-test "host parser - ipv6 without brackets fails" {
-    const allocator = std.testing.allocator;
-
-    // IPv6 without brackets should fail (: is forbidden in domains)
-    const result = parseHost(allocator, "::1", false, null);
-    try std.testing.expectError(HostParseError.InvalidHost, result);
-}
-
-test "host parser - opaque host" {
-    const allocator = std.testing.allocator;
-
-    const h = try parseHost(allocator, "example.com", true, null);
-    defer h.deinit(allocator);
-
-    try std.testing.expectEqualStrings("example.com", h.opaque_host);
-}
-
-test "host parser - ends in number" {
-    try std.testing.expect(endsInNumber("192.168.1.1"));
-    try std.testing.expect(endsInNumber("example.42"));
-    try std.testing.expect(endsInNumber("test.0x10"));
-    try std.testing.expect(!endsInNumber("example.com"));
-    try std.testing.expect(!endsInNumber("test.abc"));
-}

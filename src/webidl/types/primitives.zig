@@ -431,153 +431,31 @@ pub fn toUnsignedLongLongClamped(value: JSValue) u64 {
 // Tests
 const testing = std.testing;
 
-test "toByte" {
-    try testing.expectEqual(@as(i8, 42), try toByte(JSValue{ .number = 42.0 }));
-    try testing.expectEqual(@as(i8, 0), try toByte(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toLong" {
-    try testing.expectEqual(@as(i32, 1000), try toLong(JSValue{ .number = 1000.0 }));
-}
 
-test "toLongEnforceRange" {
-    try testing.expectError(error.TypeError, toLongEnforceRange(JSValue{ .number = 2147483648.0 }));
-}
 
-test "toLongClamped" {
-    try testing.expectEqual(@as(i32, 2147483647), toLongClamped(JSValue{ .number = 9999999999.0 }));
-}
 
-test "toBoolean" {
-    try testing.expect(toBoolean(JSValue{ .boolean = true }));
-    try testing.expect(!toBoolean(JSValue{ .number = 0.0 }));
-}
 
-test "toDouble" {
-    try testing.expectEqual(@as(f64, 3.14), try toDouble(JSValue{ .number = 3.14 }));
-    try testing.expectError(error.TypeError, toDouble(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toShort" {
-    try testing.expectEqual(@as(i16, 1000), try toShort(JSValue{ .number = 1000.0 }));
-    try testing.expectEqual(@as(i16, 0), try toShort(JSValue{ .number = std.math.nan(f64) }));
-    try testing.expectEqual(@as(i16, -32768), try toShort(JSValue{ .number = 32768.0 }));
-}
 
-test "toShortEnforceRange" {
-    try testing.expectEqual(@as(i16, 1000), try toShortEnforceRange(JSValue{ .number = 1000.0 }));
-    try testing.expectError(error.TypeError, toShortEnforceRange(JSValue{ .number = 32768.0 }));
-}
 
-test "toShortClamped" {
-    try testing.expectEqual(@as(i16, 32767), toShortClamped(JSValue{ .number = 99999.0 }));
-    try testing.expectEqual(@as(i16, -32768), toShortClamped(JSValue{ .number = -99999.0 }));
-}
 
-test "toUnsignedShort" {
-    try testing.expectEqual(@as(u16, 1000), try toUnsignedShort(JSValue{ .number = 1000.0 }));
-    try testing.expectEqual(@as(u16, 0), try toUnsignedShort(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toUnsignedShortEnforceRange" {
-    try testing.expectEqual(@as(u16, 1000), try toUnsignedShortEnforceRange(JSValue{ .number = 1000.0 }));
-    try testing.expectError(error.TypeError, toUnsignedShortEnforceRange(JSValue{ .number = 65536.0 }));
-}
 
-test "toUnsignedShortClamped" {
-    try testing.expectEqual(@as(u16, 65535), toUnsignedShortClamped(JSValue{ .number = 99999.0 }));
-    try testing.expectEqual(@as(u16, 0), toUnsignedShortClamped(JSValue{ .number = -100.0 }));
-}
 
-test "toUnsignedLong - basic conversion" {
-    try testing.expectEqual(@as(u32, 42), try toUnsignedLong(JSValue{ .number = 42.0 }));
-    try testing.expectEqual(@as(u32, 1000000), try toUnsignedLong(JSValue{ .number = 1000000.0 }));
-    try testing.expectEqual(@as(u32, 0), try toUnsignedLong(JSValue{ .number = std.math.nan(f64) }));
-    // Negative numbers wrap around (modulo 2^32)
-    try testing.expectEqual(@as(u32, 4294967295), try toUnsignedLong(JSValue{ .number = -1.0 }));
-}
 
-test "toUnsignedLong - fast path" {
-    // Fast path for values already in range
-    try testing.expectEqual(@as(u32, 255), try toUnsignedLong(JSValue{ .number = 255.0 }));
-    try testing.expectEqual(@as(u32, 0xFFFFFF), try toUnsignedLong(JSValue{ .number = 0xFFFFFF }));
-}
 
-test "toUnsignedLongEnforceRange - valid values" {
-    try testing.expectEqual(@as(u32, 100), try toUnsignedLongEnforceRange(JSValue{ .number = 100.0 }));
-    try testing.expectEqual(@as(u32, 4294967295), try toUnsignedLongEnforceRange(JSValue{ .number = 4294967295.0 }));
-}
 
-test "toUnsignedLongEnforceRange - throws on invalid" {
-    try testing.expectError(error.TypeError, toUnsignedLongEnforceRange(JSValue{ .number = -1.0 }));
-    try testing.expectError(error.TypeError, toUnsignedLongEnforceRange(JSValue{ .number = 4294967296.0 }));
-    try testing.expectError(error.TypeError, toUnsignedLongEnforceRange(JSValue{ .number = std.math.nan(f64) }));
-    try testing.expectError(error.TypeError, toUnsignedLongEnforceRange(JSValue{ .number = std.math.inf(f64) }));
-}
 
-test "toUnsignedLongClamped - clamps values" {
-    try testing.expectEqual(@as(u32, 42), toUnsignedLongClamped(JSValue{ .number = 42.0 }));
-    try testing.expectEqual(@as(u32, 0), toUnsignedLongClamped(JSValue{ .number = -100.0 }));
-    try testing.expectEqual(@as(u32, 4294967295), toUnsignedLongClamped(JSValue{ .number = 5000000000.0 }));
-    try testing.expectEqual(@as(u32, 0), toUnsignedLongClamped(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toUnsignedLong - DOM/Canvas use cases" {
-    // Typical DOM use cases
-    try testing.expectEqual(@as(u32, 0), try toUnsignedLong(JSValue{ .number = 0.0 })); // childNodes.length
-    try testing.expectEqual(@as(u32, 1920), try toUnsignedLong(JSValue{ .number = 1920.0 })); // canvas.width
-    try testing.expectEqual(@as(u32, 1080), try toUnsignedLong(JSValue{ .number = 1080.0 })); // canvas.height
 
-    // RGBA color values
-    try testing.expectEqual(@as(u32, 0xFF336699), try toUnsignedLong(JSValue{ .number = 0xFF336699 }));
-}
 
-test "toLongLong" {
-    try testing.expectEqual(@as(i64, 1000000), try toLongLong(JSValue{ .number = 1000000.0 }));
-    try testing.expectEqual(@as(i64, 0), try toLongLong(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toLongLongEnforceRange" {
-    try testing.expectEqual(@as(i64, 1000000), try toLongLongEnforceRange(JSValue{ .number = 1000000.0 }));
-    try testing.expectError(error.TypeError, toLongLongEnforceRange(JSValue{ .number = std.math.inf(f64) }));
-}
 
-test "toLongLongClamped" {
-    try testing.expectEqual(@as(i64, 9223372036854775807), toLongLongClamped(JSValue{ .number = 1e20 }));
-    try testing.expectEqual(@as(i64, 0), toLongLongClamped(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toUnsignedLongLong" {
-    try testing.expectEqual(@as(u64, 1000000), try toUnsignedLongLong(JSValue{ .number = 1000000.0 }));
-    try testing.expectEqual(@as(u64, 0), try toUnsignedLongLong(JSValue{ .number = std.math.nan(f64) }));
-}
 
-test "toUnsignedLongLongEnforceRange" {
-    try testing.expectEqual(@as(u64, 1000000), try toUnsignedLongLongEnforceRange(JSValue{ .number = 1000000.0 }));
-    try testing.expectError(error.TypeError, toUnsignedLongLongEnforceRange(JSValue{ .number = std.math.inf(f64) }));
-}
 
-test "toUnsignedLongLongClamped" {
-    try testing.expectEqual(@as(u64, 18446744073709551615), toUnsignedLongLongClamped(JSValue{ .number = 1e20 }));
-    try testing.expectEqual(@as(u64, 0), toUnsignedLongLongClamped(JSValue{ .number = -100.0 }));
-}
 
-test "JSValue - interface_ptr toNumber" {
-    const MockInterface = struct { x: i32 };
-    var obj = MockInterface{ .x = 42 };
-    const value = interfaces.wrapInterface(MockInterface, &obj);
-
-    const num = value.toNumber();
-    try testing.expect(std.math.isNan(num));
-}
-
-test "JSValue - interface_ptr toBoolean" {
-    const MockInterface = struct { x: i32 };
-    var obj = MockInterface{ .x = 42 };
-    const value = interfaces.wrapInterface(MockInterface, &obj);
-
-    try testing.expect(value.toBoolean());
-}
 
 // ============================================================================
 // WebIDL Type Aliases

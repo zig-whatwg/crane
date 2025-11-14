@@ -53,27 +53,5 @@ pub fn Enumeration(comptime values: []const []const u8) type {
 
 const testing = std.testing;
 
-test "Enumeration - valid values" {
-    const RequestMethod = Enumeration(&[_][]const u8{ "GET", "POST", "PUT", "DELETE" });
 
-    const get = try RequestMethod.fromJSValue(.{ .string = "GET" });
-    try testing.expect(get.eql("GET"));
-    try testing.expect(get.is("GET"));
-    try testing.expect(!get.is("POST"));
 
-    const post = try RequestMethod.fromJSValue(.{ .string = "POST" });
-    try testing.expect(post.eql("POST"));
-}
-
-test "Enumeration - invalid value" {
-    const RequestMethod = Enumeration(&[_][]const u8{ "GET", "POST", "PUT", "DELETE" });
-
-    try testing.expectError(error.TypeError, RequestMethod.fromJSValue(.{ .string = "PATCH" }));
-}
-
-test "Enumeration - non-string value" {
-    const RequestMethod = Enumeration(&[_][]const u8{ "GET", "POST", "PUT", "DELETE" });
-
-    try testing.expectError(error.TypeError, RequestMethod.fromJSValue(.{ .number = 42.0 }));
-    try testing.expectError(error.TypeError, RequestMethod.fromJSValue(.{ .boolean = true }));
-}

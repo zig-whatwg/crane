@@ -189,84 +189,12 @@ pub fn parseIPv4(
     return @intCast(ipv4);
 }
 
-test "ipv4 parser - standard notation" {
-    const allocator = std.testing.allocator;
 
-    // 192.168.1.1 = 0xC0A80101
-    const addr = try parseIPv4(allocator, "192.168.1.1", null);
-    try std.testing.expectEqual(@as(u32, 0xC0A80101), addr);
-}
 
-test "ipv4 parser - localhost" {
-    const allocator = std.testing.allocator;
 
-    // 127.0.0.1 = 0x7F000001
-    const addr = try parseIPv4(allocator, "127.0.0.1", null);
-    try std.testing.expectEqual(@as(u32, 0x7F000001), addr);
-}
 
-test "ipv4 parser - abbreviated two parts" {
-    const allocator = std.testing.allocator;
 
-    // 127.1 = 127.0.0.1 = 0x7F000001
-    const addr = try parseIPv4(allocator, "127.1", null);
-    try std.testing.expectEqual(@as(u32, 0x7F000001), addr);
-}
 
-test "ipv4 parser - abbreviated one part" {
-    const allocator = std.testing.allocator;
 
-    // 2130706433 = 127.0.0.1 = 0x7F000001
-    const addr = try parseIPv4(allocator, "2130706433", null);
-    try std.testing.expectEqual(@as(u32, 0x7F000001), addr);
-}
 
-test "ipv4 parser - hexadecimal" {
-    const allocator = std.testing.allocator;
 
-    // 0xC0.0xA8.0x1.0x1 = 192.168.1.1
-    const addr = try parseIPv4(allocator, "0xC0.0xA8.0x1.0x1", null);
-    try std.testing.expectEqual(@as(u32, 0xC0A80101), addr);
-}
-
-test "ipv4 parser - octal" {
-    const allocator = std.testing.allocator;
-
-    // 0300.0250.01.01 = 192.168.1.1
-    const addr = try parseIPv4(allocator, "0300.0250.01.01", null);
-    try std.testing.expectEqual(@as(u32, 0xC0A80101), addr);
-}
-
-test "ipv4 parser - trailing dot" {
-    const allocator = std.testing.allocator;
-
-    var errors_list = infra.List(validation.ValidationError).init(allocator);
-    defer errors_list.deinit();
-
-    // 127.0.0.1. should parse and generate validation error
-    const addr = try parseIPv4(allocator, "127.0.0.1.", &errors_list);
-    try std.testing.expectEqual(@as(u32, 0x7F000001), addr);
-    try std.testing.expectEqual(@as(usize, 1), errors_list.len);
-    try std.testing.expectEqual(validation.ErrorType.ipv4_empty_part, errors_list.get(0).?.type);
-}
-
-test "ipv4 parser - too many parts" {
-    const allocator = std.testing.allocator;
-
-    // 1.2.3.4.5 should fail
-    try std.testing.expectError(IPv4Error.TooManyParts, parseIPv4(allocator, "1.2.3.4.5", null));
-}
-
-test "ipv4 parser - non-numeric" {
-    const allocator = std.testing.allocator;
-
-    // test.42 should fail
-    try std.testing.expectError(IPv4Error.NonNumericPart, parseIPv4(allocator, "test.42", null));
-}
-
-test "ipv4 parser - out of range" {
-    const allocator = std.testing.allocator;
-
-    // 255.255.4000.1 should fail (4000 > 255 in non-last position)
-    try std.testing.expectError(IPv4Error.OutOfRange, parseIPv4(allocator, "255.255.4000.1", null));
-}

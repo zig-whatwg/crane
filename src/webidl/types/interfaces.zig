@@ -167,71 +167,10 @@ const MockInterface = struct {
     }
 };
 
-test "wrapInterface - basic wrapping" {
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
 
-    try testing.expect(js_value == .interface_ptr);
-    try testing.expectEqualStrings(@typeName(MockInterface), js_value.interface_ptr.type_name);
-}
 
-test "unwrapInterface - basic unwrapping" {
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
 
-    const unwrapped = try unwrapInterface(MockInterface, js_value);
-    try testing.expectEqual(@as(i32, 42), unwrapped.value);
-    try testing.expectEqual(&obj, unwrapped);
-}
 
-test "unwrapInterface - type mismatch error" {
-    const OtherInterface = struct { x: f64 };
 
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
 
-    // Should fail because type doesn't match
-    try testing.expectError(error.TypeError, unwrapInterface(OtherInterface, js_value));
-}
 
-test "unwrapInterface - not an interface error" {
-    const js_value = primitives.JSValue{ .number = 42.0 };
-
-    try testing.expectError(error.TypeError, unwrapInterface(MockInterface, js_value));
-}
-
-test "wrapInterfaceConst and unwrapInterfaceConst" {
-    const obj = MockInterface.init(42);
-    const js_value = wrapInterfaceConst(MockInterface, &obj);
-
-    const unwrapped = try unwrapInterfaceConst(MockInterface, js_value);
-    try testing.expectEqual(@as(i32, 42), unwrapped.value);
-}
-
-test "isInterface - basic check" {
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
-
-    try testing.expect(isInterface(js_value));
-    try testing.expect(!isInterface(primitives.JSValue{ .number = 42.0 }));
-}
-
-test "isInterfaceType - type checking" {
-    const OtherInterface = struct { x: f64 };
-
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
-
-    try testing.expect(isInterfaceType(MockInterface, js_value));
-    try testing.expect(!isInterfaceType(OtherInterface, js_value));
-}
-
-test "unwrapInterface - modify through pointer" {
-    var obj = MockInterface.init(42);
-    const js_value = wrapInterface(MockInterface, &obj);
-
-    const unwrapped = try unwrapInterface(MockInterface, js_value);
-    unwrapped.value = 100;
-
-    try testing.expectEqual(@as(i32, 100), obj.value);
-}

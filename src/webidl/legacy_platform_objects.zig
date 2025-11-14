@@ -123,20 +123,4 @@ pub fn createLegacyPlatformObject(config: LegacyPlatformObjectConfig) !void {
 
 const testing = std.testing;
 
-test "LegacyPlatformObjectConfig - basic structure" {
-    // Simple smoke test to verify types compile
-    const config = LegacyPlatformObjectConfig{
-        .override_builtins = true,
-        .unenumerable_named = false,
-    };
 
-    try testing.expect(config.override_builtins);
-    try testing.expect(!config.unenumerable_named);
-}
-
-test "createLegacyPlatformObject - not yet implemented" {
-    const config = LegacyPlatformObjectConfig{};
-
-    // Will work once V8 integration is complete
-    try testing.expectError(error.NotImplemented, createLegacyPlatformObject(config));
-}

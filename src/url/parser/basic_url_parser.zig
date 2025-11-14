@@ -1292,32 +1292,5 @@ fn fragmentState(ctx: *ParserContext, c: ?u8) ParseError!void {
 // Tests
 // ============================================================================
 
-test "basic url parser - simple http URL" {
-    const allocator = std.testing.allocator;
 
-    const url = try parse(allocator, "http://example.com", null);
-    defer url.deinit();
 
-    try std.testing.expectEqualStrings("http", url.scheme());
-    try std.testing.expect(url.host != null);
-}
-
-test "basic url parser - http with port" {
-    const allocator = std.testing.allocator;
-
-    const url = try parse(allocator, "http://example.com:8080", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("http", url.scheme());
-    try std.testing.expectEqual(@as(?u16, 8080), url.port);
-}
-
-test "basic url parser - with path" {
-    const allocator = std.testing.allocator;
-
-    const url = try parse(allocator, "http://example.com/path/to/file", null);
-    defer url.deinit();
-
-    try std.testing.expectEqualStrings("http", url.scheme());
-    try std.testing.expectEqual(@as(usize, 3), url.path.segments.items.len);
-}

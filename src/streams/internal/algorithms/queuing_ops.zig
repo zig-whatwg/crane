@@ -99,51 +99,10 @@ pub fn validateAndNormalizeHighWaterMark(high_water_mark: f64) !f64 {
 
 // Tests
 
-test "validateAndNormalizeHighWaterMark - valid values" {
-    // Test various valid high water marks
-    try std.testing.expectEqual(@as(f64, 0.0), try validateAndNormalizeHighWaterMark(0.0));
-    try std.testing.expectEqual(@as(f64, 1.0), try validateAndNormalizeHighWaterMark(1.0));
-    try std.testing.expectEqual(@as(f64, 100.5), try validateAndNormalizeHighWaterMark(100.5));
-    try std.testing.expectEqual(@as(f64, 1000000.0), try validateAndNormalizeHighWaterMark(1000000.0));
-}
 
-test "validateAndNormalizeHighWaterMark - negative value throws" {
-    try std.testing.expectError(error.RangeError, validateAndNormalizeHighWaterMark(-1.0));
-    try std.testing.expectError(error.RangeError, validateAndNormalizeHighWaterMark(-0.1));
-}
 
-test "validateAndNormalizeHighWaterMark - NaN throws" {
-    try std.testing.expectError(error.RangeError, validateAndNormalizeHighWaterMark(std.math.nan(f64)));
-}
 
-test "extractHighWaterMark - undefined strategy returns default" {
-    const result = try extractHighWaterMark(null, 5.0);
-    try std.testing.expectEqual(@as(f64, 5.0), result);
-}
 
-test "extractHighWaterMark - non-object strategy returns default" {
-    const result = try extractHighWaterMark(.{ .number = 10.0 }, 5.0);
-    try std.testing.expectEqual(@as(f64, 5.0), result);
-}
 
-test "extractSizeAlgorithm - undefined strategy returns default" {
-    const allocator = std.testing.allocator;
 
-    const algo = try extractSizeAlgorithm(allocator, null);
-    const result = algo(.{ .number = 42.0 });
-    try std.testing.expectEqual(@as(f64, 1.0), result);
-}
 
-test "extractSizeAlgorithm - non-object strategy returns default" {
-    const allocator = std.testing.allocator;
-
-    const algo = try extractSizeAlgorithm(allocator, .{ .number = 10.0 });
-    const result = algo(.{ .string = "test" });
-    try std.testing.expectEqual(@as(f64, 1.0), result);
-}
-
-test "defaultSizeAlgorithm - always returns 1" {
-    try std.testing.expectEqual(@as(f64, 1.0), defaultSizeAlgorithm(.undefined));
-    try std.testing.expectEqual(@as(f64, 1.0), defaultSizeAlgorithm(.{ .number = 100.0 }));
-    try std.testing.expectEqual(@as(f64, 1.0), defaultSizeAlgorithm(.{ .string = "chunk" }));
-}

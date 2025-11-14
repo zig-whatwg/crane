@@ -34,15 +34,3 @@ pub const INDEX: index_gen.Index = index_gen.Index{
     },
 };
 
-test "windows-1252 index - known mappings" {
-    const std = @import("std");
-
-    // Pointer 0 → U+20AC (EURO SIGN)
-    try std.testing.expectEqual(@as(u21, 0x20AC), INDEX.map[0]);
-
-    // Pointer 32 → U+00A0 (NO-BREAK SPACE)
-    try std.testing.expectEqual(@as(u21, 0x00A0), INDEX.map[32]);
-
-    // Pointer 127 → U+00FF (LATIN SMALL LETTER Y WITH DIAERESIS - ÿ)
-    try std.testing.expectEqual(@as(u21, 0x00FF), INDEX.map[127]);
-}

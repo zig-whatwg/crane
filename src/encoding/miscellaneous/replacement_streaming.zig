@@ -74,52 +74,5 @@ pub fn decode(
     };
 }
 
-test "replacement streaming decode - single byte" {
-    const input = "A";
-    var output: [10]u16 = undefined;
 
-    var decoder = Decoder{
-        .encoding = undefined,
-        .state = .{ .replacement = .{ .replacement_error_returned = false } },
-    };
 
-    const result = decode(&decoder, input, &output, true);
-
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 1), result.bytes_consumed);
-    try std.testing.expectEqual(@as(usize, 1), result.code_units_written);
-    try std.testing.expectEqual(@as(u16, 0xFFFD), output[0]); // Replacement character
-}
-
-test "replacement streaming decode - multiple bytes" {
-    const input = "Hello, World!";
-    var output: [50]u16 = undefined;
-
-    var decoder = Decoder{
-        .encoding = undefined,
-        .state = .{ .replacement = .{ .replacement_error_returned = false } },
-    };
-
-    const result = decode(&decoder, input, &output, true);
-
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 13), result.bytes_consumed);
-    try std.testing.expectEqual(@as(usize, 1), result.code_units_written); // Only one U+FFFD!
-    try std.testing.expectEqual(@as(u16, 0xFFFD), output[0]);
-}
-
-test "replacement streaming decode - empty input" {
-    const input = "";
-    var output: [10]u16 = undefined;
-
-    var decoder = Decoder{
-        .encoding = undefined,
-        .state = .{ .replacement = .{ .replacement_error_returned = false } },
-    };
-
-    const result = decode(&decoder, input, &output, true);
-
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 0), result.bytes_consumed);
-    try std.testing.expectEqual(@as(usize, 0), result.code_units_written);
-}

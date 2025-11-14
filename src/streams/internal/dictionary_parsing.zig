@@ -716,115 +716,15 @@ pub fn parseQueuingStrategyInit(
 
 const testing = std.testing;
 
-test "parseUnderlyingSource - null returns defaults" {
-    const result = try parseUnderlyingSource(testing.allocator, null);
-    try testing.expect(result.start == null);
-    try testing.expect(result.pull == null);
-    try testing.expect(result.cancel == null);
-    try testing.expect(result.type == null);
-    try testing.expect(result.auto_allocate_chunk_size == null);
-}
 
-test "parseUnderlyingSink - null returns defaults" {
-    const result = try parseUnderlyingSink(testing.allocator, null);
-    try testing.expect(result.start == null);
-    try testing.expect(result.write == null);
-    try testing.expect(result.close == null);
-    try testing.expect(result.abort == null);
-    try testing.expect(result.type == null);
-}
 
-test "parseTransformer - null returns defaults" {
-    const result = try parseTransformer(testing.allocator, null);
-    try testing.expect(result.start == null);
-    try testing.expect(result.transform == null);
-    try testing.expect(result.flush == null);
-    try testing.expect(result.cancel == null);
-    try testing.expect(result.readable_type == null);
-    try testing.expect(result.writable_type == null);
-}
 
-test "parseQueuingStrategy - null returns defaults" {
-    const result = try parseQueuingStrategy(testing.allocator, null);
-    try testing.expect(result.high_water_mark == null);
-    try testing.expect(result.size == null);
-}
 
-test "extractHighWaterMark - null returns default" {
-    const result = try extractHighWaterMark(null, 1.0);
-    try testing.expectEqual(@as(f64, 1.0), result);
-}
 
-test "extractHighWaterMark - number returns value" {
-    const value = webidl.JSValue{ .number = 16.0 };
-    const result = try extractHighWaterMark(value, 1.0);
-    try testing.expectEqual(@as(f64, 16.0), result);
-}
 
-test "parseStreamPipeOptions - null returns defaults" {
-    const result = try parseStreamPipeOptions(testing.allocator, null);
-    try testing.expect(!result.prevent_close);
-    try testing.expect(!result.prevent_abort);
-    try testing.expect(!result.prevent_cancel);
-    try testing.expect(result.signal == null);
-}
 
-test "parseQueuingStrategyInit - number extracts high water mark" {
-    const value = webidl.JSValue{ .number = 5.0 };
-    const result = try parseQueuingStrategyInit(testing.allocator, value);
-    try testing.expectEqual(@as(f64, 5.0), result.high_water_mark);
-}
 
-test "parseReadableStreamGetReaderOptions - undefined returns defaults" {
-    const result = try parseReadableStreamGetReaderOptions(testing.allocator, null);
-    try testing.expect(result.mode == null);
-}
 
-test "parseReadableStreamGetReaderOptions - byob mode" {
-    var obj = webidl.JSObject.init(testing.allocator);
-    defer obj.deinit();
 
-    try obj.set("mode", .{ .string = "byob" });
-    const value = webidl.JSValue{ .object = obj };
 
-    const result = try parseReadableStreamGetReaderOptions(testing.allocator, value);
-    try testing.expect(result.mode != null);
-    try testing.expectEqual(dict.ReaderMode.byob, result.mode.?);
-}
 
-test "parseReadableStreamGetReaderOptions - invalid mode fails" {
-    var obj = webidl.JSObject.init(testing.allocator);
-    defer obj.deinit();
-
-    try obj.set("mode", .{ .string = "invalid" });
-    const value = webidl.JSValue{ .object = obj };
-
-    const result = parseReadableStreamGetReaderOptions(testing.allocator, value);
-    try testing.expectError(error.TypeError, result);
-}
-
-test "parseStreamPipeOptions - all options" {
-    var obj = webidl.JSObject.init(testing.allocator);
-    defer obj.deinit();
-
-    try obj.set("preventClose", .{ .boolean = true });
-    try obj.set("preventAbort", .{ .boolean = true });
-    try obj.set("preventCancel", .{ .boolean = false });
-    const value = webidl.JSValue{ .object = obj };
-
-    const result = try parseStreamPipeOptions(testing.allocator, value);
-    try testing.expect(result.prevent_close);
-    try testing.expect(result.prevent_abort);
-    try testing.expect(!result.prevent_cancel);
-}
-
-test "parseReadableStreamIteratorOptions - preventCancel" {
-    var obj = webidl.JSObject.init(testing.allocator);
-    defer obj.deinit();
-
-    try obj.set("preventCancel", .{ .boolean = true });
-    const value = webidl.JSValue{ .object = obj };
-
-    const result = try parseReadableStreamIteratorOptions(testing.allocator, value);
-    try testing.expect(result.prevent_cancel);
-}

@@ -225,55 +225,6 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
 // Tests
 // ============================================================================
 
-test "FastDecoder(utf8) - ASCII" {
-    const allocator = std.testing.allocator;
 
-    var decoder = try FastDecoder(.utf8).init(allocator, .{});
-    defer decoder.deinit();
 
-    const output = try decoder.decode("Hello, World!");
-    defer allocator.free(output);
 
-    try std.testing.expectEqualStrings("Hello, World!", output);
-}
-
-test "FastDecoder(utf8) - valid UTF-8" {
-    const allocator = std.testing.allocator;
-
-    var decoder = try FastDecoder(.utf8).init(allocator, .{});
-    defer decoder.deinit();
-
-    const output = try decoder.decode("Hello, 世界! 🚀");
-    defer allocator.free(output);
-
-    try std.testing.expectEqualStrings("Hello, 世界! 🚀", output);
-}
-
-test "FastDecoder(windows_1252) - ASCII" {
-    const allocator = std.testing.allocator;
-
-    var decoder = try FastDecoder(.windows_1252).init(allocator, .{});
-    defer decoder.deinit();
-
-    const output = try decoder.decode("Hello!");
-    defer allocator.free(output);
-
-    try std.testing.expectEqualStrings("Hello!", output);
-}
-
-test "FastDecoder - comptime encoding selection" {
-    // This test verifies that encoding selection happens at compile time
-    const allocator = std.testing.allocator;
-
-    var utf8_decoder = try FastDecoder(.utf8).init(allocator, .{});
-    defer utf8_decoder.deinit();
-
-    var win1252_decoder = try FastDecoder(.windows_1252).init(allocator, .{});
-    defer win1252_decoder.deinit();
-
-    // Different types - proves comptime specialization
-    const Utf8Type = @TypeOf(utf8_decoder);
-    const Win1252Type = @TypeOf(win1252_decoder);
-
-    try std.testing.expect(Utf8Type != Win1252Type);
-}

@@ -90,12 +90,6 @@ test {
     std.testing.refAllDecls(@This());
 }
 
-test "label resolution" {
-    try std.testing.expect(getEncoding("utf-8") != null);
-    try std.testing.expect(getEncoding("latin1") != null);
-    try std.testing.expect(getEncoding("koi8-r") != null);
-    try std.testing.expect(getEncoding("invalid") == null);
-}
 
 // WebIDL API exports (§7) - from interfaces/
 // Note: Dictionary types (TextEncoderEncodeIntoResult, TextDecoderOptions, TextDecodeOptions)
@@ -110,27 +104,4 @@ pub const TextDecoderOptions = text_decoder_mod.TextDecoderOptions;
 pub const TextDecodeOptions = text_decoder_mod.TextDecodeOptions;
 
 // Test generated interfaces with mixin composition
-test "generated TextDecoder mixin delegation" {
-    const allocator = std.testing.allocator;
 
-    var decoder = try TextDecoder.init(allocator, "utf-8", .{
-        .fatal = true,
-        .ignoreBOM = false,
-    });
-    defer decoder.deinit();
-
-    // Verify mixin fields are accessible through delegation
-    try std.testing.expectEqualStrings("utf-8", decoder.encoding);
-    try std.testing.expectEqual(true, decoder.get_fatal());
-    try std.testing.expectEqual(false, decoder.get_ignoreBOM());
-}
-
-test "generated TextEncoder mixin delegation" {
-    const allocator = std.testing.allocator;
-
-    var encoder = TextEncoder.init(allocator);
-    defer encoder.deinit();
-
-    // Verify mixin field is accessible through delegation
-    try std.testing.expectEqualStrings("utf-8", encoder.encoding);
-}

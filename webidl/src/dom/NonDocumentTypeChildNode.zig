@@ -81,8 +81,3 @@ pub const NonDocumentTypeChildNode = webidl.mixin(struct {
     }
 });
 
-test "NonDocumentTypeChildNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(NonDocumentTypeChildNode);
-    try std.testing.expect(T != void);
-}

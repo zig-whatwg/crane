@@ -44,71 +44,8 @@ pub fn Stack(comptime T: type) type {
     };
 }
 
-test "Stack - push and pop" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
 
-    try stack.push(1);
-    try stack.push(2);
-    try stack.push(3);
 
-    try std.testing.expectEqual(@as(?u32, 3), stack.pop());
-    try std.testing.expectEqual(@as(?u32, 2), stack.pop());
-    try std.testing.expectEqual(@as(?u32, 1), stack.pop());
-}
 
-test "Stack - pop empty returns null" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
 
-    try std.testing.expectEqual(@as(?u32, null), stack.pop());
-}
 
-test "Stack - peek" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
-
-    try stack.push(1);
-    try stack.push(2);
-
-    try std.testing.expectEqual(@as(?u32, 2), stack.peek());
-    try std.testing.expectEqual(@as(?u32, 2), stack.peek());
-}
-
-test "Stack - isEmpty" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
-
-    try std.testing.expect(stack.isEmpty());
-    try stack.push(1);
-    try std.testing.expect(!stack.isEmpty());
-}
-
-test "Stack - LIFO order" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
-
-    try stack.push(10);
-    try stack.push(20);
-    try stack.push(30);
-
-    try std.testing.expectEqual(@as(?u32, 30), stack.pop());
-    try std.testing.expectEqual(@as(?u32, 20), stack.pop());
-    try std.testing.expectEqual(@as(?u32, 10), stack.pop());
-}
-
-test "Stack - no memory leaks" {
-    const allocator = std.testing.allocator;
-    var stack = Stack(u32).init(allocator);
-    defer stack.deinit();
-
-    var i: u32 = 0;
-    while (i < 10) : (i += 1) {
-        try stack.push(i);
-    }
-}

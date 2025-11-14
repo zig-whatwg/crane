@@ -66,130 +66,13 @@ pub fn serializeHost(allocator: std.mem.Allocator, h: host.Host) ![]u8 {
     };
 }
 
-test "host serializer - domain" {
-    const allocator = std.testing.allocator;
 
-    const h = host.Host{ .domain = "example.com" };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("example.com", result);
-}
 
-test "host serializer - ipv4" {
-    const allocator = std.testing.allocator;
 
-    const h = host.Host{ .ipv4 = 0xC0A80101 };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("192.168.1.1", result);
-}
 
-test "host serializer - ipv6 loopback" {
-    const allocator = std.testing.allocator;
 
-    const h = host.Host{ .ipv6 = .{ 0, 0, 0, 0, 0, 0, 0, 1 } };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("[::1]", result);
-}
 
-test "host serializer - ipv6 all zeros" {
-    const allocator = std.testing.allocator;
 
-    const h = host.Host{ .ipv6 = .{ 0, 0, 0, 0, 0, 0, 0, 0 } };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("[::]", result);
-}
-
-test "host serializer - ipv6 no compression" {
-    const allocator = std.testing.allocator;
-
-    const h = host.Host{ .ipv6 = .{ 0x2001, 0xdb8, 0x1234, 0x5678, 0x9abc, 0xdef0, 0x1234, 0x5678 } };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("[2001:db8:1234:5678:9abc:def0:1234:5678]", result);
-}
-
-test "host serializer - opaque host" {
-    const allocator = std.testing.allocator;
-
-    const h = host.Host{ .opaque_host = "opaque.example" };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("opaque.example", result);
-}
-
-test "host serializer - empty host" {
-    const allocator = std.testing.allocator;
-
-    const h = host.Host{ .empty = {} };
-    const result = try serializeHost(allocator, h);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("", result);
-}
-
-test "host serializer - roundtrip domain" {
-    const allocator = std.testing.allocator;
-    const host_parser = @import("host_parser");
-
-    const original = "example.com";
-    const parsed = try host_parser.parseHost(allocator, original, false, null);
-    defer parsed.deinit(allocator);
-
-    const serialized = try serializeHost(allocator, parsed);
-    defer allocator.free(serialized);
-
-    try std.testing.expectEqualStrings(original, serialized);
-}
-
-test "host serializer - roundtrip ipv4" {
-    const allocator = std.testing.allocator;
-    const host_parser = @import("host_parser");
-
-    const original = "192.168.1.1";
-    const parsed = try host_parser.parseHost(allocator, original, false, null);
-    defer parsed.deinit(allocator);
-
-    const serialized = try serializeHost(allocator, parsed);
-    defer allocator.free(serialized);
-
-    try std.testing.expectEqualStrings(original, serialized);
-}
-
-test "host serializer - roundtrip ipv6 loopback" {
-    const allocator = std.testing.allocator;
-    const host_parser = @import("host_parser");
-
-    const original = "[::1]";
-    const parsed = try host_parser.parseHost(allocator, original, false, null);
-    defer parsed.deinit(allocator);
-
-    const serialized = try serializeHost(allocator, parsed);
-    defer allocator.free(serialized);
-
-    try std.testing.expectEqualStrings(original, serialized);
-}
-
-test "host serializer - roundtrip ipv6 full" {
-    const allocator = std.testing.allocator;
-    const host_parser = @import("host_parser");
-
-    // Parse a compressed form
-    const original = "[2001:db8::1234:5678]";
-    const parsed = try host_parser.parseHost(allocator, original, false, null);
-    defer parsed.deinit(allocator);
-
-    const serialized = try serializeHost(allocator, parsed);
-    defer allocator.free(serialized);
-
-    // Should serialize to the same compressed form
-    try std.testing.expectEqualStrings(original, serialized);
-}

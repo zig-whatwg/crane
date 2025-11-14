@@ -96,60 +96,6 @@ pub const WriteRequest = struct {
 
 // Tests
 
-test "WriteRequest - basic creation" {
-    const allocator = std.testing.allocator;
 
-    const chunk = Value{ .number = 42.0 };
-    const request = WriteRequest.init(allocator, chunk);
 
-    try std.testing.expectEqual(Value{ .number = 42.0 }, request.chunk);
-    try std.testing.expect(request.isPending());
-    try std.testing.expect(!request.isFulfilled());
-    try std.testing.expect(!request.isRejected());
-}
 
-test "WriteRequest - fulfill promise" {
-    const allocator = std.testing.allocator;
-
-    const chunk = Value{ .string = "test data" };
-    var request = WriteRequest.init(allocator, chunk);
-
-    try std.testing.expect(request.isPending());
-
-    request.fulfill();
-
-    try std.testing.expect(!request.isPending());
-    try std.testing.expect(request.isFulfilled());
-    try std.testing.expect(!request.isRejected());
-}
-
-test "WriteRequest - reject promise" {
-    const allocator = std.testing.allocator;
-
-    const chunk = Value{ .bytes = "bytes" };
-    var request = WriteRequest.init(allocator, chunk);
-
-    try std.testing.expect(request.isPending());
-
-    request.reject();
-
-    try std.testing.expect(!request.isPending());
-    try std.testing.expect(!request.isFulfilled());
-    try std.testing.expect(request.isRejected());
-}
-
-test "WriteRequest - multiple chunks" {
-    const allocator = std.testing.allocator;
-
-    const req1 = WriteRequest.init(allocator, .{ .number = 1.0 });
-    const req2 = WriteRequest.init(allocator, .{ .number = 2.0 });
-    const req3 = WriteRequest.init(allocator, .{ .number = 3.0 });
-
-    try std.testing.expectEqual(Value{ .number = 1.0 }, req1.chunk);
-    try std.testing.expectEqual(Value{ .number = 2.0 }, req2.chunk);
-    try std.testing.expectEqual(Value{ .number = 3.0 }, req3.chunk);
-
-    try std.testing.expect(req1.isPending());
-    try std.testing.expect(req2.isPending());
-    try std.testing.expect(req3.isPending());
-}

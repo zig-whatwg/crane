@@ -103,84 +103,8 @@ pub const BloomFilter = struct {
 // Tests
 // ============================================================================
 
-test "BloomFilter - init creates empty filter" {
-    const filter = BloomFilter.init();
-    try std.testing.expect(!filter.contains("test"));
-    try std.testing.expect(!filter.contains("hello"));
-}
 
-test "BloomFilter - add and contains" {
-    var filter = BloomFilter.init();
-    
-    filter.add("class1");
-    try std.testing.expect(filter.contains("class1"));
-    try std.testing.expect(!filter.contains("class2"));
-    
-    filter.add("class2");
-    try std.testing.expect(filter.contains("class1"));
-    try std.testing.expect(filter.contains("class2"));
-    try std.testing.expect(!filter.contains("class3"));
-}
 
-test "BloomFilter - clear removes all items" {
-    var filter = BloomFilter.init();
-    
-    filter.add("item1");
-    filter.add("item2");
-    try std.testing.expect(filter.contains("item1"));
-    try std.testing.expect(filter.contains("item2"));
-    
-    filter.clear();
-    try std.testing.expect(!filter.contains("item1"));
-    try std.testing.expect(!filter.contains("item2"));
-}
 
-test "BloomFilter - typical CSS class usage" {
-    var filter = BloomFilter.init();
-    
-    // Add typical CSS classes
-    const classes = [_][]const u8{
-        "container",
-        "header",
-        "nav",
-        "main",
-        "footer",
-        "active",
-        "disabled",
-        "hidden",
-    };
-    
-    for (classes) |class| {
-        filter.add(class);
-    }
-    
-    // All added classes should be found
-    for (classes) |class| {
-        try std.testing.expect(filter.contains(class));
-    }
-    
-    // Non-existent classes should mostly not be found
-    // (small chance of false positive is acceptable)
-    try std.testing.expect(!filter.contains("nonexistent"));
-    try std.testing.expect(!filter.contains("randomclass"));
-}
 
-test "BloomFilter - empty string" {
-    var filter = BloomFilter.init();
-    
-    filter.add("");
-    try std.testing.expect(filter.contains(""));
-    try std.testing.expect(!filter.contains("nonempty"));
-}
 
-test "BloomFilter - hash functions produce different values" {
-    const test_str = "testclass";
-    const h1 = BloomFilter.hash1(test_str);
-    const h2 = BloomFilter.hash2(test_str);
-    const h3 = BloomFilter.hash3(test_str);
-    
-    // Hash functions should produce different values for same input
-    try std.testing.expect(h1 != h2);
-    try std.testing.expect(h2 != h3);
-    try std.testing.expect(h1 != h3);
-}

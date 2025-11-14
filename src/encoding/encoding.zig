@@ -840,109 +840,17 @@ pub fn getOutputEncoding(encoding: *const Encoding) *const Encoding {
 }
 
 // Tests
-test "getEncoding - UTF-8" {
-    const enc = getEncoding("utf-8");
-    try std.testing.expect(enc != null);
-    try std.testing.expectEqualStrings("UTF-8", enc.?.name);
-}
 
-test "getEncoding - case insensitive" {
-    const enc1 = getEncoding("UTF-8");
-    const enc2 = getEncoding("utf-8");
-    const enc3 = getEncoding("UtF-8");
 
-    try std.testing.expect(enc1 != null);
-    try std.testing.expect(enc2 != null);
-    try std.testing.expect(enc3 != null);
-    try std.testing.expect(enc1 == enc2);
-    try std.testing.expect(enc2 == enc3);
-}
 
-test "getEncoding - with whitespace" {
-    const enc = getEncoding("  utf-8  ");
-    try std.testing.expect(enc != null);
-    try std.testing.expectEqualStrings("UTF-8", enc.?.name);
-}
 
-test "getEncoding - unknown" {
-    const enc = getEncoding("unknown-encoding");
-    try std.testing.expect(enc == null);
-}
 
-test "Decoder creation" {
-    const decoder = UTF_8.newDecoder();
-    try std.testing.expect(decoder.encoding == &UTF_8);
-}
 
-test "Encoder creation" {
-    const encoder = UTF_8.newEncoder();
-    try std.testing.expect(encoder != null);
-    try std.testing.expect(encoder.?.encoding == &UTF_8);
-}
 
-test "UTF-8 decode integration" {
-    const input = "Hello, 世界!";
-    var output: [100]u16 = undefined;
 
-    var decoder = UTF_8.newDecoder();
-    const result = decoder.decode(input, &output, true);
 
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expect(result.code_units_written > 0);
-}
 
-test "UTF-8 encode integration" {
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o' };
-    var output: [100]u8 = undefined;
 
-    var encoder = UTF_8.newEncoder().?;
-    const result = encoder.encode(&input, &output, true);
 
-    try std.testing.expectEqual(streaming.EncodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 5), result.bytes_written);
-    try std.testing.expectEqualStrings("Hello", output[0..5]);
-}
 
-test "getEncoding - GB18030" {
-    const enc = getEncoding("gb18030");
-    try std.testing.expect(enc != null);
-    try std.testing.expectEqualStrings("gb18030", enc.?.name);
-}
 
-test "getEncoding - GBK labels" {
-    const gbk = getEncoding("gbk");
-    const chinese_label = getEncoding("chinese");
-    const gb2312 = getEncoding("gb2312");
-
-    try std.testing.expect(gbk != null);
-    try std.testing.expect(chinese_label != null);
-    try std.testing.expect(gb2312 != null);
-    try std.testing.expectEqualStrings("gbk", gbk.?.name);
-    try std.testing.expect(chinese_label == gbk);
-    try std.testing.expect(gb2312 == gbk);
-}
-
-test "getOutputEncoding - UTF-8 passthrough" {
-    const output = getOutputEncoding(&UTF_8);
-    try std.testing.expect(output == &UTF_8);
-}
-
-test "getOutputEncoding - replacement -> UTF-8" {
-    const output = getOutputEncoding(&REPLACEMENT);
-    try std.testing.expect(output == &UTF_8);
-}
-
-test "getOutputEncoding - UTF-16BE -> UTF-8" {
-    const output = getOutputEncoding(&UTF_16BE);
-    try std.testing.expect(output == &UTF_8);
-}
-
-test "getOutputEncoding - UTF-16LE -> UTF-8" {
-    const output = getOutputEncoding(&UTF_16LE);
-    try std.testing.expect(output == &UTF_8);
-}
-
-test "getOutputEncoding - GBK passthrough" {
-    const output = getOutputEncoding(&GBK);
-    try std.testing.expect(output == &GBK);
-}

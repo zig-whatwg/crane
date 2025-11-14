@@ -203,40 +203,5 @@ pub const ErrorType = enum {
     }
 };
 
-test "validation error - failure detection" {
-    const allocator = std.testing.allocator;
-    _ = allocator;
 
-    // Failure errors
-    try std.testing.expect(ErrorType.domain_to_ascii.isFailure());
-    try std.testing.expect(ErrorType.host_missing.isFailure());
-    try std.testing.expect(ErrorType.port_out_of_range.isFailure());
 
-    // Non-failure errors
-    try std.testing.expect(!ErrorType.domain_to_unicode.isFailure());
-    try std.testing.expect(!ErrorType.invalid_url_unit.isFailure());
-    try std.testing.expect(!ErrorType.invalid_credentials.isFailure());
-}
-
-test "validation error - description" {
-    const allocator = std.testing.allocator;
-    _ = allocator;
-
-    const desc = ErrorType.domain_to_ascii.description();
-    try std.testing.expect(desc.len > 0);
-    try std.testing.expect(std.mem.indexOf(u8, desc, "ToASCII") != null);
-}
-
-test "validation error - struct creation" {
-    const allocator = std.testing.allocator;
-    _ = allocator;
-
-    const err = ValidationError{
-        .type = .invalid_url_unit,
-        .position = 42,
-        .message = "Test error",
-    };
-
-    try std.testing.expect(!err.isFailure());
-    try std.testing.expectEqual(@as(?usize, 42), err.position);
-}

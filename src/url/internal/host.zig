@@ -86,43 +86,8 @@ pub fn isForbiddenHostCodePoint(cp: u21) bool {
     };
 }
 
-test "host - domain creation" {
-    const allocator = std.testing.allocator;
 
-    const h = try Host.createDomain(allocator, "example.com");
-    defer h.deinit(allocator);
 
-    try std.testing.expect(h.isDomain());
-    try std.testing.expectEqualStrings("example.com", h.domain);
-}
 
-test "host - ipv4 creation" {
-    const h = Host{ .ipv4 = 0x7F000001 };
-    try std.testing.expectEqual(@as(u32, 0x7F000001), h.ipv4);
-}
 
-test "host - ipv6 creation" {
-    const h = Host{ .ipv6 = [_]u16{0} ** 8 };
-    try std.testing.expect(h.isIpAddress());
-}
 
-test "host - opaque creation" {
-    const allocator = std.testing.allocator;
-
-    const h = try Host.createOpaqueHost(allocator, "github.com");
-    defer h.deinit(allocator);
-
-    try std.testing.expectEqualStrings("github.com", h.opaque_host);
-}
-
-test "host - empty" {
-    const h = Host{ .empty = {} };
-    try std.testing.expect(h.isEmpty());
-}
-
-test "host - forbidden code points" {
-    try std.testing.expect(isForbiddenHostCodePoint(0x0000));
-    try std.testing.expect(isForbiddenHostCodePoint('#'));
-    try std.testing.expect(isForbiddenHostCodePoint('/'));
-    try std.testing.expect(!isForbiddenHostCodePoint('a'));
-}

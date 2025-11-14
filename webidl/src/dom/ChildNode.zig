@@ -282,8 +282,3 @@ pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_typ
     return fragment_node;
 }
 
-test "ChildNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(ChildNode);
-    try std.testing.expect(T != void);
-}

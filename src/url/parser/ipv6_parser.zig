@@ -349,139 +349,17 @@ pub fn parseIPv6(
     return address;
 }
 
-test "ipv6 parser - loopback" {
-    const allocator = std.testing.allocator;
 
-    // ::1 = loopback
-    const addr = try parseIPv6(allocator, "::1", null);
 
-    try std.testing.expectEqual(@as(u16, 0), addr[0]);
-    try std.testing.expectEqual(@as(u16, 0), addr[6]);
-    try std.testing.expectEqual(@as(u16, 1), addr[7]);
-}
 
-test "ipv6 parser - unspecified" {
-    const allocator = std.testing.allocator;
 
-    // :: = all zeros
-    const addr = try parseIPv6(allocator, "::", null);
 
-    for (addr) |piece| {
-        try std.testing.expectEqual(@as(u16, 0), piece);
-    }
-}
 
-test "ipv6 parser - compressed" {
-    const allocator = std.testing.allocator;
 
-    // 2001:db8::1
-    const addr = try parseIPv6(allocator, "2001:db8::1", null);
 
-    try std.testing.expectEqual(@as(u16, 0x2001), addr[0]);
-    try std.testing.expectEqual(@as(u16, 0x0db8), addr[1]);
-    try std.testing.expectEqual(@as(u16, 0), addr[2]);
-    try std.testing.expectEqual(@as(u16, 1), addr[7]);
-}
 
-test "ipv6 parser - full notation" {
-    const allocator = std.testing.allocator;
 
-    // Full IPv6 address
-    const addr = try parseIPv6(allocator, "2001:0db8:0000:0000:0000:0000:0000:0001", null);
 
-    try std.testing.expectEqual(@as(u16, 0x2001), addr[0]);
-    try std.testing.expectEqual(@as(u16, 0x0db8), addr[1]);
-    try std.testing.expectEqual(@as(u16, 0x0001), addr[7]);
-}
 
-test "ipv6 parser - IPv4-in-IPv6" {
-    const allocator = std.testing.allocator;
 
-    // ::ffff:192.0.2.1
-    const addr = try parseIPv6(allocator, "::ffff:192.0.2.1", null);
 
-    try std.testing.expectEqual(@as(u16, 0), addr[0]);
-    try std.testing.expectEqual(@as(u16, 0xffff), addr[5]);
-    try std.testing.expectEqual(@as(u16, 0xc000), addr[6]); // 192.0
-    try std.testing.expectEqual(@as(u16, 0x0201), addr[7]); // 2.1
-}
-
-test "ipv6 parser - invalid compression at end" {
-    const allocator = std.testing.allocator;
-
-    // Single : at start without ::
-    const result = parseIPv6(allocator, ":1", null);
-    try std.testing.expectError(IPv6Error.InvalidCompression, result);
-}
-
-test "ipv6 parser - multiple compression" {
-    const allocator = std.testing.allocator;
-
-    // Multiple :: not allowed
-    const result = parseIPv6(allocator, "::1::2", null);
-    try std.testing.expectError(IPv6Error.MultipleCompression, result);
-}
-
-test "ipv6 parser - too many pieces" {
-    const allocator = std.testing.allocator;
-
-    // 9 pieces
-    const result = parseIPv6(allocator, "1:2:3:4:5:6:7:8:9", null);
-    try std.testing.expectError(IPv6Error.TooManyPieces, result);
-}
-
-test "ipv6 parser - too few pieces" {
-    const allocator = std.testing.allocator;
-
-    // Only 7 pieces without compression
-    const result = parseIPv6(allocator, "1:2:3:4:5:6:7", null);
-    try std.testing.expectError(IPv6Error.TooFewPieces, result);
-}
-
-test "ipv6 parser - invalid character" {
-    const allocator = std.testing.allocator;
-
-    // Invalid hex character
-    const result = parseIPv6(allocator, "::g", null);
-    try std.testing.expectError(IPv6Error.InvalidCodePoint, result);
-}
-
-test "ipv6 parser - trailing colon" {
-    const allocator = std.testing.allocator;
-
-    // Trailing : without another :
-    const result = parseIPv6(allocator, "::1:", null);
-    try std.testing.expectError(IPv6Error.InvalidCodePoint, result);
-}
-
-test "ipv6 parser - IPv4 leading zero" {
-    const allocator = std.testing.allocator;
-
-    // Leading zero not allowed in IPv4 decimal
-    const result = parseIPv6(allocator, "::ffff:192.0.02.1", null);
-    try std.testing.expectError(IPv6Error.IPv4InIPv6InvalidCodePoint, result);
-}
-
-test "ipv6 parser - IPv4 out of range" {
-    const allocator = std.testing.allocator;
-
-    // 256 is out of range
-    const result = parseIPv6(allocator, "::ffff:256.0.2.1", null);
-    try std.testing.expectError(IPv6Error.IPv4InIPv6OutOfRangePart, result);
-}
-
-test "ipv6 parser - IPv4 too few parts" {
-    const allocator = std.testing.allocator;
-
-    // Only 3 parts instead of 4
-    const result = parseIPv6(allocator, "::ffff:192.0.2", null);
-    try std.testing.expectError(IPv6Error.IPv4InIPv6TooFewParts, result);
-}
-
-test "ipv6 parser - IPv4 in wrong position" {
-    const allocator = std.testing.allocator;
-
-    // IPv4 can only be in last 2 pieces (pieceIndex must be <= 6)
-    const result = parseIPv6(allocator, "1:2:3:4:5:6:7:192.0.2.1", null);
-    try std.testing.expectError(IPv6Error.IPv4InIPv6TooManyPieces, result);
-}

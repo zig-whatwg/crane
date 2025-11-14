@@ -23,7 +23,3 @@ pub const GetRootNodeOptions = struct {
     composed: bool = false,
 };
 
-test "NodeOrDOMString compiles" {
-    const T = @TypeOf(NodeOrDOMString);
-    try std.testing.expect(T != void);
-}

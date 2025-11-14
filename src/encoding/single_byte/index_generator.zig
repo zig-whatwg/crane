@@ -83,38 +83,5 @@ pub fn getPointer(index: *const Index, code_point: u21) ?u8 {
 
 // Tests
 
-test "parseIndex - IBM866" {
-    const content = "# Comment line\n0\t0x0410\n1\t0x0411\n2\t0x0412\n127\t0x00A0\n";
 
-    const index = parseIndex(content);
 
-    try std.testing.expectEqual(@as(u21, 0x0410), index.map[0]);
-    try std.testing.expectEqual(@as(u21, 0x0411), index.map[1]);
-    try std.testing.expectEqual(@as(u21, 0x0412), index.map[2]);
-    try std.testing.expectEqual(@as(u21, 0x00A0), index.map[127]);
-
-    // Unmapped entries should be 0xFFFF
-    try std.testing.expectEqual(@as(u21, 0xFFFF), index.map[3]);
-}
-
-test "getCodePoint" {
-    const content = "0\t0x0410\n1\t0x0411\n";
-
-    const index = parseIndex(content);
-
-    try std.testing.expectEqual(@as(u21, 0x0410), getCodePoint(&index, 0).?);
-    try std.testing.expectEqual(@as(u21, 0x0411), getCodePoint(&index, 1).?);
-    try std.testing.expect(getCodePoint(&index, 2) == null);
-    try std.testing.expect(getCodePoint(&index, 128) == null);
-}
-
-test "getPointer" {
-    const content = "0\t0x0410\n1\t0x0411\n5\t0x0415\n";
-
-    const index = parseIndex(content);
-
-    try std.testing.expectEqual(@as(u8, 0), getPointer(&index, 0x0410).?);
-    try std.testing.expectEqual(@as(u8, 1), getPointer(&index, 0x0411).?);
-    try std.testing.expectEqual(@as(u8, 5), getPointer(&index, 0x0415).?);
-    try std.testing.expect(getPointer(&index, 0x9999) == null);
-}

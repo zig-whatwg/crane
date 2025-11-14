@@ -310,118 +310,12 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return final_result;
 }
 
-test "punycode - encode ASCII" {
-    const allocator = std.testing.allocator;
 
-    // Pure ASCII should remain unchanged
-    const encoded = try encode(allocator, "example");
-    defer allocator.free(encoded);
-    try std.testing.expectEqualStrings("example", encoded);
-}
 
-test "punycode - decode ASCII" {
-    const allocator = std.testing.allocator;
 
-    // Note: Decoding plain ASCII that wasn't punycode-encoded produces undefined results.
-    // In practice, IDNA only calls decode() on strings with "xn--" prefix.
-    // This test documents that decode("example") doesn't crash, but result is undefined.
-    const decoded = try decode(allocator, "example");
-    defer allocator.free(decoded);
 
-    // The decoded result is not guaranteed to equal "example" because "example"
-    // is not valid punycode (it was never encoded).
-    // Just verify it returns something without crashing.
-    try std.testing.expect(decoded.len > 0);
-}
 
-test "punycode - encode German" {
-    const allocator = std.testing.allocator;
 
-    const encoded = try encode(allocator, "münchen");
-    defer allocator.free(encoded);
-    try std.testing.expectEqualStrings("mnchen-3ya", encoded);
-}
 
-test "punycode - decode German" {
-    const allocator = std.testing.allocator;
 
-    const decoded = try decode(allocator, "mnchen-3ya");
-    defer allocator.free(decoded);
-    try std.testing.expectEqualStrings("münchen", decoded);
-}
 
-test "punycode - roundtrip German" {
-    const allocator = std.testing.allocator;
-
-    const original = "münchen";
-    const encoded = try encode(allocator, original);
-    defer allocator.free(encoded);
-
-    const decoded = try decode(allocator, encoded);
-    defer allocator.free(decoded);
-
-    try std.testing.expectEqualStrings(original, decoded);
-}
-
-test "punycode - encode Japanese" {
-    const allocator = std.testing.allocator;
-
-    const encoded = try encode(allocator, "日本");
-    defer allocator.free(encoded);
-    try std.testing.expectEqualStrings("wgv71a", encoded);
-}
-
-test "punycode - decode Japanese" {
-    const allocator = std.testing.allocator;
-
-    const decoded = try decode(allocator, "wgv71a");
-    defer allocator.free(decoded);
-    try std.testing.expectEqualStrings("日本", decoded);
-}
-
-test "punycode - roundtrip various" {
-    const allocator = std.testing.allocator;
-
-    const test_cases = [_][]const u8{
-        "münchen",
-        "日本",
-        "ü",
-        "Bücher",
-        "mañana",
-        "☃-⌘",
-    };
-
-    for (test_cases) |original| {
-        const encoded = try encode(allocator, original);
-        defer allocator.free(encoded);
-
-        const decoded = try decode(allocator, encoded);
-        defer allocator.free(decoded);
-
-        try std.testing.expectEqualStrings(original, decoded);
-    }
-}
-
-test "punycode - ZWNJ between combining marks" {
-    const allocator = std.testing.allocator;
-
-    // Input: U+0308 U+200C U+0308 U+0628 b
-    const input = "\u{0308}\u{200C}\u{0308}\u{0628}b";
-
-    const encoded = try encode(allocator, input);
-    defer allocator.free(encoded);
-
-    try std.testing.expectEqualStrings("b-bcba413a2w8b", encoded);
-}
-
-test "punycode - Japanese characters" {
-    const allocator = std.testing.allocator;
-
-    // Input: 日本語
-    const input = "\u{65E5}\u{672C}\u{8A9E}";
-
-    const encoded = try encode(allocator, input);
-    defer allocator.free(encoded);
-
-    try std.testing.expectEqualStrings("wgv71a119e", encoded);
-}

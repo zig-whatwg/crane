@@ -80,60 +80,13 @@ pub fn validateDomain(domain: []const u8, check_hyphens: bool) !void {
     }
 }
 
-test "validation - valid label" {
-    try validateLabel("example", true);
-    try validateLabel("ex-ample", true);
-    try validateLabel("example123", true);
-}
 
-test "validation - valid label without hyphen checks" {
-    try validateLabel("example", false);
-    try validateLabel("ex-ample", false);
-    try validateLabel("-example", false); // OK when not strict
-    try validateLabel("example-", false); // OK when not strict
-    try validateLabel("ab--cd", false); // OK when not strict
-}
 
-test "validation - empty label" {
-    try std.testing.expectError(ValidationError.EmptyLabel, validateLabel("", true));
-    try std.testing.expectError(ValidationError.EmptyLabel, validateLabel("", false));
-}
 
-test "validation - label too long" {
-    const long_label = "a" ** 64;
-    try std.testing.expectError(ValidationError.LabelTooLong, validateLabel(long_label, true));
-    try std.testing.expectError(ValidationError.LabelTooLong, validateLabel(long_label, false));
-}
 
-test "validation - starts with hyphen (strict)" {
-    try std.testing.expectError(ValidationError.InvalidHyphen, validateLabel("-example", true));
-}
 
-test "validation - ends with hyphen (strict)" {
-    try std.testing.expectError(ValidationError.InvalidHyphen, validateLabel("example-", true));
-}
 
-test "validation - hyphen in positions 3-4 (strict)" {
-    try std.testing.expectError(ValidationError.InvalidHyphen, validateLabel("ab--cd", true));
-}
 
-test "validation - xn-- prefix allowed" {
-    try validateLabel("xn--example", true);
-    try validateLabel("XN--example", true);
-}
 
-test "validation - complete domain" {
-    try validateDomain("example.com", true);
-    try validateDomain("sub.example.com", true);
-    try validateDomain("example.com.", true); // Trailing dot OK
-}
 
-test "validation - invalid domain labels (strict)" {
-    try std.testing.expectError(ValidationError.InvalidHyphen, validateDomain("-invalid.com", true));
-    try std.testing.expectError(ValidationError.EmptyLabel, validateDomain("example..com", true));
-}
 
-test "validation - lenient domain labels (not strict)" {
-    try validateDomain("a.b-.c", false); // OK when not strict
-    try validateDomain("a.-.c", false); // OK when not strict
-}

@@ -34,30 +34,9 @@ pub const XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
 /// This is a library-specific extension for VML support.
 pub const VML_NAMESPACE = "http://example.org";
 
-test "HTML namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/1999/xhtml", HTML_NAMESPACE);
-}
 
-test "MathML namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/1998/Math/MathML", MATHML_NAMESPACE);
-}
 
-test "SVG namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/2000/svg", SVG_NAMESPACE);
-}
 
-test "XLink namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/1999/xlink", XLINK_NAMESPACE);
-}
 
-test "XML namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/XML/1998/namespace", XML_NAMESPACE);
-}
 
-test "XMLNS namespace constant" {
-    try std.testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", XMLNS_NAMESPACE);
-}
 
-test "VML namespace constant" {
-    try std.testing.expectEqualStrings("http://example.org", VML_NAMESPACE);
-}

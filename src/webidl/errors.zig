@@ -430,93 +430,10 @@ pub const ErrorResult = struct {
 };
 
 // Tests
-test "DOMException creation and cleanup" {
-    const allocator = std.testing.allocator;
 
-    var exception = try DOMException.create(
-        allocator,
-        .NotFoundError,
-        "Element not found",
-    );
-    defer exception.deinit(allocator);
 
-    try std.testing.expectEqualStrings("NotFoundError", exception.name);
-    try std.testing.expectEqualStrings("Element not found", exception.message);
-    try std.testing.expectEqual(@as(u16, 8), exception.code);
-}
 
-test "DOMException name to string conversion" {
-    try std.testing.expectEqualStrings("NotFoundError", DOMExceptionName.NotFoundError.toString());
-    try std.testing.expectEqualStrings("InvalidStateError", DOMExceptionName.InvalidStateError.toString());
-    try std.testing.expectEqualStrings("SyntaxError", DOMExceptionName.SyntaxError.toString());
-}
 
-test "DOMException legacy error codes" {
-    try std.testing.expectEqual(@as(u16, 1), DOMExceptionName.IndexSizeError.toCode());
-    try std.testing.expectEqual(@as(u16, 8), DOMExceptionName.NotFoundError.toCode());
-    try std.testing.expectEqual(@as(u16, 0), DOMExceptionName.NotAllowedError.toCode()); // New name, no code
-}
 
-test "ErrorResult - throw TypeError" {
-    const allocator = std.testing.allocator;
 
-    var result = ErrorResult{};
-    defer result.deinit(allocator);
 
-    try result.throwTypeError(allocator, "Expected a number");
-
-    try std.testing.expect(result.hasFailed());
-
-    const exception = result.getException().?;
-    try std.testing.expectEqual(SimpleException.TypeError, exception.simple.type);
-    try std.testing.expectEqualStrings("Expected a number", exception.simple.message);
-}
-
-test "ErrorResult - throw RangeError" {
-    const allocator = std.testing.allocator;
-
-    var result = ErrorResult{};
-    defer result.deinit(allocator);
-
-    try result.throwRangeError(allocator, "Value out of range");
-
-    try std.testing.expect(result.hasFailed());
-
-    const exception = result.getException().?;
-    try std.testing.expectEqual(SimpleException.RangeError, exception.simple.type);
-    try std.testing.expectEqualStrings("Value out of range", exception.simple.message);
-}
-
-test "ErrorResult - throw DOMException" {
-    const allocator = std.testing.allocator;
-
-    var result = ErrorResult{};
-    defer result.deinit(allocator);
-
-    try result.throwDOMException(allocator, .InvalidStateError, "Object is in invalid state");
-
-    try std.testing.expect(result.hasFailed());
-
-    const exception = result.getException().?;
-    try std.testing.expectEqualStrings("InvalidStateError", exception.dom.name);
-    try std.testing.expectEqualStrings("Object is in invalid state", exception.dom.message);
-}
-
-test "ErrorResult - clear exception" {
-    const allocator = std.testing.allocator;
-
-    var result = ErrorResult{};
-    defer result.deinit(allocator);
-
-    try result.throwTypeError(allocator, "Test error");
-    try std.testing.expect(result.hasFailed());
-
-    result.clear(allocator);
-    try std.testing.expect(!result.hasFailed());
-}
-
-test "ErrorResult - no exception initially" {
-    var result = ErrorResult{};
-    try std.testing.expect(!result.hasFailed());
-    try std.testing.expectEqual(@as(?*const Exception, null), result.getException());
-}

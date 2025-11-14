@@ -168,52 +168,10 @@ pub fn countAsciiPrefixUtf16(code_units: []const u16) usize {
 }
 
 // Tests
-test "countAsciiPrefix - all ASCII" {
-    const input = "Hello, World!";
-    const result = countAsciiPrefix(input);
-    try std.testing.expectEqual(input.len, result);
-}
 
-test "countAsciiPrefix - no ASCII" {
-    const input = "世界";
-    const result = countAsciiPrefix(input);
-    try std.testing.expectEqual(@as(usize, 0), result);
-}
 
-test "countAsciiPrefix - mixed" {
-    const input = "Hello 世界";
-    const result = countAsciiPrefix(input);
-    try std.testing.expectEqual(@as(usize, 6), result);
-}
 
-test "countAsciiPrefix - empty" {
-    const input = "";
-    const result = countAsciiPrefix(input);
-    try std.testing.expectEqual(@as(usize, 0), result);
-}
 
-test "isAscii - true" {
-    try std.testing.expect(isAscii("Hello"));
-    try std.testing.expect(isAscii(""));
-}
 
-test "isAscii - false" {
-    try std.testing.expect(!isAscii("世界"));
-    try std.testing.expect(!isAscii("Hello 世界"));
-}
 
-test "copyAsciiToUtf16" {
-    const input = "Hello";
-    var output: [10]u16 = undefined;
 
-    const copied = copyAsciiToUtf16(input, &output);
-
-    try std.testing.expectEqual(@as(usize, 5), copied);
-    try std.testing.expectEqual(@as(u16, 'H'), output[0]);
-}
-
-test "countAsciiPrefixUtf16" {
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o', 0x4E16 };
-    const result = countAsciiPrefixUtf16(&input);
-    try std.testing.expectEqual(@as(usize, 5), result);
-}

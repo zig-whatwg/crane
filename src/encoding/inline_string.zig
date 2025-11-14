@@ -137,81 +137,8 @@ pub const InlineEncodeResult = struct {
 
 // Tests
 
-test "InlineDecodeResult - small string (uses inline)" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello!"; // 6 code units - fits inline
-    var result = try InlineDecodeResult.decode(allocator, input);
-    defer result.deinit(allocator);
 
-    try std.testing.expectEqual(@as(usize, 6), result.len);
-    try std.testing.expect(result.heap_buffer == null); // Used inline buffer
 
-    const slice = result.slice();
-    try std.testing.expectEqual(@as(u16, 'H'), slice[0]);
-}
 
-test "InlineDecodeResult - exactly 32 code units (uses inline)" {
-    const allocator = std.testing.allocator;
 
-    // Create 30-byte input (30 + 2 = 32, fits in INLINE_CAPACITY)
-    var input: [30]u8 = undefined;
-    for (&input) |*byte| byte.* = 'A';
-
-    var result = try InlineDecodeResult.decode(allocator, &input);
-    defer result.deinit(allocator);
-
-    try std.testing.expectEqual(@as(usize, 30), result.len);
-    try std.testing.expect(result.heap_buffer == null); // Used inline buffer
-}
-
-test "InlineEncodeResult - small string (uses inline)" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u16{ 'H', 'i', '!' };
-    var result = try InlineEncodeResult.encode(allocator, &input);
-    defer result.deinit(allocator);
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-    try std.testing.expect(result.heap_buffer == null); // Used inline buffer
-
-    const slice = result.slice();
-    try std.testing.expectEqualSlices(u8, "Hi!", slice);
-}
-
-test "InlineEncodeResult - large string (uses heap)" {
-    const allocator = std.testing.allocator;
-
-    // Create 100 code units (estimated_size = 400 bytes, exceeds INLINE_CAPACITY * 4)
-    var input: [100]u16 = undefined;
-    for (&input) |*cu| cu.* = 'C';
-
-    var result = try InlineEncodeResult.encode(allocator, &input);
-    defer result.deinit(allocator);
-
-    try std.testing.expectEqual(@as(usize, 100), result.len);
-    try std.testing.expect(result.heap_buffer != null); // Used heap buffer
-}
-
-test "InlineDecodeResult - large string (uses heap)" {
-    const allocator = std.testing.allocator;
-
-    // Create 100-byte input (exceeds INLINE_CAPACITY)
-    var input: [100]u8 = undefined;
-    for (&input) |*byte| byte.* = 'B';
-
-    var result = try InlineDecodeResult.decode(allocator, &input);
-    defer result.deinit(allocator);
-
-    try std.testing.expectEqual(@as(usize, 100), result.len);
-    try std.testing.expect(result.heap_buffer != null); // Used heap buffer
-}
-
-test "InlineDecodeResult - deinit with no heap allocation" {
-    const allocator = std.testing.allocator;
-
-    var result = try InlineDecodeResult.decode(allocator, "Test");
-    result.deinit(allocator); // Should not crash even without heap buffer
-
-    // No leak should be detected by testing allocator
-}

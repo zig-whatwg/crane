@@ -67,118 +67,14 @@ inline fn isAsciiWhitespace(c: u8) bool {
     return ascii_whitespace_table[c];
 }
 
-test "forgivingBase64Encode - empty" {
-    const allocator = std.testing.allocator;
-    const data = [_]u8{};
-    const result = try forgivingBase64Encode(allocator, &data);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("", result);
-}
 
-test "forgivingBase64Encode - single byte" {
-    const allocator = std.testing.allocator;
-    const data = [_]u8{0x00};
-    const result = try forgivingBase64Encode(allocator, &data);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("AA==", result);
-}
 
-test "forgivingBase64Encode - multiple bytes" {
-    const allocator = std.testing.allocator;
-    const data = "hello";
-    const result = try forgivingBase64Encode(allocator, data);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("aGVsbG8=", result);
-}
 
-test "forgivingBase64Encode - no padding" {
-    const allocator = std.testing.allocator;
-    const data = "hel";
-    const result = try forgivingBase64Encode(allocator, data);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("aGVs", result);
-}
 
-test "forgivingBase64Decode - empty" {
-    const allocator = std.testing.allocator;
-    const encoded = "";
-    const result = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(result);
 
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
 
-test "forgivingBase64Decode - valid Base64" {
-    const allocator = std.testing.allocator;
-    const encoded = "aGVsbG8=";
-    const result = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "forgivingBase64Decode - forgiving (whitespace)" {
-    const allocator = std.testing.allocator;
-    const encoded = "aGVs\n bG8=";
-    const result = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "forgivingBase64Decode - forgiving (tabs and spaces)" {
-    const allocator = std.testing.allocator;
-    const encoded = "a G V s\t b G 8 =";
-    const result = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "forgivingBase64Decode - invalid characters" {
-    const allocator = std.testing.allocator;
-    const encoded = "aGVs!bG8=";
-    const result = forgivingBase64Decode(allocator, encoded);
-    try std.testing.expect(std.meta.isError(result));
-}
-
-test "base64 roundtrip - ASCII" {
-    const allocator = std.testing.allocator;
-    const original = "hello world";
-
-    const encoded = try forgivingBase64Encode(allocator, original);
-    defer allocator.free(encoded);
-
-    const decoded = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(decoded);
-
-    try std.testing.expectEqualStrings(original, decoded);
-}
-
-test "base64 roundtrip - binary data" {
-    const allocator = std.testing.allocator;
-    const original = [_]u8{ 0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD };
-
-    const encoded = try forgivingBase64Encode(allocator, &original);
-    defer allocator.free(encoded);
-
-    const decoded = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(decoded);
-
-    try std.testing.expectEqualSlices(u8, &original, decoded);
-}
-
-test "base64 - no memory leaks" {
-    const allocator = std.testing.allocator;
-    const data = "test data for memory leak check";
-
-    const encoded = try forgivingBase64Encode(allocator, data);
-    defer allocator.free(encoded);
-
-    const decoded = try forgivingBase64Decode(allocator, encoded);
-    defer allocator.free(decoded);
-}

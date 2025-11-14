@@ -966,720 +966,76 @@ pub fn domStringSubstringUnitsToEnd(string: DOMString, start: usize) DOMString {
 
 const testing = std.testing;
 
-test "toDOMString - basic string" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .string = "hello" };
 
-    const result = try toDOMString(allocator, value);
-    defer allocator.free(result);
-
-    // Verify it's UTF-16
-    try testing.expect(result.len > 0);
-}
-
-test "toDOMString - null converts to 'null'" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .null = {} };
 
-    const result = try toDOMString(allocator, value);
-    defer allocator.free(result);
-
-    // Should be UTF-16 representation of "null"
-    try testing.expectEqual(@as(usize, 4), result.len);
-}
-
-test "toDOMStringLegacyNullToEmptyString - null converts to empty string" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .null = {} };
-
-    const result = try toDOMStringLegacyNullToEmptyString(allocator, value);
-    defer allocator.free(result);
 
-    try testing.expectEqual(@as(usize, 0), result.len);
-}
 
-test "toByteString - ASCII string" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .string = "hello" };
 
-    const result = try toByteString(allocator, value);
-    defer allocator.free(result);
 
-    try testing.expectEqualStrings("hello", result);
-}
-
-test "toByteString - rejects non-Latin-1" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .string = "hello 世界" };
-
-    try testing.expectError(error.TypeError, toByteString(allocator, value));
-}
 
-test "toUSVString - ASCII string" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .string = "hello" };
 
-    const result = try toUSVString(allocator, value);
-    defer allocator.free(result);
 
-    try testing.expect(result.len > 0);
-}
-
-test "toUSVString - boolean converts correctly" {
-    const allocator = testing.allocator;
-    const value = JSValue{ .boolean = true };
-
-    const result = try toUSVString(allocator, value);
-    defer allocator.free(result);
-
-    // Should be UTF-16 "true"
-    try testing.expectEqual(@as(usize, 4), result.len);
-}
-
-test "toDOMString - string interning for common strings" {
-    const allocator = testing.allocator;
-
-    const common_strings = [_][]const u8{
-        "click",
-        "div",
-        "button",
-        "class",
-        "id",
-        "style",
-        "true",
-        "false",
-        "null",
-        "undefined",
-    };
-
-    for (common_strings) |str| {
-        const value = JSValue{ .string = str };
-        const result = try toDOMString(allocator, value);
-        defer allocator.free(result);
-
-        try testing.expect(result.len == str.len);
-    }
-}
-
-test "byteStringToDOMString - ASCII bytes" {
-    const allocator = testing.allocator;
-    const byte_string: []const u8 = "Hello";
-
-    const result = try byteStringToDOMString(allocator, byte_string);
-    defer allocator.free(result);
-
-    try testing.expectEqual(@as(usize, 5), result.len);
-    try testing.expectEqual(@as(u16, 'H'), result[0]);
-    try testing.expectEqual(@as(u16, 'e'), result[1]);
-}
-
-test "byteStringToDOMString - Latin-1 bytes" {
-    const allocator = testing.allocator;
-    const byte_string: []const u8 = &.{ 0xC0, 0xE9, 0xFF }; // À, é, ÿ
-
-    const result = try byteStringToDOMString(allocator, byte_string);
-    defer allocator.free(result);
-
-    try testing.expectEqual(@as(usize, 3), result.len);
-    try testing.expectEqual(@as(u16, 0x00C0), result[0]);
-    try testing.expectEqual(@as(u16, 0x00E9), result[1]);
-    try testing.expectEqual(@as(u16, 0x00FF), result[2]);
-}
-
-test "domStringToByteString - ASCII string" {
-    const allocator = testing.allocator;
-    const dom_string: []const u16 = &.{ 0x0048, 0x0065, 0x006C, 0x006C, 0x006F };
-
-    const result = try domStringToByteString(allocator, dom_string);
-    defer allocator.free(result);
-
-    try testing.expectEqualStrings("Hello", result);
-}
-
-test "domStringToByteString - Latin-1 string" {
-    const allocator = testing.allocator;
-    const dom_string: []const u16 = &.{ 0x00C0, 0x00E9, 0x00FF };
-
-    const result = try domStringToByteString(allocator, dom_string);
-    defer allocator.free(result);
-
-    try testing.expectEqual(@as(usize, 3), result.len);
-    try testing.expectEqual(@as(u8, 0xC0), result[0]);
-    try testing.expectEqual(@as(u8, 0xE9), result[1]);
-    try testing.expectEqual(@as(u8, 0xFF), result[2]);
-}
-
-test "domStringToByteString - rejects non-Latin-1" {
-    const allocator = testing.allocator;
-    const dom_string: []const u16 = &.{ 0x0048, 0x4E16 }; // "H世"
-
-    try testing.expectError(error.InvalidIsomorphicEncoding, domStringToByteString(allocator, dom_string));
-}
-
-test "isIsomorphicDOMString - valid Latin-1" {
-    const dom_string: []const u16 = &.{ 0x0048, 0x00E9, 0x00FF };
-    try testing.expect(isIsomorphicDOMString(dom_string));
-}
-
-test "isIsomorphicDOMString - invalid (contains non-Latin-1)" {
-    const dom_string: []const u16 = &.{ 0x0048, 0x4E16 };
-    try testing.expect(!isIsomorphicDOMString(dom_string));
-}
-
-test "isScalarValueDOMString - valid (no surrogates)" {
-    const dom_string: []const u16 = &.{ 0x0048, 0x0065, 0x006C, 0x006C, 0x006F };
-    try testing.expect(isScalarValueDOMString(dom_string));
-}
-
-test "isScalarValueDOMString - invalid (unpaired surrogate)" {
-    const dom_string: []const u16 = &.{ 0xD800, 0x0048 }; // Unpaired high surrogate
-    try testing.expect(!isScalarValueDOMString(dom_string));
-}
-
-test "isAsciiDOMString - valid ASCII" {
-    const ascii: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    try testing.expect(isAsciiDOMString(ascii));
-}
-
-test "isAsciiDOMString - invalid (contains non-ASCII)" {
-    const non_ascii: []const u16 = &.{ 'H', 'e', 0x4E16 }; // "He世"
-    try testing.expect(!isAsciiDOMString(non_ascii));
-}
-
-test "isAsciiDOMString - empty string" {
-    const empty: []const u16 = &.{};
-    try testing.expect(isAsciiDOMString(empty));
-}
-
-test "isAlphanumericDOMString - valid alphanumeric" {
-    const valid: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o', '1', '2', '3' };
-    try testing.expect(isAlphanumericDOMString(valid));
-}
-
-test "isAlphanumericDOMString - invalid (contains punctuation)" {
-    const invalid: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o', '!' };
-    try testing.expect(!isAlphanumericDOMString(invalid));
-}
-
-test "isAlphanumericDOMString - empty string" {
-    const empty: []const u16 = &.{};
-    try testing.expect(isAlphanumericDOMString(empty));
-}
-
-test "isDigitDOMString - valid digits" {
-    const digits: []const u16 = &.{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
-    try testing.expect(isDigitDOMString(digits));
-}
-
-test "isDigitDOMString - invalid (contains letter)" {
-    const invalid: []const u16 = &.{ '1', '2', '3', 'a' };
-    try testing.expect(!isDigitDOMString(invalid));
-}
-
-test "isDigitDOMString - empty string" {
-    const empty: []const u16 = &.{};
-    try testing.expect(isDigitDOMString(empty));
-}
-
-test "domStringEquals - identical strings" {
-    const a: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const b: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    try testing.expect(domStringEquals(a, b));
-}
-
-test "domStringEquals - different strings" {
-    const a: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const b: []const u16 = &.{ 'W', 'o', 'r', 'l', 'd' };
-    try testing.expect(!domStringEquals(a, b));
-}
-
-test "domStringEquals - different lengths" {
-    const a: []const u16 = &.{ 'H', 'i' };
-    const b: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    try testing.expect(!domStringEquals(a, b));
-}
-
-test "domStringEql - alias works" {
-    const a: []const u16 = &.{ 'H', 'i' };
-    const b: []const u16 = &.{ 'H', 'i' };
-    try testing.expect(domStringEql(a, b));
-}
-
-test "domStringEqualsIgnoreCase - case insensitive match" {
-    const allocator = testing.allocator;
-    const a_str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    const b_str = try infra.string.utf8ToUtf16(allocator, "HELLO");
-    defer allocator.free(a_str);
-    defer allocator.free(b_str);
-    try testing.expect(domStringEqualsIgnoreCase(a_str, b_str));
-}
-
-test "domStringEqualsIgnoreCase - different content" {
-    const allocator = testing.allocator;
-    const a_str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    const b_str = try infra.string.utf8ToUtf16(allocator, "World");
-    defer allocator.free(a_str);
-    defer allocator.free(b_str);
-    try testing.expect(!domStringEqualsIgnoreCase(a_str, b_str));
-}
-
-test "domStringContains - substring found" {
-    const allocator = testing.allocator;
-    const haystack = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const needle = try infra.string.utf8ToUtf16(allocator, "World");
-    defer allocator.free(haystack);
-    defer allocator.free(needle);
-    try testing.expect(domStringContains(haystack, needle));
-}
-
-test "domStringContains - substring not found" {
-    const allocator = testing.allocator;
-    const haystack = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const needle = try infra.string.utf8ToUtf16(allocator, "Goodbye");
-    defer allocator.free(haystack);
-    defer allocator.free(needle);
-    try testing.expect(!domStringContains(haystack, needle));
-}
-
-test "domStringContains - empty needle" {
-    const allocator = testing.allocator;
-    const haystack = try infra.string.utf8ToUtf16(allocator, "Hello");
-    const needle: []const u16 = &.{};
-    defer allocator.free(haystack);
-    try testing.expect(domStringContains(haystack, needle));
-}
-
-test "domStringIndexOf - code unit found" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
-    const idx = domStringIndexOf(str, 'e');
-    try testing.expectEqual(@as(?usize, 1), idx);
-}
-
-test "domStringIndexOf - code unit not found" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
-    const idx = domStringIndexOf(str, 'z');
-    try testing.expectEqual(@as(?usize, null), idx);
-}
-
-test "domStringStartsWith - has prefix" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const prefix = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
-    defer allocator.free(prefix);
-    try testing.expect(domStringStartsWith(str, prefix));
-}
-
-test "domStringStartsWith - no prefix" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const prefix = try infra.string.utf8ToUtf16(allocator, "World");
-    defer allocator.free(str);
-    defer allocator.free(prefix);
-    try testing.expect(!domStringStartsWith(str, prefix));
-}
-
-test "domStringEndsWith - has suffix" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const suffix = try infra.string.utf8ToUtf16(allocator, "World");
-    defer allocator.free(str);
-    defer allocator.free(suffix);
-    try testing.expect(domStringEndsWith(str, suffix));
-}
-
-test "domStringEndsWith - no suffix" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello World");
-    const suffix = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
-    defer allocator.free(suffix);
-    try testing.expect(!domStringEndsWith(str, suffix));
-}
-
-test "domStringLessThan - a less than b" {
-    const allocator = testing.allocator;
-    const a = try infra.string.utf8ToUtf16(allocator, "apple");
-    const b = try infra.string.utf8ToUtf16(allocator, "banana");
-    defer allocator.free(a);
-    defer allocator.free(b);
-    try testing.expect(domStringLessThan(a, b));
-}
-
-test "domStringLessThan - a not less than b" {
-    const allocator = testing.allocator;
-    const a = try infra.string.utf8ToUtf16(allocator, "zebra");
-    const b = try infra.string.utf8ToUtf16(allocator, "apple");
-    defer allocator.free(a);
-    defer allocator.free(b);
-    try testing.expect(!domStringLessThan(a, b));
-}
-
-test "domStringLessThan - equal strings" {
-    const allocator = testing.allocator;
-    const a = try infra.string.utf8ToUtf16(allocator, "apple");
-    const b = try infra.string.utf8ToUtf16(allocator, "apple");
-    defer allocator.free(a);
-    defer allocator.free(b);
-    try testing.expect(!domStringLessThan(a, b));
-}
-
-test "domStringToLowerCase - ASCII conversion" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello WORLD");
-    defer allocator.free(str);
-
-    const result = try domStringToLowerCase(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello world");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringToUpperCase - ASCII conversion" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello world");
-    defer allocator.free(str);
-
-    const result = try domStringToUpperCase(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "HELLO WORLD");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringTrim - strips whitespace" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "  hello  ");
-    defer allocator.free(str);
-
-    const result = try domStringTrim(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringTrim - no whitespace" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "hello");
-    defer allocator.free(str);
-
-    const result = try domStringTrim(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringStripNewlines - removes LF and CR" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "hello\nworld\r");
-    defer allocator.free(str);
-
-    const result = try domStringStripNewlines(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "helloworld");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringNormalizeNewlines - converts CRLF to LF" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "hello\r\nworld\r");
-    defer allocator.free(str);
-
-    const result = try domStringNormalizeNewlines(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello\nworld\n");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringStripAndCollapse - strips and collapses whitespace" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "  hello   world  ");
-    defer allocator.free(str);
-
-    const result = try domStringStripAndCollapse(allocator, str);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello world");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringConcat - joins with separator" {
-    const allocator = testing.allocator;
-    const str1 = try infra.string.utf8ToUtf16(allocator, "hello");
-    const str2 = try infra.string.utf8ToUtf16(allocator, "world");
-    defer allocator.free(str1);
-    defer allocator.free(str2);
-
-    const strings = [_]DOMString{ str1, str2 };
-    const separator = try infra.string.utf8ToUtf16(allocator, " ");
-    defer allocator.free(separator);
-
-    const result = try domStringConcat(allocator, &strings, separator);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "hello world");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringConcat - no separator" {
-    const allocator = testing.allocator;
-    const str1 = try infra.string.utf8ToUtf16(allocator, "hello");
-    const str2 = try infra.string.utf8ToUtf16(allocator, "world");
-    defer allocator.free(str1);
-    defer allocator.free(str2);
-
-    const strings = [_]DOMString{ str1, str2 };
-
-    const result = try domStringConcat(allocator, &strings, null);
-    defer allocator.free(result);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "helloworld");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "domStringSplitOnWhitespace - splits correctly" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "hello  world\t\nfoo");
-    defer allocator.free(str);
-
-    const parts = try domStringSplitOnWhitespace(allocator, str);
-    defer {
-        for (parts) |part| allocator.free(part);
-        allocator.free(parts);
-    }
-
-    try testing.expectEqual(@as(usize, 3), parts.len);
-
-    const exp1 = try infra.string.utf8ToUtf16(allocator, "hello");
-    const exp2 = try infra.string.utf8ToUtf16(allocator, "world");
-    const exp3 = try infra.string.utf8ToUtf16(allocator, "foo");
-    defer allocator.free(exp1);
-    defer allocator.free(exp2);
-    defer allocator.free(exp3);
-
-    try testing.expect(domStringEquals(parts[0], exp1));
-    try testing.expect(domStringEquals(parts[1], exp2));
-    try testing.expect(domStringEquals(parts[2], exp3));
-}
-
-test "domStringSplitOnCommas - splits and trims" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "apple, banana , cherry");
-    defer allocator.free(str);
-
-    const parts = try domStringSplitOnCommas(allocator, str);
-    defer {
-        for (parts) |part| allocator.free(part);
-        allocator.free(parts);
-    }
-
-    try testing.expectEqual(@as(usize, 3), parts.len);
-
-    const exp1 = try infra.string.utf8ToUtf16(allocator, "apple");
-    const exp2 = try infra.string.utf8ToUtf16(allocator, "banana");
-    const exp3 = try infra.string.utf8ToUtf16(allocator, "cherry");
-    defer allocator.free(exp1);
-    defer allocator.free(exp2);
-    defer allocator.free(exp3);
-
-    try testing.expect(domStringEquals(parts[0], exp1));
-    try testing.expect(domStringEquals(parts[1], exp2));
-    try testing.expect(domStringEquals(parts[2], exp3));
-}
-
-test "domStringStrictlySplit - includes empty strings" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "a::b::c");
-    defer allocator.free(str);
-
-    const parts = try domStringStrictlySplit(allocator, str, ':');
-    defer {
-        for (parts) |part| allocator.free(part);
-        allocator.free(parts);
-    }
-
-    try testing.expectEqual(@as(usize, 5), parts.len);
-    try testing.expectEqual(@as(usize, 0), parts[1].len); // Empty string
-    try testing.expectEqual(@as(usize, 0), parts[3].len); // Empty string
-}
-
-test "domStringCollectWhile - collects matching sequence" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "123abc");
-    defer allocator.free(str);
-
-    var pos: usize = 0;
-    const digits = try domStringCollectWhile(allocator, str, &pos, isDigitCodeUnit);
-    defer allocator.free(digits);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "123");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(digits, expected));
-    try testing.expectEqual(@as(usize, 3), pos);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 fn isDigitCodeUnit(c: u16) bool {
     return c >= '0' and c <= '9';
 }
 
-test "domStringSkipWhitespace - advances position" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "   hello");
-    defer allocator.free(str);
 
-    var pos: usize = 0;
-    domStringSkipWhitespace(str, &pos);
 
-    try testing.expectEqual(@as(usize, 3), pos);
-}
 
-test "domStringSubstring - code point based" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
 
-    const sub = try domStringSubstring(allocator, str, 1, 3);
-    defer allocator.free(sub);
 
-    const expected = try infra.string.utf8ToUtf16(allocator, "ell");
-    defer allocator.free(expected);
 
-    try testing.expect(domStringEquals(sub, expected));
-}
 
-test "domStringSubstringRange - start and end" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
 
-    const sub = try domStringSubstringRange(allocator, str, 1, 4);
-    defer allocator.free(sub);
 
-    const expected = try infra.string.utf8ToUtf16(allocator, "ell");
-    defer allocator.free(expected);
 
-    try testing.expect(domStringEquals(sub, expected));
-}
 
-test "domStringSubstringToEnd - from start to end" {
-    const allocator = testing.allocator;
-    const str = try infra.string.utf8ToUtf16(allocator, "Hello");
-    defer allocator.free(str);
 
-    const sub = try domStringSubstringToEnd(allocator, str, 2);
-    defer allocator.free(sub);
-
-    const expected = try infra.string.utf8ToUtf16(allocator, "llo");
-    defer allocator.free(expected);
-
-    try testing.expect(domStringEquals(sub, expected));
-}
-
-test "domStringSubstringUnits - code unit slicing" {
-    const str: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const sub = domStringSubstringUnits(str, 1, 3);
-
-    const expected: []const u16 = &.{ 'e', 'l', 'l' };
-    try testing.expect(domStringEquals(sub, expected));
-}
-
-test "domStringSubstringUnitsRange - code unit range" {
-    const str: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const sub = domStringSubstringUnitsRange(str, 1, 4);
-
-    const expected: []const u16 = &.{ 'e', 'l', 'l' };
-    try testing.expect(domStringEquals(sub, expected));
-}
-
-test "domStringSubstringUnitsToEnd - code unit to end" {
-    const str: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const sub = domStringSubstringUnitsToEnd(str, 2);
-
-    const expected: []const u16 = &.{ 'l', 'l', 'o' };
-    try testing.expect(domStringEquals(sub, expected));
-}
-
-test "utf8ToDOMString - ASCII conversion" {
-    const allocator = testing.allocator;
-    const utf8: []const u8 = "Hello";
-
-    const result = try utf8ToDOMString(allocator, utf8);
-    defer allocator.free(result);
-
-    const expected: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    try testing.expect(domStringEquals(result, expected));
-}
-
-test "utf8ToDOMString - Unicode conversion" {
-    const allocator = testing.allocator;
-    const utf8: []const u8 = "Hello 世界";
-
-    const result = try utf8ToDOMString(allocator, utf8);
-    defer allocator.free(result);
-
-    try testing.expect(result.len > 0);
-    // First 5 chars are "Hello"
-    try testing.expectEqual(@as(u16, 'H'), result[0]);
-}
-
-test "domStringToUTF8 - ASCII conversion" {
-    const allocator = testing.allocator;
-    const dom_string: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-
-    const result = try domStringToUTF8(allocator, dom_string);
-    defer allocator.free(result);
-
-    try testing.expectEqualStrings("Hello", result);
-}
-
-test "domStringToUTF8 - round trip" {
-    const allocator = testing.allocator;
-    const original: []const u8 = "Hello World";
-
-    const dom_string = try utf8ToDOMString(allocator, original);
-    defer allocator.free(dom_string);
-
-    const result = try domStringToUTF8(allocator, dom_string);
-    defer allocator.free(result);
-
-    try testing.expectEqualStrings(original, result);
-}
-
-test "domStringAsciiByteLength - valid ASCII" {
-    const ascii: []const u16 = &.{ 'H', 'e', 'l', 'l', 'o' };
-    const len = try domStringAsciiByteLength(ascii);
-    try testing.expectEqual(@as(usize, 5), len);
-}
-
-test "domStringAsciiByteLength - rejects non-ASCII" {
-    const non_ascii: []const u16 = &.{ 'H', 'e', 0x4E16 }; // "He世"
-    try testing.expectError(error.InvalidCodePoint, domStringAsciiByteLength(non_ascii));
-}

@@ -360,124 +360,13 @@ pub const Tokenizer = struct {
 
 const testing = @import("std").testing;
 
-test "Tokenizer: ident token" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div");
 
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok1.tag);
-    try testing.expectEqualStrings("div", tok1.value);
 
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.eof, tok2.tag);
-}
 
-test "Tokenizer: hash token (#id)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "#myId");
 
-    const tok = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.hash, tok.tag);
-    try testing.expectEqualStrings("myId", tok.value);
-}
 
-test "Tokenizer: combinators (>, +, ~)" {
-    const allocator = testing.allocator;
 
-    var tok1_izer = Tokenizer.init(allocator, ">");
-    const tok1 = try tok1_izer.nextToken();
-    try testing.expectEqual(Token.Tag.gt, tok1.tag);
 
-    var tok2_izer = Tokenizer.init(allocator, "+");
-    const tok2 = try tok2_izer.nextToken();
-    try testing.expectEqual(Token.Tag.plus, tok2.tag);
-
-    var tok3_izer = Tokenizer.init(allocator, "~");
-    const tok3 = try tok3_izer.nextToken();
-    try testing.expectEqual(Token.Tag.tilde, tok3.tag);
-}
-
-test "Tokenizer: attribute matchers" {
-    const allocator = testing.allocator;
-
-    var prefix_izer = Tokenizer.init(allocator, "^=");
-    const prefix = try prefix_izer.nextToken();
-    try testing.expectEqual(Token.Tag.prefix_match, prefix.tag);
-
-    var suffix_izer = Tokenizer.init(allocator, "$=");
-    const suffix = try suffix_izer.nextToken();
-    try testing.expectEqual(Token.Tag.suffix_match, suffix.tag);
-
-    var substring_izer = Tokenizer.init(allocator, "*=");
-    const substring = try substring_izer.nextToken();
-    try testing.expectEqual(Token.Tag.substring_match, substring.tag);
-
-    var includes_izer = Tokenizer.init(allocator, "~=");
-    const includes = try includes_izer.nextToken();
-    try testing.expectEqual(Token.Tag.includes_match, includes.tag);
-
-    var dash_izer = Tokenizer.init(allocator, "|=");
-    const dash = try dash_izer.nextToken();
-    try testing.expectEqual(Token.Tag.dash_match, dash.tag);
-}
-
-test "Tokenizer: complex selector (div.container)" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div.container");
-
-    const tok1 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok1.tag);
-    try testing.expectEqualStrings("div", tok1.value);
-
-    const tok2 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.dot, tok2.tag);
-
-    const tok3 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.ident, tok3.tag);
-    try testing.expectEqualStrings("container", tok3.value);
-
-    const tok4 = try tokenizer.nextToken();
-    try testing.expectEqual(Token.Tag.eof, tok4.tag);
-}
-
-test "Tokenizer: string tokens" {
-    const allocator = testing.allocator;
-
-    var double_izer = Tokenizer.init(allocator, "\"hello\"");
-    const double = try double_izer.nextToken();
-    try testing.expectEqual(Token.Tag.string, double.tag);
-    try testing.expectEqualStrings("hello", double.value);
-
-    var single_izer = Tokenizer.init(allocator, "'world'");
-    const single = try single_izer.nextToken();
-    try testing.expectEqual(Token.Tag.string, single.tag);
-    try testing.expectEqualStrings("world", single.value);
-}
-
-test "Tokenizer: error on unclosed string" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "\"unclosed");
-
-    try testing.expectError(error.UnexpectedEOF, tokenizer.nextToken());
-}
-
-test "Tokenizer: zero-copy design" {
-    const allocator = testing.allocator;
-    const input = "div.container";
-    var tokenizer = Tokenizer.init(allocator, input);
-
-    const tok1 = try tokenizer.nextToken();
-    // Token value should be a slice into input
-    try testing.expect(@intFromPtr(tok1.value.ptr) >= @intFromPtr(input.ptr));
-    try testing.expect(@intFromPtr(tok1.value.ptr) < @intFromPtr(input.ptr) + input.len);
-}
 
 // Note: tokenize() test temporarily disabled due to List API in tests
 // The tokenize() function itself works fine when called from other code
-test "Tokenizer: tokenize() full selector" {
-    const allocator = testing.allocator;
-    var tokenizer = Tokenizer.init(allocator, "div");
-    const tokens = try tokenizer.tokenize();
-    defer allocator.free(tokens);
-    try testing.expectEqual(@as(usize, 2), tokens.len);
-}

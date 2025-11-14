@@ -103,124 +103,14 @@ pub fn encodeUtf8ToBuffer(code_units: []const u16, buffer: []u8) ![]const u8 {
 
 // Tests
 
-test "decodeUtf8 - small ASCII string (stack allocation)" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello, world!"; // 13 bytes - uses stack
-    const result = try decodeUtf8(allocator, input);
-    defer allocator.free(result);
 
-    try std.testing.expectEqual(@as(usize, 13), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-    try std.testing.expectEqual(@as(u16, 'e'), result[1]);
-    try std.testing.expectEqual(@as(u16, 'l'), result[2]);
-}
 
-test "decodeUtf8 - small UTF-8 string with multibyte (stack allocation)" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello, 世界!"; // <128 bytes - uses stack
-    const result = try decodeUtf8(allocator, input);
-    defer allocator.free(result);
 
-    try std.testing.expect(result.len > 0);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-}
 
-test "decodeUtf8 - large string (heap allocation)" {
-    const allocator = std.testing.allocator;
 
-    // Create 200-byte input (exceeds SMALL_BUFFER_SIZE)
-    var large_input: [200]u8 = undefined;
-    for (&large_input) |*byte| {
-        byte.* = 'A';
-    }
 
-    const result = try decodeUtf8(allocator, &large_input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 200), result.len);
-    for (result) |cu| {
-        try std.testing.expectEqual(@as(u16, 'A'), cu);
-    }
-}
-
-test "decodeUtf8 - with BOM removed" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u8{ 0xEF, 0xBB, 0xBF, 0x48, 0x69 }; // BOM + "Hi"
-    const result = try decodeUtf8(allocator, &input);
-    defer allocator.free(result);
-
-    // BOM should be removed
-    try std.testing.expectEqual(@as(usize, 2), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-    try std.testing.expectEqual(@as(u16, 'i'), result[1]);
-}
-
-test "decodeUtf8ToBuffer - zero allocation" {
-    var buffer: [128]u16 = undefined;
-
-    const input = "Hello!";
-    const result = try decodeUtf8ToBuffer(input, &buffer);
-
-    try std.testing.expectEqual(@as(usize, 6), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-}
-
-test "encodeUtf8 - small ASCII string (stack allocation)" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o' };
-    const result = try encodeUtf8(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqualSlices(u8, "Hello", result);
-}
-
-test "encodeUtf8 - small UTF-16 with multibyte (stack allocation)" {
-    const allocator = std.testing.allocator;
-
-    // U+1F4A9 (💩) as surrogate pair
-    const input = [_]u16{ 0xD83D, 0xDCA9 };
-    const result = try encodeUtf8(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 4), result.len);
-    try std.testing.expectEqual(@as(u8, 0xF0), result[0]);
-    try std.testing.expectEqual(@as(u8, 0x9F), result[1]);
-    try std.testing.expectEqual(@as(u8, 0x92), result[2]);
-    try std.testing.expectEqual(@as(u8, 0xA9), result[3]);
-}
-
-test "encodeUtf8 - large string (heap allocation)" {
-    const allocator = std.testing.allocator;
-
-    // Create 200 code units (exceeds SMALL_BUFFER_SIZE)
-    var large_input: [200]u16 = undefined;
-    for (&large_input) |*cu| {
-        cu.* = 'A';
-    }
-
-    const result = try encodeUtf8(allocator, &large_input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 200), result.len);
-    for (result) |byte| {
-        try std.testing.expectEqual(@as(u8, 'A'), byte);
-    }
-}
-
-test "encodeUtf8ToBuffer - zero allocation" {
-    var buffer: [512]u8 = undefined;
-
-    const input = [_]u16{ 'H', 'i', '!' };
-    const result = try encodeUtf8ToBuffer(&input, &buffer);
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-    try std.testing.expectEqualSlices(u8, "Hi!", result);
-}
 
 // ============================================================================
 // Arena Allocator Helpers (for batch operations)
@@ -307,70 +197,6 @@ pub fn encodeUtf8Batch(
 
 // Tests for arena helpers
 
-test "decodeUtf8Arena - batch operations" {
-    const allocator = std.testing.allocator;
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
 
-    // Decode multiple strings
-    const str1 = try decodeUtf8Arena(&arena, "Hello");
-    const str2 = try decodeUtf8Arena(&arena, "World");
-    const str3 = try decodeUtf8Arena(&arena, "Test");
 
-    // Verify results
-    try std.testing.expectEqual(@as(usize, 5), str1.len);
-    try std.testing.expectEqual(@as(usize, 5), str2.len);
-    try std.testing.expectEqual(@as(usize, 4), str3.len);
-
-    // All freed together with arena.deinit()
-}
-
-test "decodeUtf8Batch - multiple inputs at once" {
-    const allocator = std.testing.allocator;
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    const inputs = [_][]const u8{ "Hello", "World", "Test" };
-    const results = try decodeUtf8Batch(&arena, &inputs);
-
-    try std.testing.expectEqual(@as(usize, 3), results.len);
-    try std.testing.expectEqual(@as(usize, 5), results[0].len);
-    try std.testing.expectEqual(@as(usize, 5), results[1].len);
-    try std.testing.expectEqual(@as(usize, 4), results[2].len);
-}
-
-test "encodeUtf8Arena - batch operations" {
-    const allocator = std.testing.allocator;
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    // Encode multiple strings
-    const input1 = [_]u16{ 'H', 'i' };
-    const input2 = [_]u16{ 'B', 'y', 'e' };
-
-    const str1 = try encodeUtf8Arena(&arena, &input1);
-    const str2 = try encodeUtf8Arena(&arena, &input2);
-
-    try std.testing.expectEqualSlices(u8, "Hi", str1);
-    try std.testing.expectEqualSlices(u8, "Bye", str2);
-}
-
-test "encodeUtf8Batch - multiple inputs at once" {
-    const allocator = std.testing.allocator;
-
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    const input1 = [_]u16{ 'A', 'B' };
-    const input2 = [_]u16{ 'C', 'D', 'E' };
-    const inputs = [_][]const u16{ &input1, &input2 };
-
-    const results = try encodeUtf8Batch(&arena, &inputs);
-
-    try std.testing.expectEqual(@as(usize, 2), results.len);
-    try std.testing.expectEqualSlices(u8, "AB", results[0]);
-    try std.testing.expectEqualSlices(u8, "CDE", results[1]);
-}

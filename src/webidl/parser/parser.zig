@@ -1589,15 +1589,3 @@ pub const Parser = struct {
     }
 };
 
-test "memory leak check - namespace qualified type" {
-    const allocator = std.testing.allocator;
-    const source = "typedef dom::DOMString MyString;";
-
-    var lexer = Lexer.init(allocator, source);
-    var parser = try Parser.init(allocator, &lexer, "test.idl");
-
-    var parsed_ast = try parser.parse();
-    defer parsed_ast.deinit();
-
-    try std.testing.expect(parsed_ast.definitions.len == 1);
-}

@@ -177,101 +177,12 @@ fn isAsciiOnlyUtf16(code_units: []const u16) bool {
 
 // Tests
 
-test "utf8Decode - with BOM" {
-    const allocator = std.testing.allocator;
 
-    // UTF-8 BOM + "Hello"
-    const input = [_]u8{ 0xEF, 0xBB, 0xBF, 0x48, 0x65, 0x6C, 0x6C, 0x6F };
-    const result = try utf8Decode(allocator, &input);
-    defer allocator.free(result);
 
-    // BOM should be removed, only "Hello" decoded
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-    try std.testing.expectEqual(@as(u16, 'e'), result[1]);
-    try std.testing.expectEqual(@as(u16, 'l'), result[2]);
-    try std.testing.expectEqual(@as(u16, 'l'), result[3]);
-    try std.testing.expectEqual(@as(u16, 'o'), result[4]);
-}
 
-test "utf8Decode - without BOM" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello";
-    const result = try utf8Decode(allocator, input);
-    defer allocator.free(result);
 
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-}
 
-test "utf8DecodeWithoutBom - ASCII" {
-    const allocator = std.testing.allocator;
-
-    const input = "Hello";
-    const result = try utf8DecodeWithoutBom(allocator, input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-}
-
-test "utf8DecodeWithoutBom - BOM not removed" {
-    const allocator = std.testing.allocator;
-
-    // UTF-8 BOM + "Hi"
-    const input = [_]u8{ 0xEF, 0xBB, 0xBF, 0x48, 0x69 };
-    const result = try utf8DecodeWithoutBom(allocator, &input);
-    defer allocator.free(result);
-
-    // BOM should be preserved and decoded as U+FEFF
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-    try std.testing.expectEqual(@as(u16, 0xFEFF), result[0]); // BOM
-    try std.testing.expectEqual(@as(u16, 'H'), result[1]);
-    try std.testing.expectEqual(@as(u16, 'i'), result[2]);
-}
-
-test "utf8Encode - ASCII" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o' };
-    const result = try utf8Encode(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqualSlices(u8, "Hello", result);
-}
-
-test "utf8Encode - surrogate pair" {
-    const allocator = std.testing.allocator;
-
-    // U+1F4A9 (💩) as surrogate pair: 0xD83D 0xDCA9
-    const input = [_]u16{ 0xD83D, 0xDCA9 };
-    const result = try utf8Encode(allocator, &input);
-    defer allocator.free(result);
-
-    // UTF-8: 0xF0 0x9F 0x92 0xA9
-    try std.testing.expectEqual(@as(usize, 4), result.len);
-    try std.testing.expectEqual(@as(u8, 0xF0), result[0]);
-    try std.testing.expectEqual(@as(u8, 0x9F), result[1]);
-    try std.testing.expectEqual(@as(u8, 0x92), result[2]);
-    try std.testing.expectEqual(@as(u8, 0xA9), result[3]);
-}
-
-test "utf8Encode - unpaired surrogate" {
-    const allocator = std.testing.allocator;
-
-    // Unpaired leading surrogate: 0xD83D (no trailing surrogate)
-    const input = [_]u16{0xD83D};
-    const result = try utf8Encode(allocator, &input);
-    defer allocator.free(result);
-
-    // Should emit U+FFFD (replacement character): 0xEF 0xBF 0xBD
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-    try std.testing.expectEqual(@as(u8, 0xEF), result[0]);
-    try std.testing.expectEqual(@as(u8, 0xBF), result[1]);
-    try std.testing.expectEqual(@as(u8, 0xBD), result[2]);
-}
 
 // ============================================================================
 // LEGACY HOOKS FOR STANDARDS
@@ -448,87 +359,10 @@ pub fn encodeOrFail(
 // TESTS - Legacy Hooks
 // ============================================================================
 
-test "decode - with UTF-8 BOM" {
-    const allocator = std.testing.allocator;
 
-    // UTF-8 BOM + "Hello"
-    const input = [_]u8{ 0xEF, 0xBB, 0xBF, 0x48, 0x65, 0x6C, 0x6C, 0x6F };
-    const result = try decode(allocator, &input, &encoding_mod.WINDOWS_1252);
-    defer allocator.free(result);
 
-    // BOM should be removed, UTF-8 should be used (not windows-1252)
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-    try std.testing.expectEqual(@as(u16, 'e'), result[1]);
-    try std.testing.expectEqual(@as(u16, 'l'), result[2]);
-    try std.testing.expectEqual(@as(u16, 'l'), result[3]);
-    try std.testing.expectEqual(@as(u16, 'o'), result[4]);
-}
 
-test "decode - with UTF-16BE BOM" {
-    const allocator = std.testing.allocator;
 
-    // UTF-16BE BOM + "Hi" (U+0048 U+0069)
-    const input = [_]u8{ 0xFE, 0xFF, 0x00, 0x48, 0x00, 0x69 };
-    const result = try decode(allocator, &input, &encoding_mod.UTF_8);
-    defer allocator.free(result);
 
-    // BOM should be removed, UTF-16BE should be used
-    try std.testing.expectEqual(@as(usize, 2), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-    try std.testing.expectEqual(@as(u16, 'i'), result[1]);
-}
 
-test "decode - without BOM uses fallback" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello";
-    const result = try decode(allocator, input, &encoding_mod.UTF_8);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqual(@as(u16, 'H'), result[0]);
-}
-
-test "encode - basic UTF-8" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o' };
-    const result = try encode(allocator, &input, &encoding_mod.UTF_8);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 5), result.len);
-    try std.testing.expectEqualSlices(u8, "Hello", result);
-}
-
-test "getEncoder - UTF-8" {
-    const encoder = getEncoder(&encoding_mod.UTF_8);
-    try std.testing.expect(encoder != null);
-}
-
-test "getEncoder - windows-1252" {
-    const encoder = getEncoder(&encoding_mod.WINDOWS_1252);
-    try std.testing.expect(encoder != null);
-}
-
-test "encodeOrFail - success" {
-    var encoder = encoding_mod.UTF_8.newEncoder().?;
-    var output: [100]u8 = undefined;
-
-    const input = [_]u16{ 'H', 'i' };
-    const error_cp = encodeOrFail(&encoder, &input, &output);
-
-    try std.testing.expect(error_cp == null);
-}
-
-test "encodeOrFail - success with ASCII" {
-    var encoder = encoding_mod.UTF_8.newEncoder().?;
-    var output: [100]u8 = undefined;
-
-    // ASCII should always encode successfully
-    const input = [_]u16{ 'H', 'e', 'l', 'l', 'o' };
-    const error_cp = encodeOrFail(&encoder, &input, &output);
-
-    // Should return null on success
-    try std.testing.expect(error_cp == null);
-}

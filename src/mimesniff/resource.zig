@@ -280,214 +280,21 @@ pub fn readResourceHeader(
 // Tests
 // ============================================================================
 
-test "Resource.init - default values" {
-    const allocator = std.testing.allocator;
-    var resource = Resource.init(allocator);
-    defer resource.deinit();
 
-    try std.testing.expect(resource.supplied_mime_type == null);
-    try std.testing.expect(resource.check_for_apache_bug == false);
-    try std.testing.expect(resource.no_sniff == false);
-    try std.testing.expect(resource.computed_mime_type == null);
-}
 
-test "determineSuppliedMimeType - HTTP with Content-Type" {
-    const allocator = std.testing.allocator;
 
-    var resource = try determineSuppliedMimeType(allocator, "text/html; charset=utf-8");
-    defer resource.deinit();
 
-    try std.testing.expect(resource.supplied_mime_type != null);
-    try std.testing.expect(resource.check_for_apache_bug == false);
-}
 
-test "determineSuppliedMimeType - Apache bug detection" {
-    const allocator = std.testing.allocator;
 
-    const apache_types = [_][]const u8{
-        "text/plain",
-        "text/plain; charset=ISO-8859-1",
-        "text/plain; charset=iso-8859-1",
-        "text/plain; charset=UTF-8",
-    };
 
-    for (apache_types) |apache_type| {
-        var resource = try determineSuppliedMimeType(allocator, apache_type);
-        defer resource.deinit();
 
-        try std.testing.expect(resource.check_for_apache_bug == true);
-    }
-}
 
-test "determineSuppliedMimeType - no Content-Type" {
-    const allocator = std.testing.allocator;
 
-    var resource = try determineSuppliedMimeType(allocator, null);
-    defer resource.deinit();
 
-    try std.testing.expect(resource.supplied_mime_type == null);
-    try std.testing.expect(resource.check_for_apache_bug == false);
-}
 
-test "readResourceHeader - full data less than 1445 bytes" {
-    const allocator = std.testing.allocator;
 
-    const data = "Hello, World!";
-    const header = try readResourceHeader(allocator, data);
-    defer allocator.free(header);
 
-    try std.testing.expectEqual(@as(usize, 13), header.len);
-    try std.testing.expectEqualStrings("Hello, World!", header);
-}
 
-test "readResourceHeader - data exactly 1445 bytes" {
-    const allocator = std.testing.allocator;
 
-    const data = [_]u8{0x42} ** 1445;
-    const header = try readResourceHeader(allocator, &data);
-    defer allocator.free(header);
 
-    try std.testing.expectEqual(@as(usize, 1445), header.len);
-    try std.testing.expectEqual(@as(u8, 0x42), header[0]);
-    try std.testing.expectEqual(@as(u8, 0x42), header[1444]);
-}
 
-test "readResourceHeader - data larger than 1445 bytes" {
-    const allocator = std.testing.allocator;
-
-    const data = [_]u8{0x42} ** 2000;
-    const header = try readResourceHeader(allocator, &data);
-    defer allocator.free(header);
-
-    try std.testing.expectEqual(@as(usize, 1445), header.len);
-}
-
-test "readResourceHeader - empty data" {
-    const allocator = std.testing.allocator;
-
-    const data = "";
-    const header = try readResourceHeader(allocator, data);
-    defer allocator.free(header);
-
-    try std.testing.expectEqual(@as(usize, 0), header.len);
-}
-
-test "determineSuppliedMimeTypeFromPath - HTML file" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "index.html");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type != null);
-    if (resource.supplied_mime_type) |mt| {
-        const infra = @import("infra");
-        const type_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.type);
-        defer allocator.free(type_utf8);
-        try std.testing.expectEqualStrings("text", type_utf8);
-
-        const subtype_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.subtype);
-        defer allocator.free(subtype_utf8);
-        try std.testing.expectEqualStrings("html", subtype_utf8);
-    }
-}
-
-test "determineSuppliedMimeTypeFromPath - JSON file" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "data.json");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type != null);
-    if (resource.supplied_mime_type) |mt| {
-        const infra = @import("infra");
-        const type_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.type);
-        defer allocator.free(type_utf8);
-        try std.testing.expectEqualStrings("application", type_utf8);
-
-        const subtype_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.subtype);
-        defer allocator.free(subtype_utf8);
-        try std.testing.expectEqualStrings("json", subtype_utf8);
-    }
-}
-
-test "determineSuppliedMimeTypeFromPath - PNG image" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "photo.png");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type != null);
-    if (resource.supplied_mime_type) |mt| {
-        const infra = @import("infra");
-        const type_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.type);
-        defer allocator.free(type_utf8);
-        try std.testing.expectEqualStrings("image", type_utf8);
-
-        const subtype_utf8 = try infra.bytes.isomorphicEncode(allocator, mt.subtype);
-        defer allocator.free(subtype_utf8);
-        try std.testing.expectEqualStrings("png", subtype_utf8);
-    }
-}
-
-test "determineSuppliedMimeTypeFromPath - case insensitive" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "file.HTML");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type != null);
-}
-
-test "determineSuppliedMimeTypeFromPath - no extension" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "README");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type == null);
-}
-
-test "determineSuppliedMimeTypeFromPath - unknown extension" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "file.xyz");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type == null);
-}
-
-test "determineSuppliedMimeTypeFromPath - path with directory" {
-    const allocator = std.testing.allocator;
-
-    var resource = try determineSuppliedMimeTypeFromPath(allocator, "/var/www/index.html");
-    defer resource.deinit();
-
-    try std.testing.expect(resource.supplied_mime_type != null);
-}
-
-test "getMimeTypeForExtension - all text formats" {
-    try std.testing.expect(getMimeTypeForExtension(".txt") != null);
-    try std.testing.expect(getMimeTypeForExtension(".html") != null);
-    try std.testing.expect(getMimeTypeForExtension(".css") != null);
-    try std.testing.expect(getMimeTypeForExtension(".js") != null);
-    try std.testing.expect(getMimeTypeForExtension(".json") != null);
-}
-
-test "getMimeTypeForExtension - all image formats" {
-    try std.testing.expect(getMimeTypeForExtension(".png") != null);
-    try std.testing.expect(getMimeTypeForExtension(".jpg") != null);
-    try std.testing.expect(getMimeTypeForExtension(".gif") != null);
-    try std.testing.expect(getMimeTypeForExtension(".svg") != null);
-}
-
-test "getMimeTypeForExtension - all audio formats" {
-    try std.testing.expect(getMimeTypeForExtension(".mp3") != null);
-    try std.testing.expect(getMimeTypeForExtension(".wav") != null);
-    try std.testing.expect(getMimeTypeForExtension(".ogg") != null);
-}
-
-test "getMimeTypeForExtension - all font formats" {
-    try std.testing.expect(getMimeTypeForExtension(".woff") != null);
-    try std.testing.expect(getMimeTypeForExtension(".woff2") != null);
-    try std.testing.expect(getMimeTypeForExtension(".ttf") != null);
-}

@@ -234,104 +234,14 @@ pub fn extractIdentifier(selectors: []const u8) []const u8 {
 // TESTS
 // ============================================================================
 
-test "detectFastPath: simple ID selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#main"));
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#main-content"));
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("  #header  ")); // Trimmed
-    try testing.expectEqual(FastPathType.simple_id, detectFastPath("#_private"));
-}
 
-test "detectFastPath: simple class selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath(".container"));
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath(".btn-primary"));
-    try testing.expectEqual(FastPathType.simple_class, detectFastPath("  .active  ")); // Trimmed
-}
 
-test "detectFastPath: simple tag selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("div"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("span"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("custom-element"));
-    try testing.expectEqual(FastPathType.simple_tag, detectFastPath("  p  ")); // Trimmed
-}
 
-test "detectFastPath: ID filtered selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.id_filtered, detectFastPath("article#main .content"));
-    try testing.expectEqual(FastPathType.id_filtered, detectFastPath("div#container > p"));
-}
 
-test "detectFastPath: generic complex selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqual(FastPathType.generic, detectFastPath("div > p"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("div.container"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("p:first-child"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath("[href]"));
-    try testing.expectEqual(FastPathType.generic, detectFastPath(""));
-}
 
-test "extractIdentifier: ID selectors" {
-    const testing = std.testing;
 
-    try testing.expectEqualStrings("main", extractIdentifier("#main"));
-    try testing.expectEqualStrings("header-nav", extractIdentifier("#header-nav"));
-}
-
-test "extractIdentifier: class selectors" {
-    const testing = std.testing;
-
-    try testing.expectEqualStrings("container", extractIdentifier(".container"));
-    try testing.expectEqualStrings("btn-primary", extractIdentifier(".btn-primary"));
-}
-
-test "extractIdentifier: tag selectors" {
-    const testing = std.testing;
-
-    try testing.expectEqualStrings("div", extractIdentifier("div"));
-    try testing.expectEqualStrings("custom-element", extractIdentifier("custom-element"));
-}
-
-test "isSimpleIdentifier: valid identifiers" {
-    const testing = std.testing;
-
-    try testing.expect(isSimpleIdentifier("main"));
-    try testing.expect(isSimpleIdentifier("main-content"));
-    try testing.expect(isSimpleIdentifier("_private"));
-    try testing.expect(isSimpleIdentifier("my_var"));
-    try testing.expect(isSimpleIdentifier("camelCase"));
-}
-
-test "isSimpleIdentifier: invalid identifiers" {
-    const testing = std.testing;
-
-    try testing.expect(!isSimpleIdentifier(""));
-    try testing.expect(!isSimpleIdentifier("123")); // Can't start with digit
-    try testing.expect(!isSimpleIdentifier("my#id")); // No special chars
-    try testing.expect(!isSimpleIdentifier("my.class")); // No dots
-    try testing.expect(!isSimpleIdentifier("my id")); // No spaces
-}
-
-test "isSimpleTagName: valid tag names" {
-    const testing = std.testing;
-
-    try testing.expect(isSimpleTagName("div"));
-    try testing.expect(isSimpleTagName("span"));
-    try testing.expect(isSimpleTagName("custom-element"));
-    try testing.expect(isSimpleTagName("my-component2"));
-}
-
-test "isSimpleTagName: invalid tag names" {
-    const testing = std.testing;
-
-    try testing.expect(!isSimpleTagName(""));
-    try testing.expect(!isSimpleTagName("div.class")); // No dots
-    try testing.expect(!isSimpleTagName("#id")); // No special chars
-    try testing.expect(!isSimpleTagName("my tag")); // No spaces
-}

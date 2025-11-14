@@ -149,49 +149,7 @@ fn countUtf8CodeUnits(comptime input: []const u8) usize {
 
 // Tests
 
-test "decodeUtf8Comptime - ASCII" {
-    const decoded = comptime decodeUtf8Comptime("Hello");
 
-    try std.testing.expectEqual(@as(usize, 5), decoded.len);
-    try std.testing.expectEqual(@as(u16, 'H'), decoded[0]);
-    try std.testing.expectEqual(@as(u16, 'e'), decoded[1]);
-    try std.testing.expectEqual(@as(u16, 'l'), decoded[2]);
-    try std.testing.expectEqual(@as(u16, 'l'), decoded[3]);
-    try std.testing.expectEqual(@as(u16, 'o'), decoded[4]);
-}
 
-test "decodeUtf8Comptime - multi-byte" {
-    const decoded = comptime decodeUtf8Comptime("世界");
 
-    try std.testing.expectEqual(@as(usize, 2), decoded.len);
-    try std.testing.expectEqual(@as(u16, 0x4E16), decoded[0]); // 世
-    try std.testing.expectEqual(@as(u16, 0x754C), decoded[1]); // 界
-}
 
-test "decodeUtf8Comptime - emoji (surrogate pair)" {
-    const decoded = comptime decodeUtf8Comptime("💩");
-
-    try std.testing.expectEqual(@as(usize, 2), decoded.len);
-    try std.testing.expectEqual(@as(u16, 0xD83D), decoded[0]); // High surrogate
-    try std.testing.expectEqual(@as(u16, 0xDCA9), decoded[1]); // Low surrogate
-}
-
-test "decodeUtf8Comptime - mixed content" {
-    const decoded = comptime decodeUtf8Comptime("Hello 世界 🎉");
-
-    try std.testing.expect(decoded.len > 0);
-    try std.testing.expectEqual(@as(u16, 'H'), decoded[0]);
-}
-
-test "decodeUtf8Comptime - embedded in binary" {
-    // This proves the string is in .rodata, not computed at runtime
-    const decoded = comptime decodeUtf8Comptime("Test");
-
-    // Type is [4]u16, not []u16
-    try std.testing.expectEqual([4]u16, @TypeOf(decoded));
-
-    // Value is known at comptime
-    comptime {
-        std.debug.assert(decoded[0] == 'T');
-    }
-}

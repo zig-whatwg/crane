@@ -98,34 +98,5 @@ pub fn resolveBlobURL(url_string: []const u8) ?*BlobURLEntry {
 
 // Tests
 
-test "blob URL store - default returns null" {
-    const entry = resolveBlobURL("blob:https://example.com/550e8400");
-    try std.testing.expect(entry == null);
-}
 
-test "blob URL entry - default origin is opaque" {
-    // We can't test this without a real blob URL entry, but we document
-    // the expected behavior:
-    //
-    // const entry: *BlobURLEntry = ...;
-    // const origin = try entry.getOrigin(allocator);
-    // defer origin.deinit(allocator);
-    // try std.testing.expect(origin == .opaque_origin);
-}
 
-test "blob URL store - custom implementation" {
-    const TestStore = struct {
-        fn customResolve(url_string: []const u8) ?*BlobURLEntry {
-            // In a real implementation, this would:
-            // 1. Parse the URL
-            // 2. Look it up in a hash map
-            // 3. Return the entry if found
-            _ = url_string;
-            return null;
-        }
-    };
-
-    const store = BlobURLStore{ .resolveFn = &TestStore.customResolve };
-    const entry = store.resolve("blob:https://example.com/550e8400");
-    try std.testing.expect(entry == null);
-}

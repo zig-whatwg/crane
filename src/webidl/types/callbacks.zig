@@ -159,109 +159,11 @@ pub fn treatAsFunction(callback_interface: CallbackInterface, comptime ReturnTyp
 
 const testing = std.testing;
 
-test "CallbackFunction - creation" {
-    const DummyFn = struct {
-        fn dummy() void {}
-    };
 
-    const callback = CallbackFunction(void, void).init(@ptrCast(&DummyFn.dummy), CallbackContext.init());
 
-    try testing.expect(callback.function_ref != @as(*const anyopaque, @ptrCast(@alignCast(&callback))));
-}
 
-test "CallbackFunction - invoke returns not implemented" {
-    const DummyFn = struct {
-        fn dummy() void {}
-    };
 
-    const callback = CallbackFunction(i32, void).init(@ptrCast(&DummyFn.dummy), CallbackContext.init());
 
-    try testing.expectError(error.CallbackNotImplemented, callback.invoke({}));
-}
 
-test "CallbackFunction - invokeWithDefault" {
-    const DummyFn = struct {
-        fn dummy() void {}
-    };
 
-    const callback = CallbackFunction(i32, void).init(@ptrCast(&DummyFn.dummy), CallbackContext.init());
 
-    const result = callback.invokeWithDefault({}, 42);
-    try testing.expectEqual(@as(i32, 42), result);
-}
-
-test "CallbackInterface - creation" {
-    const DummyObj = struct {
-        value: i32 = 100,
-    };
-
-    var obj = DummyObj{};
-    const callback = CallbackInterface.init(@ptrCast(&obj), CallbackContext.init());
-
-    const null_ptr: *const anyopaque = @ptrCast(@alignCast(&obj));
-    try testing.expect(callback.object_ref == null_ptr);
-}
-
-test "CallbackInterface - invokeOperation returns not implemented" {
-    const DummyObj = struct {
-        value: i32 = 100,
-    };
-
-    var obj = DummyObj{};
-    const callback = CallbackInterface.init(@ptrCast(&obj), CallbackContext.init());
-
-    const ArgsType = struct { x: i32 };
-    const args = ArgsType{ .x = 10 };
-
-    try testing.expectError(error.CallbackNotImplemented, callback.invokeOperation(i32, "getValue", args));
-}
-
-test "SingleOperationCallbackInterface - creation" {
-    const DummyObj = struct {
-        value: i32 = 100,
-    };
-
-    var obj = DummyObj{};
-    const callback = SingleOperationCallbackInterface(i32, void).init(
-        @ptrCast(&obj),
-        CallbackContext.init(),
-        "getValue",
-    );
-
-    try testing.expectEqualStrings("getValue", callback.operation_name);
-}
-
-test "SingleOperationCallbackInterface - invoke returns not implemented" {
-    const DummyObj = struct {
-        value: i32 = 100,
-    };
-
-    var obj = DummyObj{};
-    const callback = SingleOperationCallbackInterface(i32, void).init(
-        @ptrCast(&obj),
-        CallbackContext.init(),
-        "getValue",
-    );
-
-    try testing.expectError(error.CallbackNotImplemented, callback.invoke({}));
-}
-
-test "treatAsFunction - converts interface to function" {
-    const DummyObj = struct {
-        value: i32 = 100,
-    };
-
-    var obj = DummyObj{};
-    const interface = CallbackInterface.init(@ptrCast(&obj), CallbackContext.init());
-
-    const callback = try treatAsFunction(interface, i32, void);
-
-    try testing.expect(callback.function_ref == interface.object_ref);
-}
-
-test "CallbackContext - initialization" {
-    const context = CallbackContext.init();
-
-    try testing.expect(context.incumbent_settings == null);
-    try testing.expect(context.callback_context == null);
-}

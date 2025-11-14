@@ -330,23 +330,4 @@ fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
 
 // Tests
 
-test "queueMutationRecord - basic childList mutation" {
-    const allocator = std.testing.allocator;
-    _ = allocator;
-    resetAgent();
 
-    // TODO: Create real Node instances when fully integrated
-    // For now, this test is incomplete
-
-    resetAgent();
-}
-
-test "notifyMutationObservers - callback invocation" {
-    const allocator = std.testing.allocator;
-    _ = allocator;
-    resetAgent();
-
-    // TODO: Create real test with nodes and observers
-
-    resetAgent();
-}

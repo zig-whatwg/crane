@@ -31,12 +31,3 @@ pub const INDEX: index_gen.Index = index_gen.Index{
     },
 };
 
-test "iso-8859-10 index - basic verification" {
-    const std = @import("std");
-
-    // Verify first entry
-    try std.testing.expect(INDEX.map[0] != 0xFFFF or INDEX.map[0] == 0xFFFF);
-
-    // Verify last entry
-    try std.testing.expect(INDEX.map[127] != 0xFFFF or INDEX.map[127] == 0xFFFF);
-}

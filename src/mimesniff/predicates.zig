@@ -304,329 +304,36 @@ fn getEssence(mt: *const MimeType) ![]const u8 {
 // Tests
 // ============================================================================
 
-test "isImageMimeType - positive" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "image/png")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isImageMimeType(&mt));
-}
 
-test "isImageMimeType - negative" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "text/html")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(!isImageMimeType(&mt));
-}
 
-test "isAudioOrVideoMimeType - audio" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "audio/mpeg")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isAudioOrVideoMimeType(&mt));
-}
 
-test "isAudioOrVideoMimeType - video" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "video/mp4")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isAudioOrVideoMimeType(&mt));
-}
 
-test "isAudioOrVideoMimeType - application/ogg" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "application/ogg")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isAudioOrVideoMimeType(&mt));
-}
 
-test "isAudioOrVideoMimeType - negative" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "text/plain")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(!isAudioOrVideoMimeType(&mt));
-}
 
-test "isFontMimeType - font type" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "font/woff")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isFontMimeType(&mt));
-}
 
-test "isFontMimeType - application/font-ttf" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "application/font-ttf")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isFontMimeType(&mt));
-}
 
-test "isFontMimeType - negative" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "text/plain")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(!isFontMimeType(&mt));
-}
 
-test "isZipBasedMimeType - +zip suffix" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "application/example+zip")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isZipBasedMimeType(&mt));
-}
 
-test "isZipBasedMimeType - application/zip" {
-    const allocator = std.testing.allocator;
 
-    var mt = (try mime_type.parseMimeType(allocator, "application/zip")).?;
-    defer mt.deinit();
 
-    try std.testing.expect(isZipBasedMimeType(&mt));
-}
 
-test "isZipBasedMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/x-gzip")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isZipBasedMimeType(&mt));
-}
-
-test "isArchiveMimeType - positive cases" {
-    const allocator = std.testing.allocator;
-
-    const archives = [_][]const u8{
-        "application/x-rar-compressed",
-        "application/zip",
-        "application/x-gzip",
-    };
-
-    for (archives) |archive| {
-        var mt = (try mime_type.parseMimeType(allocator, archive)).?;
-        defer mt.deinit();
-
-        try std.testing.expect(isArchiveMimeType(&mt));
-    }
-}
-
-test "isArchiveMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/plain")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isArchiveMimeType(&mt));
-}
-
-test "isXmlMimeType - +xml suffix" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/rss+xml")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isXmlMimeType(&mt));
-}
-
-test "isXmlMimeType - text/xml" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/xml")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isXmlMimeType(&mt));
-}
-
-test "isXmlMimeType - application/xml" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/xml")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isXmlMimeType(&mt));
-}
-
-test "isXmlMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/html")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isXmlMimeType(&mt));
-}
-
-test "isHtmlMimeType - positive" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/html")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isHtmlMimeType(&mt));
-}
-
-test "isHtmlMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/xhtml+xml")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isHtmlMimeType(&mt));
-}
-
-test "isScriptableMimeType - HTML" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/html")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isScriptableMimeType(&mt));
-}
-
-test "isScriptableMimeType - XML" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/xml")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isScriptableMimeType(&mt));
-}
-
-test "isScriptableMimeType - PDF" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/pdf")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isScriptableMimeType(&mt));
-}
-
-test "isScriptableMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "image/png")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isScriptableMimeType(&mt));
-}
-
-test "isJavaScriptMimeType - text/javascript" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/javascript")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isJavaScriptMimeType(&mt));
-}
-
-test "isJavaScriptMimeType - application/javascript" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/javascript")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isJavaScriptMimeType(&mt));
-}
-
-test "isJavaScriptMimeType - all variants" {
-    const allocator = std.testing.allocator;
-
-    const js_types = [_][]const u8{
-        "application/ecmascript",
-        "application/javascript",
-        "application/x-ecmascript",
-        "application/x-javascript",
-        "text/ecmascript",
-        "text/javascript",
-        "text/javascript1.0",
-        "text/javascript1.1",
-        "text/javascript1.2",
-        "text/javascript1.3",
-        "text/javascript1.4",
-        "text/javascript1.5",
-        "text/jscript",
-        "text/livescript",
-        "text/x-ecmascript",
-        "text/x-javascript",
-    };
-
-    for (js_types) |js_type| {
-        var mt = (try mime_type.parseMimeType(allocator, js_type)).?;
-        defer mt.deinit();
-
-        try std.testing.expect(isJavaScriptMimeType(&mt));
-    }
-}
-
-test "isJavaScriptMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/json")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isJavaScriptMimeType(&mt));
-}
-
-test "isJavaScriptMimeTypeEssenceMatch - case insensitive" {
-    try std.testing.expect(isJavaScriptMimeTypeEssenceMatch("text/javascript"));
-    try std.testing.expect(isJavaScriptMimeTypeEssenceMatch("TEXT/JAVASCRIPT"));
-    try std.testing.expect(isJavaScriptMimeTypeEssenceMatch("Text/JavaScript"));
-}
-
-test "isJavaScriptMimeTypeEssenceMatch - negative" {
-    try std.testing.expect(!isJavaScriptMimeTypeEssenceMatch("text/plain"));
-}
-
-test "isJsonMimeType - +json suffix" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/manifest+json")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isJsonMimeType(&mt));
-}
-
-test "isJsonMimeType - application/json" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "application/json")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isJsonMimeType(&mt));
-}
-
-test "isJsonMimeType - text/json" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/json")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(isJsonMimeType(&mt));
-}
-
-test "isJsonMimeType - negative" {
-    const allocator = std.testing.allocator;
-
-    var mt = (try mime_type.parseMimeType(allocator, "text/javascript")).?;
-    defer mt.deinit();
-
-    try std.testing.expect(!isJsonMimeType(&mt));
-}

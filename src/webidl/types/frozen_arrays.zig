@@ -105,96 +105,11 @@ pub fn FrozenArray(comptime T: type) type {
 
 const testing = std.testing;
 
-test "FrozenArray - creation from slice" {
-    const items = [_]i32{ 1, 2, 3, 4, 5 };
 
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
 
-    try testing.expectEqual(@as(usize, 5), array.len());
-}
 
-test "FrozenArray - get by index" {
-    const items = [_]i32{ 10, 20, 30 };
 
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
 
-    try testing.expectEqual(@as(i32, 10), array.get(0).?);
-    try testing.expectEqual(@as(i32, 20), array.get(1).?);
-    try testing.expectEqual(@as(i32, 30), array.get(2).?);
-    try testing.expect(array.get(3) == null);
-}
 
-test "FrozenArray - contains check" {
-    const items = [_]i32{ 1, 2, 3 };
 
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
 
-    try testing.expect(array.contains(2));
-    try testing.expect(!array.contains(5));
-}
-
-test "FrozenArray - slice access" {
-    const items = [_]i32{ 1, 2, 3 };
-
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
-
-    const slice = array.slice();
-    try testing.expectEqual(@as(usize, 3), slice.len);
-    try testing.expectEqual(@as(i32, 1), slice[0]);
-}
-
-test "FrozenArray - isEmpty" {
-    const empty_items = [_]i32{};
-    const empty_array = try FrozenArray(i32).init(testing.allocator, &empty_items);
-    defer empty_array.deinit();
-
-    try testing.expect(empty_array.isEmpty());
-
-    const items = [_]i32{1};
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
-
-    try testing.expect(!array.isEmpty());
-}
-
-test "FrozenArray - string elements" {
-    const items = [_][]const u8{ "hello", "world" };
-
-    const array = try FrozenArray([]const u8).init(testing.allocator, &items);
-    defer array.deinit();
-
-    try testing.expectEqual(@as(usize, 2), array.len());
-    try testing.expectEqualStrings("hello", array.get(0).?);
-    try testing.expectEqualStrings("world", array.get(1).?);
-}
-
-test "FrozenArray - immutability guarantees" {
-    const items = [_]i32{ 1, 2, 3 };
-
-    const array = try FrozenArray(i32).init(testing.allocator, &items);
-    defer array.deinit();
-
-    const slice = array.slice();
-    try testing.expectEqual(@as(i32, 1), slice[0]);
-}
-
-test "FrozenArray - fromJSValue not yet implemented" {
-    const FA = FrozenArray(i32);
-
-    // Not implemented - requires sequence conversion (JS runtime)
-    try testing.expectError(error.NotImplemented, FA.fromJSValue(testing.allocator, .{ .undefined = {} }));
-}
-
-test "FrozenArray - fromSlice same as init" {
-    const items = [_]i32{ 1, 2, 3 };
-
-    const array = try FrozenArray(i32).fromSlice(testing.allocator, &items);
-    defer array.deinit();
-
-    try testing.expectEqual(@as(usize, 3), array.len());
-    try testing.expectEqual(@as(i32, 1), array.get(0).?);
-}

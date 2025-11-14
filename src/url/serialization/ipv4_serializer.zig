@@ -55,47 +55,7 @@ pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
     return output.toOwnedSlice();
 }
 
-test "ipv4 serializer - basic" {
-    const allocator = std.testing.allocator;
 
-    const result = try serializeIPv4(allocator, 0xC0A80101);
-    defer allocator.free(result);
 
-    try std.testing.expectEqualStrings("192.168.1.1", result);
-}
 
-test "ipv4 serializer - localhost" {
-    const allocator = std.testing.allocator;
 
-    const result = try serializeIPv4(allocator, 0x7F000001);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("127.0.0.1", result);
-}
-
-test "ipv4 serializer - zero" {
-    const allocator = std.testing.allocator;
-
-    const result = try serializeIPv4(allocator, 0x00000000);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("0.0.0.0", result);
-}
-
-test "ipv4 serializer - max" {
-    const allocator = std.testing.allocator;
-
-    const result = try serializeIPv4(allocator, 0xFFFFFFFF);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("255.255.255.255", result);
-}
-
-test "ipv4 serializer - google dns" {
-    const allocator = std.testing.allocator;
-
-    const result = try serializeIPv4(allocator, 0x08080808);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("8.8.8.8", result);
-}

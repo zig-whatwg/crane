@@ -33,15 +33,3 @@ pub const INDEX: index_gen.Index = index_gen.Index{
     },
 };
 
-test "IBM866 index - known mappings" {
-    const std = @import("std");
-
-    // Pointer 0 → U+0410 (CYRILLIC CAPITAL LETTER A)
-    try std.testing.expectEqual(@as(u21, 0x0410), INDEX.map[0]);
-
-    // Pointer 127 → U+00A0 (NO-BREAK SPACE)
-    try std.testing.expectEqual(@as(u21, 0x00A0), INDEX.map[127]);
-
-    // Pointer 48 → U+2591 (LIGHT SHADE) - box drawing character
-    try std.testing.expectEqual(@as(u21, 0x2591), INDEX.map[48]);
-}

@@ -282,29 +282,4 @@ pub const ValidationErrorCollector = struct {
     }
 };
 
-test "validation error - isFailure" {
-    try std.testing.expect(ValidationError.domain_to_ascii.isFailure());
-    try std.testing.expect(ValidationError.ipv4_too_many_parts.isFailure());
-    try std.testing.expect(!ValidationError.ipv4_empty_part.isFailure());
-    try std.testing.expect(!ValidationError.invalid_credentials.isFailure());
-}
 
-test "validation error collector" {
-    const allocator = std.testing.allocator;
-
-    var collector = ValidationErrorCollector.init(allocator);
-    defer collector.deinit();
-
-    try std.testing.expect(!collector.hasErrors());
-    try std.testing.expect(!collector.hasFailures());
-
-    try collector.record(.ipv4_empty_part); // Cosmetic
-    try std.testing.expect(collector.hasErrors());
-    try std.testing.expect(!collector.hasFailures());
-
-    try collector.record(.ipv4_too_many_parts); // Failure
-    try std.testing.expect(collector.hasFailures());
-
-    const errors = collector.getErrors();
-    try std.testing.expectEqual(@as(usize, 2), errors.len);
-}

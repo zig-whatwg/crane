@@ -42,20 +42,5 @@ pub inline fn getCachedHost(host_str: []const u8) ?Host {
     return null;
 }
 
-test "host cache - localhost" {
-    const cached = getCachedHost("localhost");
-    try std.testing.expect(cached != null);
-    try std.testing.expect(cached.?.isDomain());
-    try std.testing.expectEqualStrings("localhost", cached.?.domain);
-}
 
-test "host cache - 127.0.0.1" {
-    const cached = getCachedHost("127.0.0.1");
-    try std.testing.expect(cached != null);
-    try std.testing.expectEqual(@as(u32, 0x7F000001), cached.?.ipv4);
-}
 
-test "host cache - miss" {
-    const cached = getCachedHost("google.com");
-    try std.testing.expect(cached == null);
-}

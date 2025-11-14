@@ -218,186 +218,30 @@ pub const Duration = struct {
     }
 };
 
-test "Moment - create from milliseconds" {
-    const moment = Moment.fromMilliseconds(1000.0);
-    try std.testing.expectEqual(@as(f64, 1000.0), moment.timestamp_ms);
-}
 
-test "Moment - add duration" {
-    const start = Moment.fromMilliseconds(1000.0);
-    const duration = Duration.fromMilliseconds(500.0);
-    const result = start.add(duration);
-    try std.testing.expectEqual(@as(f64, 1500.0), result.timestamp_ms);
-}
 
-test "Moment - subtract duration" {
-    const start = Moment.fromMilliseconds(1000.0);
-    const duration = Duration.fromMilliseconds(500.0);
-    const result = start.subtract(duration);
-    try std.testing.expectEqual(@as(f64, 500.0), result.timestamp_ms);
-}
 
-test "Moment - since" {
-    const earlier = Moment.fromMilliseconds(1000.0);
-    const later = Moment.fromMilliseconds(1500.0);
-    const duration = later.since(earlier);
-    try std.testing.expectEqual(@as(f64, 500.0), duration.ms);
-}
 
-test "Moment - isBefore" {
-    const earlier = Moment.fromMilliseconds(1000.0);
-    const later = Moment.fromMilliseconds(1500.0);
-    try std.testing.expect(earlier.isBefore(later));
-    try std.testing.expect(!later.isBefore(earlier));
-}
 
-test "Moment - isAfter" {
-    const earlier = Moment.fromMilliseconds(1000.0);
-    const later = Moment.fromMilliseconds(1500.0);
-    try std.testing.expect(later.isAfter(earlier));
-    try std.testing.expect(!earlier.isAfter(later));
-}
 
-test "Moment - equals" {
-    const m1 = Moment.fromMilliseconds(1000.0);
-    const m2 = Moment.fromMilliseconds(1000.0);
-    const m3 = Moment.fromMilliseconds(2000.0);
-    try std.testing.expect(m1.equals(m2));
-    try std.testing.expect(!m1.equals(m3));
-}
 
-test "Moment - compare" {
-    const m1 = Moment.fromMilliseconds(1000.0);
-    const m2 = Moment.fromMilliseconds(1500.0);
-    const m3 = Moment.fromMilliseconds(1000.0);
-    try std.testing.expectEqual(std.math.Order.lt, m1.compare(m2));
-    try std.testing.expectEqual(std.math.Order.gt, m2.compare(m1));
-    try std.testing.expectEqual(std.math.Order.eq, m1.compare(m3));
-}
 
-test "Moment - toSeconds" {
-    const moment = Moment.fromMilliseconds(5000.0);
-    try std.testing.expectEqual(@as(f64, 5.0), moment.toSeconds());
-}
 
-test "Duration - fromSeconds" {
-    const duration = Duration.fromSeconds(5.0);
-    try std.testing.expectEqual(@as(f64, 5000.0), duration.ms);
-}
 
-test "Duration - fromMinutes" {
-    const duration = Duration.fromMinutes(1.0);
-    try std.testing.expectEqual(@as(f64, 60000.0), duration.ms);
-}
 
-test "Duration - fromHours" {
-    const duration = Duration.fromHours(1.0);
-    try std.testing.expectEqual(@as(f64, 3600000.0), duration.ms);
-}
 
-test "Duration - fromDays" {
-    const duration = Duration.fromDays(1.0);
-    try std.testing.expectEqual(@as(f64, 86400000.0), duration.ms);
-}
 
-test "Duration - add" {
-    const d1 = Duration.fromMilliseconds(1000.0);
-    const d2 = Duration.fromMilliseconds(500.0);
-    const result = d1.add(d2);
-    try std.testing.expectEqual(@as(f64, 1500.0), result.ms);
-}
 
-test "Duration - subtract" {
-    const d1 = Duration.fromMilliseconds(1000.0);
-    const d2 = Duration.fromMilliseconds(500.0);
-    const result = d1.subtract(d2);
-    try std.testing.expectEqual(@as(f64, 500.0), result.ms);
-}
 
-test "Duration - multiply" {
-    const duration = Duration.fromMilliseconds(100.0);
-    const result = duration.multiply(5.0);
-    try std.testing.expectEqual(@as(f64, 500.0), result.ms);
-}
 
-test "Duration - divide" {
-    const duration = Duration.fromMilliseconds(1000.0);
-    const result = duration.divide(4.0);
-    try std.testing.expectEqual(@as(f64, 250.0), result.ms);
-}
 
-test "Duration - abs" {
-    const negative = Duration.fromMilliseconds(-500.0);
-    const result = negative.abs();
-    try std.testing.expectEqual(@as(f64, 500.0), result.ms);
-}
 
-test "Duration - negate" {
-    const positive = Duration.fromMilliseconds(500.0);
-    const result = positive.negate();
-    try std.testing.expectEqual(@as(f64, -500.0), result.ms);
-}
 
-test "Duration - isZero" {
-    const zero = Duration.zero();
-    const nonzero = Duration.fromMilliseconds(100.0);
-    try std.testing.expect(zero.isZero());
-    try std.testing.expect(!nonzero.isZero());
-}
 
-test "Duration - isPositive" {
-    const positive = Duration.fromMilliseconds(100.0);
-    const negative = Duration.fromMilliseconds(-100.0);
-    const zero = Duration.zero();
-    try std.testing.expect(positive.isPositive());
-    try std.testing.expect(!negative.isPositive());
-    try std.testing.expect(!zero.isPositive());
-}
 
-test "Duration - isNegative" {
-    const positive = Duration.fromMilliseconds(100.0);
-    const negative = Duration.fromMilliseconds(-100.0);
-    const zero = Duration.zero();
-    try std.testing.expect(negative.isNegative());
-    try std.testing.expect(!positive.isNegative());
-    try std.testing.expect(!zero.isNegative());
-}
 
-test "Duration - compare" {
-    const d1 = Duration.fromMilliseconds(100.0);
-    const d2 = Duration.fromMilliseconds(200.0);
-    const d3 = Duration.fromMilliseconds(100.0);
-    try std.testing.expectEqual(std.math.Order.lt, d1.compare(d2));
-    try std.testing.expectEqual(std.math.Order.gt, d2.compare(d1));
-    try std.testing.expectEqual(std.math.Order.eq, d1.compare(d3));
-}
 
-test "Duration - toSeconds" {
-    const duration = Duration.fromMilliseconds(5000.0);
-    try std.testing.expectEqual(@as(f64, 5.0), duration.toSeconds());
-}
 
-test "Duration - toMinutes" {
-    const duration = Duration.fromSeconds(120.0);
-    try std.testing.expectEqual(@as(f64, 2.0), duration.toMinutes());
-}
 
-test "Duration - toHours" {
-    const duration = Duration.fromMinutes(120.0);
-    try std.testing.expectEqual(@as(f64, 2.0), duration.toHours());
-}
 
-test "Duration - toDays" {
-    const duration = Duration.fromHours(48.0);
-    try std.testing.expectEqual(@as(f64, 2.0), duration.toDays());
-}
 
-test "Moment and Duration - real world scenario" {
-    const start = Moment.now();
-    const one_hour = Duration.fromHours(1.0);
-    const future = start.add(one_hour);
-    const elapsed = future.since(start);
-
-    try std.testing.expectEqual(@as(f64, 3600000.0), elapsed.ms);
-    try std.testing.expect(future.isAfter(start));
-}

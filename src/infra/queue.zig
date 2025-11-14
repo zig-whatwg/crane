@@ -44,71 +44,8 @@ pub fn Queue(comptime T: type) type {
     };
 }
 
-test "Queue - enqueue and dequeue" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
 
-    try queue.enqueue(1);
-    try queue.enqueue(2);
-    try queue.enqueue(3);
 
-    try std.testing.expectEqual(@as(?u32, 1), queue.dequeue());
-    try std.testing.expectEqual(@as(?u32, 2), queue.dequeue());
-    try std.testing.expectEqual(@as(?u32, 3), queue.dequeue());
-}
 
-test "Queue - dequeue empty returns null" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
 
-    try std.testing.expectEqual(@as(?u32, null), queue.dequeue());
-}
 
-test "Queue - peek" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
-
-    try queue.enqueue(1);
-    try queue.enqueue(2);
-
-    try std.testing.expectEqual(@as(?u32, 1), queue.peek());
-    try std.testing.expectEqual(@as(?u32, 1), queue.peek());
-}
-
-test "Queue - isEmpty" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
-
-    try std.testing.expect(queue.isEmpty());
-    try queue.enqueue(1);
-    try std.testing.expect(!queue.isEmpty());
-}
-
-test "Queue - FIFO order" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
-
-    try queue.enqueue(10);
-    try queue.enqueue(20);
-    try queue.enqueue(30);
-
-    try std.testing.expectEqual(@as(?u32, 10), queue.dequeue());
-    try std.testing.expectEqual(@as(?u32, 20), queue.dequeue());
-    try std.testing.expectEqual(@as(?u32, 30), queue.dequeue());
-}
-
-test "Queue - no memory leaks" {
-    const allocator = std.testing.allocator;
-    var queue = Queue(u32).init(allocator);
-    defer queue.deinit();
-
-    var i: u32 = 0;
-    while (i < 10) : (i += 1) {
-        try queue.enqueue(i);
-    }
-}

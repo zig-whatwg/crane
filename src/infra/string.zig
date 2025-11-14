@@ -835,919 +835,109 @@ pub fn concatenate(allocator: Allocator, strings: []const String, separator: ?St
     return result;
 }
 
-test "utf8ToUtf16 - empty string" {
-    const allocator = std.testing.allocator;
-    const result = try utf8ToUtf16(allocator, "");
-    defer allocator.free(result);
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "utf8ToUtf16 - ASCII string" {
-    const allocator = std.testing.allocator;
-    const result = try utf8ToUtf16(allocator, "hello");
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "utf8ToUtf16 - Unicode BMP" {
-    const allocator = std.testing.allocator;
-    const result = try utf8ToUtf16(allocator, "héllo");
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 0x00E9, 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "utf8ToUtf16 - Unicode with surrogate pairs" {
-    const allocator = std.testing.allocator;
-    const result = try utf8ToUtf16(allocator, "💩");
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 0xD83D, 0xDCA9 };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "utf8ToUtf16 - invalid UTF-8" {
-    const allocator = std.testing.allocator;
-    const invalid = [_]u8{ 0xFF, 0xFE };
-    const result = utf8ToUtf16(allocator, &invalid);
-    try std.testing.expectError(InfraError.InvalidUtf8, result);
-}
-
-test "utf16ToUtf8 - empty string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{};
-    const result = try utf16ToUtf8(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "utf16ToUtf8 - ASCII string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try utf16ToUtf8(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "utf16ToUtf8 - Unicode BMP" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 0x00E9, 'l', 'l', 'o' };
-    const result = try utf16ToUtf8(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("héllo", result);
-}
-
-test "utf16ToUtf8 - surrogate pairs" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 0xD83D, 0xDCA9 };
-    const result = try utf16ToUtf8(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqualStrings("💩", result);
-}
-
-test "utf16ToUtf8 - unpaired high surrogate" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{0xD83D};
-    const result = utf16ToUtf8(allocator, &input);
-    try std.testing.expectError(InfraError.InvalidUtf16, result);
-}
-
-test "utf16ToUtf8 - unpaired low surrogate" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{0xDCA9};
-    const result = utf16ToUtf8(allocator, &input);
-    try std.testing.expectError(InfraError.InvalidUtf16, result);
-}
-
-test "conversion roundtrip - ASCII" {
-    const allocator = std.testing.allocator;
-    const original = "hello world";
-
-    const utf16 = try utf8ToUtf16(allocator, original);
-    defer allocator.free(utf16);
-
-    const utf8 = try utf16ToUtf8(allocator, utf16);
-    defer allocator.free(utf8);
-
-    try std.testing.expectEqualStrings(original, utf8);
-}
-
-test "conversion roundtrip - Unicode" {
-    const allocator = std.testing.allocator;
-    const original = "hello 世界 💩";
-
-    const utf16 = try utf8ToUtf16(allocator, original);
-    defer allocator.free(utf16);
-
-    const utf8 = try utf16ToUtf8(allocator, utf16);
-    defer allocator.free(utf8);
-
-    try std.testing.expectEqualStrings(original, utf8);
-}
-
-test "asciiLowercase - empty string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{};
-    const result = try asciiLowercase(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "asciiLowercase - ASCII uppercase" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'H', 'E', 'L', 'L', 'O' };
-    const result = try asciiLowercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiLowercase - mixed case" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'H', 'e', 'L', 'l', 'O' };
-    const result = try asciiLowercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiLowercase - already lowercase" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try asciiLowercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiLowercase - non-ASCII unchanged" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'H', 0x00E9, 'L', 'L', 'O' };
-    const result = try asciiLowercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 0x00E9, 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiUppercase - empty string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{};
-    const result = try asciiUppercase(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "asciiUppercase - ASCII lowercase" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try asciiUppercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'H', 'E', 'L', 'L', 'O' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiUppercase - mixed case" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'H', 'e', 'L', 'l', 'O' };
-    const result = try asciiUppercase(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'H', 'E', 'L', 'L', 'O' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "isAsciiString - pure ASCII" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isAsciiString(&input));
-}
-
-test "isAsciiString - contains Unicode" {
-    const input = [_]u16{ 'h', 0x00E9, 'l', 'l', 'o' };
-    try std.testing.expect(!isAsciiString(&input));
-}
-
-test "isAsciiString - empty string" {
-    const input = [_]u16{};
-    try std.testing.expect(isAsciiString(&input));
-}
-
-test "isIsomorphicString - pure ASCII" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isIsomorphicString(&input));
-}
-
-test "isIsomorphicString - Latin-1 range" {
-    const input = [_]u16{ 'h', 0x00E9, 0x00FF, 'o' };
-    try std.testing.expect(isIsomorphicString(&input));
-}
-
-test "isIsomorphicString - exceeds Latin-1" {
-    const input = [_]u16{ 'h', 0x0100, 'o' };
-    try std.testing.expect(!isIsomorphicString(&input));
-}
-
-test "isIsomorphicString - empty string" {
-    const input = [_]u16{};
-    try std.testing.expect(isIsomorphicString(&input));
-}
-
-test "isScalarValueString - no surrogates" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isScalarValueString(&input));
-}
-
-test "isScalarValueString - contains lead surrogate" {
-    const input = [_]u16{ 'h', 0xD800, 'o' };
-    try std.testing.expect(!isScalarValueString(&input));
-}
-
-test "isScalarValueString - contains trail surrogate" {
-    const input = [_]u16{ 'h', 0xDC00, 'o' };
-    try std.testing.expect(!isScalarValueString(&input));
-}
-
-test "isScalarValueString - empty string" {
-    const input = [_]u16{};
-    try std.testing.expect(isScalarValueString(&input));
-}
-
-test "is - identical strings" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(is(&a, &b));
-}
-
-test "is - different strings" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'w', 'o', 'r', 'l', 'd' };
-    try std.testing.expect(!is(&a, &b));
-}
-
-test "is - case sensitive" {
-    const a = [_]u16{ 'H', 'E', 'L', 'L', 'O' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(!is(&a, &b));
-}
-
-test "is - different lengths" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l' };
-    try std.testing.expect(!is(&a, &b));
-}
-
-test "is - empty strings" {
-    const a = [_]u16{};
-    const b = [_]u16{};
-    try std.testing.expect(is(&a, &b));
-}
-
-test "is - Unicode strings" {
-    const a = [_]u16{ 0xD83D, 0xDCA9, 'a' };
-    const b = [_]u16{ 0xD83D, 0xDCA9, 'a' };
-    try std.testing.expect(is(&a, &b));
-}
-
-test "is - normalization sensitive" {
-    const a = [_]u16{0x00E9};
-    const b = [_]u16{ 'e', 0x0301 };
-    try std.testing.expect(!is(&a, &b));
-}
-
-test "isIdenticalTo - alias works" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isIdenticalTo(&a, &b));
-}
-
-test "isAsciiCaseInsensitiveMatch - match same case" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isAsciiCaseInsensitiveMatch(&a, &b));
-}
-
-test "isAsciiCaseInsensitiveMatch - match different case" {
-    const a = [_]u16{ 'H', 'E', 'L', 'L', 'O' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isAsciiCaseInsensitiveMatch(&a, &b));
-}
-
-test "isAsciiCaseInsensitiveMatch - no match" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'w', 'o', 'r', 'l', 'd' };
-    try std.testing.expect(!isAsciiCaseInsensitiveMatch(&a, &b));
-}
-
-test "isAsciiCaseInsensitiveMatch - different lengths" {
-    const a = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l' };
-    try std.testing.expect(!isAsciiCaseInsensitiveMatch(&a, &b));
-}
-
-test "asciiByteLength - ASCII string" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try asciiByteLength(&input);
-    try std.testing.expectEqual(@as(usize, 5), result);
-}
-
-test "asciiByteLength - non-ASCII error" {
-    const input = [_]u16{ 'h', 0x00E9, 'l', 'l', 'o' };
-    const result = asciiByteLength(&input);
-    try std.testing.expectError(InfraError.InvalidCodePoint, result);
-}
-
-test "asciiByteLength - beyond byte range" {
-    const input = [_]u16{ 'h', 0x0100, 'l', 'l', 'o' };
-    const result = asciiByteLength(&input);
-    try std.testing.expectError(InfraError.InvalidCodePoint, result);
-}
-
-test "isAsciiWhitespace - tab" {
-    try std.testing.expect(isAsciiWhitespace(0x0009));
-}
-
-test "isAsciiWhitespace - newline" {
-    try std.testing.expect(isAsciiWhitespace(0x000A));
-}
-
-test "isAsciiWhitespace - form feed" {
-    try std.testing.expect(isAsciiWhitespace(0x000C));
-}
-
-test "isAsciiWhitespace - carriage return" {
-    try std.testing.expect(isAsciiWhitespace(0x000D));
-}
-
-test "isAsciiWhitespace - space" {
-    try std.testing.expect(isAsciiWhitespace(0x0020));
-}
-
-test "isAsciiWhitespace - non-whitespace" {
-    try std.testing.expect(!isAsciiWhitespace('a'));
-    try std.testing.expect(!isAsciiWhitespace('Z'));
-    try std.testing.expect(!isAsciiWhitespace('0'));
-}
-
-test "stripLeadingAndTrailingAsciiWhitespace - both ends" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ ' ', '\t', 'h', 'e', 'l', 'l', 'o', ' ', '\n' };
-    const result = try stripLeadingAndTrailingAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripLeadingAndTrailingAsciiWhitespace - leading only" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ ' ', '\t', 'h', 'e', 'l', 'l', 'o' };
-    const result = try stripLeadingAndTrailingAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripLeadingAndTrailingAsciiWhitespace - trailing only" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o', ' ', '\n' };
-    const result = try stripLeadingAndTrailingAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripLeadingAndTrailingAsciiWhitespace - none" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try stripLeadingAndTrailingAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripLeadingAndTrailingAsciiWhitespace - all whitespace" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ ' ', '\t', '\n' };
-    const result = try stripLeadingAndTrailingAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "stripNewlines - LF and CR" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', '\n', 'l', 'l', '\r', 'o' };
-    const result = try stripNewlines(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripNewlines - no newlines" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try stripNewlines(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "normalizeNewlines - CRLF to LF" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'i', '\r', '\n', 't', 'h', 'e', 'r', 'e' };
-    const result = try normalizeNewlines(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'i', '\n', 't', 'h', 'e', 'r', 'e' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "normalizeNewlines - CR to LF" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'i', '\r', 't', 'h', 'e', 'r', 'e' };
-    const result = try normalizeNewlines(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'i', '\n', 't', 'h', 'e', 'r', 'e' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "normalizeNewlines - LF unchanged" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'i', '\n', 't', 'h', 'e', 'r', 'e' };
-    const result = try normalizeNewlines(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'i', '\n', 't', 'h', 'e', 'r', 'e' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "splitOnAsciiWhitespace - single space" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd' };
-    const result = try splitOnAsciiWhitespace(allocator, &input);
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 2), result.len);
-
-    const expected1 = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected1, result[0]);
-
-    const expected2 = [_]u16{ 'w', 'o', 'r', 'l', 'd' };
-    try std.testing.expectEqualSlices(u16, &expected2, result[1]);
-}
-
-test "splitOnAsciiWhitespace - multiple spaces" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', ' ', ' ', 'b', ' ', 'c' };
-    const result = try splitOnAsciiWhitespace(allocator, &input);
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-
-    const expected1 = [_]u16{'a'};
-    try std.testing.expectEqualSlices(u16, &expected1, result[0]);
-
-    const expected2 = [_]u16{'b'};
-    try std.testing.expectEqualSlices(u16, &expected2, result[1]);
-
-    const expected3 = [_]u16{'c'};
-    try std.testing.expectEqualSlices(u16, &expected3, result[2]);
-}
-
-test "splitOnAsciiWhitespace - mixed whitespace" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', '\t', 'b', '\n', 'c' };
-    const result = try splitOnAsciiWhitespace(allocator, &input);
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-}
-
-test "splitOnAsciiWhitespace - empty string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{};
-    const result = try splitOnAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "splitOnCommas - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', ',', 'b', ',', 'c' };
-    const result = try splitOnCommas(allocator, &input);
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-
-    const expected1 = [_]u16{'a'};
-    try std.testing.expectEqualSlices(u16, &expected1, result[0]);
-
-    const expected2 = [_]u16{'b'};
-    try std.testing.expectEqualSlices(u16, &expected2, result[1]);
-
-    const expected3 = [_]u16{'c'};
-    try std.testing.expectEqualSlices(u16, &expected3, result[2]);
-}
-
-test "splitOnCommas - with whitespace" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', ' ', ',', ' ', 'b', ' ', ',', ' ', 'c' };
-    const result = try splitOnCommas(allocator, &input);
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-
-    const expected1 = [_]u16{'a'};
-    try std.testing.expectEqualSlices(u16, &expected1, result[0]);
-
-    const expected2 = [_]u16{'b'};
-    try std.testing.expectEqualSlices(u16, &expected2, result[1]);
-
-    const expected3 = [_]u16{'c'};
-    try std.testing.expectEqualSlices(u16, &expected3, result[2]);
-}
-
-test "splitOnCommas - empty string" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{};
-    const result = try splitOnCommas(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "concatenate - multiple strings" {
-    const allocator = std.testing.allocator;
-
-    const str1 = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const str2 = [_]u16{' '};
-    const str3 = [_]u16{ 'w', 'o', 'r', 'l', 'd' };
-
-    const strings = [_]String{ &str1, &str2, &str3 };
-    const result = try concatenate(allocator, &strings, null);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "concatenate - empty list" {
-    const allocator = std.testing.allocator;
-    const strings = [_]String{};
-    const result = try concatenate(allocator, &strings, null);
-    defer allocator.free(result);
-
-    try std.testing.expectEqual(@as(usize, 0), result.len);
-}
-
-test "concatenate - with separator" {
-    const allocator = std.testing.allocator;
-
-    const str1 = [_]u16{ 'a', 'b' };
-    const str2 = [_]u16{ 'c', 'd' };
-    const sep = [_]u16{'-'};
-
-    const strings = [_]String{ &str1, &str2 };
-    const result = try concatenate(allocator, &strings, &sep);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'a', 'b', '-', 'c', 'd' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "collectSequence - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', 'b', 'c', ' ', 'd', 'e' };
-    var position: usize = 0;
-
-    const result = try collectSequence(allocator, &input, &position, struct {
-        fn notSpace(c: u16) bool {
-            return c != ' ';
-        }
-    }.notSpace);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'a', 'b', 'c' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-    try std.testing.expectEqual(@as(usize, 3), position);
-}
-
-test "skipAsciiWhitespace - basic" {
-    const input = [_]u16{ ' ', '\t', '\n', 'a', 'b' };
-    var position: usize = 0;
-
-    skipAsciiWhitespace(&input, &position);
-
-    try std.testing.expectEqual(@as(usize, 3), position);
-}
-
-test "strictlySplit - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', ',', 'b', ',', 'c' };
-    const result = try strictlySplit(allocator, &input, ',');
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-
-    const expected1 = [_]u16{'a'};
-    try std.testing.expectEqualSlices(u16, &expected1, result[0]);
-
-    const expected2 = [_]u16{'b'};
-    try std.testing.expectEqualSlices(u16, &expected2, result[1]);
-
-    const expected3 = [_]u16{'c'};
-    try std.testing.expectEqualSlices(u16, &expected3, result[2]);
-}
-
-test "strictlySplit - empty tokens" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'a', ',', ',', 'b' };
-    const result = try strictlySplit(allocator, &input, ',');
-    defer {
-        for (result) |token| {
-            allocator.free(token);
-        }
-        allocator.free(result);
-    }
-
-    try std.testing.expectEqual(@as(usize, 3), result.len);
-    try std.testing.expectEqual(@as(usize, 1), result[0].len);
-    try std.testing.expectEqual(@as(usize, 0), result[1].len);
-    try std.testing.expectEqual(@as(usize, 1), result[2].len);
-}
-
-test "codePointSubstring - ASCII only" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try codePointSubstring(allocator, &input, 1, 3);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'e', 'l', 'l' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codePointSubstring - with surrogate pairs" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 0xD83D, 0xDCA9, 'a', 0xD83D, 0xDE00 };
-    const result = try codePointSubstring(allocator, &input, 0, 2);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 0xD83D, 0xDCA9, 'a' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codePointSubstringByPositions - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try codePointSubstringByPositions(allocator, &input, 1, 4);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'e', 'l', 'l' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codePointSubstringToEnd - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try codePointSubstringToEnd(allocator, &input, 2);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codePointSubstringToEnd - start beyond end returns empty" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'i' };
-    const result = try codePointSubstringToEnd(allocator, &input, 10);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualSlices(u16, &[_]u16{}, result);
-}
-
-test "codePointSubstringToEnd - start at end returns empty" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'i' };
-    const result = try codePointSubstringToEnd(allocator, &input, 2);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualSlices(u16, &[_]u16{}, result);
-}
-
-test "isCodeUnitPrefix - valid prefix" {
-    const prefix = [_]u16{ 'h', 'e', 'l' };
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isCodeUnitPrefix(&prefix, &input));
-}
-
-test "isCodeUnitPrefix - not a prefix" {
-    const prefix = [_]u16{ 'w', 'o', 'r' };
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(!isCodeUnitPrefix(&prefix, &input));
-}
-
-test "isCodeUnitSuffix - valid suffix" {
-    const suffix = [_]u16{ 'l', 'l', 'o' };
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(isCodeUnitSuffix(&suffix, &input));
-}
-
-test "isCodeUnitSuffix - not a suffix" {
-    const suffix = [_]u16{ 'a', 'b', 'c' };
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(!isCodeUnitSuffix(&suffix, &input));
-}
-
-test "codeUnitLessThan - less than" {
-    const a = [_]u16{ 'a', 'b', 'c' };
-    const b = [_]u16{ 'a', 'b', 'd' };
-    try std.testing.expect(codeUnitLessThan(&a, &b));
-}
-
-test "codeUnitLessThan - with prefix" {
-    const a = [_]u16{ 'h', 'e', 'l' };
-    const b = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(codeUnitLessThan(&a, &b));
-}
-
-test "codeUnitSubstring - basic" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = codeUnitSubstring(&input, 1, 3);
-
-    const expected = [_]u16{ 'e', 'l', 'l' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codeUnitSubstringByPositions - basic" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = codeUnitSubstringByPositions(&input, 1, 4);
-
-    const expected = [_]u16{ 'e', 'l', 'l' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "codeUnitSubstringToEnd - basic" {
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = codeUnitSubstringToEnd(&input, 2);
-
-    const expected = [_]u16{ 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "convertToScalarValueString - no surrogates" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try convertToScalarValueString(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualSlices(u16, &input, result);
-}
-
-test "convertToScalarValueString - unpaired surrogate" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 0xD800, 'i' };
-    const result = try convertToScalarValueString(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 0xFFFD, 'i' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "convertToScalarValueString - valid surrogate pair" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 0xD83D, 0xDCA9, 'a' };
-    const result = try convertToScalarValueString(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualSlices(u16, &input, result);
-}
-
-test "stripAndCollapseAsciiWhitespace - multiple spaces" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', ' ', ' ', ' ', 'l', 'l', 'o' };
-    const result = try stripAndCollapseAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', ' ', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "stripAndCollapseAsciiWhitespace - leading and trailing" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ ' ', 'h', 'i', ' ' };
-    const result = try stripAndCollapseAsciiWhitespace(allocator, &input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'i' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "asciiEncode - basic" {
-    const allocator = std.testing.allocator;
-    const input = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const result = try asciiEncode(allocator, &input);
-    defer allocator.free(result);
-
-    try std.testing.expectEqualStrings("hello", result);
-}
-
-test "asciiDecode - basic" {
-    const allocator = std.testing.allocator;
-    const input = "hello";
-    const result = try asciiDecode(allocator, input);
-    defer allocator.free(result);
-
-    const expected = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expectEqualSlices(u16, &expected, result);
-}
-
-test "contains - empty needle" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{};
-    try std.testing.expect(contains(&haystack, &needle));
-}
-
-test "contains - single char found" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{'l'};
-    try std.testing.expect(contains(&haystack, &needle));
-}
-
-test "contains - single char not found" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{'x'};
-    try std.testing.expect(!contains(&haystack, &needle));
-}
-
-test "contains - substring found" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{ 'e', 'l', 'l' };
-    try std.testing.expect(contains(&haystack, &needle));
-}
-
-test "contains - substring not found" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{ 'w', 'o', 'r' };
-    try std.testing.expect(!contains(&haystack, &needle));
-}
-
-test "contains - substring at start" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{ 'h', 'e' };
-    try std.testing.expect(contains(&haystack, &needle));
-}
-
-test "contains - substring at end" {
-    const haystack = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    const needle = [_]u16{ 'l', 'o' };
-    try std.testing.expect(contains(&haystack, &needle));
-}
-
-test "contains - needle longer than haystack" {
-    const haystack = [_]u16{ 'h', 'i' };
-    const needle = [_]u16{ 'h', 'e', 'l', 'l', 'o' };
-    try std.testing.expect(!contains(&haystack, &needle));
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

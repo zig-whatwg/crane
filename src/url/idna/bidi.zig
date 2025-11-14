@@ -48,20 +48,6 @@ pub fn validateBidi(label: []const u8) !void {
     }
 }
 
-test "bidi - ASCII only" {
-    try validateBidi("example");
-}
 
-test "bidi - RTL only" {
-    // Arabic "example" - all RTL
-    try validateBidi("\u{0645}\u{062B}\u{0627}\u{0644}");
-}
 
-test "bidi - LTR only" {
-    try validateBidi("münchen");
-}
 
-test "bidi - numbers are neutral" {
-    try validateBidi("example123");
-    try validateBidi("123");
-}

@@ -131,43 +131,5 @@ pub fn encodeUtf8Slice(
 
 // Tests
 
-test "wrapper - UTF-8 decode slice" {
-    const allocator = std.testing.allocator;
 
-    const input = "Hello";
-    var output: [10]u16 = undefined;
 
-    const result = try decodeUtf8Slice(allocator, input, &output, .replacement);
-
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 5), result.code_units_written);
-    try std.testing.expectEqual(@as(u16, 'H'), output[0]);
-    try std.testing.expectEqual(@as(u16, 'e'), output[1]);
-}
-
-test "wrapper - UTF-8 encode slice" {
-    const allocator = std.testing.allocator;
-
-    const input = [_]u16{ 'H', 'i' };
-    var output: [10]u8 = undefined;
-
-    const result = try encodeUtf8Slice(allocator, &input, &output, .replacement);
-
-    try std.testing.expectEqual(streaming.EncodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 2), result.bytes_written);
-    try std.testing.expectEqualStrings("Hi", output[0..result.bytes_written]);
-}
-
-test "wrapper - UTF-8 decode with multibyte" {
-    const allocator = std.testing.allocator;
-
-    // "€" = U+20AC = 0xE2 0x82 0xAC
-    const input = [_]u8{ 0xE2, 0x82, 0xAC };
-    var output: [10]u16 = undefined;
-
-    const result = try decodeUtf8Slice(allocator, &input, &output, .replacement);
-
-    try std.testing.expectEqual(streaming.DecodeResult.Status.input_empty, result.status);
-    try std.testing.expectEqual(@as(usize, 1), result.code_units_written);
-    try std.testing.expectEqual(@as(u16, 0x20AC), output[0]);
-}

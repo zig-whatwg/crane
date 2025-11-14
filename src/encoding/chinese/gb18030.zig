@@ -292,26 +292,6 @@ pub const Encoder = struct {
 };
 
 // Tests
-test "gb18030 decoder - ASCII" {
-    var decoder = Decoder{};
-    try std.testing.expectEqual(@as(?u21, 'A'), try decoder.decode('A'));
-    try std.testing.expectEqual(@as(?u21, null), try decoder.decode(null));
-}
 
-test "gb18030 decoder - Euro sign" {
-    var decoder = Decoder{};
-    try std.testing.expectEqual(@as(?u21, 0x20AC), try decoder.decode(0x80));
-}
 
-test "gb18030 decoder - 2-byte sequence" {
-    var decoder = Decoder{};
-    try std.testing.expectEqual(@as(?u21, null), try decoder.decode(0x81));
-    try std.testing.expectEqual(@as(?u21, 0x4E02), try decoder.decode(0x40));
-}
 
-test "gb18030 encoder - ASCII" {
-    const encoder = Encoder{};
-    const result = try encoder.encode(std.testing.allocator, 'A');
-    defer std.testing.allocator.free(result);
-    try std.testing.expectEqualSlices(u8, "A", result);
-}

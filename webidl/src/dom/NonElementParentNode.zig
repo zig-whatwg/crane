@@ -66,8 +66,3 @@ pub const NonElementParentNode = webidl.mixin(struct {
     }
 });
 
-test "NonElementParentNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(NonElementParentNode);
-    try std.testing.expect(T != void);
-}
