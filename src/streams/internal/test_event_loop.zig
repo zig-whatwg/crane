@@ -416,28 +416,26 @@ test "TestEventLoop - runOnce order (microtasks before task)" {
     var loop = TestEventLoop.init(allocator);
     defer loop.deinit();
 
-    var order = std.ArrayList(u8){};
-    defer order.deinit(allocator);
+    var order = infra.List(u8).init(allocator);
+    defer order.deinit();
 
     const Context = struct {
-        list: *std.ArrayList(u8),
-        allocator: Allocator,
+        list: *infra.List(u8),
     };
 
     var ctx = Context{
         .list = &order,
-        .allocator = allocator,
     };
 
     const Callbacks = struct {
         fn microtask(ctx_ptr: ?*anyopaque) void {
             const c: *Context = @ptrCast(@alignCast(ctx_ptr.?));
-            c.list.append(c.allocator, 'M') catch unreachable;
+            c.list.append('M') catch unreachable;
         }
 
         fn task(ctx_ptr: ?*anyopaque) void {
             const c: *Context = @ptrCast(@alignCast(ctx_ptr.?));
-            c.list.append(c.allocator, 'T') catch unreachable;
+            c.list.append('T') catch unreachable;
         }
     };
 
@@ -448,9 +446,9 @@ test "TestEventLoop - runOnce order (microtasks before task)" {
     _ = loop.eventLoop().runOnce();
 
     // Microtask should run before task
-    try testing.expectEqual(@as(usize, 2), order.items.len);
-    try testing.expectEqual(@as(u8, 'M'), order.items[0]);
-    try testing.expectEqual(@as(u8, 'T'), order.items[1]);
+    try testing.expectEqual(@as(usize, 2), order.len);
+    try testing.expectEqual(@as(u8, 'M'), order.get(0).?);
+    try testing.expectEqual(@as(u8, 'T'), order.get(1).?);
 }
 
 test "TestEventLoop - runOnce only runs one task" {
