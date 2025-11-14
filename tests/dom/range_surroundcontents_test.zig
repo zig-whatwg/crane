@@ -22,8 +22,8 @@ test "Range.surroundContents - wraps range content in new parent" {
     defer range.deinit();
 
     // Select "World" (offset 6 to 11)
-    try range.call_setStart((&text), 6);
-    try range.call_setEnd((&text), 11);
+    try range.call_setStart(@ptrCast(text), 6);
+    try range.call_setEnd(@ptrCast(text), 11);
 
     // Wrap in span
     const span = try doc.call_createElement("span");
@@ -54,8 +54,8 @@ test "Range.surroundContents - clears existing newParent children" {
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
-    try range.call_setStart((&text), 0);
-    try range.call_setEnd((&text), 5);
+    try range.call_setStart(@ptrCast(text), 0);
+    try range.call_setEnd(@ptrCast(text), 5);
 
     // Create span with existing child
     const span = try doc.call_createElement("span");
@@ -84,8 +84,8 @@ test "Range.surroundContents - throws for Document parent" {
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
-    try range.call_setStart((&text), 0);
-    try range.call_setEnd((&text), 5);
+    try range.call_setStart(@ptrCast(text), 0);
+    try range.call_setEnd(@ptrCast(text), 5);
 
     // Try to use Document as newParent
     var newDoc = try dom.Document.init(allocator);
@@ -108,8 +108,8 @@ test "Range.surroundContents - throws for DocumentFragment parent" {
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
-    try range.call_setStart((&text), 0);
-    try range.call_setEnd((&text), 5);
+    try range.call_setStart(@ptrCast(text), 0);
+    try range.call_setEnd(@ptrCast(text), 5);
 
     // Try to use DocumentFragment as newParent
     const fragment = try allocator.create(dom.DocumentFragment);

@@ -160,11 +160,11 @@ test "Range.setStart - adjusts end when start is after end" {
     // Create a range from (div, 0) to (div, 1)
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
-    try range.call_setStart((&div), 0);
-    try range.call_setEnd((&div), 1);
+    try range.call_setStart(@ptrCast(div), 0);
+    try range.call_setEnd(@ptrCast(div), 1);
 
     // Set start to (div, 2) - after end
-    try range.call_setStart((&div), 2);
+    try range.call_setStart(@ptrCast(div), 2);
 
     // End should be adjusted to match start
     try std.testing.expectEqual((&div), range.start_container);
@@ -190,11 +190,11 @@ test "Range.setEnd - adjusts start when end is before start" {
     // Create a range from (div, 1) to (div, 2)
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
-    try range.call_setStart((&div), 1);
-    try range.call_setEnd((&div), 2);
+    try range.call_setStart(@ptrCast(div), 1);
+    try range.call_setEnd(@ptrCast(div), 2);
 
     // Set end to (div, 0) - before start
-    try range.call_setEnd((&div), 0);
+    try range.call_setEnd(@ptrCast(div), 0);
 
     // Start should be adjusted to match end
     try std.testing.expectEqual((&div), range.start_container);

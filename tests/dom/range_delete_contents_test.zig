@@ -24,8 +24,8 @@ test "Range.deleteContents - deletes text data within same Text node" {
     defer range.deinit();
 
     // Select "o Wor" (offset 4 to 9)
-    try range.call_setStart((&text), 4);
-    try range.call_setEnd((&text), 9);
+    try range.call_setStart(@ptrCast(text), 4);
+    try range.call_setEnd(@ptrCast(text), 9);
 
     // Delete the range
     try range.call_deleteContents();
@@ -50,8 +50,8 @@ test "Range.deleteContents - deletes from start of Text node" {
     defer range.deinit();
 
     // Select "Hello " (offset 0 to 6)
-    try range.call_setStart((&text), 0);
-    try range.call_setEnd((&text), 6);
+    try range.call_setStart(@ptrCast(text), 0);
+    try range.call_setEnd(@ptrCast(text), 6);
 
     // Delete the range
     try range.call_deleteContents();
@@ -76,8 +76,8 @@ test "Range.deleteContents - deletes to end of Text node" {
     defer range.deinit();
 
     // Select " World" (offset 5 to 11)
-    try range.call_setStart((&text), 5);
-    try range.call_setEnd((&text), 11);
+    try range.call_setStart(@ptrCast(text), 5);
+    try range.call_setEnd(@ptrCast(text), 11);
 
     // Delete the range
     try range.call_deleteContents();
@@ -102,8 +102,8 @@ test "Range.deleteContents - deletes entire Text node content" {
     defer range.deinit();
 
     // Select entire text (offset 0 to 5)
-    try range.call_setStart((&text), 0);
-    try range.call_setEnd((&text), 5);
+    try range.call_setStart(@ptrCast(text), 0);
+    try range.call_setEnd(@ptrCast(text), 5);
 
     // Delete the range
     try range.call_deleteContents();
@@ -140,8 +140,8 @@ test "Range.deleteContents - deletes contained element nodes" {
     defer range.deinit();
 
     // Select middle span (offset 1 to 2)
-    try range.call_setStart((&div), 1);
-    try range.call_setEnd((&div), 2);
+    try range.call_setStart(@ptrCast(div), 1);
+    try range.call_setEnd(@ptrCast(div), 2);
 
     // Delete the range
     try range.call_deleteContents();
@@ -173,8 +173,8 @@ test "Range.deleteContents - collapsed range does nothing" {
     defer range.deinit();
 
     // Collapsed range at offset 2
-    try range.call_setStart((&text), 2);
-    try range.call_setEnd((&text), 2);
+    try range.call_setStart(@ptrCast(text), 2);
+    try range.call_setEnd(@ptrCast(text), 2);
 
     // Delete the range (should do nothing)
     try range.call_deleteContents();
@@ -200,8 +200,8 @@ test "Range.deleteContents - Comment node data deletion" {
     defer range.deinit();
 
     // Select "is a " (offset 5 to 10)
-    try range.call_setStart((&comment), 5);
-    try range.call_setEnd((&comment), 10);
+    try range.call_setStart(@ptrCast(comment), 5);
+    try range.call_setEnd(@ptrCast(comment), 10);
 
     // Delete the range
     try range.call_deleteContents();
