@@ -6,6 +6,7 @@
 //! Spec: https://html.spec.whatwg.org/#custom-elements
 
 const std = @import("std");
+const Node = @import("../dom/node.zig").Node;
 
 /// Enqueue a custom element callback reaction
 /// Spec: https://html.spec.whatwg.org/#enqueue-a-custom-element-callback-reaction
@@ -76,4 +77,61 @@ pub fn enqueueAdoptedCallback(
     // 2. Enqueue callback reaction with old and new document
 
     // For now, this is a no-op
+}
+
+/// Enqueue custom element connectedMoveCallback
+/// Spec: https://html.spec.whatwg.org/#custom-element-reactions (connectedMoveCallback)
+///
+/// Stub: Does nothing (no custom elements supported yet)
+///
+/// Called when a custom element is moved within the tree and remains connected
+/// This is distinct from disconnectedCallback + connectedCallback sequence
+pub fn enqueueConnectedMoveCallback(
+    element: anytype,
+    old_parent: anytype,
+) void {
+    _ = element;
+    _ = old_parent;
+
+    // TODO(HTML): Implement connectedMoveCallback reaction:
+    // 1. Check if element is custom
+    // 2. Check if element's root is connected
+    // 3. Enqueue connectedMoveCallback reaction with old parent
+
+    // For now, this is a no-op
+}
+
+/// Moving steps callback for custom elements
+/// This is registered with the DOM mutation system via registerMovingStepsCallback
+/// Spec: https://dom.spec.whatwg.org/#concept-node-move step 24.2
+fn customElementMovingSteps(node: *Node, old_parent: ?*Node) void {
+    // Step 24.2: If inclusiveDescendant is custom and newParent is connected,
+    // enqueue connectedMoveCallback reaction
+
+    // Check if node has a parent (newParent in spec terminology)
+    const new_parent = node.parent_node orelse return;
+
+    // Check if new parent's root is connected
+    // TODO(HTML): Implement proper is_connected check
+    // For now, we can't determine if connected without full DOM implementation
+    _ = new_parent;
+
+    // TODO(HTML): Check if node is a custom element
+    // For now, this is a no-op since custom elements aren't implemented
+    _ = old_parent;
+
+    // When custom elements are implemented:
+    // if (node.is_custom_element()) {
+    //     const root = tree_helpers.root(new_parent);
+    //     if (root.is_connected()) {
+    //         enqueueConnectedMoveCallback(node, old_parent);
+    //     }
+    // }
+}
+
+/// Initialize custom element moving steps
+/// Call this during DOM initialization to register the moving steps callback
+pub fn initializeCustomElementMovingSteps() !void {
+    const mutation = @import("../dom/mutation.zig");
+    try mutation.registerMovingStepsCallback(customElementMovingSteps);
 }
