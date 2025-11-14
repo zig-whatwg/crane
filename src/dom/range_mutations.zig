@@ -2,14 +2,31 @@
 //!
 //! Spec: https://dom.spec.whatwg.org/#interface-range
 //!
-//! This module implements the mutation algorithms for Range objects:
-//! - deleteContents() - Remove contents from range
-//! - extractContents() - Move contents to DocumentFragment
-//! - cloneContents() - Copy contents to DocumentFragment
+//! ⚠️ **DEPRECATED:** This module contains a simplified implementation that
+//! is superseded by the full spec-compliant implementation in
+//! `webidl/src/dom/Range.zig` (lines 443-755).
 //!
-//! Note: This is a simplified implementation that handles the common case
-//! of ranges within a single CharacterData node. Full cross-node ranges
-//! would require additional complexity per the complete spec algorithm.
+//! **History:**
+//! - Created during initial implementation (commit a0b57d6)
+//! - Simplified version that only handles CharacterData nodes
+//! - Later replaced by full implementation in Range.zig
+//! - Kept for reference but NOT USED in production code
+//!
+//! **What's Here (Simplified):**
+//! - deleteContents() - Remove contents from range (CharacterData only)
+//! - extractContents() - Move contents to DocumentFragment (CharacterData only)
+//! - cloneContents() - Copy contents to DocumentFragment (CharacterData only)
+//!
+//! **What's in Range.zig (Production):**
+//! - Full spec-compliant implementations
+//! - Handles cross-node ranges
+//! - Handles partially contained nodes
+//! - Handles all node types correctly
+//!
+//! **Action Items:**
+//! - This module should be removed in a future cleanup
+//! - All functionality is provided by webidl/src/dom/Range.zig
+//! - Export in root.zig can be safely removed
 
 const std = @import("std");
 
