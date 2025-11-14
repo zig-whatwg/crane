@@ -8,6 +8,7 @@
 //! - **§4 Core Function Library**: https://www.w3.org/TR/xpath-10/#corelib
 
 const std = @import("std");
+const infra = @import("infra");
 const Value = @import("value.zig").Value;
 const NodeSet = @import("value.zig").NodeSet;
 const Context = @import("context.zig").Context;
@@ -352,7 +353,7 @@ pub fn fnNormalizeSpace(allocator: std.mem.Allocator, _: *const Context, args: [
 
     // Trim and collapse whitespace
     const trimmed = std.mem.trim(u8, s, " \t\r\n");
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     defer result.deinit();
 
     var prev_was_space = false;
@@ -368,7 +369,7 @@ pub fn fnNormalizeSpace(allocator: std.mem.Allocator, _: *const Context, args: [
         }
     }
 
-    return Value{ .string = try result.toOwnedSlice() };
+    return Value{ .string = result.toOwnedSlice() };
 }
 
 /// translate(string, string, string) - Translates characters
@@ -382,7 +383,7 @@ pub fn fnTranslate(allocator: std.mem.Allocator, _: *const Context, args: []cons
     const to = try args[2].toString(allocator);
     defer allocator.free(to);
 
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     defer result.deinit();
 
     for (s) |c| {
@@ -396,7 +397,7 @@ pub fn fnTranslate(allocator: std.mem.Allocator, _: *const Context, args: []cons
         }
     }
 
-    return Value{ .string = try result.toOwnedSlice() };
+    return Value{ .string = result.toOwnedSlice() };
 }
 
 // ============================================================================
