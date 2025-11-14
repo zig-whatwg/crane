@@ -2,6 +2,7 @@
 //! Tests just the parsing without needing full infra module
 
 const std = @import("std");
+const infra = @import("infra");
 
 // Minimal IR structures for testing
 const TestImport = struct {
@@ -45,8 +46,8 @@ pub fn main() !void {
 
     // Test: Parse imports
     std.debug.print("Parsing imports...\n", .{});
-    var imports = std.ArrayList(TestImport).empty;
-    defer imports.deinit(allocator);
+    var imports = infra.List(TestImport).init(allocator);
+    defer imports.deinit();
 
     var pos: usize = 0;
     while (pos < test_source.len) {
@@ -69,7 +70,7 @@ pub fn main() !void {
 
                 const module = test_source[module_start..module_end];
 
-                try imports.append(allocator, .{
+                try imports.append(.{
                     .name = try allocator.dupe(u8, name),
                     .module = try allocator.dupe(u8, module),
                 });
