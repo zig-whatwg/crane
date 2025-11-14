@@ -29,6 +29,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// Punycode parameters (RFC 3492 Section 5)
 const base: u32 = 36;
@@ -95,12 +96,12 @@ fn adapt(delta: u32, numpoints: u32, firsttime: bool) u32 {
 ///
 /// Example: "münchen" -> "mnchen-3ya"
 pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var output: std.ArrayList(u8) = .empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u8).init(allocator);
+    errdefer output.deinit();
 
     // Decode input to code points
-    var codepoints = std.ArrayList(u21).empty;
-    defer codepoints.deinit(allocator);
+    var codepoints = infra.List(u21).init(allocator);
+    defer codepoints.deinit();
 
     var i: usize = 0;
     while (i < input.len) {
@@ -113,7 +114,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch {
             return PunycodeError.BadInput;
         };
-        try codepoints.append(allocator, cp);
+        try codepoints.append( cp);
         i += cp_len;
     }
 
@@ -123,7 +124,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     var basic_count: u32 = 0;
     for (codepoints.items) |cp| {
         if (cp < 0x80) {
-            try output.append(allocator, @intCast(cp));
+            try output.append( @intCast(cp));
             basic_count += 1;
         }
     }
@@ -133,12 +134,12 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
     // If all code points are basic (ASCII), we're done
     if (b == input_len) {
-        return output.toOwnedSlice(allocator);
+        return output.toOwnedSlice();
     }
 
     // Add delimiter if there were basic code points
     if (b > 0) {
-        try output.append(allocator, delimiter);
+        try output.append( delimiter);
     }
 
     var n = initial_n;
@@ -178,11 +179,11 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 while (true) {
                     const t = if (k <= bias) tmin else if (k >= bias + tmax) tmax else k - bias;
                     if (q < t) break;
-                    try output.append(allocator, encodeDigit(t + ((q - t) % (base - t))));
+                    try output.append( encodeDigit(t + ((q - t) % (base - t))));
                     q = (q - t) / (base - t);
                     k += base;
                 }
-                try output.append(allocator, encodeDigit(q));
+                try output.append( encodeDigit(q));
                 bias = adapt(delta, handled + 1, first_nonbasic);
                 first_nonbasic = false; // After first non-basic, always false
                 delta = 0;
@@ -194,7 +195,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         n += 1;
     }
 
-    return output.toOwnedSlice(allocator);
+    return output.toOwnedSlice();
 }
 
 /// Decode a Punycode string to Unicode (RFC 3492 Section 6.2)
@@ -203,8 +204,8 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 ///
 /// Example: "mnchen-3ya" -> "münchen"
 pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-    var output = std.ArrayList(u21).empty;
-    errdefer output.deinit(allocator);
+    var output = infra.List(u21).init(allocator);
+    errdefer output.deinit();
 
     // Find the last delimiter
     var basic_len: usize = 0;
@@ -229,7 +230,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         if (input[i] >= 0x80) {
             return PunycodeError.BadInput;
         }
-        try output.append(allocator, input[i]);
+        try output.append( input[i]);
     }
 
     var n = initial_n;
@@ -283,29 +284,29 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     }
 
     // Convert code points to UTF-8
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
+    var result = infra.List(u8).init(allocator);
+    errdefer result.deinit();
 
     for (output.items) |cp| {
         var buf: [4]u8 = undefined;
         const len = std.unicode.utf8Encode(cp, &buf) catch {
             return PunycodeError.BadInput;
         };
-        try result.appendSlice(allocator, buf[0..len]);
+        try result.appendSlice( buf[0..len]);
     }
 
-    const final_result = try result.toOwnedSlice(allocator);
+    const final_result = try result.toOwnedSlice();
     errdefer allocator.free(final_result);
 
     // Special case: if input had no delimiter and decoded result equals input,
     // return input as-is (handles decode("example") → "example")
     // This is for punycode identity: decode(encode(ASCII)) = ASCII
     if (!has_delimiter and std.mem.eql(u8, input, final_result)) {
-        output.deinit(allocator);
+        output.deinit();
         return final_result;
     }
 
-    output.deinit(allocator);
+    output.deinit();
     return final_result;
 }
 
