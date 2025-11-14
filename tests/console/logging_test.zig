@@ -6,7 +6,8 @@
 const std = @import("std");
 const console_mod = @import("console");
 
-const JSValue = console_mod.JSValue;
+const webidl = @import("webidl");
+const JSValue = webidl.JSValue;
 
 test "call_log - calls logger with log level" {
     const allocator = std.testing.allocator;
@@ -152,11 +153,11 @@ test "logging - respects group indentation" {
     console_obj.call_log(mock_args);
 
     // Add group and log at level 1
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_log(mock_args);
 
     // Add another group and log at level 2
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_log(mock_args);
 
     // End groups

@@ -44,7 +44,7 @@ pub const PrintFn = *const fn (message: []const u8) void;
 ///
 /// This is the default value for console.printFn.
 /// Outputs messages using std.debug.print with newline.
-fn defaultPrinter(message: []const u8) void {
+pub fn defaultPrinter(message: []const u8) void {
     std.debug.print("{s}\n", .{message});
 }
 
@@ -172,7 +172,7 @@ pub const console = struct {
     timerTable: infra.OrderedMap([]const u8, infra.Moment),
     groupStack: infra.Stack(Group),
     messageBuffer: CircularMessageBuffer,
-    labelPool: std.StringHashMap(void),
+    pub labelPool: std.StringHashMap(void),
 
     // ========================================================================
     // WebIDL Metadata
@@ -296,7 +296,7 @@ pub const console = struct {
     /// - First call for a label: allocates and stores in pool
     /// - Subsequent calls: O(1) lookup, no allocation
     /// - "default" label: pre-interned in init(), zero-cost
-    fn internLabel(self: *console, label_utf8: []const u8) ![]const u8 {
+    pub fn internLabel(self: *console, label_utf8: []const u8) ![]const u8 {
 
         // Check if already in pool
         if (self.labelPool.getKey(label_utf8)) |existing| {

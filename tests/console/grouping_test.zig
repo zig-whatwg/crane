@@ -18,7 +18,7 @@ test "call_group - pushes group to stack" {
     try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Create group
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
 
     // Stack should have one group
     try std.testing.expect(!console_obj.groupStack.isEmpty());
@@ -35,7 +35,7 @@ test "call_groupCollapsed - pushes collapsed group to stack" {
     try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Create collapsed group
-    try console_obj.call_groupCollapsed(&.{});
+    console_obj.call_groupCollapsed(&.{});
 
     // Stack should have one collapsed group
     try std.testing.expect(!console_obj.groupStack.isEmpty());
@@ -49,7 +49,7 @@ test "call_groupEnd - pops group from stack" {
     defer console_obj.deinit();
 
     // Create a group
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     try std.testing.expect(!console_obj.groupStack.isEmpty());
 
     // End the group
@@ -80,9 +80,9 @@ test "grouping - nested groups work (LIFO)" {
     defer console_obj.deinit();
 
     // Create nested groups
-    try console_obj.call_group(&.{}); // Level 1
-    try console_obj.call_group(&.{}); // Level 2
-    try console_obj.call_group(&.{}); // Level 3
+    console_obj.call_group(&.{}); // Level 1
+    console_obj.call_group(&.{}); // Level 2
+    console_obj.call_group(&.{}); // Level 3
 
     // Stack should have 3 groups
     var depth: usize = 0;
@@ -107,9 +107,9 @@ test "grouping - mixed group and groupCollapsed" {
     defer console_obj.deinit();
 
     // Create mixed groups
-    try console_obj.call_group(&.{}); // Expanded
-    try console_obj.call_groupCollapsed(&.{}); // Collapsed
-    try console_obj.call_group(&.{}); // Expanded
+    console_obj.call_group(&.{}); // Expanded
+    console_obj.call_groupCollapsed(&.{}); // Collapsed
+    console_obj.call_group(&.{}); // Expanded
 
     // Pop and verify types
     const group3 = console_obj.groupStack.pop().?;
@@ -128,10 +128,10 @@ test "call_clear - empties group stack" {
     defer console_obj.deinit();
 
     // Create several groups
-    try console_obj.call_group(&.{});
-    try console_obj.call_group(&.{});
-    try console_obj.call_groupCollapsed(&.{});
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
+    console_obj.call_groupCollapsed(&.{});
+    console_obj.call_group(&.{});
 
     // Stack should have 4 groups
     try std.testing.expect(!console_obj.groupStack.isEmpty());
@@ -166,7 +166,7 @@ test "grouping - deep nesting" {
     // Create deeply nested groups (10 levels)
     var i: usize = 0;
     while (i < 10) : (i += 1) {
-        try console_obj.call_group(&.{});
+        console_obj.call_group(&.{});
     }
 
     // Verify depth
@@ -185,7 +185,7 @@ test "grouping - partial unwinding" {
     // Create 5 groups
     var i: usize = 0;
     while (i < 5) : (i += 1) {
-        try console_obj.call_group(&.{});
+        console_obj.call_group(&.{});
     }
 
     // End 3 groups
@@ -209,7 +209,7 @@ test "grouping - group with data (label)" {
 
     // Mock JSValue (opaque type, can't create real instances in tests)
     // For now, test with empty data array
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
 
     // Verify group exists
     try std.testing.expect(!console_obj.groupStack.isEmpty());
@@ -223,8 +223,8 @@ test "grouping - groupEnd more times than group" {
     defer console_obj.deinit();
 
     // Create 2 groups
-    try console_obj.call_group(&.{});
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
 
     // End 5 times (more than we created)
     var i: usize = 0;
@@ -244,8 +244,8 @@ test "grouping - memory safety with many groups" {
     // Create and end many groups
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        try console_obj.call_group(&.{});
-        try console_obj.call_groupCollapsed(&.{});
+        console_obj.call_group(&.{});
+        console_obj.call_groupCollapsed(&.{});
     }
 
     // Stack should have 200 groups
@@ -264,14 +264,14 @@ test "grouping - interleaved group operations" {
     defer console_obj.deinit();
 
     // Interleave group, groupCollapsed, groupEnd
-    try console_obj.call_group(&.{}); // 1
-    try console_obj.call_groupCollapsed(&.{}); // 2
+    console_obj.call_group(&.{}); // 1
+    console_obj.call_groupCollapsed(&.{}); // 2
     console_obj.call_groupEnd(); // Remove 2
-    try console_obj.call_group(&.{}); // 2
-    try console_obj.call_group(&.{}); // 3
+    console_obj.call_group(&.{}); // 2
+    console_obj.call_group(&.{}); // 3
     console_obj.call_groupEnd(); // Remove 3
     console_obj.call_groupEnd(); // Remove 2
-    try console_obj.call_groupCollapsed(&.{}); // 2
+    console_obj.call_groupCollapsed(&.{}); // 2
 
     // Should have 2 groups: original level 1 and new level 2
     var depth: usize = 0;
@@ -287,11 +287,11 @@ test "grouping - clear after partial groups" {
     defer console_obj.deinit();
 
     // Create groups, end some, then clear
-    try console_obj.call_group(&.{});
-    try console_obj.call_group(&.{});
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_groupEnd();
-    try console_obj.call_groupCollapsed(&.{});
+    console_obj.call_groupCollapsed(&.{});
 
     // Should have 3 groups now (2 original + 1 collapsed)
     console_obj.call_clear();

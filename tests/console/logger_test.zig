@@ -73,10 +73,10 @@ test "printer - respects group indentation" {
     try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 
     // Add groups
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     try std.testing.expectEqual(@as(usize, 2), console_obj.groupStack.size());
 
     // Printer should respect this indentation

@@ -18,9 +18,9 @@ test "count - uses printer for output" {
     const label = "test-counter";
 
     // Call count multiple times
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
 
     // Verify count is tracked correctly
     const count = console_obj.countMap.get(label).?;
@@ -38,7 +38,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
     const label = "nonexistent";
 
     // Reset non-existent counter (should warn, not crash)
-    try console_obj.call_countReset(label);
+    console_obj.call_countReset(label);
 
     // Verify counter still doesn't exist
     try std.testing.expect(!console_obj.countMap.contains(label));
@@ -54,15 +54,15 @@ test "countReset - resets existing counter to zero" {
     const label = "my-counter";
 
     // Create counter
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
 
     // Verify count is 3
     try std.testing.expectEqual(@as(u32, 3), console_obj.countMap.get(label).?);
 
     // Reset
-    try console_obj.call_countReset(label);
+    console_obj.call_countReset(label);
 
     // Verify reset to 0
     try std.testing.expectEqual(@as(u32, 0), console_obj.countMap.get(label).?);
@@ -78,8 +78,8 @@ test "count - message buffering works" {
     const label = "buffered";
 
     // Count twice
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
 
     // Verify messages were buffered
     try std.testing.expectEqual(@as(usize, 2), console_obj.messageBuffer.size());

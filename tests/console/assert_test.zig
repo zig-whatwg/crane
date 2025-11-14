@@ -178,8 +178,8 @@ test "assert with custom printer - output captured" {
     const CustomPrinter = struct {
         var capture_buffer: *infra.List(u8) = undefined;
 
-        fn print(comptime fmt: []const u8, args: anytype) void {
-            capture_buffer.writer().print(fmt, args) catch {};
+        fn print(message: []const u8) void {
+            capture_buffer.appendSlice(message) catch {};
         }
     };
 

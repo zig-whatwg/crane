@@ -63,13 +63,13 @@ test "clear - empties group stack" {
     console.call_group(&.{label3});
 
     // Verify groups were created
-    try testing.expectEqual(@as(usize, 3), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 3), console.groupStack.size());
 
     // Clear the console
     console.call_clear();
 
     // Verify group stack is now empty
-    try testing.expectEqual(@as(usize, 0), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 0), console.groupStack.size());
 }
 
 test "clear - empties both groups and messages" {
@@ -87,14 +87,14 @@ test "clear - empties both groups and messages" {
     console.call_log(&.{msg2});
 
     // Verify state before clear
-    try testing.expectEqual(@as(usize, 1), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 1), console.groupStack.size());
     try testing.expectEqual(@as(usize, 2), console.messageBuffer.size());
 
     // Clear the console
     console.call_clear();
 
     // Verify both are empty
-    try testing.expectEqual(@as(usize, 0), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 0), console.groupStack.size());
     try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
 }
 
@@ -140,7 +140,7 @@ test "clear - multiple clears are safe" {
 
     // Verify empty
     try testing.expectEqual(@as(usize, 0), console.messageBuffer.size());
-    try testing.expectEqual(@as(usize, 0), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 0), console.groupStack.size());
 }
 
 test "clear - with deeply nested groups" {
@@ -158,13 +158,13 @@ test "clear - with deeply nested groups" {
     }
 
     // Verify all groups created
-    try testing.expectEqual(@as(usize, 10), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 10), console.groupStack.size());
 
     // Clear should handle all groups
     console.call_clear();
 
     // Verify all cleared
-    try testing.expectEqual(@as(usize, 0), console.groupStack.items.len);
+    try testing.expectEqual(@as(usize, 0), console.groupStack.size());
 }
 
 test "clear - with full message buffer" {

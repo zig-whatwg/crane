@@ -18,7 +18,7 @@ test "group() with format specifier - string substitution" {
         .{ .string = "Alice" },
     };
 
-    try console_obj.call_group(args);
+    console_obj.call_group(args);
 
     // Verify group was created
     try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
@@ -47,7 +47,7 @@ test "group() with multiple format specifiers" {
         .{ .number = 25.0 },
     };
 
-    try console_obj.call_group(args);
+    console_obj.call_group(args);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
@@ -69,7 +69,7 @@ test "groupCollapsed() with format specifier" {
         .{ .number = 42.0 },
     };
 
-    try console_obj.call_groupCollapsed(args);
+    console_obj.call_groupCollapsed(args);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
@@ -88,7 +88,7 @@ test "group() without arguments - no label" {
 
     // Test: Group without label
     const args: [0]webidl.JSValue = .{};
-    try console_obj.call_group(&args);
+    console_obj.call_group(&args);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
@@ -113,8 +113,8 @@ test "groupEnd() frees allocated labels - no memory leak" {
         .{ .number = 123.0 },
     };
 
-    try console_obj.call_group(args1);
-    try console_obj.call_group(args2);
+    console_obj.call_group(args1);
+    console_obj.call_group(args2);
 
     try std.testing.expectEqual(@as(usize, 2), console_obj.groupStack.size());
 
@@ -131,12 +131,12 @@ test "nested groups with format specifiers" {
     defer console_obj.deinit();
 
     // Test nested groups
-    try console_obj.call_group(&[_]webidl.JSValue{
+    console_obj.call_group(&[_]webidl.JSValue{
         .{ .string = "Outer %s" },
         .{ .string = "Group" },
     });
 
-    try console_obj.call_group(&[_]webidl.JSValue{
+    console_obj.call_group(&[_]webidl.JSValue{
         .{ .string = "Inner %d" },
         .{ .number = 1.0 },
     });

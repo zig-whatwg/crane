@@ -17,11 +17,11 @@ test "time - warns when timer already exists" {
     const label = "duplicate-timer";
 
     // Start timer first time (should succeed)
-    try console_obj.call_time(label);
+    console_obj.call_time(label);
     try std.testing.expect(console_obj.timerTable.contains(label));
 
     // Start same timer again (should warn)
-    try console_obj.call_time(label);
+    console_obj.call_time(label);
 
     // Verify warning was added to message buffer
     try std.testing.expect(console_obj.messageBuffer.size() > 0);
@@ -46,7 +46,7 @@ test "timeLog - warns when timer doesn't exist" {
     const label = "missing-timer";
 
     // Try to log time for non-existent timer
-    try console_obj.call_timeLog(label, &.{});
+    console_obj.call_timeLog(label, &.{});
 
     // Verify warning was issued
     try std.testing.expect(console_obj.messageBuffer.size() > 0);
@@ -67,7 +67,7 @@ test "timeEnd - warns when timer doesn't exist" {
     const label = "nonexistent-timer";
 
     // Try to end non-existent timer
-    try console_obj.call_timeEnd(label);
+    console_obj.call_timeEnd(label);
 
     // Verify warning was issued
     try std.testing.expect(console_obj.messageBuffer.size() > 0);
@@ -88,7 +88,7 @@ test "timeLog - formats duration correctly with data" {
     const label = "test-timer";
 
     // Start timer
-    try console_obj.call_time(label);
+    console_obj.call_time(label);
 
     // Sleep briefly (just to have some duration)
     std.time.sleep(1_000_000); // 1ms
@@ -98,7 +98,7 @@ test "timeLog - formats duration correctly with data" {
         .{ .string = "checkpoint" },
         .{ .number = 42.0 },
     };
-    try console_obj.call_timeLog(label, data);
+    console_obj.call_timeLog(label, data);
 
     // Verify message was buffered
     try std.testing.expect(console_obj.messageBuffer.size() > 0);
@@ -124,10 +124,10 @@ test "timeEnd - removes timer after logging" {
     const label = "temp-timer";
 
     // Start and end timer
-    try console_obj.call_time(label);
+    console_obj.call_time(label);
     try std.testing.expect(console_obj.timerTable.contains(label));
 
-    try console_obj.call_timeEnd(label);
+    console_obj.call_timeEnd(label);
 
     // Verify timer was removed
     try std.testing.expect(!console_obj.timerTable.contains(label));

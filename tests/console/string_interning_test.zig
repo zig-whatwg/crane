@@ -9,6 +9,7 @@
 const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
+const webidl = @import("webidl");
 
 const console = console_mod.console;
 
@@ -18,7 +19,7 @@ test "string interning - default label pre-interned" {
     defer console_obj.deinit();
 
     // "default" should already be in the pool
-    try std.testing.expect(console_obj.label_pool.contains("default"));
+    try std.testing.expect(console_obj.labelPool.contains("default"));
 }
 
 test "string interning - intern same label multiple times" {
@@ -54,12 +55,12 @@ test "string interning - count uses interned labels" {
     const label = "counter";
 
     // Call count multiple times - should intern "counter" label
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
-    try console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
+    console_obj.call_count(label);
 
     // Label should be in the pool
-    try std.testing.expect(console_obj.label_pool.contains("counter"));
+    try std.testing.expect(console_obj.labelPool.contains("counter"));
 }
 
 test "string interning - time uses interned labels" {
@@ -69,13 +70,13 @@ test "string interning - time uses interned labels" {
 
     const label = "my-timer";
 
-    try console_obj.call_time(label);
+    console_obj.call_time(label);
 
-    const data: []const console.JSValue = &.{};
-    try console_obj.call_timeLog(label, data);
+    const data: []const webidl.JSValue = &.{};
+    console_obj.call_timeLog(label, data);
 
     // Label should be in the pool (from timeLog conversion)
-    try std.testing.expect(console_obj.label_pool.contains("my-timer"));
+    try std.testing.expect(console_obj.labelPool.contains("my-timer"));
 }
 
 test "string interning - default label is zero-cost" {
@@ -98,17 +99,17 @@ test "string interning - pool grows with unique labels" {
     defer console_obj.deinit();
 
     // Initially has "default"
-    try std.testing.expectEqual(@as(usize, 1), console_obj.label_pool.count());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.labelPool.count());
 
     _ = try console_obj.internLabel("timer1");
-    try std.testing.expectEqual(@as(usize, 2), console_obj.label_pool.count());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.labelPool.count());
 
     _ = try console_obj.internLabel("timer2");
-    try std.testing.expectEqual(@as(usize, 3), console_obj.label_pool.count());
+    try std.testing.expectEqual(@as(usize, 3), console_obj.labelPool.count());
 
     // Re-interning doesn't increase count
     _ = try console_obj.internLabel("timer1");
-    try std.testing.expectEqual(@as(usize, 3), console_obj.label_pool.count());
+    try std.testing.expectEqual(@as(usize, 3), console_obj.labelPool.count());
 }
 
 test "string interning - memory safety (no leaks)" {
@@ -142,12 +143,12 @@ test "string interning - realistic usage pattern" {
     var i: usize = 0;
     while (i < 100) : (i += 1) {
         if (i % 10 == 0) {
-            try console_obj.call_count(custom_label);
+            console_obj.call_count(custom_label);
         } else {
-            try console_obj.call_count(default_label);
+            console_obj.call_count(default_label);
         }
     }
 
     // Only 2 labels should be interned (default + custom)
-    try std.testing.expectEqual(@as(usize, 2), console_obj.label_pool.count());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.labelPool.count());
 }

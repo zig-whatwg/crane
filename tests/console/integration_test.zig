@@ -6,7 +6,8 @@ const std = @import("std");
 const console_mod = @import("console");
 const infra = @import("infra");
 
-const JSValue = console_mod.JSValue;
+const webidl = @import("webidl");
+const JSValue = webidl.JSValue;
 
 test "integration - complete console session" {
     const allocator = std.testing.allocator;
@@ -21,25 +22,25 @@ test "integration - complete console session" {
 
     // Use timing
     const timer_label = "session";
-    try console_obj.call_time(timer_label);
+    console_obj.call_time(timer_label);
 
     // Use counting
     const count_label = "operations";
-    try console_obj.call_count(count_label);
-    try console_obj.call_count(count_label);
-    try console_obj.call_count(count_label);
+    console_obj.call_count(count_label);
+    console_obj.call_count(count_label);
+    console_obj.call_count(count_label);
 
     // Use grouping
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_info(mock_args);
     console_obj.call_warn(mock_args);
     console_obj.call_groupEnd();
 
     // End timing
-    try console_obj.call_timeEnd(timer_label);
+    console_obj.call_timeEnd(timer_label);
 
     // Reset counter
-    try console_obj.call_countReset(count_label);
+    console_obj.call_countReset(count_label);
 
     // Test passes if no crashes or memory leaks
 }
@@ -52,33 +53,33 @@ test "integration - nested groups with all operations" {
     const mock_args: []const JSValue = &.{};
 
     // Outer group
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_log(mock_args); // Indent level 1
 
     // Start timer in group
     const timer1 = "timer1";
-    try console_obj.call_time(timer1);
+    console_obj.call_time(timer1);
 
     // Inner group
-    try console_obj.call_groupCollapsed(&.{});
+    console_obj.call_groupCollapsed(&.{});
     console_obj.call_debug(mock_args); // Indent level 2
 
     // Count in inner group
     const counter1 = "inner";
-    try console_obj.call_count(counter1);
+    console_obj.call_count(counter1);
 
     // Innermost group
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_error(mock_args); // Indent level 3
     console_obj.call_groupEnd();
 
     // Back to level 2
-    try console_obj.call_timeLog(timer1, mock_args);
+    console_obj.call_timeLog(timer1, mock_args);
     console_obj.call_groupEnd();
 
     // Back to level 1
     console_obj.call_warn(mock_args);
-    try console_obj.call_timeEnd(timer1);
+    console_obj.call_timeEnd(timer1);
     console_obj.call_groupEnd();
 
     // Back to level 0
@@ -93,15 +94,13 @@ test "integration - concurrent timers and counters" {
     // Create multiple timers and counters
     var i: usize = 0;
     while (i < 10) : (i += 1) {
-        const label_buf = try std.fmt.allocPrint(allocator, "item{d}", .{i});
-        defer allocator.free(label_buf);
-        const label = try infra.string.utf8ToUtf16(allocator, label_buf);
+        const label = try std.fmt.allocPrint(allocator, "item{d}", .{i});
         defer allocator.free(label);
 
-        try console_obj.call_time(label);
-        try console_obj.call_count(label);
-        try console_obj.call_count(label);
-        try console_obj.call_timeEnd(label);
+        console_obj.call_time(label);
+        console_obj.call_count(label);
+        console_obj.call_count(label);
+        console_obj.call_timeEnd(label);
     }
 
     // Verify all timers ended (removed)
@@ -126,9 +125,9 @@ test "integration - disabled console performance" {
     while (i < 10000) : (i += 1) {
         console_obj.call_log(mock_args);
         console_obj.call_debug(mock_args);
-        try console_obj.call_time(label);
-        try console_obj.call_count(label);
-        try console_obj.call_group(&.{});
+        console_obj.call_time(label);
+        console_obj.call_count(label);
+        console_obj.call_group(&.{});
     }
 
     // Despite 10k operations, state should be unchanged (disabled)
@@ -171,10 +170,10 @@ test "integration - clear resets groups but not timers/counts" {
     const label = "test";
 
     // Create state
-    try console_obj.call_time(label);
-    try console_obj.call_count(label);
-    try console_obj.call_group(&.{});
-    try console_obj.call_group(&.{});
+    console_obj.call_time(label);
+    console_obj.call_count(label);
+    console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
 
     // Verify all have state
     try std.testing.expect(!console_obj.timerTable.isEmpty());
@@ -201,36 +200,36 @@ test "integration - realistic debugging session" {
 
     // Start debugging session
     const session_timer = "debug-session";
-    try console_obj.call_time(session_timer);
+    console_obj.call_time(session_timer);
 
     console_obj.call_log(mock_args); // Starting debug
 
     // Debug function 1
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     const func1_timer = "function1";
-    try console_obj.call_time(func1_timer);
+    console_obj.call_time(func1_timer);
 
     console_obj.call_debug(mock_args);
     const counter1 = "iterations";
-    try console_obj.call_count(counter1);
-    try console_obj.call_count(counter1);
+    console_obj.call_count(counter1);
+    console_obj.call_count(counter1);
 
-    try console_obj.call_timeEnd(func1_timer);
+    console_obj.call_timeEnd(func1_timer);
     console_obj.call_groupEnd();
 
     // Debug function 2
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     const func2_timer = "function2";
-    try console_obj.call_time(func2_timer);
+    console_obj.call_time(func2_timer);
 
     console_obj.call_warn(mock_args); // Something suspicious
-    try console_obj.call_count(counter1);
+    console_obj.call_count(counter1);
 
-    try console_obj.call_timeEnd(func2_timer);
+    console_obj.call_timeEnd(func2_timer);
     console_obj.call_groupEnd();
 
     // End session
-    try console_obj.call_timeEnd(session_timer);
+    console_obj.call_timeEnd(session_timer);
     console_obj.call_info(mock_args); // Session complete
 
     // Verify final state
@@ -250,7 +249,7 @@ test "integration - error handling workflow" {
     console_obj.call_assert(true, mock_args);
 
     // Try-catch simulation
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_debug(mock_args); // Attempting operation
 
     // Error occurs
@@ -286,18 +285,18 @@ test "integration - memory stress test" {
         defer allocator.free(timer_buf);
         const timer = try infra.string.utf8ToUtf16(allocator, timer_buf);
         defer allocator.free(timer);
-        try console_obj.call_time(timer);
-        try console_obj.call_timeEnd(timer);
+        console_obj.call_time(timer);
+        console_obj.call_timeEnd(timer);
 
         // Counting
         const count_buf = try std.fmt.allocPrint(allocator, "count{d}", .{i});
         defer allocator.free(count_buf);
         const counter = try infra.string.utf8ToUtf16(allocator, count_buf);
         defer allocator.free(counter);
-        try console_obj.call_count(counter);
+        console_obj.call_count(counter);
 
         // Grouping
-        try console_obj.call_group(&.{});
+        console_obj.call_group(&.{});
         console_obj.call_info(mock_args);
         console_obj.call_groupEnd();
     }

@@ -14,7 +14,7 @@ test "default printFn uses std.debug.print" {
 
     // Verify default is std.debug.print
     try std.testing.expect(console_obj.printFn != null);
-    try std.testing.expectEqual(std.debug.print, console_obj.printFn.?);
+    try std.testing.expectEqual(console_mod.console.console.defaultPrinter, console_obj.printFn.?);
 }
 
 test "production mode - null printFn disables immediate output" {
@@ -54,8 +54,8 @@ test "custom printFn - capture output to buffer" {
     const CustomPrinter = struct {
         var capture_buffer: *infra.List(u8) = undefined;
 
-        fn print(comptime fmt: []const u8, args: anytype) void {
-            capture_buffer.writer().print(fmt, args) catch {};
+        fn print(message: []const u8) void {
+            capture_buffer.appendSlice(message) catch {};
         }
     };
 
@@ -89,7 +89,7 @@ test "switch printFn at runtime" {
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
     // Switch to development mode (with output)
-    console_obj.printFn = std.debug.print;
+    console_obj.printFn = console_mod.console.console.defaultPrinter;
 
     const args2 = &[_]webidl.JSValue{
         .{ .string = "Loud message" },
@@ -130,8 +130,8 @@ test "printFn with format specifiers in messages" {
     const CustomPrinter = struct {
         var capture_buffer: *infra.List(u8) = undefined;
 
-        fn print(comptime fmt: []const u8, args: anytype) void {
-            capture_buffer.writer().print(fmt, args) catch {};
+        fn print(message: []const u8) void {
+            capture_buffer.appendSlice(message) catch {};
         }
     };
 

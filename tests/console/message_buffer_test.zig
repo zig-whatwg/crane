@@ -11,7 +11,8 @@ const console_mod = @import("console");
 const infra = @import("infra");
 
 const console = console_mod.console;
-const JSValue = console_mod.JSValue;
+const webidl = @import("webidl");
+const JSValue = webidl.JSValue;
 
 test "message buffer - basic message storage" {
     const allocator = std.testing.allocator;
@@ -105,11 +106,11 @@ test "message buffer - grouping indentation in messages" {
     console_obj.call_log(mock_args);
 
     // Start group and log
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_log(mock_args);
 
     // Nested group
-    try console_obj.call_group(&.{});
+    console_obj.call_group(&.{});
     console_obj.call_log(mock_args);
 
     try std.testing.expectEqual(@as(usize, 3), console_obj.messageBuffer.size());
@@ -174,14 +175,14 @@ test "message buffer - timing messages buffered" {
 
     const label = "timer";
 
-    try console_obj.call_time(label); // Should not buffer (no output)
+    console_obj.call_time(label); // Should not buffer (no output)
     try std.testing.expectEqual(@as(usize, 0), console_obj.messageBuffer.size());
 
     const mock_data: []const JSValue = &.{};
-    try console_obj.call_timeLog(label, mock_data); // Should buffer
+    console_obj.call_timeLog(label, mock_data); // Should buffer
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    try console_obj.call_timeEnd(label); // Should buffer
+    console_obj.call_timeEnd(label); // Should buffer
     try std.testing.expectEqual(@as(usize, 2), console_obj.messageBuffer.size());
 }
 
@@ -192,13 +193,13 @@ test "message buffer - counting messages buffered" {
 
     const label = "counter";
 
-    try console_obj.call_count(label); // "counter: 1" - should buffer
+    console_obj.call_count(label); // "counter: 1" - should buffer
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 
-    try console_obj.call_count(label); // "counter: 2" - should buffer
+    console_obj.call_count(label); // "counter: 2" - should buffer
     try std.testing.expectEqual(@as(usize, 2), console_obj.messageBuffer.size());
 
-    try console_obj.call_countReset(label); // Warning - should buffer
+    console_obj.call_countReset(label); // Warning - should buffer
     try std.testing.expectEqual(@as(usize, 3), console_obj.messageBuffer.size());
 }
 

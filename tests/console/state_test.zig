@@ -227,9 +227,7 @@ test "Console - memory safety with many operations" {
     // Perform many state operations
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        const label_buf = try std.fmt.allocPrint(allocator, "label{d}", .{i});
-        defer allocator.free(label_buf);
-        const label = try infra.string.utf8ToUtf16(allocator, label_buf);
+        const label = try std.fmt.allocPrint(allocator, "label{d}", .{i});
         defer allocator.free(label);
 
         try console_obj.countMap.set(label, @intCast(i));
