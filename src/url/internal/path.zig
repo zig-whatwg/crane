@@ -8,11 +8,12 @@
 //! - List of path segments (array of strings)
 
 const std = @import("std");
+const infra = @import("infra");
 
 /// A URL path is either a URL path segment or a list of segments (spec line 834)
 pub const Path = union(enum) {
     opaque_path: []const u8, // Opaque path (single string)
-    segments: std.ArrayList([]const u8), // List of path segments
+    segments: infra.List([]const u8), // List of path segments
 };
 
 /// Free path resources
@@ -21,10 +22,10 @@ pub fn deinitPath(self: *Path, allocator: std.mem.Allocator) void {
         .opaque_path => |o| allocator.free(o),
         .segments => |*s| {
             // Free each segment
-            for (s.items) |segment| {
+            for (s.toSlice()) |segment| {
                 allocator.free(segment);
             }
-            s.deinit(allocator);
+            s.deinit();
         },
     }
 }
@@ -86,16 +87,16 @@ test "path - opaque path" {
 test "path - segment path" {
     const allocator = std.testing.allocator;
 
-    var segments = std.ArrayList([]const u8).empty;
-    try segments.append(allocator, try allocator.dupe(u8, "path"));
-    try segments.append(allocator, try allocator.dupe(u8, "to"));
-    try segments.append(allocator, try allocator.dupe(u8, "file"));
+    var segments = infra.List([]const u8).init(allocator);
+    try segments.append(try allocator.dupe(u8, "path"));
+    try segments.append(try allocator.dupe(u8, "to"));
+    try segments.append(try allocator.dupe(u8, "file"));
 
     var path = Path{ .segments = segments };
     defer deinitPath(&path, allocator);
 
-    try std.testing.expectEqual(@as(usize, 3), path.segments.items.len);
-    try std.testing.expectEqualStrings("path", path.segments.items[0]);
-    try std.testing.expectEqualStrings("to", path.segments.items[1]);
-    try std.testing.expectEqualStrings("file", path.segments.items[2]);
+    try std.testing.expectEqual(@as(usize, 3), path.segments.len);
+    try std.testing.expectEqualStrings("path", path.segments.get(0).?);
+    try std.testing.expectEqualStrings("to", path.segments.get(1).?);
+    try std.testing.expectEqualStrings("file", path.segments.get(2).?);
 }
