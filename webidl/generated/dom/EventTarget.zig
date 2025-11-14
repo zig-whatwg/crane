@@ -15,7 +15,6 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
-
 /// DOM §2.7 - Event listener structure
 /// An event listener can be used to observe a specific event and consists of:
 pub const EventListener = struct {
@@ -84,7 +83,6 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
 }
 
 /// EventTarget WebIDL interface
-
 /// EventTarget WebIDL interface
 pub const EventTarget = struct {
     // ========================================================================
@@ -94,7 +92,7 @@ pub const EventTarget = struct {
     allocator: Allocator,
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
-    /// 
+    ///
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
@@ -114,27 +112,22 @@ pub const EventTarget = struct {
     // ========================================================================
 
     pub fn init(allocator: Allocator) !EventTarget {
-
         return .{
             .allocator = allocator,
             .event_listener_list = null, // Lazy allocation - created on first addEventListener
         };
-    
     }
 
     pub fn deinit(self: *EventTarget) void {
-
         if (self.event_listener_list) |list| {
             list.deinit();
             self.allocator.destroy(list);
         }
-    
     }
 
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *EventTarget) !*infra.List(EventListener) {
-
         if (self.event_listener_list) |list| {
             return list;
         }
@@ -144,18 +137,15 @@ pub const EventTarget = struct {
         list.* = infra.List(EventListener).init(self.allocator);
         self.event_listener_list = list;
         return list;
-    
     }
 
     /// Get event listener list (read-only access)
     /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const EventTarget) []const EventListener {
-
         if (self.event_listener_list) |list| {
             return list.toSlice();
         }
         return &[_]EventListener{};
-    
     }
 
     /// DOM §2.7 - flatten options
@@ -163,7 +153,6 @@ pub const EventTarget = struct {
     /// 1. If options is a boolean, then return options.
     /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
-
         const OptionsType = @TypeOf(options);
 
         // Step 1: If options is a boolean, return it
@@ -178,13 +167,11 @@ pub const EventTarget = struct {
 
         // Default: return false
         return false;
-    
     }
 
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-
         const OptionsType = @TypeOf(options);
 
         // If options is a boolean, only capture is set to that value
@@ -214,13 +201,11 @@ pub const EventTarget = struct {
             .once = false,
             .signal = null,
         };
-    
     }
 
     /// DOM §2.7 - default passive value
     /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
-
         _ = event_target;
         // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
         // AND eventTarget is Window or specific node conditions
@@ -235,7 +220,6 @@ pub const EventTarget = struct {
         }
         // Step 2: Return false
         return false;
-    
     }
 
     /// DOM §2.7 - add an event listener
@@ -293,7 +277,6 @@ pub const EventTarget = struct {
             };
             try signal.addEventListenerRemoval(removal_context);
         }
-    
     }
 
     /// addEventListener(type, callback, options)
@@ -324,7 +307,6 @@ pub const EventTarget = struct {
         };
 
         try self.addAnEventListener(listener);
-    
     }
 
     /// DOM §2.7 - remove an event listener
@@ -340,7 +322,7 @@ pub const EventTarget = struct {
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
         while (i < list.len) {
-            const existing = list.getMut(i).?;
+            const existing = &list.toSliceMut()[i];
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
@@ -353,7 +335,6 @@ pub const EventTarget = struct {
             }
             i += 1;
         }
-    
     }
 
     /// removeEventListener(type, callback, options)
@@ -381,7 +362,6 @@ pub const EventTarget = struct {
         };
 
         self.removeAnEventListener(listener);
-    
     }
 
     /// dispatchEvent(event)
@@ -407,14 +387,9 @@ pub const EventTarget = struct {
             // Handle dispatch errors
             return err;
         };
-    
     }
-
 };
-
 
 // ============================================================================
 // Tests for lazy event listener list allocation
 // ============================================================================
-
-
