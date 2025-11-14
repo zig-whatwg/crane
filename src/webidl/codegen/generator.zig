@@ -396,116 +396,272 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     try writer.writeAll("};\n");
 }
 
+/// Inheritance hierarchy information for downcast generation
+const InheritanceInfo = struct {
+    discriminator_field: []const u8, // Field used for type checking (e.g., "node_type")
+    children: []ChildTypeInfo, // Direct children of this class
+
+    const ChildTypeInfo = struct {
+        class_name: []const u8, // Child class name (e.g., "Element", "CharacterData")
+        discriminator_values: [][]const u8, // Values that map to this type (e.g., "ELEMENT_NODE", "TEXT_NODE")
+    };
+};
+
+/// Detect discriminator field for a class by analyzing its constants and parent
+fn detectDiscriminatorField(class: ir.ClassDef, enhanced: ir.EnhancedClassIR) ?[]const u8 {
+    // Look for common discriminator patterns in own constants
+    for (class.own_constants) |constant| {
+        const name = constant.name;
+
+        // Pattern 1: *_NODE constants (DOM Node hierarchy)
+        if (std.mem.endsWith(u8, name, "_NODE")) {
+            return "node_type";
+        }
+
+        // Pattern 2: *_TYPE constants (generic type discriminator)
+        if (std.mem.endsWith(u8, name, "_TYPE")) {
+            return "type";
+        }
+
+        // Pattern 3: KIND_* constants
+        if (std.mem.startsWith(u8, name, "KIND_")) {
+            return "kind";
+        }
+    }
+
+    // Check if we have node_type field (inherited from Node)
+    for (enhanced.struct_fields) |field| {
+        if (std.mem.eql(u8, field.name, "node_type")) {
+            return "node_type";
+        }
+        if (std.mem.eql(u8, field.name, "type")) {
+            return "type";
+        }
+        if (std.mem.eql(u8, field.name, "kind")) {
+            return "kind";
+        }
+    }
+
+    return null;
+}
+
+/// Build inheritance information for generating downcast helpers
+fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR) !?InheritanceInfo {
+    // Detect discriminator field
+    const discriminator = detectDiscriminatorField(class, enhanced) orelse return null;
+
+    // For now, hardcode Node hierarchy mapping
+    // In a full implementation, this would analyze all classes in the registry
+    if (std.mem.eql(u8, class.name, "Node")) {
+        var children = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
+
+        // CharacterData (TEXT, COMMENT, CDATA_SECTION, PROCESSING_INSTRUCTION)
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("TEXT_NODE");
+            try values.append("COMMENT_NODE");
+            try values.append("CDATA_SECTION_NODE");
+            try values.append("PROCESSING_INSTRUCTION_NODE");
+            try children.append(.{
+                .class_name = "CharacterData",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // Element
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("ELEMENT_NODE");
+            try children.append(.{
+                .class_name = "Element",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // Document
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("DOCUMENT_NODE");
+            try children.append(.{
+                .class_name = "Document",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // DocumentFragment
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("DOCUMENT_FRAGMENT_NODE");
+            try children.append(.{
+                .class_name = "DocumentFragment",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // Text (direct child, not through CharacterData)
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("TEXT_NODE");
+            try children.append(.{
+                .class_name = "Text",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // Attr
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("ATTRIBUTE_NODE");
+            try children.append(.{
+                .class_name = "Attr",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        return InheritanceInfo{
+            .discriminator_field = discriminator,
+            .children = try children.toOwnedSlice(),
+        };
+    }
+
+    // CharacterData hierarchy
+    if (std.mem.eql(u8, class.name, "CharacterData")) {
+        var children = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
+
+        // Text
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("TEXT_NODE");
+            try children.append(.{
+                .class_name = "Text",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // Comment
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("COMMENT_NODE");
+            try children.append(.{
+                .class_name = "Comment",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // ProcessingInstruction
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("PROCESSING_INSTRUCTION_NODE");
+            try children.append(.{
+                .class_name = "ProcessingInstruction",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        // CDATASection
+        {
+            var values = infra.List([]const u8).init(allocator);
+            try values.append("CDATA_SECTION_NODE");
+            try children.append(.{
+                .class_name = "CDATASection",
+                .discriminator_values = try values.toOwnedSlice(),
+            });
+        }
+
+        return InheritanceInfo{
+            .discriminator_field = discriminator,
+            .children = try children.toOwnedSlice(),
+        };
+    }
+
+    // TODO: Detect from actual class hierarchy instead of hardcoding
+    // This would involve:
+    // 1. Analyzing all classes in the registry
+    // 2. Building a complete inheritance tree
+    // 3. Detecting which constants map to which child types
+
+    return null;
+}
+
 /// Generate type conversion helper methods for safe downcasting
-/// Only generates for Node and its descendants (uses node_type discriminator)
 fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR) !void {
-    _ = allocator;
     const class = enhanced.class;
 
-    // Only generate for Node and classes that inherit from Node
-    const inherits_from_node = blk: {
-        if (std.mem.eql(u8, class.name, "Node")) break :blk true;
-
-        // Check if this class or any parent is Node
-        const current_parent = class.parent;
-        while (current_parent) |parent_name| {
-            if (std.mem.eql(u8, parent_name, "Node")) break :blk true;
-            // For simplicity, we'll check direct parent only
-            // A more complete solution would traverse the full hierarchy
-            break;
+    // Build inheritance information
+    const inheritance_info = try buildInheritanceInfo(allocator, class, enhanced) orelse return;
+    defer {
+        for (inheritance_info.children) |child| {
+            allocator.free(child.discriminator_values);
         }
-        break :blk false;
-    };
-
-    if (!inherits_from_node) return;
-
-    // Only Node itself gets the downcast helpers
-    // (Children inherit them through flattened inheritance)
-    if (!std.mem.eql(u8, class.name, "Node")) return;
+        allocator.free(inheritance_info.children);
+    }
 
     try writer.writeAll("\n    // ========================================================================\n");
     try writer.writeAll("    // Type Conversion Helpers (Safe Downcasting)\n");
     try writer.writeAll("    // ========================================================================\n");
     try writer.writeAll("    // With flattened inheritance, we need runtime type checking to safely\n");
-    try writer.writeAll("    // downcast from Node to more specific types.\n\n");
+    try writer.print("    // downcast from {s} to more specific types.\n\n", .{class.name});
 
-    // CharacterData downcast (TEXT, COMMENT, CDATA_SECTION, PROCESSING_INSTRUCTION)
-    try writer.writeAll("    /// Safe downcast to CharacterData (returns null if not a CharacterData node)\n");
-    try writer.writeAll("    pub fn asCharacterData(self: *Node) ?*CharacterData {\n");
-    try writer.writeAll("        return switch (self.node_type) {\n");
-    try writer.writeAll("            TEXT_NODE,\n");
-    try writer.writeAll("            COMMENT_NODE,\n");
-    try writer.writeAll("            CDATA_SECTION_NODE,\n");
-    try writer.writeAll("            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),\n");
-    try writer.writeAll("            else => null,\n");
-    try writer.writeAll("        };\n");
-    try writer.writeAll("    }\n\n");
+    // Generate downcast method for each child type
+    for (inheritance_info.children) |child| {
+        // Check if the child type is imported (to avoid undeclared identifier errors)
+        const is_imported = blk: {
+            for (enhanced.all_imports) |import| {
+                if (import.is_type and std.mem.eql(u8, import.name, child.class_name)) {
+                    break :blk true;
+                }
+            }
+            break :blk false;
+        };
 
-    try writer.writeAll("    /// Safe const downcast to CharacterData\n");
-    try writer.writeAll("    pub fn asCharacterDataConst(self: *const Node) ?*const CharacterData {\n");
-    try writer.writeAll("        return switch (self.node_type) {\n");
-    try writer.writeAll("            TEXT_NODE,\n");
-    try writer.writeAll("            COMMENT_NODE,\n");
-    try writer.writeAll("            CDATA_SECTION_NODE,\n");
-    try writer.writeAll("            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),\n");
-    try writer.writeAll("            else => null,\n");
-    try writer.writeAll("        };\n");
-    try writer.writeAll("    }\n\n");
+        // Skip if not imported (would cause compilation error)
+        // TODO: Auto-add imports for child types in downcast helpers
+        if (!is_imported) continue;
 
-    // Element downcast
-    try writer.writeAll("    /// Safe downcast to Element (returns null if not an Element node)\n");
-    try writer.writeAll("    pub fn asElement(self: *Node) ?*Element {\n");
-    try writer.writeAll("        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        const method_name = try std.fmt.allocPrint(allocator, "as{s}", .{child.class_name});
+        defer allocator.free(method_name);
 
-    try writer.writeAll("    /// Safe const downcast to Element\n");
-    try writer.writeAll("    pub fn asElementConst(self: *const Node) ?*const Element {\n");
-    try writer.writeAll("        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        const method_name_const = try std.fmt.allocPrint(allocator, "as{s}Const", .{child.class_name});
+        defer allocator.free(method_name_const);
 
-    // Document downcast
-    try writer.writeAll("    /// Safe downcast to Document (returns null if not a Document node)\n");
-    try writer.writeAll("    pub fn asDocument(self: *Node) ?*Document {\n");
-    try writer.writeAll("        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        // Mutable version
+        try writer.print("    /// Safe downcast to {s} (returns null if not a {s})\n", .{ child.class_name, child.class_name });
+        try writer.print("    pub fn {s}(self: *{s}) ?*{s} {{\n", .{ method_name, class.name, child.class_name });
 
-    try writer.writeAll("    /// Safe const downcast to Document\n");
-    try writer.writeAll("    pub fn asDocumentConst(self: *const Node) ?*const Document {\n");
-    try writer.writeAll("        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        if (child.discriminator_values.len == 1) {
+            // Single value - use simple if
+            try writer.print("        return if (self.{s} == {s}) @ptrCast(@alignCast(self)) else null;\n", .{ inheritance_info.discriminator_field, child.discriminator_values[0] });
+        } else {
+            // Multiple values - use switch
+            try writer.print("        return switch (self.{s}) {{\n", .{inheritance_info.discriminator_field});
+            for (child.discriminator_values) |value| {
+                try writer.print("            {s},\n", .{value});
+            }
+            try writer.writeAll("             => @ptrCast(@alignCast(self)),\n");
+            try writer.writeAll("            else => null,\n");
+            try writer.writeAll("        };\n");
+        }
+        try writer.writeAll("    }\n\n");
 
-    // DocumentFragment downcast
-    try writer.writeAll("    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment node)\n");
-    try writer.writeAll("    pub fn asDocumentFragment(self: *Node) ?*DocumentFragment {\n");
-    try writer.writeAll("        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        // Const version
+        try writer.print("    /// Safe const downcast to {s}\n", .{child.class_name});
+        try writer.print("    pub fn {s}(self: *const {s}) ?*const {s} {{\n", .{ method_name_const, class.name, child.class_name });
 
-    try writer.writeAll("    /// Safe const downcast to DocumentFragment\n");
-    try writer.writeAll("    pub fn asDocumentFragmentConst(self: *const Node) ?*const DocumentFragment {\n");
-    try writer.writeAll("        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
-
-    // Text downcast
-    try writer.writeAll("    /// Safe downcast to Text (returns null if not a Text node)\n");
-    try writer.writeAll("    pub fn asText(self: *Node) ?*Text {\n");
-    try writer.writeAll("        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
-
-    try writer.writeAll("    /// Safe const downcast to Text\n");
-    try writer.writeAll("    pub fn asTextConst(self: *const Node) ?*const Text {\n");
-    try writer.writeAll("        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
-
-    // Attr downcast
-    try writer.writeAll("    /// Safe downcast to Attr (returns null if not an Attr node)\n");
-    try writer.writeAll("    pub fn asAttr(self: *Node) ?*Attr {\n");
-    try writer.writeAll("        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
-
-    try writer.writeAll("    /// Safe const downcast to Attr\n");
-    try writer.writeAll("    pub fn asAttrConst(self: *const Node) ?*const Attr {\n");
-    try writer.writeAll("        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;\n");
-    try writer.writeAll("    }\n\n");
+        if (child.discriminator_values.len == 1) {
+            // Single value - use simple if
+            try writer.print("        return if (self.{s} == {s}) @ptrCast(@alignCast(self)) else null;\n", .{ inheritance_info.discriminator_field, child.discriminator_values[0] });
+        } else {
+            // Multiple values - use switch
+            try writer.print("        return switch (self.{s}) {{\n", .{inheritance_info.discriminator_field});
+            for (child.discriminator_values) |value| {
+                try writer.print("            {s},\n", .{value});
+            }
+            try writer.writeAll("             => @ptrCast(@alignCast(self)),\n");
+            try writer.writeAll("            else => null,\n");
+            try writer.writeAll("        };\n");
+        }
+        try writer.writeAll("    }\n\n");
+    }
 }
 
 /// Rewrite self parameter type in method signature for mixin inheritance

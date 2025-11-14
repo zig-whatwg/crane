@@ -1748,13 +1748,14 @@ pub const Node = struct {
     // With flattened inheritance, we need runtime type checking to safely
     // downcast from Node to more specific types.
 
-    /// Safe downcast to CharacterData (returns null if not a CharacterData node)
+    /// Safe downcast to CharacterData (returns null if not a CharacterData)
     pub fn asCharacterData(self: *Node) ?*CharacterData {
         return switch (self.node_type) {
             TEXT_NODE,
             COMMENT_NODE,
             CDATA_SECTION_NODE,
-            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),
+            PROCESSING_INSTRUCTION_NODE,
+             => @ptrCast(@alignCast(self)),
             else => null,
         };
     }
@@ -1765,12 +1766,13 @@ pub const Node = struct {
             TEXT_NODE,
             COMMENT_NODE,
             CDATA_SECTION_NODE,
-            PROCESSING_INSTRUCTION_NODE => @ptrCast(@alignCast(self)),
+            PROCESSING_INSTRUCTION_NODE,
+             => @ptrCast(@alignCast(self)),
             else => null,
         };
     }
 
-    /// Safe downcast to Element (returns null if not an Element node)
+    /// Safe downcast to Element (returns null if not a Element)
     pub fn asElement(self: *Node) ?*Element {
         return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
@@ -1780,7 +1782,7 @@ pub const Node = struct {
         return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
 
-    /// Safe downcast to Document (returns null if not a Document node)
+    /// Safe downcast to Document (returns null if not a Document)
     pub fn asDocument(self: *Node) ?*Document {
         return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
@@ -1790,7 +1792,7 @@ pub const Node = struct {
         return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
 
-    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment node)
+    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment)
     pub fn asDocumentFragment(self: *Node) ?*DocumentFragment {
         return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
@@ -1800,7 +1802,7 @@ pub const Node = struct {
         return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
 
-    /// Safe downcast to Text (returns null if not a Text node)
+    /// Safe downcast to Text (returns null if not a Text)
     pub fn asText(self: *Node) ?*Text {
         return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
     }
@@ -1810,7 +1812,7 @@ pub const Node = struct {
         return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
     }
 
-    /// Safe downcast to Attr (returns null if not an Attr node)
+    /// Safe downcast to Attr (returns null if not a Attr)
     pub fn asAttr(self: *Node) ?*Attr {
         return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;
     }
