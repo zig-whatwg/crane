@@ -61,6 +61,7 @@ pub const event_dispatch = @import("event_dispatch.zig");
 pub const selectors = @import("selectors.zig");
 pub const fast_path = @import("fast_path.zig");
 pub const html_mock = @import("html_mock.zig");
+pub const attribute_algorithms = @import("attribute_algorithms.zig");
 
 // Base types for interface inheritance (NodeBase pattern)
 pub const node_base = @import("node_base.zig");

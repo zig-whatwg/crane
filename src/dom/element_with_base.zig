@@ -41,6 +41,11 @@ pub const ElementWithBase = struct {
     /// Updated automatically when class attribute changes
     class_bloom_filter: infra.BloomFilter,
 
+    /// Element's unique identifier (ID)
+    /// Spec: https://dom.spec.whatwg.org/#concept-id
+    /// Set/unset by attribute change steps when id attribute changes
+    unique_id: ?[]const u8,
+
     /// Initialize a new Element
     pub fn init(allocator: Allocator, tag_name: []const u8) ElementWithBase {
         return .{
@@ -57,6 +62,7 @@ pub const ElementWithBase = struct {
             .namespace_uri = null,
             .attributes = infra.List(*AttrWithBase).init(allocator),
             .class_bloom_filter = infra.BloomFilter.init(),
+            .unique_id = null,
         };
     }
 
@@ -73,6 +79,11 @@ pub const ElementWithBase = struct {
             }
         }
         self.attributes.deinit();
+
+        // Clean up unique ID if set
+        if (self.unique_id) |id| {
+            self.base.allocator.free(id);
+        }
     }
 
     /// Upcast Element to NodeBase
