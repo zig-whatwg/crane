@@ -4,6 +4,7 @@
 const std = @import("std");
 
 const url = @import("url");
+const Host = url.Host;
 
 test "public suffix - basic TLDs" {
     const allocator = std.testing.allocator;
@@ -58,7 +59,7 @@ test "registrable domain - basic" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "www.example.com" };
-    const rd = try getRegistrableDomain(allocator, host);
+    const rd = try url.getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -68,7 +69,7 @@ test "registrable domain - subdomain" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "sub.www.example.com" };
-    const rd = try getRegistrableDomain(allocator, host);
+    const rd = try url.getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -78,7 +79,7 @@ test "registrable domain - TLD returns null" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "com" };
-    const rd = try getRegistrableDomain(allocator, host);
+    const rd = try url.getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd == null);
@@ -87,7 +88,7 @@ test "registrable domain - github.io" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "whatwg.github.io" };
-    const rd = try getRegistrableDomain(allocator, host);
+    const rd = try url.getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -97,7 +98,7 @@ test "registrable domain - trailing dot preserved" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "www.example.com." };
-    const rd = try getRegistrableDomain(allocator, host);
+    const rd = try url.getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
