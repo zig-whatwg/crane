@@ -1501,15 +1501,16 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
         runMovingSteps(node, old_parent);
 
         // Run moving steps for all descendants with null
-        var stack: std.ArrayList(*Node) = .{};
+        var stack = infra.List(*Node).init(node.allocator);
         defer stack.deinit();
 
         for (node.child_nodes.items()) |child| {
             stack.append(child) catch continue;
         }
 
-        while (stack.items.len > 0) {
-            const current = stack.pop();
+        while (stack.len > 0) {
+            const current = stack.get(stack.len - 1) orelse break;
+            _ = stack.remove(stack.len - 1) catch break;
             runMovingSteps(current, null);
 
             // Add children to stack
@@ -1556,14 +1557,14 @@ pub fn adopt(
         // For now, just update node itself and tree descendants (shadow DOM TODO)
 
         // Collect all descendants first
-        var descendants = std.ArrayList(*Node).init(node.allocator);
+        var descendants = infra.List(*Node).init(node.allocator);
         defer descendants.deinit();
 
         try descendants.append(node);
 
         var i: usize = 0;
-        while (i < descendants.items.len) : (i += 1) {
-            const current = descendants.items[i];
+        while (i < descendants.len) : (i += 1) {
+            const current = descendants.get(i) orelse continue;
 
             // Add children
             for (current.child_nodes.items()) |child| {
@@ -1572,7 +1573,8 @@ pub fn adopt(
         }
 
         // Step 3.1.1: Set node document for all inclusive descendants
-        for (descendants.items) |desc| {
+        for (0..descendants.len) |idx| {
+            const desc = descendants.get(idx) orelse continue;
             desc.owner_document = document;
 
             // Step 3.1.3: If element, update attribute node documents
