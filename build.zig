@@ -533,6 +533,7 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("comment", comment_mod);
     document_mod.addImport("document_fragment", document_fragment_mod);
     document_mod.addImport("range", range_mod);
+    document_mod.addImport("node_iterator", node_iterator_mod);
     document_mod.addImport("event_target", event_target_mod);
     document_mod.addImport("registered_observer", registered_observer_mod);
     dom_token_list_mod.addImport("element", element_mod);

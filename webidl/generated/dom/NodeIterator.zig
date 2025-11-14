@@ -285,14 +285,14 @@ pub const NodeIterator = struct {
         }
 
         // Step 3: Set reference appropriately
-        if (to_be_removed.previous_sibling == null) {
+        if (dom.tree_helpers.getPreviousSibling(to_be_removed)) |prev_sibling| {
+            // Use the inclusive descendant of previous sibling that appears last in tree order
+            self.reference = dom.tree_helpers.getLastInclusiveDescendant(prev_sibling);
+        } else {
             // If previous sibling is null, use parent
             if (to_be_removed.parent_node) |parent| {
                 self.reference = parent;
             }
-        } else {
-            // Use the inclusive descendant of previous sibling that appears last in tree order
-            self.reference = dom.tree_helpers.getLastInclusiveDescendant(to_be_removed.previous_sibling.?);
         }
     
     }

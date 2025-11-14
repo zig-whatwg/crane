@@ -20,6 +20,7 @@ const Text = @import("text").Text;
 const Comment = @import("comment").Comment;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 const Range = @import("range").Range;
+const NodeIterator = @import("node_iterator").NodeIterator;
 const Event = @import("event").Event;
 const Attr = @import("attr").Attr;
 
@@ -53,6 +54,12 @@ pub const Document = webidl.interface(struct {
     ranges: std.ArrayList(*Range),
     ranges_mutex: std.Thread.Mutex,
 
+    /// Node iterators associated with this document
+    /// Spec: DOM §7.1.2 - NodeIterator pre-removing steps require tracking all iterators
+    /// Per spec: "For each NodeIterator object iterator whose root's node document is node's node document"
+    node_iterators: std.ArrayList(*NodeIterator),
+    node_iterators_mutex: std.Thread.Mutex,
+
     pub fn init(allocator: Allocator) !Document {
         // NOTE: Parent Node fields will be flattened by codegen
         return .{
@@ -65,6 +72,8 @@ pub const Document = webidl.interface(struct {
             .base_uri = "about:blank",
             .ranges = std.ArrayList(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
+            .node_iterators = std.ArrayList(*NodeIterator).init(allocator),
+            .node_iterators_mutex = std.Thread.Mutex{},
         };
     }
 
@@ -83,6 +92,9 @@ pub const Document = webidl.interface(struct {
 
         // Clean up ranges list (ranges themselves are owned by their creators)
         self.ranges.deinit();
+
+        // Clean up node iterators list (iterators themselves are owned by their creators)
+        self.node_iterators.deinit();
 
         // NOTE: Parent Node cleanup is handled by codegen
     }
@@ -123,6 +135,31 @@ pub const Document = webidl.interface(struct {
         while (i < self.ranges.items.len) {
             if (self.ranges.items[i] == range) {
                 _ = self.ranges.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    }
+
+    /// Register a node iterator with this document
+    /// Per DOM spec: Document tracks all NodeIterators whose root's node document is this document
+    /// This enables NodeIterator pre-removing steps during mutation operations
+    pub fn registerNodeIterator(self: *Document, iterator: *NodeIterator) !void {
+        self.node_iterators_mutex.lock();
+        defer self.node_iterators_mutex.unlock();
+
+        try self.node_iterators.append(iterator);
+    }
+
+    /// Unregister a node iterator from this document
+    pub fn unregisterNodeIterator(self: *Document, iterator: *NodeIterator) void {
+        self.node_iterators_mutex.lock();
+        defer self.node_iterators_mutex.unlock();
+
+        var i: usize = 0;
+        while (i < self.node_iterators.items.len) {
+            if (self.node_iterators.items[i] == iterator) {
+                _ = self.node_iterators.orderedRemove(i);
                 return;
             }
             i += 1;

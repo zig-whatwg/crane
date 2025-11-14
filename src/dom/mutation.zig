@@ -1317,10 +1317,17 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
 fn runNodeIteratorPreRemoveSteps(node: *Node) void {
     // Get node's document
     const doc_node = node.owner_document orelse return;
+    const doc: *Document = @ptrCast(@alignCast(doc_node));
 
-    // TODO: Track NodeIterators per document and call preRemoveSteps on each
-    // For now, this is a no-op until we implement document-level iterator tracking
-    _ = doc_node;
+    // For each NodeIterator object iterator whose root's node document is node's node document,
+    // run the NodeIterator pre-removing steps given node and iterator
+    doc.node_iterators_mutex.lock();
+    defer doc.node_iterators_mutex.unlock();
+
+    for (doc.node_iterators.items) |iterator| {
+        // Call preRemoveSteps on the iterator
+        iterator.preRemoveSteps(node);
+    }
 }
 
 /// Helper: Update ranges when inserting before child

@@ -32,17 +32,15 @@ pub fn getParentNode(node: *const Node) ?*Node {
 /// Get the first child of the given node
 /// O(1) - Direct access to first element of child_nodes list
 pub fn getFirstChild(node: *const Node) ?*Node {
-    return if (node.child_nodes.items.len > 0)
-        node.child_nodes.items[0]
-    else
-        null;
+    return node.child_nodes.get(0);
 }
 
 /// Get the last child of the given node
 /// O(1) - Direct access to last element of child_nodes list
 pub fn getLastChild(node: *const Node) ?*Node {
-    return if (node.child_nodes.items.len > 0)
-        node.child_nodes.items[node.child_nodes.items.len - 1]
+    const len = node.child_nodes.size();
+    return if (len > 0)
+        node.child_nodes.get(len - 1)
     else
         null;
 }
@@ -56,10 +54,13 @@ pub fn getLastChild(node: *const Node) ?*Node {
 pub fn getNextSibling(node: *const Node) ?*Node {
     const parent = node.parent_node orelse return null;
 
-    for (parent.child_nodes.items, 0..) |child, i| {
+    const len = parent.child_nodes.size();
+    var i: usize = 0;
+    while (i < len) : (i += 1) {
+        const child = parent.child_nodes.get(i) orelse continue;
         if (child == node) {
-            return if (i + 1 < parent.child_nodes.items.len)
-                parent.child_nodes.items[i + 1]
+            return if (i + 1 < len)
+                parent.child_nodes.get(i + 1)
             else
                 null;
         }
@@ -73,10 +74,13 @@ pub fn getNextSibling(node: *const Node) ?*Node {
 pub fn getPreviousSibling(node: *const Node) ?*Node {
     const parent = node.parent_node orelse return null;
 
-    for (parent.child_nodes.items, 0..) |child, i| {
+    const len = parent.child_nodes.size();
+    var i: usize = 0;
+    while (i < len) : (i += 1) {
+        const child = parent.child_nodes.get(i) orelse continue;
         if (child == node) {
             return if (i > 0)
-                parent.child_nodes.items[i - 1]
+                parent.child_nodes.get(i - 1)
             else
                 null;
         }
@@ -88,7 +92,7 @@ pub fn getPreviousSibling(node: *const Node) ?*Node {
 /// Get the number of children of the given node
 /// O(1) - Direct access to list length
 pub fn getChildCount(node: *const Node) usize {
-    return node.child_nodes.items.len;
+    return node.child_nodes.size();
 }
 
 /// Get child at specific index
@@ -523,7 +527,7 @@ pub fn getPreviousNodeInTree(node: *const Node, root: *const Node) ?*Node {
 /// Get the last inclusive descendant of a node (the node that appears last in tree order)
 /// This is the node itself if it has no children, otherwise the last descendant of its last child
 pub fn getLastInclusiveDescendant(node: *const Node) *Node {
-    var current = node;
+    var current: *Node = @constCast(node);
     while (getLastChild(current)) |last_child| {
         current = last_child;
     }

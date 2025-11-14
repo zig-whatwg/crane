@@ -25,6 +25,7 @@ const EventTarget = @import("event_target").EventTarget;
 pub const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptions;
 const HTMLCollection = @import("html_collection").HTMLCollection;
 const Node = @import("node").Node;
+const NodeIterator = @import("node_iterator").NodeIterator;
 const NodeList = @import("node_list").NodeList;
 const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
 const ParentNode = @import("parent_node").ParentNode;
@@ -118,6 +119,11 @@ pub const Document = struct {
     /// Spec: https://dom.spec.whatwg.org/#concept-live-range
     ranges: std.ArrayList(*Range),
     ranges_mutex: std.Thread.Mutex,
+    /// Node iterators associated with this document
+    /// Spec: DOM §7.1.2 - NodeIterator pre-removing steps require tracking all iterators
+    /// Per spec: "For each NodeIterator object iterator whose root's node document is node's node document"
+    node_iterators: std.ArrayList(*NodeIterator),
+    node_iterators_mutex: std.Thread.Mutex,
 
     // ========================================================================
     // Constants
@@ -160,6 +166,8 @@ pub const Document = struct {
             .base_uri = "about:blank",
             .ranges = std.ArrayList(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
+            .node_iterators = std.ArrayList(*NodeIterator).init(allocator),
+            .node_iterators_mutex = std.Thread.Mutex{},
         };
     
     }
@@ -180,6 +188,9 @@ pub const Document = struct {
 
         // Clean up ranges list (ranges themselves are owned by their creators)
         self.ranges.deinit();
+
+        // Clean up node iterators list (iterators themselves are owned by their creators)
+        self.node_iterators.deinit();
 
         // NOTE: Parent Node cleanup is handled by codegen
     
@@ -226,6 +237,35 @@ pub const Document = struct {
         while (i < self.ranges.items.len) {
             if (self.ranges.items[i] == range) {
                 _ = self.ranges.orderedRemove(i);
+                return;
+            }
+            i += 1;
+        }
+    
+    }
+
+    /// Register a node iterator with this document
+    /// Per DOM spec: Document tracks all NodeIterators whose root's node document is this document
+    /// This enables NodeIterator pre-removing steps during mutation operations
+    pub fn registerNodeIterator(self: *Document, iterator: *NodeIterator) !void {
+
+        self.node_iterators_mutex.lock();
+        defer self.node_iterators_mutex.unlock();
+
+        try self.node_iterators.append(iterator);
+    
+    }
+
+    /// Unregister a node iterator from this document
+    pub fn unregisterNodeIterator(self: *Document, iterator: *NodeIterator) void {
+
+        self.node_iterators_mutex.lock();
+        defer self.node_iterators_mutex.unlock();
+
+        var i: usize = 0;
+        while (i < self.node_iterators.items.len) {
+            if (self.node_iterators.items[i] == iterator) {
+                _ = self.node_iterators.orderedRemove(i);
                 return;
             }
             i += 1;
