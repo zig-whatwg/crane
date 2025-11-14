@@ -5,6 +5,7 @@
 //! Controls a readable byte stream for zero-copy operations.
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 
 const common = @import("common");
@@ -68,10 +69,10 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     pulling: bool,
 
     /// [[pendingPullIntos]]: List of pending pull-into descriptors
-    pendingPullIntos: std.ArrayList(*PullIntoDescriptor),
+    pendingPullIntos: infra.List(*PullIntoDescriptor),
 
     /// [[queue]]: List of byte stream queue entries
-    byteQueue: std.ArrayList(ByteStreamQueueEntry),
+    byteQueue: infra.List(ByteStreamQueueEntry),
 
     /// [[queueTotalSize]]: Total size of all byte chunks in queue
     queueTotalSize: f64,
@@ -1058,7 +1059,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
         // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
         if (stream.hasBYOBReader()) {
             // Step 4.1: Let filledPullIntos be a new empty list
-            var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+            var filled_pull_intos = infra.List(*PullIntoDescriptor){};
             defer filled_pull_intos.deinit(self.allocator);
 
             // Step 4.2: While filledPullIntos's size < ! ReadableStreamGetNumReadIntoRequests(stream)
@@ -1258,9 +1259,9 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue"
     fn processPullIntoDescriptorsUsingQueue(
         self: *ReadableByteStreamController,
-    ) !std.ArrayList(*PullIntoDescriptor) {
+    ) !infra.List(*PullIntoDescriptor) {
         // Step 2: Create result list
-        var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+        var filled_pull_intos = infra.List(*PullIntoDescriptor){};
         errdefer filled_pull_intos.deinit(self.allocator);
 
         // Step 3: Process pending pull-intos
