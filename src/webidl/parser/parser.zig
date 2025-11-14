@@ -1,4 +1,5 @@
 const std = @import("std");
+const infra = @import("infra");
 const Allocator = std.mem.Allocator;
 const Lexer = @import("lexer.zig").Lexer;
 const Token = @import("lexer.zig").Token;
@@ -63,17 +64,17 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Parser) !AST {
-        var definitions = std.ArrayList(Definition){};
+        var definitions = infra.List(Definition).init(self.allocator);
         errdefer {
             for (definitions.items) |*def| {
-                def.deinit(self.allocator);
+                def.deinit();
             }
-            definitions.deinit(self.allocator);
+            definitions.deinit();
         }
 
         while (!self.check(.eof)) {
             if (self.parseDefinition()) |def| {
-                try definitions.append(self.allocator, def);
+                try definitions.append( def);
             } else |err| {
                 if (self.panic_mode) {
                     self.synchronize();
@@ -88,7 +89,7 @@ pub const Parser = struct {
         }
 
         return AST{
-            .definitions = try definitions.toOwnedSlice(self.allocator),
+            .definitions = try definitions.toOwnedSlice(),
             .allocator = self.allocator,
         };
     }
@@ -112,17 +113,17 @@ pub const Parser = struct {
             _ = try self.consume(.lbrace, "Expected '{'");
 
             // Parse definitions inside module until we hit the closing brace
-            var definitions = std.ArrayList(Definition){};
+            var definitions = infra.List(Definition).init(self.allocator);
             errdefer {
                 for (definitions.items) |*def| {
-                    def.deinit(self.allocator);
+                    def.deinit();
                 }
-                definitions.deinit(self.allocator);
+                definitions.deinit();
             }
 
             while (!self.check(.rbrace) and !self.check(.eof)) {
                 const def = try self.parseDefinition();
-                try definitions.append(self.allocator, def);
+                try definitions.append( def);
             }
 
             _ = try self.consume(.rbrace, "Expected '}'");
@@ -134,12 +135,12 @@ pub const Parser = struct {
                 const first_def = definitions.items[0];
                 // Clean up the rest
                 for (definitions.items[1..]) |*def| {
-                    def.deinit(self.allocator);
+                    def.deinit();
                 }
-                definitions.deinit(self.allocator);
+                definitions.deinit();
                 return first_def;
             } else {
-                definitions.deinit(self.allocator);
+                definitions.deinit();
                 return try self.parseDefinition();
             }
         }
@@ -271,17 +272,17 @@ pub const Parser = struct {
 
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var members = std.ArrayList(InterfaceMember){};
+        var members = infra.List(InterfaceMember).init(self.allocator);
         errdefer {
             for (members.items) |*member| {
-                member.deinit(self.allocator);
+                member.deinit();
             }
-            members.deinit(self.allocator);
+            members.deinit();
         }
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append(self.allocator, member);
+            try members.append( member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -291,7 +292,7 @@ pub const Parser = struct {
             .interface = Interface{
                 .name = name.lexeme,
                 .inherits = inherits,
-                .members = try members.toOwnedSlice(self.allocator),
+                .members = try members.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
                 .partial = partial,
             },
@@ -303,17 +304,17 @@ pub const Parser = struct {
 
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var members = std.ArrayList(InterfaceMember){};
+        var members = infra.List(InterfaceMember).init(self.allocator);
         errdefer {
             for (members.items) |*member| {
-                member.deinit(self.allocator);
+                member.deinit();
             }
-            members.deinit(self.allocator);
+            members.deinit();
         }
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append(self.allocator, member);
+            try members.append( member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -322,7 +323,7 @@ pub const Parser = struct {
         return Definition{
             .interface_mixin = InterfaceMixin{
                 .name = name.lexeme,
-                .members = try members.toOwnedSlice(self.allocator),
+                .members = try members.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
                 .partial = partial,
             },
@@ -342,7 +343,7 @@ pub const Parser = struct {
                 // Cleanup unused extended attributes
                 for (member_ext_attrs) |*attr| {
                     var mut_attr = attr.*;
-                    mut_attr.deinit(self.allocator);
+                    mut_attr.deinit();
                 }
                 self.allocator.free(member_ext_attrs);
                 return InterfaceMember{ .stringifier = Stringifier{ .keyword = {} } };
@@ -376,7 +377,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .iterable = try self.parseIterable() };
@@ -387,7 +388,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .async_iterable = try self.parseAsyncIterable() };
@@ -398,7 +399,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .async_iterable = try self.parseAsyncIterable() };
@@ -409,7 +410,7 @@ pub const Parser = struct {
                 // Cleanup unused extended attributes
                 for (member_ext_attrs) |*attr| {
                     var mut_attr = attr.*;
-                    mut_attr.deinit(self.allocator);
+                    mut_attr.deinit();
                 }
                 self.allocator.free(member_ext_attrs);
                 return InterfaceMember{ .maplike = try self.parseMaplike(true) };
@@ -417,7 +418,7 @@ pub const Parser = struct {
                 // Cleanup unused extended attributes
                 for (member_ext_attrs) |*attr| {
                     var mut_attr = attr.*;
-                    mut_attr.deinit(self.allocator);
+                    mut_attr.deinit();
                 }
                 self.allocator.free(member_ext_attrs);
                 return InterfaceMember{ .setlike = try self.parseSetlike(true) };
@@ -430,7 +431,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .maplike = try self.parseMaplike(false) };
@@ -440,7 +441,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .setlike = try self.parseSetlike(false) };
@@ -459,7 +460,7 @@ pub const Parser = struct {
             // Cleanup unused extended attributes
             for (member_ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(member_ext_attrs);
             return InterfaceMember{ .const_member = try self.parseConst() };
@@ -489,13 +490,13 @@ pub const Parser = struct {
             self.lexer.column = checkpoint_lexer_column;
             return InterfaceMember{ .operation = try self.parseOperation(member_ext_attrs, false, null) };
         };
-        errdefer type_result.deinit(self.allocator);
+        errdefer type_result.deinit();
 
         // Check if followed by identifier and semicolon (attribute pattern)
         if (self.check(.identifier) or self.isKeywordAllowedAsIdentifier()) {
             const name_token = self.consumeIdentifierOrKeyword("Expected name") catch {
                 // Cleanup type before backtracking
-                type_result.deinit(self.allocator);
+                type_result.deinit();
                 // Restore and parse as operation
                 self.current = checkpoint_current;
                 self.previous = checkpoint_previous;
@@ -521,7 +522,7 @@ pub const Parser = struct {
         }
 
         // Not an attribute pattern, cleanup type and restore to parse as operation
-        type_result.deinit(self.allocator);
+        type_result.deinit();
         self.current = checkpoint_current;
         self.previous = checkpoint_previous;
         self.lexer.current = checkpoint_lexer_pos;
@@ -731,17 +732,17 @@ pub const Parser = struct {
 
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var members = std.ArrayList(DictionaryMember){};
+        var members = infra.List(DictionaryMember).init(self.allocator);
         errdefer {
             for (members.items) |*member| {
-                member.deinit(self.allocator);
+                member.deinit();
             }
-            members.deinit(self.allocator);
+            members.deinit();
         }
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseDictionaryMember();
-            try members.append(self.allocator, member);
+            try members.append( member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -752,7 +753,7 @@ pub const Parser = struct {
             .dictionary = Dictionary{
                 .name = name.lexeme,
                 .inherits = inherits,
-                .members = try members.toOwnedSlice(self.allocator),
+                .members = try members.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
                 .partial = partial,
             },
@@ -786,13 +787,13 @@ pub const Parser = struct {
         const name = try self.consume(.identifier, "Expected enum name");
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var values = std.ArrayList([]const u8){};
-        errdefer values.deinit(self.allocator);
+        var values = infra.List([]const u8).init(self.allocator);
+        errdefer values.deinit();
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const value = try self.consume(.string_literal, "Expected string literal");
             const unquoted = value.lexeme[1 .. value.lexeme.len - 1];
-            try values.append(self.allocator, unquoted);
+            try values.append( unquoted);
 
             if (!self.match(.comma)) {
                 break;
@@ -805,7 +806,7 @@ pub const Parser = struct {
         return Definition{
             .enum_def = Enum{
                 .name = name.lexeme,
-                .values = try values.toOwnedSlice(self.allocator),
+                .values = try values.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
             },
         };
@@ -848,17 +849,17 @@ pub const Parser = struct {
         const name = try self.consume(.identifier, "Expected callback interface name");
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var members = std.ArrayList(InterfaceMember){};
+        var members = infra.List(InterfaceMember).init(self.allocator);
         errdefer {
             for (members.items) |*member| {
-                member.deinit(self.allocator);
+                member.deinit();
             }
-            members.deinit(self.allocator);
+            members.deinit();
         }
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseInterfaceMember();
-            try members.append(self.allocator, member);
+            try members.append( member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -867,7 +868,7 @@ pub const Parser = struct {
         return Definition{
             .callback_interface = CallbackInterface{
                 .name = name.lexeme,
-                .members = try members.toOwnedSlice(self.allocator),
+                .members = try members.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
             },
         };
@@ -877,17 +878,17 @@ pub const Parser = struct {
         const name = try self.consume(.identifier, "Expected namespace name");
         _ = try self.consume(.lbrace, "Expected '{'");
 
-        var members = std.ArrayList(NamespaceMember){};
+        var members = infra.List(NamespaceMember).init(self.allocator);
         errdefer {
             for (members.items) |*member| {
-                member.deinit(self.allocator);
+                member.deinit();
             }
-            members.deinit(self.allocator);
+            members.deinit();
         }
 
         while (!self.check(.rbrace) and !self.check(.eof)) {
             const member = try self.parseNamespaceMember();
-            try members.append(self.allocator, member);
+            try members.append( member);
         }
 
         _ = try self.consume(.rbrace, "Expected '}'");
@@ -896,7 +897,7 @@ pub const Parser = struct {
         return Definition{
             .namespace = Namespace{
                 .name = name.lexeme,
-                .members = try members.toOwnedSlice(self.allocator),
+                .members = try members.toOwnedSlice(),
                 .extended_attributes = ext_attrs,
                 .partial = partial,
             },
@@ -926,17 +927,17 @@ pub const Parser = struct {
             return &[_]ExtendedAttribute{};
         }
 
-        var attrs = std.ArrayList(ExtendedAttribute){};
+        var attrs = infra.List(ExtendedAttribute).init(self.allocator);
         errdefer {
             for (attrs.items) |*attr| {
-                attr.deinit(self.allocator);
+                attr.deinit();
             }
-            attrs.deinit(self.allocator);
+            attrs.deinit();
         }
 
         while (!self.check(.rbracket) and !self.check(.eof)) {
             const attr = try self.parseExtendedAttribute();
-            try attrs.append(self.allocator, attr);
+            try attrs.append( attr);
 
             if (!self.match(.comma)) {
                 break;
@@ -945,7 +946,7 @@ pub const Parser = struct {
 
         _ = try self.consume(.rbracket, "Expected ']'");
 
-        return try attrs.toOwnedSlice(self.allocator);
+        return try attrs.toOwnedSlice();
     }
 
     fn parseExtendedAttribute(self: *Parser) !ExtendedAttribute {
@@ -982,8 +983,8 @@ pub const Parser = struct {
 
                 if (is_identifier_list) {
                     // Parse as identifier list
-                    var idents = std.ArrayList([]const u8){};
-                    errdefer idents.deinit(self.allocator);
+                    var idents = infra.List([]const u8).init(self.allocator);
+                    errdefer idents.deinit();
 
                     while (!self.check(.rparen) and !self.check(.eof)) {
                         // Accept identifiers, integers, floats, or strings
@@ -998,7 +999,7 @@ pub const Parser = struct {
                         else
                             return self.fail("Expected identifier or literal value");
 
-                        try idents.append(self.allocator, value.lexeme);
+                        try idents.append( value.lexeme);
 
                         if (!self.match(.comma)) {
                             break;
@@ -1009,7 +1010,7 @@ pub const Parser = struct {
 
                     return ExtendedAttribute{
                         .name = name.lexeme,
-                        .value = ExtendedAttrValue{ .identifier_list = try idents.toOwnedSlice(self.allocator) },
+                        .value = ExtendedAttrValue{ .identifier_list = try idents.toOwnedSlice() },
                     };
                 } else {
                     // Parse as argument list
@@ -1086,12 +1087,12 @@ pub const Parser = struct {
                     .value = ExtendedAttrValue{ .identifier = value.lexeme },
                 };
             } else if (self.match(.lparen)) {
-                var idents = std.ArrayList([]const u8){};
-                errdefer idents.deinit(self.allocator);
+                var idents = infra.List([]const u8).init(self.allocator);
+                errdefer idents.deinit();
 
                 while (!self.check(.rparen) and !self.check(.eof)) {
                     const ident = try self.consume(.identifier, "Expected identifier");
-                    try idents.append(self.allocator, ident.lexeme);
+                    try idents.append( ident.lexeme);
 
                     if (!self.match(.comma)) {
                         break;
@@ -1102,7 +1103,7 @@ pub const Parser = struct {
 
                 return ExtendedAttribute{
                     .name = name.lexeme,
-                    .value = ExtendedAttrValue{ .identifier_list = try idents.toOwnedSlice(self.allocator) },
+                    .value = ExtendedAttrValue{ .identifier_list = try idents.toOwnedSlice() },
                 };
             }
         } else if (self.match(.lparen)) {
@@ -1127,17 +1128,17 @@ pub const Parser = struct {
 
     fn parseUnionType(self: *Parser) ParseError!Type {
         if (self.match(.lparen)) {
-            var types = std.ArrayList(Type){};
+            var types = infra.List(Type).init(self.allocator);
             errdefer {
                 for (types.items) |*t| {
-                    t.deinit(self.allocator);
+                    t.deinit();
                 }
-                types.deinit(self.allocator);
+                types.deinit();
             }
 
             while (!self.check(.rparen) and !self.check(.eof)) {
                 const type_val = try self.parseSingleType();
-                try types.append(self.allocator, type_val);
+                try types.append( type_val);
 
                 if (self.match(.or_kw)) {
                     continue;
@@ -1151,7 +1152,7 @@ pub const Parser = struct {
 
             if (types.items.len == 1) {
                 const single = types.items[0];
-                types.deinit(self.allocator);
+                types.deinit();
                 if (nullable) {
                     const nullable_type = try self.allocator.create(Type);
                     nullable_type.* = single;
@@ -1160,7 +1161,7 @@ pub const Parser = struct {
                 return single;
             }
 
-            const union_type = Type{ .union_type = try types.toOwnedSlice(self.allocator) };
+            const union_type = Type{ .union_type = try types.toOwnedSlice() };
             if (nullable) {
                 const nullable_type = try self.allocator.create(Type);
                 nullable_type.* = union_type;
@@ -1180,7 +1181,7 @@ pub const Parser = struct {
         defer {
             for (ext_attrs) |*attr| {
                 var mut_attr = attr.*;
-                mut_attr.deinit(self.allocator);
+                mut_attr.deinit();
             }
             self.allocator.free(ext_attrs);
         }
@@ -1245,7 +1246,7 @@ pub const Parser = struct {
         if (self.match(.sequence)) {
             _ = try self.consume(.lt, "Expected '<'");
             var inner = try self.parseType();
-            errdefer inner.deinit(self.allocator);
+            errdefer inner.deinit();
             _ = try self.consume(.gt, "Expected '>'");
 
             const seq_type = try self.allocator.create(Type);
@@ -1256,7 +1257,7 @@ pub const Parser = struct {
         if (self.match(.frozen_array)) {
             _ = try self.consume(.lt, "Expected '<'");
             var inner = try self.parseType();
-            errdefer inner.deinit(self.allocator);
+            errdefer inner.deinit();
             _ = try self.consume(.gt, "Expected '>'");
 
             const frozen_type = try self.allocator.create(Type);
@@ -1267,7 +1268,7 @@ pub const Parser = struct {
         if (self.match(.observable_array)) {
             _ = try self.consume(.lt, "Expected '<'");
             var inner = try self.parseType();
-            errdefer inner.deinit(self.allocator);
+            errdefer inner.deinit();
             _ = try self.consume(.gt, "Expected '>'");
 
             const obs_type = try self.allocator.create(Type);
@@ -1278,10 +1279,10 @@ pub const Parser = struct {
         if (self.match(.record)) {
             _ = try self.consume(.lt, "Expected '<'");
             var key_type = try self.parseType();
-            errdefer key_type.deinit(self.allocator);
+            errdefer key_type.deinit();
             _ = try self.consume(.comma, "Expected ','");
             var value_type = try self.parseType();
-            errdefer value_type.deinit(self.allocator);
+            errdefer value_type.deinit();
             _ = try self.consume(.gt, "Expected '>'");
 
             const key_ptr = try self.allocator.create(Type);
@@ -1300,7 +1301,7 @@ pub const Parser = struct {
         if (self.match(.promise)) {
             _ = try self.consume(.lt, "Expected '<'");
             var inner = try self.parseType();
-            errdefer inner.deinit(self.allocator);
+            errdefer inner.deinit();
             _ = try self.consume(.gt, "Expected '>'");
 
             const promise_type = try self.allocator.create(Type);
@@ -1337,24 +1338,24 @@ pub const Parser = struct {
     }
 
     fn parseArgumentList(self: *Parser) ![]Argument {
-        var args = std.ArrayList(Argument){};
+        var args = infra.List(Argument).init(self.allocator);
         errdefer {
             for (args.items) |*arg| {
-                arg.deinit(self.allocator);
+                arg.deinit();
             }
-            args.deinit(self.allocator);
+            args.deinit();
         }
 
         while (!self.check(.rparen) and !self.check(.eof)) {
             const arg = try self.parseArgument();
-            try args.append(self.allocator, arg);
+            try args.append( arg);
 
             if (!self.match(.comma)) {
                 break;
             }
         }
 
-        return try args.toOwnedSlice(self.allocator);
+        return try args.toOwnedSlice();
     }
 
     fn parseArgument(self: *Parser) ParseError!Argument {
