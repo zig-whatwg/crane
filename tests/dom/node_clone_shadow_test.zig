@@ -9,6 +9,8 @@ const webidl = @import("webidl");
 const Element = dom.Element;
 const Node = dom.Node;
 const ShadowRoot = dom.ShadowRoot;
+const ShadowRootMode = dom.ShadowRootMode;
+const SlotAssignmentMode = dom.SlotAssignmentMode;
 
 test "Node.cloneNode - element with clonable shadow root is cloned" {
     const allocator = std.testing.allocator;

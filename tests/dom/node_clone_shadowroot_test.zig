@@ -3,13 +3,14 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const DocumentFragment = @import("document_fragment").DocumentFragment;
-
+const DocumentFragment = dom.DocumentFragment;
 
 // Type aliases
 const Element = dom.Element;
 const Node = dom.Node;
 const ShadowRoot = dom.ShadowRoot;
+const ShadowRootMode = dom.ShadowRootMode;
+const SlotAssignmentMode = dom.SlotAssignmentMode;
 
 test "Node.cloneNode - ShadowRoot throws NotSupportedError" {
     const allocator = std.testing.allocator;

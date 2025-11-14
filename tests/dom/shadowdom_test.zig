@@ -410,7 +410,7 @@ test "HTMLSlotElement - initialization with default values" {
     try std.testing.expectEqualStrings("", slot.getName());
 
     // Assigned nodes list is initially empty
-    try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.size());
     try std.testing.expect(!slot.hasAssignedNodes());
 
     // Manually assigned nodes list is initially empty
@@ -451,16 +451,16 @@ test "HTMLSlotElement - assigned nodes tracking" {
     var dummy3: u32 = 3;
 
     try slot.assigned_nodes.append(@ptrCast(&dummy1));
-    try std.testing.expectEqual(@as(usize, 1), slot.assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 1), slot.assigned_nodes.size());
     try std.testing.expect(slot.hasAssignedNodes());
 
     try slot.assigned_nodes.append(@ptrCast(&dummy2));
     try slot.assigned_nodes.append(@ptrCast(&dummy3));
-    try std.testing.expectEqual(@as(usize, 3), slot.assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 3), slot.assigned_nodes.size());
 
     // Clear assigned nodes
     slot.assigned_nodes.clearRetainingCapacity();
-    try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.size());
     try std.testing.expect(!slot.hasAssignedNodes());
 }
 
@@ -509,9 +509,9 @@ test "HTMLSlotElement - multiple slots with different names" {
     try footer_slot.assigned_nodes.append(@ptrCast(&dummy2));
     try default_slot.assigned_nodes.append(@ptrCast(&dummy3));
 
-    try std.testing.expectEqual(@as(usize, 1), header_slot.assigned_nodes.items.len);
-    try std.testing.expectEqual(@as(usize, 1), footer_slot.assigned_nodes.items.len);
-    try std.testing.expectEqual(@as(usize, 1), default_slot.assigned_nodes.items.len);
+    try std.testing.expectEqual(@as(usize, 1), header_slot.assigned_nodes.size());
+    try std.testing.expectEqual(@as(usize, 1), footer_slot.assigned_nodes.size());
+    try std.testing.expectEqual(@as(usize, 1), default_slot.assigned_nodes.size());
 }
 
 // ============================================================================

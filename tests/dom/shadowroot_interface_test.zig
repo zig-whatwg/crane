@@ -8,6 +8,8 @@ const webidl = @import("webidl");
 // Type aliases
 const Element = dom.Element;
 const ShadowRoot = dom.ShadowRoot;
+const ShadowRootMode = dom.ShadowRootMode;
+const SlotAssignmentMode = dom.SlotAssignmentMode;
 
 test "dom.ShadowRoot - creation with basic properties" {
     const allocator = std.testing.allocator;

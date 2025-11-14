@@ -6,6 +6,8 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
+const NonElementParentNode = @import("non_element_parent_node").NonElementParentNode;
+
 test "NonElementParentNode mixin compiles" {
     // Just verify the mixin structure compiles
     const T = @TypeOf(NonElementParentNode);

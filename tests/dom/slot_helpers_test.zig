@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const Slottable = @import("slottable").Slottable;
 const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases

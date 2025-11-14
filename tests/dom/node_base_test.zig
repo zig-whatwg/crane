@@ -13,6 +13,7 @@ const webidl = @import("webidl");
 const Element = dom.Element;
 const Node = dom.Node;
 const Text = dom.Text;
+const CharacterData = dom.CharacterData;
 
 const testing = std.testing;
 const NodeBase = dom.NodeBase;

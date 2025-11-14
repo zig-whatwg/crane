@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const dom_types = @import("dom_types");
 const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases

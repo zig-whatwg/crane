@@ -10,11 +10,14 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const Slottable = @import("slottable").Slottable;
 const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Element = dom.Element;
 const ShadowRoot = dom.ShadowRoot;
+const ShadowRootMode = dom.ShadowRootMode;
+const SlotAssignmentMode = dom.SlotAssignmentMode;
 const shadow_dom_algorithms = dom.shadow_dom_algorithms;
 
 // ============================================================================
