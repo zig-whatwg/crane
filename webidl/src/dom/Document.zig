@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const dom = @import("dom");
 const Node = @import("node").Node;
 const ParentNode = @import("parent_node").ParentNode;
@@ -51,13 +52,13 @@ pub const Document = webidl.interface(struct {
     origin: ?*anyopaque,
     /// Live ranges associated with this document
     /// Spec: https://dom.spec.whatwg.org/#concept-live-range
-    ranges: std.ArrayList(*Range),
+    ranges: infra.List(*Range),
     ranges_mutex: std.Thread.Mutex,
 
     /// Node iterators associated with this document
     /// Spec: DOM §7.1.2 - NodeIterator pre-removing steps require tracking all iterators
     /// Per spec: "For each NodeIterator object iterator whose root's node document is node's node document"
-    node_iterators: std.ArrayList(*NodeIterator),
+    node_iterators: infra.List(*NodeIterator),
     node_iterators_mutex: std.Thread.Mutex,
 
     pub fn init(allocator: Allocator) !Document {
@@ -70,9 +71,9 @@ pub const Document = webidl.interface(struct {
             .doc_type = .xml,
             .origin = null,
             .base_uri = "about:blank",
-            .ranges = std.ArrayList(*Range).init(allocator),
+            .ranges = infra.List(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
-            .node_iterators = std.ArrayList(*NodeIterator).init(allocator),
+            .node_iterators = infra.List(*NodeIterator).init(allocator),
             .node_iterators_mutex = std.Thread.Mutex{},
         };
     }
@@ -132,10 +133,12 @@ pub const Document = webidl.interface(struct {
         defer self.ranges_mutex.unlock();
 
         var i: usize = 0;
-        while (i < self.ranges.items.len) {
-            if (self.ranges.items[i] == range) {
-                _ = self.ranges.orderedRemove(i);
-                return;
+        while (i < self.ranges.len) {
+            if (self.ranges.get(i)) |r| {
+                if (r == range) {
+                    _ = self.ranges.remove(i) catch unreachable;
+                    return;
+                }
             }
             i += 1;
         }
@@ -157,10 +160,12 @@ pub const Document = webidl.interface(struct {
         defer self.node_iterators_mutex.unlock();
 
         var i: usize = 0;
-        while (i < self.node_iterators.items.len) {
-            if (self.node_iterators.items[i] == iterator) {
-                _ = self.node_iterators.orderedRemove(i);
-                return;
+        while (i < self.node_iterators.len) {
+            if (self.node_iterators.get(i)) |iter| {
+                if (iter == iterator) {
+                    _ = self.node_iterators.remove(i) catch unreachable;
+                    return;
+                }
             }
             i += 1;
         }

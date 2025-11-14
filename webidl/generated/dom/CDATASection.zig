@@ -194,8 +194,12 @@ pub const CDATASection = struct {
         // Step 6: If parent is not null
         const parent = self_node.parent_node;
         if (parent) |p| {
+            // Get node's index in parent (needed for range updates)
+            const dom = @import("dom");
+            const node_index = dom.tree_helpers.getChildIndex(p, self_node) orelse 0;
+
             // Step 6.1: Insert new node into parent before node's next sibling
-            const mutation = @import("dom").mutation;
+            const mutation = dom.mutation;
             const next_sibling = self_node.get_nextSibling();
             try mutation.insert(new_node_as_node, p, next_sibling, false);
 
@@ -203,7 +207,7 @@ pub const CDATASection = struct {
             if (self_node.owner_document) |doc| {
                 // owner_document is already *Document, no conversion needed
                 const range_tracking = @import("range_tracking");
-                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset);
+                range_tracking.updateRangesAfterSplit(doc, self_node, new_node_as_node, offset, p, @intCast(node_index));
             }
         }
 
