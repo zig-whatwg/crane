@@ -19,6 +19,7 @@
 //! - A set of **namespace declarations** (mapping prefixes to namespace URIs)
 
 const std = @import("std");
+const Node = @import("node").Node;
 const Value = @import("value.zig").Value;
 const infra = @import("infra");
 

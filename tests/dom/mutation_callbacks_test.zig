@@ -2,6 +2,7 @@
 //! Spec: Extension points for specifications to hook into DOM mutations
 
 const std = @import("std");
+const mutation = @import("../../src/dom/mutation.zig");
 const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
