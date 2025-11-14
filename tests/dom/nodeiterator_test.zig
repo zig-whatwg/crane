@@ -7,6 +7,8 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Node = dom.Node;
+const Element = dom.Element;
+const Text = dom.Text;
 const NodeIterator = dom.NodeIterator;
 const NodeFilter = dom.NodeFilter;
 
@@ -14,37 +16,37 @@ test "NodeIterator - basic forward iteration" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2, child3]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "div");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "span");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var child3 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child3 = try Element.init(allocator, "p");
     defer child3.deinit();
-    try root.appendChild(&child3);
+    _ = try root.call_appendChild(@ptrCast(&child3));
 
     // Create iterator showing all nodes
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer iterator.deinit();
 
     // Iterator starts before root, so first nextNode() returns root
     const node1 = try iterator.nextNode();
-    try std.testing.expect(node1 == &root);
+    try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
     const node2 = try iterator.nextNode();
-    try std.testing.expect(node2 == &child1);
+    try std.testing.expect(node2 == @as(*Node, @ptrCast(&child1)));
 
     const node3 = try iterator.nextNode();
-    try std.testing.expect(node3 == &child2);
+    try std.testing.expect(node3 == @as(*Node, @ptrCast(&child2)));
 
     const node4 = try iterator.nextNode();
-    try std.testing.expect(node4 == &child3);
+    try std.testing.expect(node4 == @as(*Node, @ptrCast(&child3)));
 
     // No more nodes
     const node5 = try iterator.nextNode();
@@ -55,19 +57,19 @@ test "NodeIterator - basic backward iteration" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
     // Create iterator
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer iterator.deinit();
 
     // First call to previousNode() returns null (already before root)
@@ -79,62 +81,62 @@ test "NodeIterator - forward then backward" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer iterator.deinit();
 
     // Go forward to child1
     _ = try iterator.nextNode(); // root
     const forward = try iterator.nextNode(); // child1
-    try std.testing.expect(forward == &child1);
+    try std.testing.expect(forward == @as(*Node, @ptrCast(&child1)));
 
     // Go backward
     const backward = try iterator.previousNode(); // back to root
-    try std.testing.expect(backward == &root);
+    try std.testing.expect(backward == @as(*Node, @ptrCast(&root)));
 }
 
 test "NodeIterator - whatToShow SHOW_ELEMENT" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [element, text, element]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var element1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element1 = try Element.init(allocator, "element");
     defer element1.deinit();
-    try root.appendChild(&element1);
+    _ = try root.call_appendChild(@ptrCast(&element1));
 
-    var text = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text = try Text.init(allocator);
     defer text.deinit();
-    try root.appendChild(&text);
+    _ = try root.call_appendChild(@ptrCast(&text));
 
-    var element2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element2 = try Element.init(allocator, "element");
     defer element2.deinit();
-    try root.appendChild(&element2);
+    _ = try root.call_appendChild(@ptrCast(&element2));
 
     // Iterator only shows elements
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ELEMENT, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, null, null);
     defer iterator.deinit();
 
     // Should get root, element1, element2 (skipping text)
     const node1 = try iterator.nextNode();
-    try std.testing.expect(node1 == &root);
+    try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
     const node2 = try iterator.nextNode();
-    try std.testing.expect(node2 == &element1);
+    try std.testing.expect(node2 == @as(*Node, @ptrCast(&element1)));
 
     const node3 = try iterator.nextNode();
-    try std.testing.expect(node3 == &element2);
+    try std.testing.expect(node3 == @as(*Node, @ptrCast(&element2)));
 
     const node4 = try iterator.nextNode();
     try std.testing.expect(node4 == null);
@@ -144,28 +146,28 @@ test "NodeIterator - whatToShow SHOW_TEXT" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [element, text, element]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var element1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element1 = try Element.init(allocator, "element");
     defer element1.deinit();
-    try root.appendChild(&element1);
+    _ = try root.call_appendChild(@ptrCast(&element1));
 
-    var text = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text = try Text.init(allocator);
     defer text.deinit();
-    try root.appendChild(&text);
+    _ = try root.call_appendChild(@ptrCast(&text));
 
-    var element2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element2 = try Element.init(allocator, "element");
     defer element2.deinit();
-    try root.appendChild(&element2);
+    _ = try root.call_appendChild(@ptrCast(&element2));
 
     // Iterator only shows text nodes
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_TEXT, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_TEXT, null, null);
     defer iterator.deinit();
 
     // Should get only text node
     const node1 = try iterator.nextNode();
-    try std.testing.expect(node1 == &text);
+    try std.testing.expect(node1 == @as(*Node, @ptrCast(&text)));
 
     const node2 = try iterator.nextNode();
     try std.testing.expect(node2 == null);
@@ -181,22 +183,22 @@ test "NodeIterator - filter callback accepts all" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child = try Text.init(allocator);
     defer child.deinit();
-    try root.appendChild(&child);
+    _ = try root.call_appendChild(@ptrCast(&child));
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, acceptAll, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, acceptAll, null);
     defer iterator.deinit();
 
     // Should iterate all nodes
     const node1 = try iterator.nextNode();
-    try std.testing.expect(node1 == &root);
+    try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
     const node2 = try iterator.nextNode();
-    try std.testing.expect(node2 == &child);
+    try std.testing.expect(node2 == @as(*Node, @ptrCast(&child)));
 }
 
 test "NodeIterator - filter callback skips nodes" {
@@ -212,30 +214,30 @@ test "NodeIterator - filter callback skips nodes" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var text1 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text1 = try Text.init(allocator);
     defer text1.deinit();
-    try root.appendChild(&text1);
+    _ = try root.call_appendChild(@ptrCast(&text1));
 
-    var element = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element = try Element.init(allocator, "element");
     defer element.deinit();
-    try root.appendChild(&element);
+    _ = try root.call_appendChild(@ptrCast(&element));
 
-    var text2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text2 = try Text.init(allocator);
     defer text2.deinit();
-    try root.appendChild(&text2);
+    _ = try root.call_appendChild(@ptrCast(&text2));
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, skipText, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, skipText, null);
     defer iterator.deinit();
 
     // Should skip text nodes
     const node1 = try iterator.nextNode();
-    try std.testing.expect(node1 == &root);
+    try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
     const node2 = try iterator.nextNode();
-    try std.testing.expect(node2 == &element);
+    try std.testing.expect(node2 == @as(*Node, @ptrCast(&element)));
 
     const node3 = try iterator.nextNode();
     try std.testing.expect(node3 == null);
@@ -244,10 +246,10 @@ test "NodeIterator - filter callback skips nodes" {
 test "NodeIterator - detach does nothing" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer iterator.deinit();
 
     // detach() is a no-op
@@ -255,13 +257,13 @@ test "NodeIterator - detach does nothing" {
 
     // Iterator still works after detach
     const node = try iterator.nextNode();
-    try std.testing.expect(node == &root);
+    try std.testing.expect(node == @as(*Node, @ptrCast(&root)));
 }
 
 test "NodeIterator - attributes" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
     const filter = struct {
@@ -271,7 +273,7 @@ test "NodeIterator - attributes" {
         }
     }.callback;
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ELEMENT, filter, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, filter, null);
     defer iterator.deinit();
 
     // Check attributes
@@ -286,36 +288,36 @@ test "NodeIterator - nested tree traversal" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1 -> [grandchild], child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var grandchild = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var grandchild = try Text.init(allocator);
     defer grandchild.deinit();
-    try child1.appendChild(&grandchild);
+    _ = try child1.call_appendChild(@ptrCast(&grandchild));
 
-    var child2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child2 = try Element.init(allocator, "element");
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var iterator = try NodeIterator.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer iterator.deinit();
 
     // Traverse in tree order: root, child1, grandchild, child2
     const n1 = try iterator.nextNode();
-    try std.testing.expect(n1 == &root);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&root)));
 
     const n2 = try iterator.nextNode();
-    try std.testing.expect(n2 == &child1);
+    try std.testing.expect(n2 == @as(*Node, @ptrCast(&child1)));
 
     const n3 = try iterator.nextNode();
-    try std.testing.expect(n3 == &grandchild);
+    try std.testing.expect(n3 == @as(*Node, @ptrCast(&grandchild)));
 
     const n4 = try iterator.nextNode();
-    try std.testing.expect(n4 == &child2);
+    try std.testing.expect(n4 == @as(*Node, @ptrCast(&child2)));
 
     const n5 = try iterator.nextNode();
     try std.testing.expect(n5 == null);

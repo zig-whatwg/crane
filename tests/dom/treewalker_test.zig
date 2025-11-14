@@ -7,6 +7,8 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const Node = dom.Node;
+const Element = dom.Element;
+const Text = dom.Text;
 const TreeWalker = dom.TreeWalker;
 const NodeFilter = dom.NodeFilter;
 
@@ -14,25 +16,25 @@ test "TreeWalker - parentNode moves to filtered parent" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> child -> grandchild
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child = try Element.init(allocator, "element");
     defer child.deinit();
-    try root.appendChild(&child);
+    _ = try root.call_appendChild(@ptrCast(&child));
 
-    var grandchild = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var grandchild = try Text.init(allocator);
     defer grandchild.deinit();
-    try child.appendChild(&grandchild);
+    _ = try child.call_appendChild(@ptrCast(&grandchild));
 
     // Start at grandchild
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&grandchild);
 
     // Move to parent
     const parent = try walker.parentNode();
-    try std.testing.expect(parent == &child);
+    try std.testing.expect(parent == @as(*Node, @ptrCast(&child)));
     try std.testing.expect(walker.get_currentNode() == &child);
 }
 
@@ -40,127 +42,127 @@ test "TreeWalker - firstChild moves to first filtered child" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     const first = try walker.firstChild();
-    try std.testing.expect(first == &child1);
+    try std.testing.expect(first == @as(*Node, @ptrCast(&child1)));
 }
 
 test "TreeWalker - lastChild moves to last filtered child" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     const last = try walker.lastChild();
-    try std.testing.expect(last == &child2);
+    try std.testing.expect(last == @as(*Node, @ptrCast(&child2)));
 }
 
 test "TreeWalker - nextSibling moves to next filtered sibling" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2, child3]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var child3 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child3 = try Element.init(allocator, "element");
     defer child3.deinit();
-    try root.appendChild(&child3);
+    _ = try root.call_appendChild(@ptrCast(&child3));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child1);
 
     const next = try walker.nextSibling();
-    try std.testing.expect(next == &child2);
+    try std.testing.expect(next == @as(*Node, @ptrCast(&child2)));
 }
 
 test "TreeWalker - previousSibling moves to previous filtered sibling" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child2);
 
     const prev = try walker.previousSibling();
-    try std.testing.expect(prev == &child1);
+    try std.testing.expect(prev == @as(*Node, @ptrCast(&child1)));
 }
 
 test "TreeWalker - nextNode traverses in tree order" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1 -> [grandchild], child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var grandchild = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var grandchild = try Text.init(allocator);
     defer grandchild.deinit();
-    try child1.appendChild(&grandchild);
+    _ = try child1.call_appendChild(@ptrCast(&grandchild));
 
-    var child2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child2 = try Element.init(allocator, "element");
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Traverse: root -> child1 -> grandchild -> child2
     const n1 = try walker.nextNode();
-    try std.testing.expect(n1 == &child1);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&child1)));
 
     const n2 = try walker.nextNode();
-    try std.testing.expect(n2 == &grandchild);
+    try std.testing.expect(n2 == @as(*Node, @ptrCast(&grandchild)));
 
     const n3 = try walker.nextNode();
-    try std.testing.expect(n3 == &child2);
+    try std.testing.expect(n3 == @as(*Node, @ptrCast(&child2)));
 
     const n4 = try walker.nextNode();
     try std.testing.expect(n4 == null);
@@ -170,26 +172,26 @@ test "TreeWalker - previousNode traverses in reverse order" {
     const allocator = std.testing.allocator;
 
     // Create tree: root -> [child1, child2]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var child2 = try Text.init(allocator);
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child2);
 
     const n1 = try walker.previousNode();
-    try std.testing.expect(n1 == &child1);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&child1)));
 
     const n2 = try walker.previousNode();
-    try std.testing.expect(n2 == &root);
+    try std.testing.expect(n2 == @as(*Node, @ptrCast(&root)));
 
     const n3 = try walker.previousNode();
     try std.testing.expect(n3 == null);
@@ -199,30 +201,30 @@ test "TreeWalker - whatToShow filters by node type" {
     const allocator = std.testing.allocator;
 
     // Create tree: root(element) -> [element, text, element]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var element1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element1 = try Element.init(allocator, "element");
     defer element1.deinit();
-    try root.appendChild(&element1);
+    _ = try root.call_appendChild(@ptrCast(&element1));
 
-    var text = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text = try Text.init(allocator);
     defer text.deinit();
-    try root.appendChild(&text);
+    _ = try root.call_appendChild(@ptrCast(&text));
 
-    var element2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element2 = try Element.init(allocator, "element");
     defer element2.deinit();
-    try root.appendChild(&element2);
+    _ = try root.call_appendChild(@ptrCast(&element2));
 
     // Only show elements
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, null, null);
     defer walker.deinit();
 
     const n1 = try walker.nextNode();
-    try std.testing.expect(n1 == &element1);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&element1)));
 
     const n2 = try walker.nextNode();
-    try std.testing.expect(n2 == &element2);
+    try std.testing.expect(n2 == @as(*Node, @ptrCast(&element2)));
 
     const n3 = try walker.nextNode();
     try std.testing.expect(n3 == null);
@@ -241,23 +243,23 @@ test "TreeWalker - filter callback with FILTER_SKIP descends" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var text1 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text1 = try Text.init(allocator);
     defer text1.deinit();
-    try root.appendChild(&text1);
+    _ = try root.call_appendChild(@ptrCast(&text1));
 
-    var element = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element = try Element.init(allocator, "element");
     defer element.deinit();
-    try root.appendChild(&element);
+    _ = try root.call_appendChild(@ptrCast(&element));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, skipText, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, skipText, null);
     defer walker.deinit();
 
     // Should skip text but include elements
     const n1 = try walker.nextNode();
-    try std.testing.expect(n1 == &element);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&element)));
 
     const n2 = try walker.nextNode();
     try std.testing.expect(n2 == null);
@@ -276,45 +278,45 @@ test "TreeWalker - filter callback with FILTER_REJECT skips subtree" {
         }
     }.callback;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var text = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var text = try Text.init(allocator);
     defer text.deinit();
-    try root.appendChild(&text);
+    _ = try root.call_appendChild(@ptrCast(&text));
 
     // Add child to text (would be visited if SKIP, not if REJECT)
-    var textChild = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var textChild = try Element.init(allocator, "element");
     defer textChild.deinit();
-    try text.appendChild(&textChild);
+    _ = try text.call_appendChild(@ptrCast(&textChild));
 
-    var element = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var element = try Element.init(allocator, "element");
     defer element.deinit();
-    try root.appendChild(&element);
+    _ = try root.call_appendChild(@ptrCast(&element));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, rejectText, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, rejectText, null);
     defer walker.deinit();
 
     // Should reject text and skip its children
     const n1 = try walker.nextNode();
-    try std.testing.expect(n1 == &element);
+    try std.testing.expect(n1 == @as(*Node, @ptrCast(&element)));
 }
 
 test "TreeWalker - currentNode setter changes position" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var child1 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child1 = try Element.init(allocator, "element");
     defer child1.deinit();
-    try root.appendChild(&child1);
+    _ = try root.call_appendChild(@ptrCast(&child1));
 
-    var child2 = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var child2 = try Element.init(allocator, "element");
     defer child2.deinit();
-    try root.appendChild(&child2);
+    _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Initially at root
@@ -326,13 +328,13 @@ test "TreeWalker - currentNode setter changes position" {
 
     // Previous from child2 should get child1
     const prev = try walker.previousNode();
-    try std.testing.expect(prev == &child1);
+    try std.testing.expect(prev == @as(*Node, @ptrCast(&child1)));
 }
 
 test "TreeWalker - attributes return correct values" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
     const filter = struct {
@@ -342,7 +344,7 @@ test "TreeWalker - attributes return correct values" {
         }
     }.callback;
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, filter, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, filter, null);
     defer walker.deinit();
 
     try std.testing.expect(walker.get_root() == &root);
@@ -354,10 +356,10 @@ test "TreeWalker - attributes return correct values" {
 test "TreeWalker - parentNode at root returns null" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // At root, parentNode returns null
@@ -368,10 +370,10 @@ test "TreeWalker - parentNode at root returns null" {
 test "TreeWalker - nextSibling at root returns null" {
     const allocator = std.testing.allocator;
 
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // At root, nextSibling returns null (root has no siblings in traversal)
@@ -383,30 +385,30 @@ test "TreeWalker - complex nested traversal" {
     const allocator = std.testing.allocator;
 
     // Create complex tree: root -> [a -> [a1, a2], b -> [b1]]
-    var root = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var a = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var a = try Element.init(allocator, "element");
     defer a.deinit();
-    try root.appendChild(&a);
+    _ = try root.call_appendChild(@ptrCast(&a));
 
-    var a1 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var a1 = try Text.init(allocator);
     defer a1.deinit();
-    try a.appendChild(&a1);
+    _ = try a.call_appendChild(@ptrCast(&a1));
 
-    var a2 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var a2 = try Text.init(allocator);
     defer a2.deinit();
-    try a.appendChild(&a2);
+    _ = try a.call_appendChild(@ptrCast(&a2));
 
-    var b = try Node.init(allocator, Node.ELEMENT_NODE, "element");
+    var b = try Element.init(allocator, "element");
     defer b.deinit();
-    try root.appendChild(&b);
+    _ = try root.call_appendChild(@ptrCast(&b));
 
-    var b1 = try Node.init(allocator, Node.TEXT_NODE, "#text");
+    var b1 = try Text.init(allocator);
     defer b1.deinit();
-    try b.appendChild(&b1);
+    _ = try b.call_appendChild(@ptrCast(&b1));
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
+    var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Full traversal: root -> a -> a1 -> a2 -> b -> b1
