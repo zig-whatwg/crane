@@ -1184,14 +1184,21 @@ pub const Document = struct {
             // 3. Return root
             var root = tree.root(self_parent);
 
-            // Check if root is a ShadowRoot by checking type_tag
-            while (root.base.type_tag == .ShadowRoot) {
-                // Cast to ShadowRoot to access host
+            // Check if root is a ShadowRoot (DocumentFragment with non-null host)
+            // With flattened inheritance, ShadowRoot fields are directly on the struct
+            while (root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+                // Cast to DocumentFragment to check host field
+                const doc_frag: *DocumentFragment = @ptrCast(@alignCast(root));
+                if (doc_frag.host == null) break; // Regular DocumentFragment, not a ShadowRoot
+
+                // This is a ShadowRoot - cast to access ShadowRoot-specific methods
                 const shadow_root: *ShadowRoot = @ptrCast(@alignCast(root));
 
-                // Get the host element (which is a Node)
-                const host_element = shadow_root.host_element;
-                const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
+                // Get the host element using get_host() method
+                const host_element = shadow_root.get_host();
+
+                // Cast host Element to Node (flattened inheritance - Element IS a Node)
+                const host_node: *Node = @ptrCast(@alignCast(host_element));
 
                 // Get host's root (might be another shadow root)
                 root = tree.root(host_node);
@@ -1436,7 +1443,7 @@ pub const Document = struct {
         if (self_parent.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
             // Check if this is specifically a ShadowRoot
             // ShadowRoot inherits from DocumentFragment and has a non-null host
-                        const frag: *const DocumentFragment = @ptrCast(@alignCast(self_parent));
+            const frag: *const DocumentFragment = @ptrCast(@alignCast(self_parent));
             if (frag.host != null) {
                 // This is a ShadowRoot (host is non-null)
                 return error.NotSupportedError;
@@ -2067,7 +2074,9 @@ pub const Document = struct {
                 // If document element is null, return null
                 const doc: *const Document = @ptrCast(@alignCast(self_parent));
                 const doc_elem = doc.documentElement() orelse return null;
-                return doc_elem.base.locateNamespacePrefix(namespace);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const doc_elem_node: *const Node = @ptrCast(@alignCast(doc_elem));
+                return doc_elem_node.locateNamespacePrefix(namespace);
             },
             DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
                 return null;
@@ -2075,7 +2084,9 @@ pub const Document = struct {
             else => {
                 // For other node types, use parent element if exists
                 const parent = self_parent.parent_element orelse return null;
-                return parent.base.locateNamespacePrefix(namespace);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const parent_node: *const Node = @ptrCast(@alignCast(parent));
+                return parent_node.locateNamespacePrefix(namespace);
             },
         }
     
@@ -2137,7 +2148,9 @@ pub const Document = struct {
 
         // Step 3: If parent element exists, recurse
         if (self_parent.parent_element) |parent| {
-            return parent.base.locateNamespacePrefix(namespace);
+            // Cast Element to Node (flattened inheritance - Element IS a Node)
+            const parent_node: *const Node = @ptrCast(@alignCast(parent));
+            return parent_node.locateNamespacePrefix(namespace);
         }
 
         // Step 4: Return null
@@ -2206,7 +2219,9 @@ pub const Document = struct {
                 const parent = self_parent.parent_element orelse return null;
 
                 // Step 6: Return result of locating namespace on parent
-                return parent.base.locateNamespace(prefix);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const parent_node: *const Node = @ptrCast(@alignCast(parent));
+                return parent_node.locateNamespace(prefix);
             },
             DOCUMENT_NODE => {
                 // Step 1: If document element is null, return null
@@ -2214,7 +2229,9 @@ pub const Document = struct {
                 const doc_elem = doc.documentElement() orelse return null;
 
                 // Step 2: Return result of locating namespace on document element
-                return doc_elem.base.locateNamespace(prefix);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const doc_elem_node: *const Node = @ptrCast(@alignCast(doc_elem));
+                return doc_elem_node.locateNamespace(prefix);
             },
             DOCUMENT_TYPE_NODE, DOCUMENT_FRAGMENT_NODE => {
                 return null;
@@ -2226,14 +2243,18 @@ pub const Document = struct {
                 const element = attr.owner_element orelse return null;
 
                 // Step 2: Return result of locating namespace on element
-                return element.base.locateNamespace(prefix);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const element_node: *const Node = @ptrCast(@alignCast(element));
+                return element_node.locateNamespace(prefix);
             },
             else => {
                 // Step 1: If parent element is null, return null
                 const parent = self_parent.parent_element orelse return null;
 
                 // Step 2: Return result of locating namespace on parent
-                return parent.base.locateNamespace(prefix);
+                // Cast Element to Node (flattened inheritance - Element IS a Node)
+                const parent_node: *const Node = @ptrCast(@alignCast(parent));
+                return parent_node.locateNamespace(prefix);
             },
         }
     
