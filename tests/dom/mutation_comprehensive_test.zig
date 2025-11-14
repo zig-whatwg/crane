@@ -13,7 +13,6 @@ const testing = std.testing;
 const mutation = dom.mutation;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
 
-
 // Type aliases
 const Document = dom.Document;
 const DocumentType = dom.DocumentType;
@@ -30,7 +29,7 @@ test "mutation - ensurePreInsertValidity: valid Element into Element" {
     defer child.deinit();
 
     // Should not throw
-    try mutation.ensurePreInsertValidity(&child, &parent, null);
+    try mutation.ensurePreInsertValidity(@ptrCast(&child), @ptrCast(&parent), null);
 }
 
 test "mutation - ensurePreInsertValidity: reject Text into Document" {

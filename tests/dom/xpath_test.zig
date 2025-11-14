@@ -35,7 +35,7 @@ test "xpath - evaluate number" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     
     var result = try dom.xpath.evaluator.evaluate(arena.allocator(), expr, &ctx);
@@ -53,7 +53,7 @@ test "xpath - evaluate arithmetic" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     
     var result = try dom.xpath.evaluator.evaluate(arena.allocator(), expr, &ctx);
@@ -70,7 +70,7 @@ test "xpath - evaluate boolean" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     
     var result = try dom.xpath.evaluator.evaluate(arena.allocator(), expr, &ctx);
@@ -87,7 +87,7 @@ test "xpath - function call position()" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     ctx.context_position = 5;
     
@@ -105,7 +105,7 @@ test "xpath - function call concat()" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     
     var result = try dom.xpath.evaluator.evaluate(arena.allocator(), expr, &ctx);
@@ -122,7 +122,7 @@ test "xpath - complex expression" {
     const expr = try parser.parse();
     
     var node: dom.Node = undefined;
-    var ctx = try dom.xpath.context.Context.init(arena.allocator(), &node);
+    var ctx = try dom.xpath.context.Context.init(arena.allocator(), @ptrCast(&node));
     defer ctx.deinit();
     
     var result = try dom.xpath.evaluator.evaluate(arena.allocator(), expr, &ctx);
