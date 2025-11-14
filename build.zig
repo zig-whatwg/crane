@@ -837,6 +837,7 @@ pub fn build(b: *std.Build) void {
 
     url_ipv4_parser_mod.addImport("infra", infra_mod);
     url_ipv4_parser_mod.addImport("validation", url_validation_mod);
+    url_ipv6_parser_mod.addImport("infra", infra_mod);
     url_ipv6_parser_mod.addImport("validation", url_validation_mod);
     url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
     url_blob_url_mod.addImport("origin", url_origin_mod_internal);
