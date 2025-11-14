@@ -32,7 +32,7 @@ test "NodeIterator - basic forward iteration" {
     _ = try root.call_appendChild(@ptrCast(&child3));
 
     // Create iterator showing all nodes
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer iterator.deinit();
 
     // Iterator starts before root, so first nextNode() returns root
@@ -69,7 +69,7 @@ test "NodeIterator - basic backward iteration" {
     _ = try root.call_appendChild(@ptrCast(&child2));
 
     // Create iterator
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer iterator.deinit();
 
     // First call to previousNode() returns null (already before root)
@@ -92,7 +92,7 @@ test "NodeIterator - forward then backward" {
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer iterator.deinit();
 
     // Go forward to child1
@@ -125,7 +125,7 @@ test "NodeIterator - whatToShow SHOW_ELEMENT" {
     _ = try root.call_appendChild(@ptrCast(&element2));
 
     // Iterator only shows elements
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, null);
     defer iterator.deinit();
 
     // Should get root, element1, element2 (skipping text)
@@ -162,7 +162,7 @@ test "NodeIterator - whatToShow SHOW_TEXT" {
     _ = try root.call_appendChild(@ptrCast(&element2));
 
     // Iterator only shows text nodes
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_TEXT, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_TEXT, null);
     defer iterator.deinit();
 
     // Should get only text node
@@ -190,7 +190,7 @@ test "NodeIterator - filter callback accepts all" {
     defer child.deinit();
     _ = try root.call_appendChild(@ptrCast(&child));
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, acceptAll, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, acceptAll);
     defer iterator.deinit();
 
     // Should iterate all nodes
@@ -229,7 +229,7 @@ test "NodeIterator - filter callback skips nodes" {
     defer text2.deinit();
     _ = try root.call_appendChild(@ptrCast(&text2));
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, skipText, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, skipText);
     defer iterator.deinit();
 
     // Should skip text nodes
@@ -249,7 +249,7 @@ test "NodeIterator - detach does nothing" {
     var root = try Element.init(allocator, "element");
     defer root.deinit();
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer iterator.deinit();
 
     // detach() is a no-op
@@ -273,7 +273,7 @@ test "NodeIterator - attributes" {
         }
     }.callback;
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, filter, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, filter);
     defer iterator.deinit();
 
     // Check attributes
@@ -303,7 +303,7 @@ test "NodeIterator - nested tree traversal" {
     defer child2.deinit();
     _ = try root.call_appendChild(@ptrCast(&child2));
 
-    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null, null);
+    var iterator = try NodeIterator.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer iterator.deinit();
 
     // Traverse in tree order: root, child1, grandchild, child2
