@@ -114,7 +114,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         const cp = std.unicode.utf8Decode(input[i..][0..cp_len]) catch {
             return PunycodeError.BadInput;
         };
-        try codepoints.append( cp);
+        try codepoints.append(cp);
         i += cp_len;
     }
 
@@ -124,7 +124,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     var basic_count: u32 = 0;
     for (codepoints.items()) |cp| {
         if (cp < 0x80) {
-            try output.append( @intCast(cp));
+            try output.append(@intCast(cp));
             basic_count += 1;
         }
     }
@@ -139,7 +139,7 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
 
     // Add delimiter if there were basic code points
     if (b > 0) {
-        try output.append( delimiter);
+        try output.append(delimiter);
     }
 
     var n = initial_n;
@@ -179,11 +179,11 @@ pub fn encode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
                 while (true) {
                     const t = if (k <= bias) tmin else if (k >= bias + tmax) tmax else k - bias;
                     if (q < t) break;
-                    try output.append( encodeDigit(t + ((q - t) % (base - t))));
+                    try output.append(encodeDigit(t + ((q - t) % (base - t))));
                     q = (q - t) / (base - t);
                     k += base;
                 }
-                try output.append( encodeDigit(q));
+                try output.append(encodeDigit(q));
                 bias = adapt(delta, handled + 1, first_nonbasic);
                 first_nonbasic = false; // After first non-basic, always false
                 delta = 0;
@@ -230,7 +230,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         if (input[i] >= 0x80) {
             return PunycodeError.BadInput;
         }
-        try output.append( input[i]);
+        try output.append(input[i]);
     }
 
     var n = initial_n;
@@ -279,7 +279,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         if (n > 0x10FFFF) {
             return PunycodeError.BadInput;
         }
-        try output.insert(allocator, i_var, @intCast(n));
+        try output.insert(i_var, @intCast(n));
         i_var += 1;
     }
 
@@ -292,7 +292,7 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
         const len = std.unicode.utf8Encode(cp, &buf) catch {
             return PunycodeError.BadInput;
         };
-        try result.appendSlice( buf[0..len]);
+        try result.appendSlice(buf[0..len]);
     }
 
     const final_result = try result.toOwnedSlice();

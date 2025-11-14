@@ -91,7 +91,8 @@ fn isAsciiSimd(bytes: []const u8) bool {
 }
 
 fn utf8ToUtf16Unicode(allocator: Allocator, utf8: []const u8) !String {
-    var result = try List(u16).initCapacity(allocator, utf8.len);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(utf8.len);
     errdefer result.deinit();
 
     var i: usize = 0;
@@ -130,7 +131,8 @@ pub fn utf16ToUtf8(allocator: Allocator, utf16: String) ![]const u8 {
         return &[_]u8{};
     }
 
-    var result = try List(u8).initCapacity(allocator, utf16.len);
+    var result = List(u8).init(allocator);
+    try result.ensureCapacity(utf16.len);
     errdefer result.deinit();
 
     var i: usize = 0;
@@ -422,7 +424,8 @@ pub fn stripNewlines(allocator: Allocator, string: String) !String {
         return &[_]u16{};
     }
 
-    var result = try List(u16).initCapacity(allocator, string.len);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(string.len);
     errdefer result.deinit();
 
     for (string) |c| {
@@ -439,7 +442,8 @@ pub fn normalizeNewlines(allocator: Allocator, string: String) !String {
         return &[_]u16{};
     }
 
-    var result = try List(u16).initCapacity(allocator, string.len);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(string.len);
     errdefer result.deinit();
 
     var i: usize = 0;
@@ -467,7 +471,7 @@ pub fn splitOnAsciiWhitespace(allocator: Allocator, input: String) ![]String {
     }
 
     var position: usize = 0;
-    var tokens = try List(String).initCapacity(allocator, 0);
+    var tokens = List(String).init(allocator);
     errdefer {
         for (tokens.items()) |token| {
             allocator.free(token);
@@ -498,7 +502,7 @@ pub fn splitOnCommas(allocator: Allocator, input: String) ![]String {
     }
 
     var position: usize = 0;
-    var tokens = try List(String).initCapacity(allocator, 0);
+    var tokens = List(String).init(allocator);
     errdefer {
         for (tokens.items()) |token| {
             allocator.free(token);
@@ -527,7 +531,7 @@ pub fn splitOnCommas(allocator: Allocator, input: String) ![]String {
 /// Collect a sequence of code points meeting a condition.
 /// WHATWG Infra Standard §4.6 line 723-737
 pub fn collectSequence(allocator: Allocator, input: String, position: *usize, condition: fn (u16) bool) !String {
-    var result = try List(u16).initCapacity(allocator, 0);
+    var result = List(u16).init(allocator);
     errdefer result.deinit();
 
     while (position.* < input.len and condition(input[position.*])) {
@@ -555,7 +559,7 @@ pub fn strictlySplit(allocator: Allocator, input: String, delimiter: u16) ![]Str
     };
 
     var position: usize = 0;
-    var tokens = try List(String).initCapacity(allocator, 0);
+    var tokens = List(String).init(allocator);
     errdefer {
         for (tokens.items()) |token| {
             allocator.free(token);
@@ -564,7 +568,7 @@ pub fn strictlySplit(allocator: Allocator, input: String, delimiter: u16) ![]Str
     }
 
     const checker = NotDelimiter{ .delim = delimiter };
-    var result = try List(u16).initCapacity(allocator, 0);
+    var result = List(u16).init(allocator);
     errdefer result.deinit();
 
     while (position < input.len and checker.check(input[position])) {
@@ -575,7 +579,7 @@ pub fn strictlySplit(allocator: Allocator, input: String, delimiter: u16) ![]Str
 
     while (position < input.len) {
         position += 1;
-        var token_result = try List(u16).initCapacity(allocator, 0);
+        var token_result = List(u16).init(allocator);
         errdefer token_result.deinit();
 
         while (position < input.len and checker.check(input[position])) {
@@ -592,7 +596,8 @@ pub fn codePointSubstring(allocator: Allocator, string: String, start: usize, le
     // Bounds validation assertions
     std.debug.assert(start <= std.math.maxInt(usize) - length); // Prevent overflow in start + length
 
-    var result = try List(u16).initCapacity(allocator, length * 2);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(length * 2);
     errdefer result.deinit();
 
     var code_point_index: usize = 0;
@@ -728,7 +733,8 @@ pub fn convertToScalarValueString(allocator: Allocator, string: String) !String 
         return &[_]u16{};
     }
 
-    var result = try List(u16).initCapacity(allocator, string.len);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(string.len);
     errdefer result.deinit();
 
     var i: usize = 0;
@@ -764,7 +770,8 @@ pub fn stripAndCollapseAsciiWhitespace(allocator: Allocator, string: String) !St
         return &[_]u16{};
     }
 
-    var result = try List(u16).initCapacity(allocator, string.len);
+    var result = List(u16).init(allocator);
+    try result.ensureCapacity(string.len);
     errdefer result.deinit();
 
     var in_whitespace = false;
