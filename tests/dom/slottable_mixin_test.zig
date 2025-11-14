@@ -4,7 +4,6 @@
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/Slottable.zig");
 
 test "Slottable - initial state" {
     const TestSlottable = struct {

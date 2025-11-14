@@ -4,7 +4,6 @@
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/NonElementParentNode.zig");
 
 test "NonElementParentNode mixin compiles" {
     // Just verify the mixin structure compiles

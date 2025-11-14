@@ -1,3 +1,5 @@
+const element = @import("element");
+const document = @import("document");
 const std = @import("std");
 const Node = @import("node").Node;
 const Element = @import("element").Element;

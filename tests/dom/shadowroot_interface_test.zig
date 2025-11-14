@@ -1,18 +1,17 @@
-//! Tests migrated from webidl/src/dom/ShadowRoot.zig
+//! Tests migrated from webidl/src/dom/dom.ShadowRoot.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/ShadowRoot.zig");
 
-test "ShadowRoot - creation with basic properties" {
+test "dom.ShadowRoot - creation with basic properties" {
     const allocator = std.testing.allocator;
 
-    // Create a mock Element to use as host
-    var mock_element: Element = undefined;
+    // Create a mock dom.Element to use as host
+    var mock_element: dom.Element = undefined;
 
-    var shadow_root = try ShadowRoot.init(
+    var shadow_root = try dom.ShadowRoot.init(
         allocator,
         &mock_element,
         .open,
@@ -32,12 +31,12 @@ test "ShadowRoot - creation with basic properties" {
     try std.testing.expectEqual(false, shadow_root.get_serializable());
     try std.testing.expectEqual(&mock_element, shadow_root.get_host());
 }
-test "ShadowRoot - closed mode" {
+test "dom.ShadowRoot - closed mode" {
     const allocator = std.testing.allocator;
 
-    var mock_element: Element = undefined;
+    var mock_element: dom.Element = undefined;
 
-    var shadow_root = try ShadowRoot.init(
+    var shadow_root = try dom.ShadowRoot.init(
         allocator,
         &mock_element,
         .closed,
@@ -56,12 +55,12 @@ test "ShadowRoot - closed mode" {
     try std.testing.expectEqual(true, shadow_root.get_clonable());
     try std.testing.expectEqual(true, shadow_root.get_serializable());
 }
-test "ShadowRoot - internal flags" {
+test "dom.ShadowRoot - internal flags" {
     const allocator = std.testing.allocator;
 
-    var mock_element: Element = undefined;
+    var mock_element: dom.Element = undefined;
 
-    var shadow_root = try ShadowRoot.init(
+    var shadow_root = try dom.ShadowRoot.init(
         allocator,
         &mock_element,
         .open,

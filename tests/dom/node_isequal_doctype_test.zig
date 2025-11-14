@@ -1,3 +1,4 @@
+const document_type = @import("document_type");
 const std = @import("std");
 const Node = @import("node").Node;
 const DocumentType = @import("document_type").DocumentType;

@@ -1,3 +1,4 @@
+const node = @import("node");
 //! Tests for Node.contains() method
 //! Spec: https://dom.spec.whatwg.org/#dom-node-contains
 

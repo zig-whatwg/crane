@@ -1,3 +1,4 @@
+const node = @import("node");
 const std = @import("std");
 const Node = @import("node").Node;
 

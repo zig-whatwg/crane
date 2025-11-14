@@ -1,3 +1,4 @@
+const document = @import("document");
 //! Element and Document Integration Tests
 //! Tests for Element and Document working together in typical DOM scenarios
 

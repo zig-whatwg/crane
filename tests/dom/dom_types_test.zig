@@ -4,7 +4,6 @@
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/dom_types.zig");
 
 test "NodeOrDOMString compiles" {
     const T = @TypeOf(NodeOrDOMString);

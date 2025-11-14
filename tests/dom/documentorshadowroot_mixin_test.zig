@@ -4,7 +4,6 @@
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/DocumentOrShadowRoot.zig");
 
 test "DocumentOrShadowRoot - initial state" {
     const TestDocOrShadow = struct {

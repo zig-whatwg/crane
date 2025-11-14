@@ -1,3 +1,4 @@
+const document = @import("document");
 //! NamedNodeMap Tests (DOM Standard §4.9)
 //! Tests for NamedNodeMap interface
 

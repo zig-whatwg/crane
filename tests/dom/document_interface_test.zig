@@ -1,17 +1,16 @@
-//! Tests migrated from webidl/src/dom/Document.zig
+//! Tests migrated from webidl/src/dom/dom.Document.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/Document.zig");
 
-test "Document - internString basic deduplication" {
+test "dom.Document - internString basic deduplication" {
     const allocator = std.testing.allocator;
 
-    const doc = try allocator.create(Document);
+    const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try dom.Document.init(allocator);
     defer doc.deinit();
 
     // Intern same string twice
@@ -22,12 +21,12 @@ test "Document - internString basic deduplication" {
     try std.testing.expect(str1.ptr == str2.ptr);
     try std.testing.expectEqualStrings("div", str1);
 }
-test "Document - internString different strings" {
+test "dom.Document - internString different strings" {
     const allocator = std.testing.allocator;
 
-    const doc = try allocator.create(Document);
+    const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try dom.Document.init(allocator);
     defer doc.deinit();
 
     const div = try doc.internString("div");
@@ -38,12 +37,12 @@ test "Document - internString different strings" {
     try std.testing.expectEqualStrings("div", div);
     try std.testing.expectEqualStrings("span", span);
 }
-test "Document - createElement uses interned tag names" {
+test "dom.Document - createElement uses interned tag names" {
     const allocator = std.testing.allocator;
 
-    const doc = try allocator.create(Document);
+    const doc = try allocator.create(dom.Document);
     defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
+    doc.* = try dom.Document.init(allocator);
     defer doc.deinit();
 
     // Create multiple elements with same tag
@@ -63,14 +62,14 @@ test "Document - createElement uses interned tag names" {
     try std.testing.expect(div1.tag_name.ptr == div2.tag_name.ptr);
     try std.testing.expectEqualStrings("div", div1.tag_name);
 }
-test "Document - string interning memory cleanup" {
+test "dom.Document - string interning memory cleanup" {
     const allocator = std.testing.allocator;
 
     // Create and destroy document with interned strings
     {
-        const doc = try allocator.create(Document);
+        const doc = try allocator.create(dom.Document);
         defer allocator.destroy(doc);
-        doc.* = try Document.init(allocator);
+        doc.* = try dom.Document.init(allocator);
 
         // Intern several strings
         _ = try doc.internString("div");

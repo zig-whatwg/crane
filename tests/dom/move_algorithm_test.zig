@@ -1,3 +1,4 @@
+const document = @import("document");
 const std = @import("std");
 const testing = std.testing;
 

@@ -1,15 +1,14 @@
-//! Tests migrated from webidl/src/html/HTMLSlotElement.zig
+//! Tests migrated from webidl/src/html/dom.HTMLSlotElement.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/html/HTMLSlotElement.zig");
 
-test "HTMLSlotElement - initialization" {
+test "dom.HTMLSlotElement - initialization" {
     const allocator = std.testing.allocator;
 
-    var slot = try HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator);
     defer slot.deinit();
 
     // Default name is empty string
@@ -20,10 +19,10 @@ test "HTMLSlotElement - initialization" {
     try std.testing.expectEqual(@as(usize, 0), slot.manually_assigned_nodes.items.len);
     try std.testing.expect(!slot.hasAssignedNodes());
 }
-test "HTMLSlotElement - set and get name" {
+test "dom.HTMLSlotElement - set and get name" {
     const allocator = std.testing.allocator;
 
-    var slot = try HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator);
     defer slot.deinit();
 
     try slot.setName("header");
@@ -33,10 +32,10 @@ test "HTMLSlotElement - set and get name" {
     try slot.setName("footer");
     try std.testing.expectEqualStrings("footer", slot.getName());
 }
-test "HTMLSlotElement - assigned nodes" {
+test "dom.HTMLSlotElement - assigned nodes" {
     const allocator = std.testing.allocator;
 
-    var slot = try HTMLSlotElement.init(allocator);
+    var slot = try dom.HTMLSlotElement.init(allocator);
     defer slot.deinit();
 
     // Add some mock nodes

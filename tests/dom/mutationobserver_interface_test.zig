@@ -1,39 +1,38 @@
-//! Tests migrated from webidl/src/dom/MutationObserver.zig
+//! Tests migrated from webidl/src/dom/dom.MutationObserver.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/MutationObserver.zig");
 
-test "MutationObserver - construction" {
+test "dom.MutationObserver - construction" {
     const allocator = std.testing.allocator;
 
     // Mock callback
     const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+        fn cb(_: []const MutationRecord, _: *dom.MutationObserver) void {}
     }.cb;
 
-    var observer = try MutationObserver.init(allocator, callback);
+    var observer = try dom.MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
     try std.testing.expectEqual(@as(usize, 0), observer.node_list.len);
     try std.testing.expectEqual(@as(usize, 0), observer.record_queue.len);
 }
-test "MutationObserver - observe validation" {
+test "dom.MutationObserver - observe validation" {
     const allocator = std.testing.allocator;
 
     const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+        fn cb(_: []const MutationRecord, _: *dom.MutationObserver) void {}
     }.cb;
 
-    var observer = try MutationObserver.init(allocator, callback);
+    var observer = try dom.MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
     // Create a mock node
-    // TODO: Replace with real Node once we have proper Node implementation
-    var mock_node = Node{};
-    // This should fail - need to implement Node.getRegisteredObservers() first
+    // TODO: Replace with real dom.Node once we have proper dom.Node implementation
+    var mock_node = dom.Node{};
+    // This should fail - need to implement dom.Node.getRegisteredObservers() first
     // For now, just test the option validation
 
     // Test: No observation flags set -> TypeError
@@ -72,35 +71,35 @@ test "MutationObserver - observe validation" {
         }),
     );
 }
-test "MutationObserver - disconnect clears record queue" {
+test "dom.MutationObserver - disconnect clears record queue" {
     const allocator = std.testing.allocator;
 
     const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+        fn cb(_: []const MutationRecord, _: *dom.MutationObserver) void {}
     }.cb;
 
-    var observer = try MutationObserver.init(allocator, callback);
+    var observer = try dom.MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
     // Add a mock record
-    // TODO: Create proper MutationRecord when we have full Node implementation
+    // TODO: Create proper dom.MutationRecord when we have full dom.Node implementation
     // For now, just test that disconnect clears the queue
 
     observer.disconnect();
     try std.testing.expectEqual(@as(usize, 0), observer.record_queue.len);
 }
-test "MutationObserver - takeRecords clones and clears queue" {
+test "dom.MutationObserver - takeRecords clones and clears queue" {
     const allocator = std.testing.allocator;
 
     const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
+        fn cb(_: []const MutationRecord, _: *dom.MutationObserver) void {}
     }.cb;
 
-    var observer = try MutationObserver.init(allocator, callback);
+    var observer = try dom.MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
     // Add mock records
-    // TODO: Create proper MutationRecords when we have full Node implementation
+    // TODO: Create proper MutationRecords when we have full dom.Node implementation
 
     const records = try observer.takeRecords();
     defer allocator.free(records);

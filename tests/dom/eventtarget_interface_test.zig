@@ -1,28 +1,27 @@
-//! Tests migrated from webidl/src/dom/EventTarget.zig
+//! Tests migrated from webidl/src/dom/dom.EventTarget.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/EventTarget.zig");
 
-test "EventTarget - event_listener_list starts as null (lazy allocation)" {
+test "dom.EventTarget - event_listener_list starts as null (lazy allocation)" {
     const allocator = std.testing.allocator;
 
-    const target = try allocator.create(EventTarget);
+    const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
-    target.* = try EventTarget.init(allocator);
+    target.* = try dom.EventTarget.init(allocator);
     defer target.deinit();
 
     // Should start as null (not allocated)
     try std.testing.expect(target.event_listener_list == null);
 }
-test "EventTarget - addEventListener allocates list on first use" {
+test "dom.EventTarget - addEventListener allocates list on first use" {
     const allocator = std.testing.allocator;
 
-    const target = try allocator.create(EventTarget);
+    const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
-    target.* = try EventTarget.init(allocator);
+    target.* = try dom.EventTarget.init(allocator);
     defer target.deinit();
 
     // Starts null
@@ -35,12 +34,12 @@ test "EventTarget - addEventListener allocates list on first use" {
     try std.testing.expect(target.event_listener_list != null);
     try std.testing.expectEqual(@as(usize, 1), target.event_listener_list.?.len);
 }
-test "EventTarget - removeEventListener on never-used target is safe" {
+test "dom.EventTarget - removeEventListener on never-used target is safe" {
     const allocator = std.testing.allocator;
 
-    const target = try allocator.create(EventTarget);
+    const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
-    target.* = try EventTarget.init(allocator);
+    target.* = try dom.EventTarget.init(allocator);
     defer target.deinit();
 
     // Remove from target that never had listeners added
@@ -49,16 +48,16 @@ test "EventTarget - removeEventListener on never-used target is safe" {
     // Should still be null (no allocation needed)
     try std.testing.expect(target.event_listener_list == null);
 }
-test "EventTarget - memory savings from lazy allocation" {
+test "dom.EventTarget - memory savings from lazy allocation" {
     const allocator = std.testing.allocator;
 
     // Create 100 targets, only 10 get listeners
-    var targets: [100]*EventTarget = undefined;
+    var targets: [100]*dom.EventTarget = undefined;
 
     // Initialize all targets
     for (&targets) |*t| {
-        t.* = try allocator.create(EventTarget);
-        t.*.* = try EventTarget.init(allocator);
+        t.* = try allocator.create(dom.EventTarget);
+        t.*.* = try dom.EventTarget.init(allocator);
     }
     defer {
         for (targets) |t| {
@@ -86,34 +85,34 @@ test "EventTarget - memory savings from lazy allocation" {
     // 90 targets saved memory by not allocating
     try std.testing.expectEqual(@as(usize, 90), 100 - allocated_count);
 }
-test "EventTarget - getEventListenerList returns empty for unused target" {
+test "dom.EventTarget - getEventListenerList returns empty for unused target" {
     const allocator = std.testing.allocator;
 
-    const target = try allocator.create(EventTarget);
+    const target = try allocator.create(dom.EventTarget);
     defer allocator.destroy(target);
-    target.* = try EventTarget.init(allocator);
+    target.* = try dom.EventTarget.init(allocator);
     defer target.deinit();
 
     // Should return empty slice, not crash
     const listeners = target.getEventListenerList();
     try std.testing.expectEqual(@as(usize, 0), listeners.len);
 }
-test "EventTarget - deinit handles both null and allocated list" {
+test "dom.EventTarget - deinit handles both null and allocated list" {
     const allocator = std.testing.allocator;
 
     // Target with no listeners (null list)
     {
-        const target = try allocator.create(EventTarget);
+        const target = try allocator.create(dom.EventTarget);
         defer allocator.destroy(target);
-        target.* = try EventTarget.init(allocator);
+        target.* = try dom.EventTarget.init(allocator);
         target.deinit(); // Should not crash
     }
 
     // Target with listeners (allocated list)
     {
-        const target = try allocator.create(EventTarget);
+        const target = try allocator.create(dom.EventTarget);
         defer allocator.destroy(target);
-        target.* = try EventTarget.init(allocator);
+        target.* = try dom.EventTarget.init(allocator);
         try target.call_addEventListener("click", .{ .js_value = 1 }, .{});
         target.deinit(); // Should clean up list
     }

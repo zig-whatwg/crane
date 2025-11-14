@@ -1,10 +1,9 @@
-//! Tests migrated from webidl/src/dom/DOMImplementation.zig
+//! Tests migrated from webidl/src/dom/dom.DOMImplementation.zig
 //! WebIDL interface tests
 
 const std = @import("std");
 const dom = @import("dom");
 
-const source = @import("../../webidl/src/dom/DOMImplementation.zig");
 
 test "isValidDoctypeName: empty string is valid" {
     try std.testing.expect(isValidDoctypeName(""));
