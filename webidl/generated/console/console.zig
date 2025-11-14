@@ -172,7 +172,7 @@ pub const console = struct {
     timerTable: infra.OrderedMap([]const u8, infra.Moment),
     groupStack: infra.Stack(Group),
     messageBuffer: CircularMessageBuffer,
-    pub labelPool: std.StringHashMap(void),
+    labelPool: std.StringHashMap(void),
 
     // ========================================================================
     // WebIDL Metadata
@@ -208,7 +208,7 @@ pub const console = struct {
             .timerTable = null,
             .groupStack = null,
             .messageBuffer = null,
-            .pub labelPool = std.StringHashMap(void).init(allocator),
+            .labelPool = std.StringHashMap(void).init(allocator),
         };
     
     }

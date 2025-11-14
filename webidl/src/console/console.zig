@@ -224,7 +224,7 @@ pub const console = webidl.namespace(struct {
     timerTable: infra.OrderedMap([]const u8, infra.Moment),
     groupStack: infra.Stack(Group),
     messageBuffer: CircularMessageBuffer,
-    pub labelPool: std.StringHashMap(void),
+    labelPool: std.StringHashMap(void),
 
     /// Initialize a new console namespace object with default buffer size (1000 messages).
     ///
