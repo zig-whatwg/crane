@@ -317,7 +317,10 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         try writer.writeAll("    // ========================================================================\n\n");
         for (enhanced.struct_fields) |field| {
             if (field.doc_comment) |doc| {
-                try writer.print("    /// {s}\n", .{doc});
+                var lines = std.mem.splitScalar(u8, doc, '\n');
+                while (lines.next()) |line| {
+                    try writer.print("    /// {s}\n", .{line});
+                }
             }
             try writer.print("    {s}: {s},\n", .{ field.name, field.type_name });
         }
