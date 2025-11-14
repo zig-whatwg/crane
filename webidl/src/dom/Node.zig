@@ -624,13 +624,14 @@ pub const Node = webidl.interface(struct {
     /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *Node) !void {
         // Get all descendant exclusive Text nodes
-        var text_nodes = std.ArrayList(*Node).init(self.allocator);
+        var text_nodes = infra.List(*Node).init(self.allocator);
         defer text_nodes.deinit();
 
         try collectDescendantExclusiveTextNodes(self, &text_nodes);
 
         // Process each exclusive Text node
-        for (text_nodes.items) |node| {
+        for (0..text_nodes.len) |i| {
+            const node = text_nodes.get(i) orelse continue;
             // Step 1: Let length be node's length
             const cd: *CharacterData = @ptrCast(@alignCast(node));
             var length: usize = cd.data.len;
@@ -646,7 +647,7 @@ pub const Node = webidl.interface(struct {
             }
 
             // Step 3: Let data be concatenation of contiguous exclusive Text nodes (excluding itself)
-            var contiguous_data = std.ArrayList(u8).init(self.allocator);
+            var contiguous_data = infra.List(u8).init(self.allocator);
             defer contiguous_data.deinit();
 
             // Find next sibling exclusive Text nodes
@@ -714,14 +715,15 @@ pub const Node = webidl.interface(struct {
     }
 
     /// Helper: Collect all descendant exclusive Text nodes in tree order
-    fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
+    fn collectDescendantExclusiveTextNodes(node: *Node, list: *infra.List(*Node)) !void {
         // Check if this node is an exclusive Text node
         if (isExclusiveTextNode(node)) {
             try list.append(node);
         }
 
         // Recursively collect from children
-        for (node.child_nodes.items) |child| {
+        for (0..node.child_nodes.len) |i| {
+            const child = node.child_nodes.get(i) orelse continue;
             try collectDescendantExclusiveTextNodes(child, list);
         }
     }
@@ -966,7 +968,7 @@ pub const Node = webidl.interface(struct {
     /// Returns the concatenation of data from all Text node descendants in tree order.
     /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
-        var result = std.ArrayList(u8).init(allocator);
+        var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
@@ -975,7 +977,7 @@ pub const Node = webidl.interface(struct {
     }
 
     /// Helper function to recursively collect text from descendants
-    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+    fn collectDescendantText(node: *const Node, result: *infra.List(u8)) !void {
         // If this is a Text node, collect its data
         if (node.node_type == Node.TEXT_NODE) {
             const cd: *const CharacterData = @ptrCast(@alignCast(node));
@@ -1222,7 +1224,7 @@ pub const Node = webidl.interface(struct {
     // ========================================================================
 
     /// Get the list of registered observers for this node
-    pub fn getRegisteredObservers(self: *Node) *std.ArrayList(RegisteredObserver) {
+    pub fn getRegisteredObservers(self: *Node) *infra.List(RegisteredObserver) {
         return &self.registered_observers;
     }
 
