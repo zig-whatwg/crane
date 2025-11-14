@@ -1137,9 +1137,9 @@ pub const ShadowRoot = struct {
                     copy_elem.shadow_root = &copy_shadow;
 
                     // Step 6.6: Clone shadow root children
-                    const shadow_node = shadow.asNode();
+                    const shadow_node: *Node = @ptrCast(shadow);
                     for (shadow_node.child_nodes.toSlice()) |child| {
-                        const copy_shadow_node = copy_shadow.asNode();
+                        const copy_shadow_node: *Node = @ptrCast(&copy_shadow);
                         _ = try Node.cloneNodeInternal(child, document, subtree, copy_shadow_node, null);
                     }
                 }

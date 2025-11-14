@@ -256,7 +256,7 @@ pub const CDATASection = struct {
         var current: ?*Node = first;
         while (current) |node| {
             if (node.node_type == Node.TEXT_NODE) {
-                const textNode = node.asText() orelse return error.InvalidNodeTypeError;
+                const textNode: *Text = @ptrCast(node);
                 try result.appendSlice(textNode.get_data());
                 current = dom.tree_helpers.getNextSibling(node);
             } else {
@@ -1255,9 +1255,9 @@ pub const CDATASection = struct {
                     copy_elem.shadow_root = &copy_shadow;
 
                     // Step 6.6: Clone shadow root children
-                    const shadow_node = shadow.asNode();
+                    const shadow_node: *Node = @ptrCast(shadow);
                     for (shadow_node.child_nodes.toSlice()) |child| {
-                        const copy_shadow_node = copy_shadow.asNode();
+                        const copy_shadow_node: *Node = @ptrCast(&copy_shadow);
                         _ = try Node.cloneNodeInternal(child, document, subtree, copy_shadow_node, null);
                     }
                 }

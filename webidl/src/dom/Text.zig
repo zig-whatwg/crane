@@ -142,7 +142,7 @@ pub const Text = webidl.interface(struct {
         var current: ?*Node = first;
         while (current) |node| {
             if (node.node_type == Node.TEXT_NODE) {
-                const textNode = node.asText() orelse return error.InvalidNodeTypeError;
+                const textNode: *Text = @ptrCast(node);
                 try result.appendSlice(textNode.get_data());
                 current = dom.tree_helpers.getNextSibling(node);
             } else {

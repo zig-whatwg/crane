@@ -31,10 +31,11 @@ pub const Range = webidl.interface(struct {
     /// The new Range() constructor steps are to set this's start and end to
     /// (current global object's associated Document, 0).
     pub fn init(allocator: Allocator, document_node: *Node) !Range {
-        // Get Document from node using asDocument pattern
-        const doc = document_node.asDocument() orelse {
+        // Get Document from node - check if it's a Document node
+        if (document_node.node_type != 9) { // DOCUMENT_NODE = 9
             return error.InvalidNodeTypeError;
-        };
+        }
+        const doc: *Document = @ptrCast(document_node);
 
         const range = Range{
             .allocator = allocator,
