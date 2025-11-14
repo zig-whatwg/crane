@@ -47,7 +47,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ArrayList = std.ArrayList;
+const infra = @import("infra");
 const event_loop = @import("event_loop");
 
 /// Test event loop implementation
@@ -60,8 +60,8 @@ const event_loop = @import("event_loop");
 /// manages promise lifetime via garbage collection.
 pub const TestEventLoop = struct {
     allocator: Allocator,
-    microtasks: ArrayList(event_loop.Microtask),
-    tasks: ArrayList(event_loop.Task),
+    microtasks: infra.List(event_loop.Microtask),
+    tasks: infra.List(event_loop.Task),
     promise_arena: std.heap.ArenaAllocator,
 
     /// Statistics for debugging and verification
@@ -105,8 +105,8 @@ pub const TestEventLoop = struct {
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
-            .microtasks = ArrayList(event_loop.Microtask){},
-            .tasks = ArrayList(event_loop.Task){},
+            .microtasks = infra.List(event_loop.Microtask).init(allocator),
+            .tasks = infra.List(event_loop.Task).init(allocator),
             .promise_arena = std.heap.ArenaAllocator.init(allocator),
             .stats = .{},
         };
@@ -125,8 +125,8 @@ pub const TestEventLoop = struct {
     /// associated with pending microtasks will leak. Always run the event loop
     /// to completion (via runUntilIdle()) before calling deinit().
     pub fn deinit(self: *Self) void {
-        self.microtasks.deinit(self.allocator);
-        self.tasks.deinit(self.allocator);
+        self.microtasks.deinit();
+        self.tasks.deinit();
         self.promise_arena.deinit();
     }
 
@@ -176,17 +176,17 @@ pub const TestEventLoop = struct {
     /// try testing.expect(!loop.isIdle());
     /// ```
     pub fn isIdle(self: *const Self) bool {
-        return self.microtasks.items.len == 0 and self.tasks.items.len == 0;
+        return self.microtasks.len == 0 and self.tasks.len == 0;
     }
 
     /// Get the number of pending microtasks
     pub fn pendingMicrotasks(self: *const Self) usize {
-        return self.microtasks.items.len;
+        return self.microtasks.len;
     }
 
     /// Get the number of pending tasks
     pub fn pendingTasks(self: *const Self) usize {
-        return self.tasks.items.len;
+        return self.tasks.len;
     }
 
     /// Clear all pending microtasks and tasks
@@ -199,8 +199,8 @@ pub const TestEventLoop = struct {
     /// try testing.expect(loop.isIdle());
     /// ```
     pub fn clear(self: *Self) void {
-        self.microtasks.clearRetainingCapacity();
-        self.tasks.clearRetainingCapacity();
+        self.microtasks.clear();
+        self.tasks.clear();
     }
 
     /// Run all pending microtasks and tasks until the loop is idle
@@ -235,13 +235,13 @@ pub const TestEventLoop = struct {
 
     fn queueMicrotask(ptr: *anyopaque, task: event_loop.Microtask) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
-        self.microtasks.append(self.allocator, task) catch @panic("TestEventLoop: OOM in queueMicrotask");
+        self.microtasks.append(task) catch @panic("TestEventLoop: OOM in queueMicrotask");
         self.stats.microtasks_queued += 1;
     }
 
     fn queueTask(ptr: *anyopaque, task: event_loop.Task) void {
         const self: *Self = @ptrCast(@alignCast(ptr));
-        self.tasks.append(self.allocator, task) catch @panic("TestEventLoop: OOM in queueTask");
+        self.tasks.append(task) catch @panic("TestEventLoop: OOM in queueTask");
         self.stats.tasks_queued += 1;
     }
 
@@ -250,9 +250,9 @@ pub const TestEventLoop = struct {
 
         // Drain all microtasks, including any queued by microtasks themselves
         // This matches the "perform a microtask checkpoint" algorithm
-        while (self.microtasks.items.len > 0) {
+        while (self.microtasks.len > 0) {
             // Take first microtask
-            const task = self.microtasks.orderedRemove(0);
+            const task = self.microtasks.remove(0) catch unreachable;
             self.stats.microtasks_executed += 1;
 
             // Execute it
@@ -270,8 +270,8 @@ pub const TestEventLoop = struct {
         runMicrotasks(self);
 
         // Step 2: Run one task (if any)
-        if (self.tasks.items.len > 0) {
-            const task = self.tasks.orderedRemove(0);
+        if (self.tasks.len > 0) {
+            const task = self.tasks.remove(0) catch unreachable;
             self.stats.tasks_executed += 1;
             task.callback(task.context);
 

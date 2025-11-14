@@ -1002,6 +1002,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/test_event_loop.zig"),
         .target = target,
         .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
             .{ .name = "event_loop", .module = streams_event_loop_mod },
         },
     });
