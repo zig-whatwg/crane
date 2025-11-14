@@ -5,12 +5,13 @@
 //! WHATWG Encoding Standard §3
 
 const std = @import("std");
+const infra = @import("infra");
 const io_queue = @import("io_queue.zig");
 const Allocator = std.mem.Allocator;
 
 /// Serialize a byte queue to a hex string
 pub fn serializeByteQueue(allocator: Allocator, queue: *const io_queue.ByteQueue) ![]const u8 {
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
     const writer = result.writer();
@@ -34,7 +35,7 @@ pub fn serializeByteQueue(allocator: Allocator, queue: *const io_queue.ByteQueue
 
 /// Serialize a scalar queue to a Unicode string
 pub fn serializeScalarQueue(allocator: Allocator, queue: *const io_queue.ScalarQueue) ![]const u8 {
-    var result = std.ArrayList(u8).init(allocator);
+    var result = infra.List(u8).init(allocator);
     errdefer result.deinit();
 
     const writer = result.writer();

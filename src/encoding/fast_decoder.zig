@@ -16,6 +16,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const encoding_mod = @import("encoding.zig");
 
 /// Supported encodings for fast path
@@ -135,8 +136,9 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
             }
 
             // Decode single-byte to UTF-8
-            var output = try std.ArrayList(u8).initCapacity(self.allocator, input.len * 2);
-            errdefer output.deinit(self.allocator);
+            var output = infra.List(u8).init(self.allocator);
+            errdefer output.deinit();
+            try output.ensureCapacity(input.len * 2);
 
             var decoder = self.enc.newDecoder();
 
@@ -151,10 +153,10 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
             for (utf16_buf[0..result.code_units_written]) |cu| {
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(@as(u21, cu), &buf) catch unreachable;
-                try output.appendSlice(self.allocator, buf[0..len]);
+                try output.appendSlice(buf[0..len]);
             }
 
-            return output.toOwnedSlice(self.allocator);
+            return output.toOwnedSlice();
         }
 
         /// UTF-16 fast path (comptime specialized)
@@ -169,51 +171,52 @@ pub fn FastDecoder(comptime fast_encoding: FastEncoding) type {
             const result = decoder.decode(input, utf16_buf, true);
 
             // Convert UTF-16 to UTF-8
-            var output = try std.ArrayList(u8).initCapacity(self.allocator, result.code_units_written * 3);
-            errdefer output.deinit(self.allocator);
+            var output = infra.List(u8).init(self.allocator);
+            errdefer output.deinit();
+            try output.ensureCapacity(result.code_units_written * 3);
 
             for (utf16_buf[0..result.code_units_written]) |cu| {
                 // Handle surrogate pairs
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(@as(u21, cu), &buf) catch unreachable;
-                try output.appendSlice(self.allocator, buf[0..len]);
+                try output.appendSlice(buf[0..len]);
             }
 
-            return output.toOwnedSlice(self.allocator);
+            return output.toOwnedSlice();
         }
 
         /// Clean invalid UTF-8 (replace with U+FFFD)
         fn cleanInvalidUtf8(self: *Self, input: []const u8) ![]u8 {
-            var output: std.ArrayListUnmanaged(u8) = .{};
-            defer output.deinit(self.allocator);
+            var output = infra.List(u8).init(self.allocator);
+            defer output.deinit();
 
             var i: usize = 0;
             while (i < input.len) {
                 const cp_len = std.unicode.utf8ByteSequenceLength(input[i]) catch {
                     // U+FFFD in UTF-8
-                    try output.appendSlice(self.allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+                    try output.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
                     i += 1;
                     continue;
                 };
 
                 if (i + cp_len > input.len) {
-                    try output.appendSlice(self.allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+                    try output.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
                     break;
                 }
 
                 const cp = std.unicode.utf8Decode(input[i .. i + cp_len]) catch {
-                    try output.appendSlice(self.allocator, &[_]u8{ 0xEF, 0xBF, 0xBD });
+                    try output.appendSlice(&[_]u8{ 0xEF, 0xBF, 0xBD });
                     i += 1;
                     continue;
                 };
 
                 var buf: [4]u8 = undefined;
                 const len = std.unicode.utf8Encode(cp, &buf) catch unreachable;
-                try output.appendSlice(self.allocator, buf[0..len]);
+                try output.appendSlice(buf[0..len]);
                 i += cp_len;
             }
 
-            return output.toOwnedSlice(self.allocator);
+            return output.toOwnedSlice();
         }
     };
 }
