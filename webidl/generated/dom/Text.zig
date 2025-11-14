@@ -146,6 +146,10 @@ pub const Text = struct {
             .cached_child_nodes = null,
             .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
+            // Slottable mixin fields
+            .slottable_name = "",
+            .assigned_slot = null,
+            .manual_slot_assignment = null,
         };
     
     }

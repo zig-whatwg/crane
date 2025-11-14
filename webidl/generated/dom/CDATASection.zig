@@ -130,9 +130,25 @@ pub const CDATASection = struct {
 
     pub fn init(allocator: std.mem.Allocator, data: []const u8) !CDATASection {
 
-        return .{
+                return .{
+            // EventTarget fields
+            .event_listener_list = null,
+            // Node fields
+            .node_type = 4, // CDATA_SECTION_NODE
+            .node_name = "#cdata-section",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // CharacterData/Text fields
             .allocator = allocator,
             .data = try allocator.dupe(u8, data),
+            // Slottable mixin fields
+            .slottable_name = "",
+            .assigned_slot = null,
+            .manual_slot_assignment = null,
         };
     
     }
