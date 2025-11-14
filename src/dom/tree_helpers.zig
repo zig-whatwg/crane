@@ -336,7 +336,7 @@ pub fn getPreviousInPreOrder(node: *const Node) ?*Node {
 
 /// Get the rightmost (deepest last) descendant of a node
 fn getRightmostDescendant(node: *const Node) *Node {
-    var current = node;
+    var current: *Node = @constCast(node);
     while (getLastChild(current)) |last_child| {
         current = last_child;
     }
@@ -659,7 +659,7 @@ pub fn getShadowIncludingRoot(node: *const Node) *Node {
     // A ShadowRoot has node_type == DOCUMENT_FRAGMENT_NODE (11)
     if (current.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
         // Try to cast to ShadowRoot
-        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(current)));
+        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(@constCast(current))));
 
         // Get the host element and recursively get its shadow-including root
         const host = shadow_root.getHost();
@@ -694,7 +694,7 @@ pub fn isShadowIncludingDescendant(nodeA: *const Node, nodeB: *const Node) bool 
     // Check if rootA is a shadow root (DocumentFragment)
     if (rootA.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
         // Cast to ShadowRoot to access host
-        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(rootA)));
+        const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(@constCast(rootA))));
         const host = shadow_root.getHost();
         const host_node: *const Node = @ptrCast(@alignCast(host));
 

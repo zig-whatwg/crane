@@ -86,27 +86,20 @@ const ParserContext = struct {
         const capacity_hint = @min(input.len, 256); // Cap at 256 bytes for small URLs
 
         var scheme = infra.List(u8).init(allocator);
-        try scheme.ensureTotalCapacity(8); // Most schemes < 8 chars
 
         var username = infra.List(u8).init(allocator);
-        try username.ensureTotalCapacity(32); // Username rarely > 32 chars
 
         var password = infra.List(u8).init(allocator);
-        try password.ensureTotalCapacity(32); // Password rarely > 32 chars
 
         var query = infra.List(u8).init(allocator);
-        try query.ensureTotalCapacity(capacity_hint / 2); // Query often ~half of URL
 
         var fragment = infra.List(u8).init(allocator);
-        try fragment.ensureTotalCapacity(32); // Fragments usually small
 
         var buffer = infra.List(u8).init(allocator);
-        try buffer.ensureTotalCapacity(capacity_hint); // Buffer can be large
 
         // P8 Optimization: Pre-allocate path_segments capacity
         // Most URLs have 1-5 path segments, pre-allocate for common case
         var path_segments = infra.List([]const u8).init(allocator);
-        try path_segments.ensureTotalCapacity(4); // Most URLs have 1-4 segments
 
         return ParserContext{
             .allocator = allocator,
@@ -352,7 +345,6 @@ fn applyContextToURL(ctx: *ParserContext, url: *URLRecord) !void {
             for (0..segments.len) |i| url.allocator.free(segments.get(i).?);
             segments.deinit();
         }
-        try segments.ensureTotalCapacity(ctx.path_segments.items().len);
         for (ctx.path_segments.items()) |seg| {
             try segments.append(try url.allocator.dupe(u8, seg));
         }
@@ -406,7 +398,6 @@ fn buildURLRecord(allocator: std.mem.Allocator, ctx: *ParserContext) !URLRecord 
             for (0..segments.len) |i| allocator.free(segments.get(i).?);
             segments.deinit();
         }
-        try segments.ensureTotalCapacity(ctx.path_segments.items().len);
         for (ctx.path_segments.items()) |seg| {
             try segments.append(try allocator.dupe(u8, seg));
         }
