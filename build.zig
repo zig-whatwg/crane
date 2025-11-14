@@ -781,6 +781,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/url/parser/basic_url_parser.zig"),
         .target = target,
     });
+    url_basic_parser_mod.addImport("infra", infra_mod);
+    url_basic_parser_mod.addImport("url_record", url_internal_url_record_mod);
+    url_basic_parser_mod.addImport("host", url_internal_host_mod);
+    url_basic_parser_mod.addImport("path", url_internal_path_mod);
 
     // Add imports to url_parser_api_mod now that dependencies are defined
     url_parser_api_mod.addImport("infra", infra_mod);
@@ -793,9 +797,13 @@ pub fn build(b: *std.Build) void {
     });
 
     const url_helpers_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/parser/helpers.zig"),
+        .root_source_file = b.path("src/url/internal/helpers.zig"),
         .target = target,
     });
+
+    // Add late imports to url_basic_parser_mod now that helpers and parser_state are defined
+    url_basic_parser_mod.addImport("parser_state", url_parser_state_mod);
+    url_basic_parser_mod.addImport("helpers", url_helpers_mod);
 
     const url_percent_encoding_mod = b.createModule(.{
         .root_source_file = b.path("src/url/encoding/percent_encoding.zig"),
@@ -823,6 +831,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
     url_form_parser_mod.addImport("infra", infra_mod);
+    url_form_parser_mod.addImport("percent_encoding", url_percent_encoding_mod);
 
     const url_form_serializer_mod = b.createModule(.{
         .root_source_file = b.path("src/url/form_urlencoded/serializer.zig"),
@@ -865,6 +874,9 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/url/parser/host_parser.zig"),
         .target = target,
     });
+
+    // Add host_parser import to url_basic_parser_mod now that it's defined
+    url_basic_parser_mod.addImport("host_parser", url_host_parser_mod);
 
     const url_windows_drive_mod = b.createModule(.{
         .root_source_file = b.path("src/url/internal/windows_drive.zig"),
