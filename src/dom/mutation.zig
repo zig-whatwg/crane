@@ -1521,29 +1521,39 @@ pub fn adopt(
         // Step 3.1: For each inclusiveDescendant in node's shadow-including inclusive descendants
         // For now, just update node itself and tree descendants (shadow DOM TODO)
 
-        // Update node's document
-        node.owner_document = document;
+        // Collect all descendants first
+        var descendants = std.ArrayList(*Node).init(node.allocator);
+        defer descendants.deinit();
 
-        // Update all descendants
-        var stack: std.ArrayList(*Node) = .{};
-        defer stack.deinit();
+        try descendants.append(node);
 
-        try stack.append(node);
+        var i: usize = 0;
+        while (i < descendants.items.len) : (i += 1) {
+            const current = descendants.items[i];
 
-        while (stack.items.len > 0) {
-            const current = stack.pop();
-            current.owner_document = document;
-
-            // Add children to stack
+            // Add children
             for (current.child_nodes.items()) |child| {
-                try stack.append(child);
+                try descendants.append(child);
             }
         }
 
-        // Step 3.2: Custom element adoptedCallback
-        // NOTE: Custom element reactions require custom elements implementation
+        // Step 3.1.1: Set node document for all inclusive descendants
+        for (descendants.items) |desc| {
+            desc.owner_document = document;
 
-        // Step 3.3: Run adopting steps
-        // NOTE: Adopting steps callback system requires custom elements implementation
+            // Step 3.1.3: If element, update attribute node documents
+            if (desc.node_type == Node.ELEMENT_NODE) {
+                // TODO(DOM): Update attribute node documents once we have proper Element access
+            }
+        }
+
+        // Step 3.2: Enqueue custom element adoptedCallback for custom elements
+        // TODO(HTML): Check if element is custom and enqueue adoptedCallback
+        // For now, this is a no-op since we don't have custom elements
+
+        // Step 3.3: Run adopting steps for each inclusive descendant
+        // TODO(HTML): Adopting steps are an extension point for other specs
+        // This would call HTML custom element adoption steps
+        // For now, this is a no-op
     }
 }

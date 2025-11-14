@@ -57,3 +57,23 @@ pub fn runCustomElementAdoptionSteps(
 
     // For now, this is a no-op
 }
+
+/// Enqueue custom element adoptedCallback
+/// Spec: https://html.spec.whatwg.org/#concept-custom-element-adopted-callback
+///
+/// Stub: Does nothing (no custom elements supported yet)
+pub fn enqueueAdoptedCallback(
+    element: anytype,
+    old_document: anytype,
+    new_document: anytype,
+) void {
+    _ = element;
+    _ = old_document;
+    _ = new_document;
+
+    // TODO(HTML): Implement adoptedCallback reaction:
+    // 1. Check if element is custom
+    // 2. Enqueue callback reaction with old and new document
+
+    // For now, this is a no-op
+}
