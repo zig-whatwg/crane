@@ -222,11 +222,8 @@ pub const Document = webidl.interface(struct {
     /// a new Comment node whose data is data and node document is this.
     pub fn call_createComment(self: *Document, data: []const u8) !*Comment {
         const comment = try self.allocator.create(Comment);
-        comment.* = try Comment.init(self.allocator);
-
-        // Set data field (Comment extends CharacterData which has data field)
-        const cd: *@import("character_data").CharacterData = @ptrCast(comment);
-        cd.data = try self.allocator.dupe(u8, data);
+        const data_copy = try self.allocator.dupe(u8, data);
+        comment.* = try Comment.init(self.allocator, data_copy);
 
         return comment;
     }

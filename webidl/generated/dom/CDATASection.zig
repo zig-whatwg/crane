@@ -752,10 +752,11 @@ pub const CDATASection = struct {
         // Step 4: Queue mutation record
         const mutation_observer_algs = dom.mutation_observer_algorithms;
         const empty_nodes: []const *Node = &[_]*Node{};
+        const self_node: *Node = @ptrCast(self_parent);
         try mutation_observer_algs.queueMutationRecord(
             self_parent.allocator,
             "characterData",
-            &self_parent.base,
+            self_node,
             null,
             null,
             self_parent.data, // oldValue
@@ -1288,7 +1289,19 @@ pub const CDATASection = struct {
                 // Clone attributes
                 for (elem.attributes.toSlice()) |attr| {
                     const copy_attr = Attr{
+                        // EventTarget fields
+                        .event_listener_list = null,
+                        // Node fields
                         .allocator = elem.allocator,
+                        .node_type = 2, // ATTRIBUTE_NODE
+                        .node_name = attr.local_name,
+                        .parent_node = null,
+                        .child_nodes = infra.List(*Node).init(elem.allocator),
+                        .owner_document = null,
+                        .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(elem.allocator),
+                        .cloning_steps_hook = null,
+                        .cached_child_nodes = null,
+                        // Attr fields
                         .namespace_uri = attr.namespace_uri,
                         .prefix = attr.prefix,
                         .local_name = attr.local_name,

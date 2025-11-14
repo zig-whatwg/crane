@@ -120,11 +120,22 @@ pub const DocumentFragment = struct {
 
     pub fn init(allocator: std.mem.Allocator) !DocumentFragment {
 
-        // NOTE: Parent Node fields will be flattened by codegen
+                
         return .{
+            // EventTarget fields
+            .event_listener_list = null,
+            // Node fields
             .allocator = allocator,
+            .node_type = 11, // DOCUMENT_FRAGMENT_NODE
+            .node_name = "#document-fragment",
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
+            // DocumentFragment fields
             .host = null,
-            // NOTE: Parent Node initialization is handled by codegen
         };
     
     }
@@ -937,7 +948,19 @@ pub const DocumentFragment = struct {
                 // Clone attributes
                 for (elem.attributes.toSlice()) |attr| {
                     const copy_attr = Attr{
+                        // EventTarget fields
+                        .event_listener_list = null,
+                        // Node fields
                         .allocator = elem.allocator,
+                        .node_type = 2, // ATTRIBUTE_NODE
+                        .node_name = attr.local_name,
+                        .parent_node = null,
+                        .child_nodes = infra.List(*Node).init(elem.allocator),
+                        .owner_document = null,
+                        .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(elem.allocator),
+                        .cloning_steps_hook = null,
+                        .cached_child_nodes = null,
+                        // Attr fields
                         .namespace_uri = attr.namespace_uri,
                         .prefix = attr.prefix,
                         .local_name = attr.local_name,
