@@ -86,10 +86,10 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ArrayList = std.ArrayList;
 const event_loop = @import("event_loop");
 const common = @import("common");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const JSValue = common.JSValue;
 
 /// Async Promise type
@@ -103,7 +103,7 @@ pub fn AsyncPromise(comptime T: type) type {
         allocator: Allocator,
         event_loop: event_loop.EventLoop,
         state: State,
-        reactions: ArrayList(Reaction),
+        reactions: infra.List(Reaction),
 
         const Self = @This();
 
@@ -183,7 +183,7 @@ pub fn AsyncPromise(comptime T: type) type {
                 .allocator = allocator, // For reactions list
                 .event_loop = loop,
                 .state = .pending,
-                .reactions = ArrayList(Reaction){},
+                .reactions = infra.List(Reaction).init(allocator),
             };
             return self;
         }
@@ -200,7 +200,7 @@ pub fn AsyncPromise(comptime T: type) type {
         /// After calling deinit(), the promise memory remains valid but should
         /// not be used (all operations will fail or panic).
         pub fn deinit(self: *Self) void {
-            self.reactions.deinit(self.allocator);
+            self.reactions.deinit();
             // NOTE: Don't free self - arena owns it
         }
 
@@ -222,11 +222,11 @@ pub fn AsyncPromise(comptime T: type) type {
             self.state = .{ .fulfilled = value };
 
             // Queue microtask for each reaction
-            for (self.reactions.items) |reaction| {
+            for (self.reactions.toSlice()) |reaction| {
                 self.queueReaction(reaction, self.state);
             }
 
-            self.reactions.clearRetainingCapacity();
+            self.reactions.clear();
         }
 
         /// Reject the promise with an error
@@ -250,11 +250,11 @@ pub fn AsyncPromise(comptime T: type) type {
             self.state = .{ .rejected = error_value };
 
             // Queue microtask for each reaction
-            for (self.reactions.items) |reaction| {
+            for (self.reactions.toSlice()) |reaction| {
                 self.queueReaction(reaction, self.state);
             }
 
-            self.reactions.clearRetainingCapacity();
+            self.reactions.clear();
         }
 
         /// Execute close steps for ReadResult promises
@@ -332,7 +332,7 @@ pub fn AsyncPromise(comptime T: type) type {
             switch (self.state) {
                 .pending => {
                     // Add to reaction list
-                    try self.reactions.append(self.allocator, reaction);
+                    try self.reactions.append(reaction);
                 },
                 .fulfilled, .rejected => {
                     // Already settled - queue immediately
@@ -393,7 +393,7 @@ pub fn AsyncPromise(comptime T: type) type {
             switch (self.state) {
                 .pending => {
                     // Add to reaction list
-                    try self.reactions.append(self.allocator, reaction);
+                    try self.reactions.append(reaction);
                 },
                 .fulfilled, .rejected => {
                     // Already settled - queue immediately
@@ -432,7 +432,7 @@ pub fn AsyncPromise(comptime T: type) type {
             switch (self.state) {
                 .pending => {
                     // Add to reaction list
-                    try self.reactions.append(self.allocator, reaction);
+                    try self.reactions.append(reaction);
                 },
                 .fulfilled, .rejected => {
                     // Already settled - queue immediately
