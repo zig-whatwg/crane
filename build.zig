@@ -959,6 +959,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/streams/internal/queue_with_sizes.zig"),
         .target = target,
         .imports = &.{
+            .{ .name = "infra", .module = infra_mod },
             .{ .name = "common", .module = streams_common_mod },
         },
     });

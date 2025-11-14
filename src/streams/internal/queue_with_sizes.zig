@@ -6,6 +6,7 @@
 //! Spec: https://streams.spec.whatwg.org/#queue-with-sizes
 
 const std = @import("std");
+const infra = @import("infra");
 const common = @import("common");
 
 /// Re-export JSValue as Value for compatibility
@@ -27,7 +28,7 @@ pub const ValueWithSize = struct {
 pub const QueueWithSizes = struct {
     allocator: std.mem.Allocator,
     /// [[queue]]: List of value-with-size records
-    queue: std.ArrayList(ValueWithSize),
+    queue: infra.List(ValueWithSize),
     /// [[queueTotalSize]]: Total size of all items in queue
     queue_total_size: f64,
 
@@ -35,14 +36,14 @@ pub const QueueWithSizes = struct {
     pub fn init(allocator: std.mem.Allocator) QueueWithSizes {
         return .{
             .allocator = allocator,
-            .queue = .empty,
+            .queue = infra.List(ValueWithSize).init(allocator),
             .queue_total_size = 0.0,
         };
     }
 
     /// Deinitialize and free all resources
     pub fn deinit(self: *QueueWithSizes) void {
-        self.queue.deinit(self.allocator);
+        self.queue.deinit();
     }
 
     /// DequeueValue(container) → value
@@ -56,13 +57,13 @@ pub const QueueWithSizes = struct {
         // (Implicit - type system enforces this)
 
         // Step 2: Assert: container.[[queue]] is not empty.
-        if (self.queue.items.len == 0) return error.EmptyQueue;
+        if (self.queue.len == 0) return error.EmptyQueue;
 
         // Step 3: Let valueWithSize be container.[[queue]][0].
-        const value_with_size = self.queue.items[0];
+        const value_with_size = self.queue.get(0).?;
 
         // Step 4: Remove valueWithSize from container.[[queue]].
-        _ = self.queue.orderedRemove(0);
+        _ = try self.queue.remove(0);
 
         // Step 5: Set container.[[queueTotalSize]] to container.[[queueTotalSize]] − valueWithSize's size.
         self.queue_total_size -= value_with_size.size;
@@ -101,7 +102,7 @@ pub const QueueWithSizes = struct {
         }
 
         // Step 4: Append a new value-with-size with value value and size size to container.[[queue]].
-        try self.queue.append(self.allocator, .{
+        try self.queue.append(.{
             .value = value,
             .size = size,
         });
@@ -121,10 +122,10 @@ pub const QueueWithSizes = struct {
         // (Implicit - type system enforces this)
 
         // Step 2: Assert: container.[[queue]] is not empty.
-        if (self.queue.items.len == 0) return error.EmptyQueue;
+        if (self.queue.len == 0) return error.EmptyQueue;
 
         // Step 3: Let valueWithSize be container.[[queue]][0].
-        const value_with_size = self.queue.items[0];
+        const value_with_size = self.queue.get(0).?;
 
         // Step 4: Return valueWithSize's value.
         return value_with_size.value;
@@ -141,7 +142,7 @@ pub const QueueWithSizes = struct {
         // (Implicit - type system enforces this)
 
         // Step 2: Set container.[[queue]] to a new empty list.
-        self.queue.clearRetainingCapacity();
+        self.queue.clear();
 
         // Step 3: Set container.[[queueTotalSize]] to 0.
         self.queue_total_size = 0.0;
@@ -149,12 +150,12 @@ pub const QueueWithSizes = struct {
 
     /// Check if queue is empty
     pub fn isEmpty(self: *const QueueWithSizes) bool {
-        return self.queue.items.len == 0;
+        return self.queue.len == 0;
     }
 
     /// Get the number of items in the queue
     pub fn len(self: *const QueueWithSizes) usize {
-        return self.queue.items.len;
+        return self.queue.len;
     }
 };
 
@@ -313,7 +314,7 @@ test "QueueWithSizes - negative total size clamped to zero" {
     try std.testing.expectEqual(@as(f64, 0.1), queue.queue_total_size);
 
     // Manually set a larger size to trigger clamping
-    queue.queue.items[0].size = 0.2;
+    queue.queue.getMut(0).?.size = 0.2;
 
     // Dequeue should clamp to 0
     _ = try queue.dequeueValue();
