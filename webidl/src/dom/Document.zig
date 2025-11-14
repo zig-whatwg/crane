@@ -61,7 +61,22 @@ pub const Document = webidl.interface(struct {
     node_iterators: infra.List(*NodeIterator),
     node_iterators_mutex: std.Thread.Mutex,
 
-    // NOTE: init() method will be synthesized by codegen with all inherited fields
+    pub fn init(allocator: Allocator) !Document {
+        return .{
+            .event_listener_list = null, // From EventTarget
+            .allocator = allocator,
+            ._implementation = null,
+            ._string_pool = std.StringHashMap(void).init(allocator),
+            .content_type = "application/xml",
+            .doc_type = .xml,
+            .origin = null,
+            .base_uri = "about:blank",
+            .ranges = infra.List(*Range).init(allocator),
+            .ranges_mutex = std.Thread.Mutex{},
+            .node_iterators = infra.List(*NodeIterator).init(allocator),
+            .node_iterators_mutex = std.Thread.Mutex{},
+        };
+    }
 
     pub fn deinit(self: *Document) void {
         // Free all interned strings from pool

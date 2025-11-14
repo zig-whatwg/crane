@@ -34,6 +34,7 @@ const Range = @import("range").Range;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
+pub const Thread = @import("thread").Thread;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const dom = @import("dom");
 const dom_types = @import("dom_types");
@@ -151,6 +152,25 @@ pub const Document = struct {
     // ========================================================================
     // Methods
     // ========================================================================
+
+    pub fn init(allocator: Allocator) !Document {
+
+        return .{
+            .event_listener_list = null, // From EventTarget
+            .allocator = allocator,
+            ._implementation = null,
+            ._string_pool = std.StringHashMap(void).init(allocator),
+            .content_type = "application/xml",
+            .doc_type = .xml,
+            .origin = null,
+            .base_uri = "about:blank",
+            .ranges = infra.List(*Range).init(allocator),
+            .ranges_mutex = std.Thread.Mutex{},
+            .node_iterators = infra.List(*NodeIterator).init(allocator),
+            .node_iterators_mutex = std.Thread.Mutex{},
+        };
+    
+    }
 
     pub fn deinit(self: *Document) void {
 
@@ -1066,24 +1086,6 @@ pub const Document = struct {
         const self_parent: *@This() = @ptrCast(self);
 
         self_parent.custom_element_registry = registry;
-    
-    }
-
-    pub fn init(allocator: Allocator, node_type: u16, node_name: []const u8) !Node {
-
-        // NOTE: Parent EventTarget fields must be initialized here
-        return .{
-            .event_listener_list = null, // From EventTarget (DOM §2.7)
-            .allocator = allocator,
-            .node_type = node_type,
-            .node_name = node_name,
-            .parent_node = null,
-            .child_nodes = infra.List(*Node).init(allocator),
-            .owner_document = null,
-            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
-            .cloning_steps_hook = null,
-            .cached_child_nodes = null,
-        };
     
     }
 
