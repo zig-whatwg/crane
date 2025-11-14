@@ -460,6 +460,7 @@ pub const DocumentType = struct {
             error.NotFoundError => error.NotFoundError,
             error.NotSupportedError => error.NotSupportedError,
             error.OutOfMemory => error.OutOfMemory,
+            error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
     
     }
@@ -736,13 +737,11 @@ pub const DocumentType = struct {
         // Step 1: If this is a shadow root, throw NotSupportedError
         if (self_parent.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
             // Check if this is specifically a ShadowRoot
-            // ShadowRoot inherits from DocumentFragment, so we need to check the type tag
-            const DocumentFragmentBase = @import("document_fragment").DocumentFragmentBase;
-
-            // Try to access as DocumentFragmentBase to check type tag
-            // This is safe because DocumentFragment/ShadowRoot have base as first field
-            const frag_base: *const DocumentFragmentBase = @ptrCast(@alignCast(self_parent));
-            if (frag_base.type_tag == .ShadowRoot) {
+            // ShadowRoot inherits from DocumentFragment and has a non-null host
+            const DocumentFragment = @import("document_fragment").DocumentFragment;
+            const frag: *const DocumentFragment = @ptrCast(@alignCast(self_parent));
+            if (frag.host != null) {
+                // This is a ShadowRoot (host is non-null)
                 return error.NotSupportedError;
             }
         }
@@ -1915,8 +1914,9 @@ pub const DocumentType = struct {
 
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
+        const slice = list.toSliceMut();
         while (i < list.len) {
-            const existing = list.getMut(i).?;
+            const existing = &slice[i];
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and

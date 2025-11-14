@@ -513,8 +513,9 @@ pub const AbortSignal = struct {
 
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
+        const slice = list.toSliceMut();
         while (i < list.len) {
-            const existing = list.getMut(i).?;
+            const existing = &slice[i];
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and

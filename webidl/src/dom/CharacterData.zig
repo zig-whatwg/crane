@@ -144,6 +144,7 @@ pub const CharacterData = webidl.interface(struct {
         const mutation_observer_algs = dom.mutation_observer_algorithms;
         const empty_nodes: []const *Node = &[_]*Node{};
         try mutation_observer_algs.queueMutationRecord(
+            self.allocator,
             "characterData",
             &self.base,
             null,

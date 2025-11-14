@@ -660,6 +660,7 @@ pub fn build(b: *std.Build) void {
     element_mod.addImport("attr", attr_mod);
     element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
     attr_mod.addImport("dom", dom_mod); // attr needs dom for mutation operations
+    character_data_mod.addImport("dom", dom_mod); // character_data needs dom for mutation observer
     text_mod.addImport("dom", dom_mod); // Circular: dom -> text, text -> dom
     cdata_section_mod.addImport("dom", dom_mod); // cdata_section needs dom (inherits from Text)
     processing_instruction_mod.addImport("dom", dom_mod); // processing_instruction needs dom for mutation operations
