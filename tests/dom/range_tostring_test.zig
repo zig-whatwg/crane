@@ -91,10 +91,10 @@ test "Range.toString - multiple Text nodes" {
     const text2 = try doc.call_createTextNode("World");
     const text3 = try doc.call_createTextNode("!");
 
-    _ = try div.call_appendChild((&text1).base);
-    _ = try div.call_appendChild((&span));
-    _ = try span.call_appendChild((&text2).base);
-    _ = try div.call_appendChild((&text3).base);
+    _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text1)));
+    _ = try div.call_appendChild(@ptrCast(span));
+    _ = try span.call_appendChild(@as(*dom.Node, @ptrCast(text2)));
+    _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text3)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, @ptrCast(doc));
@@ -122,17 +122,17 @@ test "Range.toString - partial Text node at start" {
     const span = try doc.call_createElement("span");
     const text2 = try doc.call_createTextNode("World");
 
-    _ = try div.call_appendChild((&text1).base);
-    _ = try div.call_appendChild((&span));
-    _ = try span.call_appendChild((&text2).base);
+    _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text1)));
+    _ = try div.call_appendChild(@ptrCast(span));
+    _ = try span.call_appendChild(@as(*dom.Node, @ptrCast(text2)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, @ptrCast(doc));
     defer range.deinit();
 
     // Select from "lo" in "Hello" to end of "World"
-    try range.call_setStart((&text1).base, 3);
-    try range.call_setEnd((&text2).base, 5);
+    try range.call_setStart(@as(*dom.Node, @ptrCast(text1)), 3);
+    try range.call_setEnd(@as(*dom.Node, @ptrCast(text2)), 5);
 
     const result = try range.toString(allocator);
     defer allocator.free(result);
@@ -152,17 +152,17 @@ test "Range.toString - partial Text node at end" {
     const span = try doc.call_createElement("span");
     const text2 = try doc.call_createTextNode("World");
 
-    _ = try div.call_appendChild((&text1).base);
-    _ = try div.call_appendChild((&span));
-    _ = try span.call_appendChild((&text2).base);
+    _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text1)));
+    _ = try div.call_appendChild(@ptrCast(span));
+    _ = try span.call_appendChild(@as(*dom.Node, @ptrCast(text2)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, @ptrCast(doc));
     defer range.deinit();
 
     // Select from start of "Hello" to "Wor" in "World"
-    try range.call_setStart((&text1).base, 0);
-    try range.call_setEnd((&text2).base, 3);
+    try range.call_setStart(@as(*dom.Node, @ptrCast(text1)), 0);
+    try range.call_setEnd(@as(*dom.Node, @ptrCast(text2)), 3);
 
     const result = try range.toString(allocator);
     defer allocator.free(result);
@@ -215,7 +215,7 @@ test "Range.toString - nested elements with text" {
     const textE = try doc.call_createTextNode("E");
 
     _ = try div.call_appendChild((&textA).base);
-    _ = try div.call_appendChild((&span));
+    _ = try div.call_appendChild(@ptrCast(span));
     _ = try span.call_appendChild((&textB).base);
     _ = try span.call_appendChild((&em));
     _ = try em.call_appendChild((&textC).base);
