@@ -23,7 +23,7 @@ test "TreeWalker - parentNode moves to filtered parent" {
     try child.appendChild(&grandchild);
 
     // Start at grandchild
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&grandchild);
 
@@ -48,7 +48,7 @@ test "TreeWalker - firstChild moves to first filtered child" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     const first = try walker.firstChild();
@@ -70,7 +70,7 @@ test "TreeWalker - lastChild moves to last filtered child" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     const last = try walker.lastChild();
@@ -96,7 +96,7 @@ test "TreeWalker - nextSibling moves to next filtered sibling" {
     defer child3.deinit();
     try root.appendChild(&child3);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child1);
 
@@ -119,7 +119,7 @@ test "TreeWalker - previousSibling moves to previous filtered sibling" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child2);
 
@@ -146,7 +146,7 @@ test "TreeWalker - nextNode traverses in tree order" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Traverse: root -> child1 -> grandchild -> child2
@@ -178,7 +178,7 @@ test "TreeWalker - previousNode traverses in reverse order" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
     walker.set_currentNode(&child2);
 
@@ -212,7 +212,7 @@ test "TreeWalker - whatToShow filters by node type" {
     try root.appendChild(&element2);
 
     // Only show elements
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, null, null);
     defer walker.deinit();
 
     const n1 = try walker.nextNode();
@@ -249,7 +249,7 @@ test "TreeWalker - filter callback with FILTER_SKIP descends" {
     defer element.deinit();
     try root.appendChild(&element);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, skipText);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, skipText, null);
     defer walker.deinit();
 
     // Should skip text but include elements
@@ -289,7 +289,7 @@ test "TreeWalker - filter callback with FILTER_REJECT skips subtree" {
     defer element.deinit();
     try root.appendChild(&element);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, rejectText);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, rejectText, null);
     defer walker.deinit();
 
     // Should reject text and skip its children
@@ -311,7 +311,7 @@ test "TreeWalker - currentNode setter changes position" {
     defer child2.deinit();
     try root.appendChild(&child2);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Initially at root
@@ -339,7 +339,7 @@ test "TreeWalker - attributes return correct values" {
         }
     }.callback;
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, filter);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ELEMENT, filter, null);
     defer walker.deinit();
 
     try std.testing.expect(walker.get_root() == &root);
@@ -354,7 +354,7 @@ test "TreeWalker - parentNode at root returns null" {
     var root = try Node.init(allocator, .ELEMENT_NODE);
     defer root.deinit();
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // At root, parentNode returns null
@@ -368,7 +368,7 @@ test "TreeWalker - nextSibling at root returns null" {
     var root = try Node.init(allocator, .ELEMENT_NODE);
     defer root.deinit();
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // At root, nextSibling returns null (root has no siblings in traversal)
@@ -403,7 +403,7 @@ test "TreeWalker - complex nested traversal" {
     defer b1.deinit();
     try b.appendChild(&b1);
 
-    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null);
+    var walker = try TreeWalker.init(allocator, &root, NodeFilter.SHOW_ALL, null, null);
     defer walker.deinit();
 
     // Full traversal: root -> a -> a1 -> a2 -> b -> b1
