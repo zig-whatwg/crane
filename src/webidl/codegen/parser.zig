@@ -616,6 +616,9 @@ fn parseClassDefinition(
         allocator.free(methods);
     }
 
+    // Extract init expressions from init methods and apply to fields
+    try applyInitExpressionsToFields(allocator, fields, methods);
+
     // Parse properties (extract from method names like get_xxx, set_xxx)
     const properties = try parseProperties(allocator, struct_body);
     errdefer {
@@ -882,6 +885,7 @@ fn parseFields(allocator: Allocator, struct_body: []const u8) ![]ir.Field {
                         .type_name = type_name,
                         .doc_comment = doc_comment,
                         .source_line = line_num,
+                        .init_expr = null, // Will be populated later by extractInitExpressions()
                     });
                 }
             }
@@ -1772,4 +1776,309 @@ fn typeToModule(type_name: []const u8) []const u8 {
     if (std.mem.eql(u8, type_name, "EventListener")) return "event_target";
     if (std.mem.eql(u8, type_name, "AbortSignal")) return "abort_signal";
     return "";
+}
+
+/// Apply init expressions from init methods to fields
+/// Looks for methods named "init" and extracts field initializations
+fn applyInitExpressionsToFields(
+    allocator: Allocator,
+    fields: []ir.Field,
+    methods: []ir.Method,
+) !void {
+    // Find init method(s)
+    for (methods) |method| {
+        if (!std.mem.eql(u8, method.name, "init")) continue;
+
+        // Extract init expressions from this init method
+        var init_map = try extractInitExpressions(allocator, method.body);
+        defer {
+            var it = init_map.iterator();
+            while (it.next()) |entry| {
+                allocator.free(entry.key_ptr.*);
+                var expr = entry.value_ptr.*;
+                expr.deinit(allocator);
+            }
+            init_map.deinit();
+        }
+
+        // Apply to fields
+        for (fields) |*field| {
+            if (init_map.get(field.name)) |init_expr| {
+                // Clone the expression to the field
+                field.init_expr = try init_expr.clone(allocator);
+            }
+        }
+    }
+}
+
+/// Extract initialization expressions from an init method
+/// This parses the `return .{ .field = value, ... }` pattern
+pub fn extractInitExpressions(
+    allocator: Allocator,
+    method_body: []const u8,
+) !std.StringHashMap(ir.Field.InitExpression) {
+    var init_map = std.StringHashMap(ir.Field.InitExpression).init(allocator);
+    errdefer {
+        var it = init_map.iterator();
+        while (it.next()) |entry| {
+            var expr = entry.value_ptr.*;
+            expr.deinit(allocator);
+        }
+        init_map.deinit();
+    }
+
+    // Find the return statement: "return .{"
+    const return_start = std.mem.indexOf(u8, method_body, "return .{") orelse return init_map;
+    const struct_init_start = return_start + "return .{".len;
+
+    // Find the closing "};" of the return statement
+    var brace_depth: i32 = 1;
+    var pos: usize = struct_init_start;
+    while (pos < method_body.len and brace_depth > 0) : (pos += 1) {
+        if (method_body[pos] == '{') {
+            brace_depth += 1;
+        } else if (method_body[pos] == '}') {
+            brace_depth -= 1;
+        }
+    }
+
+    if (brace_depth != 0) {
+        // Malformed return statement
+        return init_map;
+    }
+
+    const struct_init_end = pos - 1; // Back up to the last '}'
+    const struct_init_body = method_body[struct_init_start..struct_init_end];
+
+    // Parse each field initialization: .field_name = value,
+    var field_pos: usize = 0;
+    while (field_pos < struct_init_body.len) {
+        // Skip whitespace and comments
+        while (field_pos < struct_init_body.len and
+            (struct_init_body[field_pos] == ' ' or
+                struct_init_body[field_pos] == '\t' or
+                struct_init_body[field_pos] == '\n' or
+                struct_init_body[field_pos] == '\r')) : (field_pos += 1)
+        {}
+
+        if (field_pos >= struct_init_body.len) break;
+
+        // Skip line comments
+        if (field_pos + 1 < struct_init_body.len and
+            struct_init_body[field_pos] == '/' and
+            struct_init_body[field_pos + 1] == '/')
+        {
+            // Skip to end of line
+            while (field_pos < struct_init_body.len and struct_init_body[field_pos] != '\n') : (field_pos += 1) {}
+            continue;
+        }
+
+        // Look for ".field_name"
+        if (struct_init_body[field_pos] != '.') {
+            field_pos += 1;
+            continue;
+        }
+
+        const field_name_start = field_pos + 1;
+        var field_name_end = field_name_start;
+        while (field_name_end < struct_init_body.len and
+            (std.ascii.isAlphanumeric(struct_init_body[field_name_end]) or
+                struct_init_body[field_name_end] == '_')) : (field_name_end += 1)
+        {}
+
+        const field_name = struct_init_body[field_name_start..field_name_end];
+
+        // Find the "=" sign
+        var eq_pos = field_name_end;
+        while (eq_pos < struct_init_body.len and
+            (struct_init_body[eq_pos] == ' ' or struct_init_body[eq_pos] == '\t')) : (eq_pos += 1)
+        {}
+
+        if (eq_pos >= struct_init_body.len or struct_init_body[eq_pos] != '=') {
+            field_pos = field_name_end;
+            continue;
+        }
+
+        // Find the value (until comma or closing brace, accounting for nesting)
+        const value_start = eq_pos + 1;
+        var value_end = value_start;
+        var paren_depth_inner: i32 = 0;
+        var brace_depth_inner: i32 = 0;
+        var in_string = false;
+        var escape_next = false;
+
+        while (value_end < struct_init_body.len) : (value_end += 1) {
+            const c = struct_init_body[value_end];
+
+            if (escape_next) {
+                escape_next = false;
+                continue;
+            }
+
+            if (c == '\\') {
+                escape_next = true;
+                continue;
+            }
+
+            if (c == '"') {
+                in_string = !in_string;
+                continue;
+            }
+
+            if (in_string) continue;
+
+            if (c == '(') paren_depth_inner += 1;
+            if (c == ')') paren_depth_inner -= 1;
+            if (c == '{') brace_depth_inner += 1;
+            if (c == '}') brace_depth_inner -= 1;
+
+            if (paren_depth_inner == 0 and brace_depth_inner == 0 and c == ',') {
+                break;
+            }
+        }
+
+        const value_raw = struct_init_body[value_start..value_end];
+        const value_trimmed = std.mem.trim(u8, value_raw, " \t\n\r");
+
+        // Parse the value into an InitExpression
+        const init_expr = try parseInitExpression(allocator, value_trimmed);
+        try init_map.put(try allocator.dupe(u8, field_name), init_expr);
+
+        field_pos = value_end + 1;
+    }
+
+    return init_map;
+}
+
+/// Parse a single initialization expression
+fn parseInitExpression(allocator: Allocator, value: []const u8) !ir.Field.InitExpression {
+    // Null literal
+    if (std.mem.eql(u8, value, "null")) {
+        return .{ .literal = try allocator.dupe(u8, "null") };
+    }
+
+    // Boolean literals
+    if (std.mem.eql(u8, value, "true") or std.mem.eql(u8, value, "false")) {
+        return .{ .literal = try allocator.dupe(u8, value) };
+    }
+
+    // Numeric literals (simple check)
+    if (value.len > 0 and (std.ascii.isDigit(value[0]) or value[0] == '-')) {
+        // Could be a number
+        var is_number = true;
+        for (value) |c| {
+            if (!std.ascii.isDigit(c) and c != '-' and c != '.') {
+                is_number = false;
+                break;
+            }
+        }
+        if (is_number) {
+            return .{ .literal = try allocator.dupe(u8, value) };
+        }
+    }
+
+    // String literals
+    if (value.len >= 2 and value[0] == '"' and value[value.len - 1] == '"') {
+        return .{ .literal = try allocator.dupe(u8, value) };
+    }
+
+    // Empty struct literals
+    if (std.mem.eql(u8, value, "{}") or std.mem.eql(u8, value, ".{}")) {
+        return .{ .literal = try allocator.dupe(u8, value) };
+    }
+
+    // Function call: SomeType.init(...) or infra.List(...).init(...)
+    if (std.mem.indexOf(u8, value, ".init(") != null or
+        std.mem.indexOf(u8, value, ".{") != null)
+    {
+        // Extract function and arguments
+        return .{ .function_call = try parseFunctionCall(allocator, value) };
+    }
+
+    // Constant reference: Node.DOCUMENT_NODE, std.Thread.Mutex{}
+    if (std.mem.indexOf(u8, value, "::") != null or
+        std.mem.indexOf(u8, value, ".") != null)
+    {
+        // Check if it looks like a constant (starts with uppercase or module path)
+        const first_part_end = std.mem.indexOf(u8, value, ".") orelse value.len;
+        const first_part = value[0..first_part_end];
+
+        if (first_part.len > 0 and std.ascii.isUpper(first_part[0])) {
+            return .{ .constant_ref = try allocator.dupe(u8, value) };
+        }
+    }
+
+    // Parameter reference (simple identifier)
+    if (value.len > 0 and (std.ascii.isAlpha(value[0]) or value[0] == '_')) {
+        var is_identifier = true;
+        for (value) |c| {
+            if (!std.ascii.isAlphanumeric(c) and c != '_') {
+                is_identifier = false;
+                break;
+            }
+        }
+        if (is_identifier) {
+            return .{ .parameter = try allocator.dupe(u8, value) };
+        }
+    }
+
+    // Fallback: complex expression
+    return .{ .complex = try allocator.dupe(u8, value) };
+}
+
+/// Parse a function call into function name and arguments
+fn parseFunctionCall(
+    allocator: Allocator,
+    value: []const u8,
+) !struct { function: []const u8, args: [][]const u8 } {
+    // Find the opening paren
+    const paren_pos = std.mem.lastIndexOf(u8, value, "(") orelse {
+        return .{ .function = try allocator.dupe(u8, value), .args = &[_][]const u8{} };
+    };
+
+    const function_name = std.mem.trim(u8, value[0..paren_pos], " \t");
+
+    // Find the closing paren
+    const close_paren = std.mem.lastIndexOf(u8, value, ")") orelse paren_pos + 1;
+
+    const args_str = value[paren_pos + 1 .. close_paren];
+
+    // Split arguments by comma (accounting for nesting)
+    var args_list = infra.List([]const u8).init(allocator);
+    defer args_list.deinit();
+
+    if (args_str.len == 0) {
+        return .{
+            .function = try allocator.dupe(u8, function_name),
+            .args = &[_][]const u8{},
+        };
+    }
+
+    var arg_start: usize = 0;
+    var paren_depth: i32 = 0;
+    var pos: usize = 0;
+
+    while (pos < args_str.len) : (pos += 1) {
+        if (args_str[pos] == '(') paren_depth += 1;
+        if (args_str[pos] == ')') paren_depth -= 1;
+
+        if (args_str[pos] == ',' and paren_depth == 0) {
+            const arg = std.mem.trim(u8, args_str[arg_start..pos], " \t");
+            if (arg.len > 0) {
+                try args_list.append(try allocator.dupe(u8, arg));
+            }
+            arg_start = pos + 1;
+        }
+    }
+
+    // Add last argument
+    const last_arg = std.mem.trim(u8, args_str[arg_start..], " \t");
+    if (last_arg.len > 0) {
+        try args_list.append(try allocator.dupe(u8, last_arg));
+    }
+
+    return .{
+        .function = try allocator.dupe(u8, function_name),
+        .args = try args_list.toOwnedSlice(),
+    };
 }

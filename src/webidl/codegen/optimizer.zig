@@ -704,6 +704,7 @@ fn cloneField(allocator: Allocator, field: ir.Field) !ir.Field {
         .type_name = try allocator.dupe(u8, field.type_name),
         .doc_comment = if (field.doc_comment) |doc| try allocator.dupe(u8, doc) else null,
         .source_line = field.source_line,
+        .init_expr = if (field.init_expr) |expr| try expr.clone(allocator) else null,
     };
 }
 

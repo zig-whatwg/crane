@@ -115,13 +115,85 @@ pub const Field = struct {
     doc_comment: ?[]const u8,
     source_line: usize,
 
+    /// Initialization expression for this field
+    /// Used by init method synthesis to generate correct initialization code
+    init_expr: ?InitExpression,
+
     pub fn deinit(self: *Field, allocator: Allocator) void {
         allocator.free(self.name);
         allocator.free(self.type_name);
         if (self.doc_comment) |doc| {
             allocator.free(doc);
         }
+        if (self.init_expr) |*expr| {
+            expr.deinit(allocator);
+        }
     }
+
+    /// Initialization expression for a field
+    /// Describes how to initialize this field in an init method
+    pub const InitExpression = union(enum) {
+        /// Literal value: null, 0, 1, true, false, ""
+        /// Example: .literal = "null"
+        literal: []const u8,
+
+        /// Function call with arguments
+        /// Example: .function_call = .{ .function = "infra.List(*Node).init", .args = &[_][]const u8{"allocator"} }
+        function_call: struct {
+            function: []const u8,
+            args: [][]const u8,
+        },
+
+        /// Reference to a constant
+        /// Example: .constant_ref = "Node.DOCUMENT_NODE"
+        constant_ref: []const u8,
+
+        /// Copy value from init parameter
+        /// Example: .parameter = "tag_name"
+        parameter: []const u8,
+
+        /// Complex expression (fallback for unparseable expressions)
+        /// Example: .complex = "try allocator.dupe(u8, \"\")"
+        complex: []const u8,
+
+        pub fn deinit(self: *InitExpression, allocator: Allocator) void {
+            switch (self.*) {
+                .literal => |lit| allocator.free(lit),
+                .function_call => |fc| {
+                    allocator.free(fc.function);
+                    for (fc.args) |arg| {
+                        allocator.free(arg);
+                    }
+                    allocator.free(fc.args);
+                },
+                .constant_ref => |cr| allocator.free(cr),
+                .parameter => |p| allocator.free(p),
+                .complex => |c| allocator.free(c),
+            }
+        }
+
+        pub fn clone(self: InitExpression, allocator: Allocator) !InitExpression {
+            return switch (self) {
+                .literal => |lit| .{ .literal = try allocator.dupe(u8, lit) },
+                .function_call => |fc| blk: {
+                    const function = try allocator.dupe(u8, fc.function);
+                    errdefer allocator.free(function);
+
+                    const args = try allocator.alloc([]const u8, fc.args.len);
+                    errdefer allocator.free(args);
+
+                    for (fc.args, 0..) |arg, i| {
+                        args[i] = try allocator.dupe(u8, arg);
+                    }
+
+                    break :blk .{ .function_call = .{ .function = function, .args = args } };
+                },
+                .constant_ref => |cr| .{ .constant_ref = try allocator.dupe(u8, cr) },
+                .parameter => |p| .{ .parameter = try allocator.dupe(u8, p) },
+                .complex => |c| .{ .complex = try allocator.dupe(u8, c) },
+            };
+        }
+    };
 };
 
 /// A method declaration
