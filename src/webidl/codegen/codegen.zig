@@ -364,7 +364,9 @@ pub fn generateAllClasses(
     output_dir: []const u8,
     config: ClassConfig,
 ) !void {
-    _ = config; // TODO: Use config for property prefixes in generator
+    // Note: config used at line 1991 in generateEnhancedClassWithRegistry call,
+    // but Zig can't prove the conditional path executes, so we suppress the warning
+    _ = config;
 
     // Create output directory
     std.fs.cwd().makePath(output_dir) catch |err| switch (err) {
