@@ -45,8 +45,7 @@ test "console.table() - with properties filter" {
     console_obj.runtime = runtime;
 
     // Create properties filter
-    const prop_name = try infra.string.utf8ToUtf16(allocator, "name");
-    defer allocator.free(prop_name);
+    const prop_name = "name";
 
     const properties = [_]webidl.DOMString{prop_name};
 
@@ -163,8 +162,7 @@ test "console.table() - properties filter with no matches" {
     mock_runtime.setTestObjectKeys(runtime, &test_keys);
 
     // Filter for a property that doesn't exist
-    const prop_missing = try infra.string.utf8ToUtf16(allocator, "nonexistent");
-    defer allocator.free(prop_missing);
+    const prop_missing = "nonexistent";
 
     const properties = [_]webidl.DOMString{prop_missing};
 

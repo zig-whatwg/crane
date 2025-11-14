@@ -162,7 +162,8 @@ fn mockGetProperty(
     _: *anyopaque,
     _: webidl.JSValue,
     _: []const u8,
-) ?webidl.JSValue {
+    _: std.mem.Allocator,
+) anyerror!?webidl.JSValue {
     // Not implemented in mock - return null
     return null;
 }

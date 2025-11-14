@@ -13,8 +13,7 @@ test "call_count - first call sets count to 1" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test-counter");
-    defer allocator.free(label);
+    const label = "test-counter";
 
     // Initially no count exists
     try std.testing.expect(!console_obj.countMap.contains(label));
@@ -31,8 +30,7 @@ test "call_count - increments existing count" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "increment-counter");
-    defer allocator.free(label);
+    const label = "increment-counter";
 
     // Count multiple times
     try console_obj.call_count(label);
@@ -56,8 +54,7 @@ test "call_countReset - resets existing counter to 0" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "reset-counter");
-    defer allocator.free(label);
+    const label = "reset-counter";
 
     // Count up to 10
     var i: u32 = 0;
@@ -78,8 +75,7 @@ test "call_countReset - missing counter shows warning (no error)" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-counter");
-    defer allocator.free(label);
+    const label = "nonexistent-counter";
 
     // Reset counter that doesn't exist (should not error)
     try console_obj.call_countReset(label);
@@ -93,8 +89,7 @@ test "counting - reset then count starts from 1" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "reset-then-count");
-    defer allocator.free(label);
+    const label = "reset-then-count";
 
     // Count to 5
     var i: u32 = 0;
@@ -117,12 +112,9 @@ test "counting - multiple independent counters" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const counter1 = try infra.string.utf8ToUtf16(allocator, "counter1");
-    defer allocator.free(counter1);
-    const counter2 = try infra.string.utf8ToUtf16(allocator, "counter2");
-    defer allocator.free(counter2);
-    const counter3 = try infra.string.utf8ToUtf16(allocator, "counter3");
-    defer allocator.free(counter3);
+    const counter1 = "counter1";
+    const counter2 = "counter2";
+    const counter3 = "counter3";
 
     // Count counter1 3 times
     try console_obj.call_count(counter1);
@@ -149,10 +141,8 @@ test "counting - reset one counter doesn't affect others" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const counter1 = try infra.string.utf8ToUtf16(allocator, "counter1");
-    defer allocator.free(counter1);
-    const counter2 = try infra.string.utf8ToUtf16(allocator, "counter2");
-    defer allocator.free(counter2);
+    const counter1 = "counter1";
+    const counter2 = "counter2";
 
     // Count both counters
     try console_obj.call_count(counter1);
@@ -177,8 +167,7 @@ test "counting - default label works" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const default_label = try infra.string.utf8ToUtf16(allocator, "default");
-    defer allocator.free(default_label);
+    const default_label = "default";
 
     // Use "default" as label (WebIDL default parameter)
     try console_obj.call_count(default_label);
@@ -194,8 +183,7 @@ test "counting - counter can go very high" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "high-counter");
-    defer allocator.free(label);
+    const label = "high-counter";
 
     // Count many times
     var i: u32 = 0;
@@ -211,8 +199,7 @@ test "counting - multiple resets work" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "multi-reset");
-    defer allocator.free(label);
+    const label = "multi-reset";
 
     // Count, reset, count, reset, count
     try console_obj.call_count(label);
@@ -278,8 +265,7 @@ test "counting - Unicode labels work" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const unicode_label = try infra.string.utf8ToUtf16(allocator, "カウンター");
-    defer allocator.free(unicode_label);
+    const unicode_label = "カウンター";
 
     try console_obj.call_count(unicode_label);
     try console_obj.call_count(unicode_label);
@@ -294,8 +280,7 @@ test "counting - empty string label works" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const empty_label = try infra.string.utf8ToUtf16(allocator, "");
-    defer allocator.free(empty_label);
+    const empty_label = "";
 
     try console_obj.call_count(empty_label);
     try std.testing.expectEqual(@as(?u32, 1), console_obj.countMap.get(empty_label));

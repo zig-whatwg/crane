@@ -25,8 +25,7 @@ test "Console - deinit cleans up all resources" {
     var console_obj = try console_mod.console.console.init(allocator);
 
     // Add some state
-    const label = try infra.string.utf8ToUtf16(allocator, "test");
-    defer allocator.free(label);
+    const label = "test";
 
     try console_obj.countMap.set(label, 5);
     try console_obj.timerTable.set(label, infra.Moment.now());
@@ -42,10 +41,8 @@ test "Console - count_map operations" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label1 = try infra.string.utf8ToUtf16(allocator, "counter1");
-    defer allocator.free(label1);
-    const label2 = try infra.string.utf8ToUtf16(allocator, "counter2");
-    defer allocator.free(label2);
+    const label1 = "counter1";
+    const label2 = "counter2";
 
     // Initially empty
     try std.testing.expect(!console_obj.countMap.contains(label1));
@@ -74,10 +71,8 @@ test "Console - timer_table operations" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label1 = try infra.string.utf8ToUtf16(allocator, "timer1");
-    defer allocator.free(label1);
-    const label2 = try infra.string.utf8ToUtf16(allocator, "timer2");
-    defer allocator.free(label2);
+    const label1 = "timer1";
+    const label2 = "timer2";
 
     // Initially empty
     try std.testing.expect(!console_obj.timerTable.contains(label1));
@@ -107,10 +102,8 @@ test "Console - group_stack operations" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label1 = try infra.string.utf8ToUtf16(allocator, "Group 1");
-    defer allocator.free(label1);
-    const label2 = try infra.string.utf8ToUtf16(allocator, "Group 2");
-    defer allocator.free(label2);
+    const label1 = "Group 1";
+    const label2 = "Group 2";
 
     // Initially empty
     try std.testing.expect(console_obj.group_stack.isEmpty());
@@ -149,8 +142,7 @@ test "Console - multiple independent instances" {
     var console2 = try console_mod.console.console.init(allocator);
     defer console2.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test");
-    defer allocator.free(label);
+    const label = "test";
 
     // Modify console1 state
     try console1.countMap.set(label, 10);
@@ -173,12 +165,9 @@ test "Console - concurrent timer operations" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label1 = try infra.string.utf8ToUtf16(allocator, "timer1");
-    defer allocator.free(label1);
-    const label2 = try infra.string.utf8ToUtf16(allocator, "timer2");
-    defer allocator.free(label2);
-    const label3 = try infra.string.utf8ToUtf16(allocator, "timer3");
-    defer allocator.free(label3);
+    const label1 = "timer1";
+    const label2 = "timer2";
+    const label3 = "timer3";
 
     // Start multiple timers
     const time1 = infra.Moment.now();
@@ -208,12 +197,9 @@ test "Console - nested group stack" {
     defer console_obj.deinit();
 
     // Create nested groups
-    const label1 = try infra.string.utf8ToUtf16(allocator, "Outer");
-    defer allocator.free(label1);
-    const label2 = try infra.string.utf8ToUtf16(allocator, "Middle");
-    defer allocator.free(label2);
-    const label3 = try infra.string.utf8ToUtf16(allocator, "Inner");
-    defer allocator.free(label3);
+    const label1 = "Outer";
+    const label2 = "Middle";
+    const label3 = "Inner";
 
     try console_obj.group_stack.push(Group.init(label1));
     try console_obj.group_stack.push(Group.init(label2));

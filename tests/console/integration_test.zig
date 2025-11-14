@@ -20,13 +20,11 @@ test "integration - complete console session" {
     console_obj.call_debug(mock_args);
 
     // Use timing
-    const timer_label = try infra.string.utf8ToUtf16(allocator, "session");
-    defer allocator.free(timer_label);
+    const timer_label = "session";
     try console_obj.call_time(timer_label);
 
     // Use counting
-    const count_label = try infra.string.utf8ToUtf16(allocator, "operations");
-    defer allocator.free(count_label);
+    const count_label = "operations";
     try console_obj.call_count(count_label);
     try console_obj.call_count(count_label);
     try console_obj.call_count(count_label);
@@ -58,8 +56,7 @@ test "integration - nested groups with all operations" {
     console_obj.call_log(mock_args); // Indent level 1
 
     // Start timer in group
-    const timer1 = try infra.string.utf8ToUtf16(allocator, "timer1");
-    defer allocator.free(timer1);
+    const timer1 = "timer1";
     try console_obj.call_time(timer1);
 
     // Inner group
@@ -67,8 +64,7 @@ test "integration - nested groups with all operations" {
     console_obj.call_debug(mock_args); // Indent level 2
 
     // Count in inner group
-    const counter1 = try infra.string.utf8ToUtf16(allocator, "inner");
-    defer allocator.free(counter1);
+    const counter1 = "inner";
     try console_obj.call_count(counter1);
 
     // Innermost group
@@ -123,8 +119,7 @@ test "integration - disabled console performance" {
     console_obj.enabled = false;
 
     const mock_args: []const JSValue = &.{};
-    const label = try infra.string.utf8ToUtf16(allocator, "test");
-    defer allocator.free(label);
+    const label = "test";
 
     // All operations should be near-instant when disabled
     var i: usize = 0;
@@ -150,8 +145,7 @@ test "integration - state isolation between instances" {
     var console2 = try console_mod.console.console.init(allocator);
     defer console2.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test");
-    defer allocator.free(label);
+    const label = "test";
 
     // Modify console1
     try console1.call_time(label);
@@ -174,8 +168,7 @@ test "integration - clear resets groups but not timers/counts" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test");
-    defer allocator.free(label);
+    const label = "test";
 
     // Create state
     try console_obj.call_time(label);
@@ -207,21 +200,18 @@ test "integration - realistic debugging session" {
     const mock_args: []const JSValue = &.{};
 
     // Start debugging session
-    const session_timer = try infra.string.utf8ToUtf16(allocator, "debug-session");
-    defer allocator.free(session_timer);
+    const session_timer = "debug-session";
     try console_obj.call_time(session_timer);
 
     console_obj.call_log(mock_args); // Starting debug
 
     // Debug function 1
     try console_obj.call_group(&.{});
-    const func1_timer = try infra.string.utf8ToUtf16(allocator, "function1");
-    defer allocator.free(func1_timer);
+    const func1_timer = "function1";
     try console_obj.call_time(func1_timer);
 
     console_obj.call_debug(mock_args);
-    const counter1 = try infra.string.utf8ToUtf16(allocator, "iterations");
-    defer allocator.free(counter1);
+    const counter1 = "iterations";
     try console_obj.call_count(counter1);
     try console_obj.call_count(counter1);
 
@@ -230,8 +220,7 @@ test "integration - realistic debugging session" {
 
     // Debug function 2
     try console_obj.call_group(&.{});
-    const func2_timer = try infra.string.utf8ToUtf16(allocator, "function2");
-    defer allocator.free(func2_timer);
+    const func2_timer = "function2";
     try console_obj.call_time(func2_timer);
 
     console_obj.call_warn(mock_args); // Something suspicious

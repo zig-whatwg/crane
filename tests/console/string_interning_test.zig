@@ -51,8 +51,7 @@ test "string interning - count uses interned labels" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "counter");
-    defer allocator.free(label);
+    const label = "counter";
 
     // Call count multiple times - should intern "counter" label
     try console_obj.call_count(label);
@@ -68,8 +67,7 @@ test "string interning - time uses interned labels" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "my-timer");
-    defer allocator.free(label);
+    const label = "my-timer";
 
     try console_obj.call_time(label);
 
@@ -136,11 +134,9 @@ test "string interning - realistic usage pattern" {
     defer console_obj.deinit();
 
     // Simulate realistic usage: mostly "default", some custom labels
-    const default_label = try infra.string.utf8ToUtf16(allocator, "default");
-    defer allocator.free(default_label);
+    const default_label = "default";
 
-    const custom_label = try infra.string.utf8ToUtf16(allocator, "custom");
-    defer allocator.free(custom_label);
+    const custom_label = "custom";
 
     // 90% default, 10% custom (realistic browser pattern)
     var i: usize = 0;

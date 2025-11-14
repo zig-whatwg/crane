@@ -14,8 +14,7 @@ test "time - warns when timer already exists" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "duplicate-timer");
-    defer allocator.free(label);
+    const label = "duplicate-timer";
 
     // Start timer first time (should succeed)
     try console_obj.call_time(label);
@@ -44,8 +43,7 @@ test "timeLog - warns when timer doesn't exist" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "missing-timer");
-    defer allocator.free(label);
+    const label = "missing-timer";
 
     // Try to log time for non-existent timer
     try console_obj.call_timeLog(label, &.{});
@@ -66,8 +64,7 @@ test "timeEnd - warns when timer doesn't exist" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-timer");
-    defer allocator.free(label);
+    const label = "nonexistent-timer";
 
     // Try to end non-existent timer
     try console_obj.call_timeEnd(label);
@@ -88,8 +85,7 @@ test "timeLog - formats duration correctly with data" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test-timer");
-    defer allocator.free(label);
+    const label = "test-timer";
 
     // Start timer
     try console_obj.call_time(label);
@@ -125,8 +121,7 @@ test "timeEnd - removes timer after logging" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "temp-timer");
-    defer allocator.free(label);
+    const label = "temp-timer";
 
     // Start and end timer
     try console_obj.call_time(label);

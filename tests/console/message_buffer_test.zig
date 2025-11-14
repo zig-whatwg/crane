@@ -172,8 +172,7 @@ test "message buffer - timing messages buffered" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "timer");
-    defer allocator.free(label);
+    const label = "timer";
 
     try console_obj.call_time(label); // Should not buffer (no output)
     try std.testing.expectEqual(@as(usize, 0), console_obj.messageBuffer.size());
@@ -191,8 +190,7 @@ test "message buffer - counting messages buffered" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "counter");
-    defer allocator.free(label);
+    const label = "counter";
 
     try console_obj.call_count(label); // "counter: 1" - should buffer
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());

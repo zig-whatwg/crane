@@ -13,8 +13,7 @@ test "call_time - starts new timer" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test-timer");
-    defer allocator.free(label);
+    const label = "test-timer";
 
     // Initially no timer exists
     try std.testing.expect(!console_obj.timerTable.contains(label));
@@ -33,8 +32,7 @@ test "call_time - duplicate timer returns without error" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "duplicate-timer");
-    defer allocator.free(label);
+    const label = "duplicate-timer";
 
     // Start timer first time
     try console_obj.call_time(label);
@@ -59,8 +57,7 @@ test "call_timeEnd - stops timer and removes from table" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "end-timer");
-    defer allocator.free(label);
+    const label = "end-timer";
 
     // Start timer
     try console_obj.call_time(label);
@@ -81,8 +78,7 @@ test "call_timeEnd - missing timer returns without error" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-timer");
-    defer allocator.free(label);
+    const label = "nonexistent-timer";
 
     // End timer that was never started (should not error)
     try console_obj.call_timeEnd(label);
@@ -96,8 +92,7 @@ test "call_timeLog - logs elapsed time without removing timer" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "log-timer");
-    defer allocator.free(label);
+    const label = "log-timer";
 
     // Start timer
     try console_obj.call_time(label);
@@ -118,8 +113,7 @@ test "call_timeLog - missing timer returns without error" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "nonexistent-log-timer");
-    defer allocator.free(label);
+    const label = "nonexistent-log-timer";
 
     // Log timer that was never started (should not error)
     try console_obj.call_timeLog(label, &.{});
@@ -133,8 +127,7 @@ test "timing - complete lifecycle (time → timeLog → timeEnd)" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "lifecycle-timer");
-    defer allocator.free(label);
+    const label = "lifecycle-timer";
 
     // 1. Start timer
     try console_obj.call_time(label);
@@ -161,12 +154,9 @@ test "timing - multiple concurrent timers" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const timer1 = try infra.string.utf8ToUtf16(allocator, "timer1");
-    defer allocator.free(timer1);
-    const timer2 = try infra.string.utf8ToUtf16(allocator, "timer2");
-    defer allocator.free(timer2);
-    const timer3 = try infra.string.utf8ToUtf16(allocator, "timer3");
-    defer allocator.free(timer3);
+    const timer1 = "timer1";
+    const timer2 = "timer2";
+    const timer3 = "timer3";
 
     // Start multiple timers
     try console_obj.call_time(timer1);
@@ -198,8 +188,7 @@ test "timing - elapsed time increases" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label = try infra.string.utf8ToUtf16(allocator, "elapsed-timer");
-    defer allocator.free(label);
+    const label = "elapsed-timer";
 
     // Start timer
     try console_obj.call_time(label);
@@ -225,10 +214,8 @@ test "timing - timer labels are independent" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const label_a = try infra.string.utf8ToUtf16(allocator, "timerA");
-    defer allocator.free(label_a);
-    const label_b = try infra.string.utf8ToUtf16(allocator, "timerB");
-    defer allocator.free(label_b);
+    const label_a = "timerA";
+    const label_b = "timerB";
 
     // Start timerA
     try console_obj.call_time(label_a);
@@ -254,8 +241,7 @@ test "timing - default label can be used" {
     var console_obj = try console_mod.console.console.init(allocator);
     defer console_obj.deinit();
 
-    const default_label = try infra.string.utf8ToUtf16(allocator, "default");
-    defer allocator.free(default_label);
+    const default_label = "default";
 
     // Use "default" as label (WebIDL default parameter)
     try console_obj.call_time(default_label);

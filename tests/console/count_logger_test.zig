@@ -15,8 +15,7 @@ test "count - uses printer for output" {
     // Disable printer to verify it's being called (won't crash)
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "test-counter");
-    defer allocator.free(label);
+    const label = "test-counter";
 
     // Call count multiple times
     try console_obj.call_count(label);
@@ -36,8 +35,7 @@ test "countReset - uses printer for warning when counter doesn't exist" {
     // Disable printer
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "nonexistent");
-    defer allocator.free(label);
+    const label = "nonexistent";
 
     // Reset non-existent counter (should warn, not crash)
     try console_obj.call_countReset(label);
@@ -53,8 +51,7 @@ test "countReset - resets existing counter to zero" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "my-counter");
-    defer allocator.free(label);
+    const label = "my-counter";
 
     // Create counter
     try console_obj.call_count(label);
@@ -78,8 +75,7 @@ test "count - message buffering works" {
 
     console_obj.printFn = null;
 
-    const label = try infra.string.utf8ToUtf16(allocator, "buffered");
-    defer allocator.free(label);
+    const label = "buffered";
 
     // Count twice
     try console_obj.call_count(label);

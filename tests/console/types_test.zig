@@ -12,8 +12,7 @@ const LogLevel = types.LogLevel;
 
 test "Group - init expanded" {
     const allocator = std.testing.allocator;
-    const label = try infra.string.utf8ToUtf16(allocator, "Test Group");
-    defer allocator.free(label);
+    const label = "Test Group";
 
     const group = Group.init(label);
     try std.testing.expect(group.label != null);
@@ -22,8 +21,7 @@ test "Group - init expanded" {
 
 test "Group - init collapsed" {
     const allocator = std.testing.allocator;
-    const label = try infra.string.utf8ToUtf16(allocator, "Test Group");
-    defer allocator.free(label);
+    const label = "Test Group";
 
     const group = Group.initCollapsed(label);
     try std.testing.expect(group.label != null);
