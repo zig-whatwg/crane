@@ -25,6 +25,7 @@
 //! ```
 
 const std = @import("std");
+const infra = @import("infra");
 const host = @import("host");
 const host_cache = @import("host_cache.zig");
 const ipv4_parser = @import("ipv4_parser");
@@ -108,7 +109,7 @@ pub fn parseHost(
     allocator: std.mem.Allocator,
     input: []const u8,
     is_opaque: bool,
-    errors: ?*std.ArrayList(validation.ValidationError),
+    errors: ?*infra.List(validation.ValidationError),
 ) !host.Host {
     // P10 Optimization: Check cache for common hosts first
     // Avoids parsing overhead for localhost, 127.0.0.1, ::1, etc.
