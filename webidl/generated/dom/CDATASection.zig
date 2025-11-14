@@ -810,7 +810,7 @@ pub const CDATASection = struct {
         if (self_node.parent_node) |parent| {
             // Call the mutation module's children changed callback system
             // This will invoke any registered callbacks from other specifications
-            @import("mutation").runChildrenChangedSteps(parent);
+            dom.mutation.runChildrenChangedSteps(parent);
         }
     
     }

@@ -167,7 +167,7 @@ pub const DocumentFragment = struct {
         collection.* = try HTMLCollection.init(allocator);
 
         // Filter child_nodes for elements only (ELEMENT_NODE = 1)
-        for (self_parent.child_nodes.items) |child| {
+        for (self_parent.child_nodes.toSlice()) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 const element: *Element = @ptrCast(child);
                 try collection.addElement(element);
@@ -190,7 +190,7 @@ pub const DocumentFragment = struct {
         const NodeType = @import("node").Node;
 
         // Iterate through children in tree order
-        for (self_parent.child_nodes.items) |child| {
+        for (self_parent.child_nodes.toSlice()) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
@@ -212,10 +212,10 @@ pub const DocumentFragment = struct {
         const NodeType = @import("node").Node;
 
         // Iterate through children in reverse tree order
-        var i: usize = self_parent.child_nodes.items.len;
+        var i: usize = self_parent.child_nodes.toSlice().len;
         while (i > 0) {
             i -= 1;
-            const child = self_parent.child_nodes.items[i];
+            const child = self_parent.child_nodes.toSlice()[i];
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 return @ptrCast(child);
             }
@@ -238,7 +238,7 @@ pub const DocumentFragment = struct {
 
         // Count children that are Elements
         var count: u32 = 0;
-        for (self_parent.child_nodes.items) |child| {
+        for (self_parent.child_nodes.toSlice()) |child| {
             if (child.node_type == NodeType.ELEMENT_NODE) {
                 count += 1;
             }
@@ -385,8 +385,8 @@ pub const DocumentFragment = struct {
         defer matches.deinit();
 
         // Return first result if not empty; otherwise null
-        if (matches.items.len > 0) {
-            return matches.items[0];
+        if (matches.toSlice().len > 0) {
+            return matches.toSlice()[0];
         }
 
         return null;
@@ -412,7 +412,7 @@ pub const DocumentFragment = struct {
         node_list.* = try NodeList.init(allocator);
 
         // Add all matched elements to the NodeList
-        for (matches.items) |element| {
+        for (matches.toSlice()) |element| {
             // Cast Element to Node
             const node = @as(*@import("node").Node, @ptrCast(element));
             try node_list.addNode(node);
