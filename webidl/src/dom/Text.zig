@@ -132,7 +132,7 @@ pub const Text = webidl.interface(struct {
 
         // Collect all contiguous Text nodes in tree order
         // Start from the first contiguous Text node (walk backward to find start)
-        var first: *Node = @ptrCast(self);
+        var first: *Node = @ptrCast(@constCast(self));
         while (dom.tree_helpers.getPreviousSibling(first)) |prev| {
             if (prev.node_type != Node.TEXT_NODE) break;
             first = prev;

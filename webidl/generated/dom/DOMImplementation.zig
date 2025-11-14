@@ -131,7 +131,7 @@ pub const DOMImplementation = struct {
         // Step 1: Create new XMLDocument
         const document = try self.allocator.create(Document);
         document.* = try Document.init(self.allocator);
-        document.document_type = .xml;
+        document.doc_type = .xml;
 
         const document_node: *Node = @ptrCast(document);
 

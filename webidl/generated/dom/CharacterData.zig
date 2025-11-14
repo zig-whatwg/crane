@@ -1035,11 +1035,10 @@ pub const CharacterData = struct {
                         shadow.slot_assignment_mode,
                         shadow.clonable_flag,
                         shadow.serializable_flag,
-                        shadow.available_to_element_internals,
-                        false, // declarative will be set next
                     );
 
-                    // Step 6.5: Set copy's shadow root's declarative to node's shadow root's declarative
+                    // Set additional flags after init
+                    copy_shadow.available_to_element_internals = shadow.available_to_element_internals;
                     copy_shadow.declarative_flag = shadow.declarative_flag;
 
                     copy_elem.shadow_root = &copy_shadow;

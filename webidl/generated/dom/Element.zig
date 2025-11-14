@@ -1084,7 +1084,7 @@ pub const Element = struct {
             const parent = element.parent_node orelse return null;
 
             // Return the result of pre-inserting node into element's parent before element
-            return try mutation.preInsert(node, parent, element);
+            return try mutation.preInsert(node, parent, @ptrCast(element));
         } else if (eqlIgnoreCase(where, "afterbegin")) {
             // Return the result of pre-inserting node into element before element's first child
             const first_child = if (element.child_nodes.toSlice().len > 0)
@@ -2262,11 +2262,10 @@ pub const Element = struct {
                         shadow.slot_assignment_mode,
                         shadow.clonable_flag,
                         shadow.serializable_flag,
-                        shadow.available_to_element_internals,
-                        false, // declarative will be set next
                     );
 
-                    // Step 6.5: Set copy's shadow root's declarative to node's shadow root's declarative
+                    // Set additional flags after init
+                    copy_shadow.available_to_element_internals = shadow.available_to_element_internals;
                     copy_shadow.declarative_flag = shadow.declarative_flag;
 
                     copy_elem.shadow_root = &copy_shadow;

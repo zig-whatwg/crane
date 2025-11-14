@@ -914,7 +914,7 @@ pub const Element = webidl.interface(struct {
             const parent = element.parent_node orelse return null;
 
             // Return the result of pre-inserting node into element's parent before element
-            return try mutation.preInsert(node, parent, element);
+            return try mutation.preInsert(node, parent, @ptrCast(element));
         } else if (eqlIgnoreCase(where, "afterbegin")) {
             // Return the result of pre-inserting node into element before element's first child
             const first_child = if (element.child_nodes.toSlice().len > 0)
