@@ -212,7 +212,7 @@ pub const MutationObserver = struct {
         }
 
         // Step 2: Empty this's record queue.
-        self.record_queue.clearRetainingCapacity();
+        self.record_queue.clear();
     
     }
 
@@ -229,7 +229,7 @@ pub const MutationObserver = struct {
         @memcpy(records, self.record_queue.toSlice());
 
         // Step 2: Empty this's record queue.
-        self.record_queue.clearRetainingCapacity();
+        self.record_queue.clear();
 
         // Step 3: Return records.
         return records;

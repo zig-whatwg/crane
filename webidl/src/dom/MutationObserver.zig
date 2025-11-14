@@ -183,7 +183,7 @@ pub const MutationObserver = webidl.interface(struct {
         }
 
         // Step 2: Empty this's record queue.
-        self.record_queue.clearRetainingCapacity();
+        self.record_queue.clear();
     }
 
     /// DOM §7.1 - MutationObserver.takeRecords()
@@ -198,7 +198,7 @@ pub const MutationObserver = webidl.interface(struct {
         @memcpy(records, self.record_queue.toSlice());
 
         // Step 2: Empty this's record queue.
-        self.record_queue.clearRetainingCapacity();
+        self.record_queue.clear();
 
         // Step 3: Return records.
         return records;
@@ -277,7 +277,3 @@ pub const MutationObserver = webidl.interface(struct {
 });
 
 // Tests
-
-
-
-
