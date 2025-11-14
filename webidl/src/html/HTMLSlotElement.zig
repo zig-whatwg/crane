@@ -15,6 +15,7 @@
 //! - Manual slot assignment support
 
 const std = @import("std");
+const infra = @import("infra");
 const webidl = @import("webidl");
 
 /// HTMLSlotElement - Represents a <slot> element in shadow DOM
@@ -42,20 +43,20 @@ pub const HTMLSlotElement = webidl.interface(struct {
     /// Assigned nodes list (DOM §4.8.2.3)
     /// List of slottables assigned to this slot
     /// Initially empty, updated by assign slottables algorithm
-    assigned_nodes: std.ArrayList(*anyopaque),
+    assigned_nodes: infra.List(*anyopaque),
 
     /// Manually assigned nodes list (DOM §4.8.2.5)
     /// For manual slot assignment mode
     /// Initially empty
-    manually_assigned_nodes: std.ArrayList(*anyopaque),
+    manually_assigned_nodes: infra.List(*anyopaque),
 
     /// Initialize a new HTMLSlotElement
     pub fn init(allocator: std.mem.Allocator) !Self {
         return Self{
             .allocator = allocator,
             .name = "",
-            .assigned_nodes = std.ArrayList(*anyopaque).init(allocator),
-            .manually_assigned_nodes = std.ArrayList(*anyopaque).init(allocator),
+            .assigned_nodes = infra.List(*anyopaque).init(allocator),
+            .manually_assigned_nodes = infra.List(*anyopaque).init(allocator),
         };
     }
 
@@ -82,18 +83,18 @@ pub const HTMLSlotElement = webidl.interface(struct {
     }
 
     /// Get assigned nodes list
-    pub fn getAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
+    pub fn getAssignedNodes(self: *Self) *infra.List(*anyopaque) {
         return &self.assigned_nodes;
     }
 
     /// Get manually assigned nodes list
-    pub fn getManuallyAssignedNodes(self: *Self) *std.ArrayList(*anyopaque) {
+    pub fn getManuallyAssignedNodes(self: *Self) *infra.List(*anyopaque) {
         return &self.manually_assigned_nodes;
     }
 
     /// Check if this slot has any assigned nodes
     pub fn hasAssignedNodes(self: *const Self) bool {
-        return self.assigned_nodes.items.len > 0;
+        return self.assigned_nodes.len > 0;
     }
 }, .{});
 
