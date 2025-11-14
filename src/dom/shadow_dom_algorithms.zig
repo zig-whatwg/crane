@@ -19,8 +19,8 @@ const ShadowRoot = @import("shadow_root").ShadowRoot;
 const ShadowRootMode = @import("shadow_root").ShadowRootMode;
 const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
 const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
-const slot_helpers = @import("slot_helpers");
-const tree_helpers = @import("tree_helpers.zig");
+const slot_helpers = @import("slot_helpers"); // Module import from build.zig
+const tree_helpers = @import("tree_helpers.zig"); // File import (same directory)
 
 /// Valid shadow host names per DOM spec
 const VALID_SHADOW_HOST_NAMES = [_][]const u8{
@@ -473,8 +473,3 @@ pub fn signalSlotChange(slot: *anyopaque) !void {
 // ============================================================================
 // Tests
 // ============================================================================
-
-
-
-
-

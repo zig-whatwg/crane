@@ -763,6 +763,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
+    // Add imports to url_parser_api_mod now that dependencies are defined
+    url_parser_api_mod.addImport("infra", infra_mod);
+    url_parser_api_mod.addImport("url_record", url_internal_url_record_mod);
+    url_parser_api_mod.addImport("basic_parser", url_basic_parser_mod);
+
     const url_parser_state_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/parser_state.zig"),
         .target = target,
@@ -798,6 +803,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/url/form_urlencoded/parser.zig"),
         .target = target,
     });
+    url_form_parser_mod.addImport("infra", infra_mod);
 
     const url_form_serializer_mod = b.createModule(.{
         .root_source_file = b.path("src/url/form_urlencoded/serializer.zig"),
@@ -943,6 +949,7 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("encoding", encoding_mod);
     url_mod.addImport("url", url_url_mod);
     url_mod.addImport("url_search_params", url_search_params_mod);
+    url_mod.addImport("url_search_params_impl", url_search_params_impl_mod);
     url_mod.addImport("url_record", url_internal_url_record_mod);
     url_mod.addImport("host_serializer", url_host_serializer_mod);
     url_mod.addImport("basic_parser", url_basic_parser_mod);
