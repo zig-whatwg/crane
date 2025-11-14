@@ -4,6 +4,7 @@
 
 const std = @import("std");
 const webidl = @import("webidl");
+const infra = @import("infra");
 const Node = @import("node").Node;
 const Element = @import("element").Element;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
@@ -35,6 +36,14 @@ pub const Attr = webidl.interface(struct {
     ) !Attr {
         return .{
             .event_listener_list = null, // From EventTarget
+            .node_type = 2, // ATTRIBUTE_NODE
+            .node_name = local_name, // Per DOM spec, Attr's nodeName is its localName
+            .parent_node = null,
+            .child_nodes = infra.List(*Node).init(allocator),
+            .owner_document = null,
+            .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
+            .cloning_steps_hook = null,
+            .cached_child_nodes = null,
             .allocator = allocator,
             .namespace_uri = if (namespace_uri) |ns| try allocator.dupe(u8, ns) else null,
             .prefix = if (prefix) |p| try allocator.dupe(u8, p) else null,
