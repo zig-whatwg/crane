@@ -64,16 +64,16 @@ pub const equivalence = @import("equivalence");
 pub const test_helpers = @import("test_helpers.zig");
 pub const helpers = test_helpers; // Alias for benchmark compatibility
 
-// Internal modules (exposed for benchmarking)
+// Internal modules (exposed for benchmarking and testing)
 pub const internal = struct {
     pub const url_record = @import("url_record");
+    pub const url_search_params_impl = @import("url_search_params_impl");
 };
 
 pub const parser = struct {
     pub const basic_url_parser = @import("basic_parser");
     pub const parser_state = @import("parser_state");
 };
-
 
 test {
     // Run all module tests

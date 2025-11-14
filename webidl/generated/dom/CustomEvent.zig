@@ -40,9 +40,9 @@ pub const CustomEvent = struct {
     dispatch_flag: bool,
     is_trusted: bool,
     time_stamp: f64,
-    path: std.ArrayList(EventPathItem),
+    path: infra.List(EventPathItem),
     related_target: ?*EventTarget,
-    touch_target_list: std.ArrayList(*EventTarget),
+    touch_target_list: infra.List(*EventTarget),
     allocator: std.mem.Allocator,
     detail: ?webidl.JSValue,
 
@@ -135,14 +135,14 @@ pub const CustomEvent = struct {
     /// currentTarget.
     /// 
     /// The composedPath() method steps are (DOM §2.3):
-    pub fn call_composedPath(self: *CustomEvent) !std.ArrayList(*EventTarget) {
+    pub fn call_composedPath(self: *CustomEvent) !infra.List(*EventTarget) {
         const self_parent: *Event = @ptrCast(self);
 
         // Step 1: Let composedPath be an empty list
-        var composed_path = std.ArrayList(*EventTarget).init(self_parent.allocator);
+        var composed_path = infra.List(*EventTarget).init(self_parent.allocator);
 
         // Step 2: Let path be this's path
-        const path = self_parent.path.items;
+        const path = self_parent.path.toSlice();
 
         // Step 3: If path is empty, then return composedPath
         if (path.len == 0) {

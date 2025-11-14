@@ -1461,6 +1461,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
             .{ .name = "url", .module = url_mod },
+            .{ .name = "url0", .module = url_url_mod },
+            .{ .name = "url_search_params", .module = url_search_params_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});

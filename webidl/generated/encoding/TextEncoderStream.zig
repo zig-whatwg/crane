@@ -174,7 +174,7 @@ pub const TextEncoderStream = struct {
         };
 
         // Step 2-3: Process code units and encode to UTF-8
-        var output = std.ArrayList(u8).init(self.allocator);
+        var output = infra.List(u8).init(self.allocator);
         defer output.deinit();
 
         // Step 4: Process each code unit
@@ -196,9 +196,9 @@ pub const TextEncoderStream = struct {
         }
 
         // Step 4.2: If output is not empty, enqueue
-        if (output.items.len > 0) {
+        if (output.len > 0) {
             // Create Uint8Array JSValue
-            const bytes = try self.allocator.dupe(u8, output.items);
+            const bytes = try self.allocator.dupe(u8, output.items());
             const output_js = webidl.JSValue{ .bytes = bytes };
             try controller.call_enqueue(output_js);
         }

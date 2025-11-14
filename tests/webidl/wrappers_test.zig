@@ -2,8 +2,14 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
+const testing = std.testing;
 
 const webidl = @import("webidl");
+const Nullable = webidl.Nullable;
+const Optional = webidl.Optional;
+const Sequence = webidl.Sequence;
+const Record = webidl.Record;
+const Promise = webidl.Promise;
 
 test "Nullable - null value" {
     var value = Nullable(u32).null_value();

@@ -31,7 +31,7 @@ fn isAscii(bytes: []const u8) bool {
 /// Replace invalid UTF-8 sequences with U+FFFD REPLACEMENT CHARACTER
 fn replaceInvalidUtf8(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
     // Allocate output buffer (worst case: 3 bytes per input byte for U+FFFD)
-    var output = std.ArrayList(u8).init(allocator);
+    var output = infra.List(u8).init(allocator);
     errdefer output.deinit();
 
     const replacement = "\u{FFFD}"; // U+FFFD in UTF-8 (3 bytes: EF BF BD)

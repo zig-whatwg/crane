@@ -4,6 +4,12 @@
 const std = @import("std");
 
 const streams = @import("streams");
+const test_helpers = @import("test_helpers.zig");
+const createMessagePortPair = test_helpers.createMessagePortPair;
+const MessagePort = test_helpers.MessagePort;
+const Message = test_helpers.Message;
+const packAndPostMessage = test_helpers.packAndPostMessage;
+const JSValue = streams.JSValue;
 
 test "MessagePort - create and entangle" {
     const allocator = std.testing.allocator;

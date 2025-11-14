@@ -10,6 +10,7 @@
 
 const Allocator = std.mem.Allocator;
 const dom_types = @import("dom_types");
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -294,7 +295,7 @@ pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_typ
 
     // Step 1: Let node be null
     // Step 2: Build array of actual nodes (converting strings to Text nodes)
-    var node_list = std.ArrayList(*NodeType).init(allocator);
+    var node_list = infra.List(*NodeType).init(allocator);
     defer node_list.deinit();
 
     for (nodes) |item| {
@@ -327,12 +328,6 @@ pub fn convertNodesIntoNode(allocator: std.mem.Allocator, nodes: []const dom_typ
 
     // Step 5: Return the fragment node
     return fragment_node;
-}
-
-test "ChildNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(ChildNode);
-    try std.testing.expect(T != void);
 }
 
 

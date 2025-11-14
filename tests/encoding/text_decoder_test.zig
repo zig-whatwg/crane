@@ -1,12 +1,10 @@
 const std = @import("std");
-const text_decoder = @import("text_decoder");
-const text_decoder_options = @import("text_decoder_options");
-const text_decode_options = @import("text_decode_options");
+const encoding = @import("encoding");
 
 // Type aliases for cleaner code
-const TextDecoder = text_decoder.TextDecoder;
-const TextDecoderOptions = text_decoder_options.TextDecoderOptions;
-const TextDecodeOptions = text_decode_options.TextDecodeOptions;
+const TextDecoder = encoding.TextDecoder;
+const TextDecoderOptions = encoding.TextDecoderOptions;
+const TextDecodeOptions = encoding.TextDecodeOptions;
 
 test "TextDecoder - constructor with default label (utf-8)" {
     const allocator = std.testing.allocator;
@@ -149,7 +147,7 @@ test "TextDecoder - BOM reset bug (streaming then non-streaming)" {
 
     // Step 1: Streaming decode (stream:true) - should strip BOM
     {
-        const output1 = try decoder.call_decode(&input_with_bom, .{ .stream = true });
+        const output1 = try decoder.call_decode(input_with_bom, .{ .stream = true });
         defer allocator.free(output1);
         try std.testing.expectEqualStrings("Hello", output1);
     }
@@ -157,7 +155,7 @@ test "TextDecoder - BOM reset bug (streaming then non-streaming)" {
     // Step 2: Non-streaming decode (stream:false) with BOM again
     // BUG: bom_seen flag is not reset, so BOM won't be stripped!
     {
-        const output2 = try decoder.call_decode(&input_with_bom, .{ .stream = false });
+        const output2 = try decoder.call_decode(input_with_bom, .{ .stream = false });
         defer allocator.free(output2);
 
         // Expected: "Hello" (BOM should be stripped because do_not_flush is reset)

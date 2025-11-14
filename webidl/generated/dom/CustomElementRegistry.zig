@@ -9,6 +9,7 @@
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -20,7 +21,7 @@ pub const CustomElementRegistry = struct {
 
     allocator: Allocator,
     is_scoped: bool,
-    scoped_document_set: std.ArrayList(*anyopaque),
+    scoped_document_set: infra.List(*anyopaque),
 
     // ========================================================================
     // WebIDL Metadata
@@ -40,7 +41,7 @@ pub const CustomElementRegistry = struct {
         return .{
             .allocator = allocator,
             .is_scoped = is_scoped,
-            .scoped_document_set = std.ArrayList(*anyopaque).init(allocator),
+            .scoped_document_set = infra.List(*anyopaque).init(allocator),
         };
     
     }

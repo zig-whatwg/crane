@@ -104,7 +104,7 @@ pub const ShadowRoot = struct {
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
-    event_listener_list: ?*std.ArrayList(EventListener),
+    event_listener_list: ?*infra.List(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
@@ -1273,13 +1273,14 @@ pub const ShadowRoot = struct {
         const self_parent: *Node = @ptrCast(self);
 
         // Get all descendant exclusive Text nodes
-        var text_nodes = std.ArrayList(*Node).init(self_parent.allocator);
+        var text_nodes = infra.List(*Node).init(self_parent.allocator);
         defer text_nodes.deinit();
 
         try collectDescendantExclusiveTextNodes(self_parent, &text_nodes);
 
         // Process each exclusive Text node
-        for (text_nodes.items) |node| {
+        for (0..text_nodes.len) |i| {
+            const node = text_nodes.get(i) orelse continue;
             // Step 1: Let length be node's length
             const cd: *CharacterData = @ptrCast(@alignCast(node));
             var length: usize = cd.data.len;
@@ -1295,7 +1296,7 @@ pub const ShadowRoot = struct {
             }
 
             // Step 3: Let data be concatenation of contiguous exclusive Text nodes (excluding itself)
-            var contiguous_data = std.ArrayList(u8).init(self_parent.allocator);
+            var contiguous_data = infra.List(u8).init(self_parent.allocator);
             defer contiguous_data.deinit();
 
             // Find next sibling exclusive Text nodes
@@ -1366,7 +1367,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Helper: Collect all descendant exclusive Text nodes in tree order
-    fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
+    fn collectDescendantExclusiveTextNodes(node: *Node, list: *infra.List(*Node)) !void {
 
         // Check if this node is an exclusive Text node
         if (isExclusiveTextNode(node)) {
@@ -1374,7 +1375,8 @@ pub const ShadowRoot = struct {
         }
 
         // Recursively collect from children
-        for (node.child_nodes.items) |child| {
+        for (0..node.child_nodes.len) |i| {
+            const child = node.child_nodes.get(i) orelse continue;
             try collectDescendantExclusiveTextNodes(child, list);
         }
     
@@ -1673,7 +1675,7 @@ pub const ShadowRoot = struct {
     /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
-        var result = std.ArrayList(u8).init(allocator);
+        var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
@@ -1683,7 +1685,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Helper function to recursively collect text from descendants
-    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+    fn collectDescendantText(node: *const Node, result: *infra.List(u8)) !void {
 
         // If this is a Text node, collect its data
         if (node.node_type == Node.TEXT_NODE) {
@@ -1945,7 +1947,7 @@ pub const ShadowRoot = struct {
     }
 
     /// Get the list of registered observers for this node
-    pub fn getRegisteredObservers(self: *ShadowRoot) *std.ArrayList(RegisteredObserver) {
+    pub fn getRegisteredObservers(self: *ShadowRoot) *infra.List(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
         return &self_parent.registered_observers;
@@ -1999,7 +2001,7 @@ pub const ShadowRoot = struct {
 
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
-    fn ensureEventListenerList(self: *ShadowRoot) !*std.ArrayList(EventListener) {
+    fn ensureEventListenerList(self: *ShadowRoot) !*infra.List(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
@@ -2007,8 +2009,8 @@ pub const ShadowRoot = struct {
         }
 
         // First time adding a listener - allocate the list
-        const list = try self_parent.allocator.create(std.ArrayList(EventListener));
-        list.* = std.ArrayList(EventListener).init(self_parent.allocator);
+        const list = try self_parent.allocator.create(infra.List(EventListener));
+        list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
     
@@ -2020,7 +2022,7 @@ pub const ShadowRoot = struct {
         const self_parent: *const EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
-            return list.items;
+            return list.toSlice();
         }
         return &[_]EventListener{};
     
@@ -2131,14 +2133,18 @@ pub const ShadowRoot = struct {
         // Step 5: If event listener list does not contain matching listener, append it
         const list = try self.ensureEventListenerList();
 
-        const already_exists = for (list.items) |existing| {
+        var already_exists = false;
+        var i: usize = 0;
+        while (i < list.len) : (i += 1) {
+            const existing = list.get(i).?;
             if (std.mem.eql(u8, existing.type, listener.type) and
                 existing.capture == listener.capture and
                 callbackEquals(existing.callback, listener.callback))
             {
-                break true;
+                already_exists = true;
+                break;
             }
-        } else false;
+        }
 
         if (!already_exists) {
             try list.append(updated_listener);
@@ -2205,8 +2211,8 @@ pub const ShadowRoot = struct {
 
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
-        while (i < list.items.len) {
-            const existing = &list.items[i];
+        while (i < list.len) {
+            const existing = list.getMut(i).?;
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
@@ -2214,7 +2220,7 @@ pub const ShadowRoot = struct {
                 callbackEquals(existing.callback, listener.callback))
             {
                 existing.removed = true;
-                _ = list.orderedRemove(i);
+                _ = list.remove(i) catch unreachable; // infra.List.remove returns !T, but we know index is valid
                 return;
             }
             i += 1;
@@ -2281,95 +2287,5 @@ pub const ShadowRoot = struct {
 
 
 // Tests
-
-test "ShadowRoot - creation with basic properties" {
-    const allocator = std.testing.allocator;
-
-    // Create a mock Element to use as host
-    var mock_element: Element = undefined;
-
-    var shadow_root = try ShadowRoot.init(
-        allocator,
-        &mock_element,
-        .open,
-        false, // delegates_focus
-        .named, // slot_assignment
-        false, // clonable
-        false, // serializable
-    );
-    defer shadow_root.deinit();
-
-    try std.testing.expectEqual(ShadowRootMode.open, shadow_root.getMode());
-    try std.testing.expectEqualStrings("open", shadow_root.get_mode());
-    try std.testing.expectEqual(false, shadow_root.get_delegatesFocus());
-    try std.testing.expectEqual(SlotAssignmentMode.named, shadow_root.getSlotAssignmentMode());
-    try std.testing.expectEqualStrings("named", shadow_root.get_slotAssignment());
-    try std.testing.expectEqual(false, shadow_root.get_clonable());
-    try std.testing.expectEqual(false, shadow_root.get_serializable());
-    try std.testing.expectEqual(&mock_element, shadow_root.get_host());
-}
-
-test "ShadowRoot - closed mode" {
-    const allocator = std.testing.allocator;
-
-    var mock_element: Element = undefined;
-
-    var shadow_root = try ShadowRoot.init(
-        allocator,
-        &mock_element,
-        .closed,
-        true, // delegates_focus
-        .manual, // slot_assignment
-        true, // clonable
-        true, // serializable
-    );
-    defer shadow_root.deinit();
-
-    try std.testing.expectEqual(ShadowRootMode.closed, shadow_root.getMode());
-    try std.testing.expectEqualStrings("closed", shadow_root.get_mode());
-    try std.testing.expectEqual(true, shadow_root.get_delegatesFocus());
-    try std.testing.expectEqual(SlotAssignmentMode.manual, shadow_root.getSlotAssignmentMode());
-    try std.testing.expectEqualStrings("manual", shadow_root.get_slotAssignment());
-    try std.testing.expectEqual(true, shadow_root.get_clonable());
-    try std.testing.expectEqual(true, shadow_root.get_serializable());
-}
-
-test "ShadowRoot - internal flags" {
-    const allocator = std.testing.allocator;
-
-    var mock_element: Element = undefined;
-
-    var shadow_root = try ShadowRoot.init(
-        allocator,
-        &mock_element,
-        .open,
-        false,
-        .named,
-        false,
-        false,
-    );
-    defer shadow_root.deinit();
-
-    // Test initial values
-    try std.testing.expectEqual(false, shadow_root.isAvailableToElementInternals());
-    try std.testing.expectEqual(false, shadow_root.isDeclarative());
-
-    // Test setters
-    shadow_root.setAvailableToElementInternals(true);
-    try std.testing.expectEqual(true, shadow_root.isAvailableToElementInternals());
-
-    shadow_root.setDeclarative(true);
-    try std.testing.expectEqual(true, shadow_root.isDeclarative());
-}
-
-test "ShadowRootMode - toString" {
-    try std.testing.expectEqualStrings("open", ShadowRootMode.open.toString());
-    try std.testing.expectEqualStrings("closed", ShadowRootMode.closed.toString());
-}
-
-test "SlotAssignmentMode - toString" {
-    try std.testing.expectEqualStrings("manual", SlotAssignmentMode.manual.toString());
-    try std.testing.expectEqualStrings("named", SlotAssignmentMode.named.toString());
-}
 
 

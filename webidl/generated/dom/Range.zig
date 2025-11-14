@@ -526,7 +526,7 @@ pub const Range = struct {
 
         // Spec: Remove all contained children within this from their parents
         // First, collect all contained children
-        var containedChildren = std.ArrayList(*Node).init(self.allocator);
+        var containedChildren = infra.List(*Node).init(self.allocator);
         defer containedChildren.deinit();
 
         // Find common ancestor
@@ -540,7 +540,8 @@ pub const Range = struct {
         }
 
         // Remove all contained children
-        for (containedChildren.items) |child| {
+        for (0..containedChildren.len) |i| {
+            const child = containedChildren.get(i) orelse continue;
             if (child.parent_node) |parent| {
                 _ = try parent.call_removeChild(child);
             }
@@ -615,7 +616,7 @@ pub const Range = struct {
         const commonAncestor = self.get_commonAncestorContainer();
 
         // Collect contained children
-        var containedChildren = std.ArrayList(*Node).init(self.allocator);
+        var containedChildren = infra.List(*Node).init(self.allocator);
         defer containedChildren.deinit();
 
         for (commonAncestor.child_nodes.items()) |child| {
@@ -630,7 +631,8 @@ pub const Range = struct {
         }
 
         // Step 17: Move contained children to fragment
-        for (containedChildren.items) |child| {
+        for (0..containedChildren.len) |i| {
+            const child = containedChildren.get(i) orelse continue;
             if (child.parent_node) |parent| {
                 _ = try parent.call_removeChild(child);
             }
@@ -691,7 +693,7 @@ pub const Range = struct {
         const commonAncestor = self.get_commonAncestorContainer();
 
         // Collect contained children
-        var containedChildren = std.ArrayList(*Node).init(self.allocator);
+        var containedChildren = infra.List(*Node).init(self.allocator);
         defer containedChildren.deinit();
 
         for (commonAncestor.child_nodes.items()) |child| {
@@ -706,7 +708,8 @@ pub const Range = struct {
         }
 
         // Step 15: Clone contained children (with children flag set)
-        for (containedChildren.items) |child| {
+        for (0..containedChildren.len) |i| {
+            const child = containedChildren.get(i) orelse continue;
             const clone = try child.call_cloneNode(true); // Deep clone
             _ = try fragment.call_appendChild(clone);
         }
@@ -989,7 +992,7 @@ pub const Range = struct {
     /// Returns the text content of the range per spec §5.7
     pub fn toString(self: *Range, allocator: Allocator) ![]const u8 {
 
-        var result = std.ArrayList(u8).init(allocator);
+        var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         // Step 2: If start node == end node and it's a Text node
@@ -1039,7 +1042,7 @@ pub const Range = struct {
     }
 
     /// Helper for toString: Recursively append contained Text node data
-    fn appendContainedTextNodes(self: *const Range, node: *Node, result: *std.ArrayList(u8)) !void {
+    fn appendContainedTextNodes(self: *const Range, node: *Node, result: *infra.List(u8)) !void {
 
         // If this node is contained and is a Text node, append its data
         if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {

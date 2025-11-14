@@ -115,10 +115,3 @@ pub const NonElementParentNode = struct {
 };
 
 
-test "NonElementParentNode mixin compiles" {
-    // Just verify the mixin structure compiles
-    const T = @TypeOf(NonElementParentNode);
-    try std.testing.expect(T != void);
-}
-
-

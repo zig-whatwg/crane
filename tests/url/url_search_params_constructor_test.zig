@@ -4,39 +4,40 @@
 //! Spec: WebIDL line 30, spec lines 2067-2071
 
 const std = @import("std");
+const url = @import("url");
 const URLSearchParams = @import("url_search_params").URLSearchParams;
-const URLSearchParamsInit = @import("url_search_params").URLSearchParamsInit;
+const RecordEntry = url.internal.url_search_params_impl.RecordEntry;
 
 test "URLSearchParams - init with empty" {
     const allocator = std.testing.allocator;
 
-    var params = try URLSearchParams.init(allocator, .empty);
+    var params = try URLSearchParams.init(allocator);
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 0), params.get_size());
+    try std.testing.expectEqual(@as(u32, 0), params.size());
 }
 
 test "URLSearchParams - init with string" {
     const allocator = std.testing.allocator;
 
-    var params = try URLSearchParams.init(allocator, .{ .string = "a=1&b=2&c=3" });
+    var params = try URLSearchParams.initWithString(allocator, "a=1&b=2&c=3");
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 3), params.get_size());
-    try std.testing.expectEqualStrings("1", params.call_get("a").?);
-    try std.testing.expectEqualStrings("2", params.call_get("b").?);
-    try std.testing.expectEqualStrings("3", params.call_get("c").?);
+    try std.testing.expectEqual(@as(u32, 3), params.size());
+    try std.testing.expectEqualStrings("1", params.get("a").?);
+    try std.testing.expectEqualStrings("2", params.get("b").?);
+    try std.testing.expectEqualStrings("3", params.get("c").?);
 }
 
 test "URLSearchParams - init with string starting with ?" {
     const allocator = std.testing.allocator;
 
     // Spec line 2069: leading ? should be removed
-    var params = try URLSearchParams.init(allocator, .{ .string = "?key=value" });
+    var params = try URLSearchParams.initWithString(allocator, "?key=value");
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 1), params.get_size());
-    try std.testing.expectEqualStrings("value", params.call_get("key").?);
+    try std.testing.expectEqual(@as(u32, 1), params.size());
+    try std.testing.expectEqualStrings("value", params.get("key").?);
 }
 
 test "URLSearchParams - init with sequence" {
@@ -48,59 +49,59 @@ test "URLSearchParams - init with sequence" {
         .{ "name3", "value3" },
     };
 
-    var params = try URLSearchParams.init(allocator, .{ .sequence = &seq });
+    var params = try URLSearchParams.initWithSequence(allocator, &seq);
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 3), params.get_size());
-    try std.testing.expectEqualStrings("value1", params.call_get("name1").?);
-    try std.testing.expectEqualStrings("value2", params.call_get("name2").?);
-    try std.testing.expectEqualStrings("value3", params.call_get("name3").?);
+    try std.testing.expectEqual(@as(u32, 3), params.size());
+    try std.testing.expectEqualStrings("value1", params.get("name1").?);
+    try std.testing.expectEqualStrings("value2", params.get("name2").?);
+    try std.testing.expectEqualStrings("value3", params.get("name3").?);
 }
 
 test "URLSearchParams - init with record" {
     const allocator = std.testing.allocator;
 
-    const record = [_]struct { name: []const u8, value: []const u8 }{
+    const record = [_]RecordEntry{
         .{ .name = "key1", .value = "val1" },
         .{ .name = "key2", .value = "val2" },
         .{ .name = "key3", .value = "val3" },
     };
 
-    var params = try URLSearchParams.init(allocator, .{ .record = &record });
+    var params = try URLSearchParams.initWithRecord(allocator, &record);
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 3), params.get_size());
-    try std.testing.expectEqualStrings("val1", params.call_get("key1").?);
-    try std.testing.expectEqualStrings("val2", params.call_get("key2").?);
-    try std.testing.expectEqualStrings("val3", params.call_get("key3").?);
+    try std.testing.expectEqual(@as(u32, 3), params.size());
+    try std.testing.expectEqualStrings("val1", params.get("key1").?);
+    try std.testing.expectEqualStrings("val2", params.get("key2").?);
+    try std.testing.expectEqualStrings("val3", params.get("key3").?);
 }
 
 test "URLSearchParams - convenience wrappers still work" {
     const allocator = std.testing.allocator;
 
-    // initFromString
+    // initWithString
     {
-        var params = try URLSearchParams.initFromString(allocator, "a=1");
+        var params = try URLSearchParams.initWithString(allocator, "a=1");
         defer params.deinit();
-        try std.testing.expectEqual(@as(u32, 1), params.get_size());
+        try std.testing.expectEqual(@as(u32, 1), params.size());
     }
 
-    // initFromSequence
+    // initWithSequence
     {
         const seq = [_][2][]const u8{.{ "a", "1" }};
-        var params = try URLSearchParams.initFromSequence(allocator, &seq);
+        var params = try URLSearchParams.initWithSequence(allocator, &seq);
         defer params.deinit();
-        try std.testing.expectEqual(@as(u32, 1), params.get_size());
+        try std.testing.expectEqual(@as(u32, 1), params.size());
     }
 
-    // initFromRecord
+    // initWithRecord
     {
-        const record = [_]struct { name: []const u8, value: []const u8 }{
+        const record = [_]RecordEntry{
             .{ .name = "a", .value = "1" },
         };
-        var params = try URLSearchParams.initFromRecord(allocator, &record);
+        var params = try URLSearchParams.initWithRecord(allocator, &record);
         defer params.deinit();
-        try std.testing.expectEqual(@as(u32, 1), params.get_size());
+        try std.testing.expectEqual(@as(u32, 1), params.size());
     }
 }
 
@@ -108,27 +109,27 @@ test "URLSearchParams - empty string vs empty init" {
     const allocator = std.testing.allocator;
 
     // Empty string
-    var params1 = try URLSearchParams.init(allocator, .{ .string = "" });
+    var params1 = try URLSearchParams.initWithString(allocator, "");
     defer params1.deinit();
 
     // Empty init
-    var params2 = try URLSearchParams.init(allocator, .empty);
+    var params2 = try URLSearchParams.init(allocator);
     defer params2.deinit();
 
-    try std.testing.expectEqual(@as(u32, 0), params1.get_size());
-    try std.testing.expectEqual(@as(u32, 0), params2.get_size());
+    try std.testing.expectEqual(@as(u32, 0), params1.size());
+    try std.testing.expectEqual(@as(u32, 0), params2.size());
 }
 
 test "URLSearchParams - complex query string" {
     const allocator = std.testing.allocator;
 
-    var params = try URLSearchParams.init(allocator, .{ .string = "a=1&b=2&a=3&c=hello%20world" });
+    var params = try URLSearchParams.initWithString(allocator, "a=1&b=2&a=3&c=hello%20world");
     defer params.deinit();
 
-    try std.testing.expectEqual(@as(u32, 4), params.get_size());
+    try std.testing.expectEqual(@as(u32, 4), params.size());
 
     // First 'a' value
-    try std.testing.expectEqualStrings("1", params.call_get("a").?);
+    try std.testing.expectEqualStrings("1", params.get("a").?);
 
     // All 'a' values
     const all_a = try params.call_getAll("a");

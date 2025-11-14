@@ -21,10 +21,10 @@ test "group() with format specifier - string substitution" {
     try console_obj.call_group(args);
 
     // Verify group was created
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
     // Verify label was formatted correctly
-    const group = console_obj.group_stack.peek().?;
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(group.label != null);
 
     const label_utf8 = try std.mem.Allocator.dupeZ(allocator, u16, group.label.?);
@@ -32,7 +32,7 @@ test "group() with format specifier - string substitution" {
 
     // Clean up
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }
 
 test "group() with multiple format specifiers" {
@@ -49,13 +49,13 @@ test "group() with multiple format specifiers" {
 
     try console_obj.call_group(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
-    const group = console_obj.group_stack.peek().?;
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(group.label != null);
 
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }
 
 test "groupCollapsed() with format specifier" {
@@ -71,14 +71,14 @@ test "groupCollapsed() with format specifier" {
 
     try console_obj.call_groupCollapsed(args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
-    const group = console_obj.group_stack.peek().?;
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(group.label != null);
     try std.testing.expect(group.collapsed); // Should be collapsed
 
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }
 
 test "group() without arguments - no label" {
@@ -90,13 +90,13 @@ test "group() without arguments - no label" {
     const args: [0]webidl.JSValue = .{};
     try console_obj.call_group(&args);
 
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
-    const group = console_obj.group_stack.peek().?;
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(group.label == null); // No label
 
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }
 
 test "groupEnd() frees allocated labels - no memory leak" {
@@ -116,13 +116,13 @@ test "groupEnd() frees allocated labels - no memory leak" {
     try console_obj.call_group(args1);
     try console_obj.call_group(args2);
 
-    try std.testing.expectEqual(@as(usize, 2), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.groupStack.size());
 
     // Pop both groups - should free labels without leaking
     console_obj.call_groupEnd();
     console_obj.call_groupEnd();
 
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }
 
 test "nested groups with format specifiers" {
@@ -141,7 +141,7 @@ test "nested groups with format specifiers" {
         .{ .number = 1.0 },
     });
 
-    try std.testing.expectEqual(@as(usize, 2), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.groupStack.size());
 
     // Log something in nested group
     const log_args = &[_]webidl.JSValue{
@@ -155,9 +155,9 @@ test "nested groups with format specifiers" {
 
     // Pop inner group
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
     // Pop outer group
     console_obj.call_groupEnd();
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 }

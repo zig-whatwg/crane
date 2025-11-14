@@ -18,9 +18,9 @@ test "WebIDL TextDecoder - constructor with default options" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{});
     defer decoder.deinit();
 
-    try std.testing.expectEqualStrings("utf-8", decoder.encoding());
-    try std.testing.expectEqual(false, decoder.getFatal());
-    try std.testing.expectEqual(false, decoder.getIgnoreBOM());
+    try std.testing.expectEqualStrings("utf-8", decoder.get_encoding());
+    try std.testing.expectEqual(false, decoder.get_fatal());
+    try std.testing.expectEqual(false, decoder.get_ignoreBOM());
 }
 
 test "WebIDL TextDecoder - constructor with fatal option" {
@@ -29,7 +29,7 @@ test "WebIDL TextDecoder - constructor with fatal option" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{ .fatal = true });
     defer decoder.deinit();
 
-    try std.testing.expectEqual(true, decoder.getFatal());
+    try std.testing.expectEqual(true, decoder.get_fatal());
 }
 
 test "WebIDL TextDecoder - constructor with ignoreBOM option" {
@@ -38,7 +38,7 @@ test "WebIDL TextDecoder - constructor with ignoreBOM option" {
     var decoder = try TextDecoder.init(allocator, "utf-8", .{ .ignoreBOM = true });
     defer decoder.deinit();
 
-    try std.testing.expectEqual(true, decoder.getIgnoreBOM());
+    try std.testing.expectEqual(true, decoder.get_ignoreBOM());
 }
 
 test "WebIDL TextDecoder - invalid encoding label" {
@@ -141,15 +141,15 @@ test "WebIDL TextDecoder - label case insensitive" {
 
     var decoder1 = try TextDecoder.init(allocator, "UTF-8", .{});
     defer decoder1.deinit();
-    try std.testing.expectEqualStrings("utf-8", decoder1.encoding());
+    try std.testing.expectEqualStrings("utf-8", decoder1.get_encoding());
 
     var decoder2 = try TextDecoder.init(allocator, "utf-8", .{});
     defer decoder2.deinit();
-    try std.testing.expectEqualStrings("utf-8", decoder2.encoding());
+    try std.testing.expectEqualStrings("utf-8", decoder2.get_encoding());
 
     var decoder3 = try TextDecoder.init(allocator, "  utf-8  ", .{});
     defer decoder3.deinit();
-    try std.testing.expectEqualStrings("utf-8", decoder3.encoding());
+    try std.testing.expectEqualStrings("utf-8", decoder3.get_encoding());
 }
 
 // ============================================================================
@@ -162,7 +162,7 @@ test "WebIDL TextEncoder - constructor" {
     var encoder = TextEncoder.init(allocator);
     defer encoder.deinit();
 
-    try std.testing.expectEqualStrings("utf-8", encoder.encoding());
+    try std.testing.expectEqualStrings("utf-8", encoder.get_encoding());
 }
 
 test "WebIDL TextEncoder - encode ASCII string" {
@@ -212,7 +212,7 @@ test "WebIDL TextEncoder - encodeInto basic" {
     const source = "Hello";
     var destination = [_]u8{0} ** 10;
 
-    const result = try encoder.encodeInto(source, &destination);
+    const result = try encoder.call_encodeInto(source, &destination);
 
     try std.testing.expectEqual(@as(u64, 5), result.read);
     try std.testing.expectEqual(@as(u64, 5), result.written);
@@ -228,7 +228,7 @@ test "WebIDL TextEncoder - encodeInto with emoji" {
     const source = "🌍"; // U+1F30D, 4 bytes in UTF-8
     var destination = [_]u8{0} ** 10;
 
-    const result = try encoder.encodeInto(source, &destination);
+    const result = try encoder.call_encodeInto(source, &destination);
 
     // UTF-8: 4 bytes read, 4 bytes written
     try std.testing.expectEqual(@as(u64, 4), result.read);
@@ -245,7 +245,7 @@ test "WebIDL TextEncoder - encodeInto insufficient space" {
     const source = "Hello, World!";
     var destination = [_]u8{0} ** 5; // Only 5 bytes
 
-    const result = try encoder.encodeInto(source, &destination);
+    const result = try encoder.call_encodeInto(source, &destination);
 
     // Should only write "Hello" (5 bytes read, 5 bytes written)
     try std.testing.expectEqual(@as(u64, 5), result.read);
@@ -262,7 +262,7 @@ test "WebIDL TextEncoder - encodeInto multibyte character truncation" {
     const source = "Hi🌍"; // "Hi" (2 bytes) + emoji (4 bytes)
     var destination = [_]u8{0} ** 3; // Only 3 bytes (not enough for emoji)
 
-    const result = try encoder.encodeInto(source, &destination);
+    const result = try encoder.call_encodeInto(source, &destination);
 
     // Should only write "Hi" (2 bytes), stop before emoji
     try std.testing.expectEqual(@as(u64, 2), result.read);

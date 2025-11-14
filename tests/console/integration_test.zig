@@ -155,12 +155,12 @@ test "integration - state isolation between instances" {
     // console2 should be unaffected
     try std.testing.expect(console2.timerTable.isEmpty());
     try std.testing.expect(console2.countMap.isEmpty());
-    try std.testing.expect(console2.group_stack.isEmpty());
+    try std.testing.expect(console2.groupStack.isEmpty());
 
     // console1 should have state
     try std.testing.expect(!console1.timerTable.isEmpty());
     try std.testing.expect(!console1.countMap.isEmpty());
-    try std.testing.expect(!console1.group_stack.isEmpty());
+    try std.testing.expect(!console1.groupStack.isEmpty());
 }
 
 test "integration - clear resets groups but not timers/counts" {
@@ -179,13 +179,13 @@ test "integration - clear resets groups but not timers/counts" {
     // Verify all have state
     try std.testing.expect(!console_obj.timerTable.isEmpty());
     try std.testing.expect(!console_obj.countMap.isEmpty());
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
 
     // Clear only empties group stack
     console_obj.call_clear();
 
     // Groups cleared
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Timers and counters preserved
     try std.testing.expect(!console_obj.timerTable.isEmpty());
@@ -236,7 +236,7 @@ test "integration - realistic debugging session" {
     // Verify final state
     try std.testing.expect(console_obj.timerTable.isEmpty()); // All timers ended
     try std.testing.expectEqual(@as(usize, 1), console_obj.countMap.size()); // One counter
-    try std.testing.expect(console_obj.group_stack.isEmpty()); // All groups closed
+    try std.testing.expect(console_obj.groupStack.isEmpty()); // All groups closed
 }
 
 test "integration - error handling workflow" {
@@ -305,7 +305,7 @@ test "integration - memory stress test" {
     // Verify state
     try std.testing.expect(console_obj.timerTable.isEmpty());
     try std.testing.expectEqual(@as(usize, 100), console_obj.countMap.size());
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Test passes if no memory leaks
 }

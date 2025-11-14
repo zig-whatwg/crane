@@ -512,33 +512,33 @@ test "parse - path is case-sensitive" {
 test "URL.parse - returns null for invalid URL" {
     const allocator = std.testing.allocator;
 
-    const result = URL.call_parse(allocator, "not-valid", null);
+    const result = URL.parse(allocator, "not-valid", null);
     try std.testing.expect(result == null);
 }
 
 test "URL.parse - returns URL for valid URL" {
     const allocator = std.testing.allocator;
 
-    const result = URL.call_parse(allocator, "http://example.com/", null);
+    const result = URL.parse(allocator, "http://example.com/", null);
     try std.testing.expect(result != null);
 
-    if (result) |url_ptr| {
-        defer allocator.destroy(url_ptr);
-        url_ptr.deinit();
+    if (result) |url_val| {
+        var url = url_val;
+        defer url.deinit();
     }
 }
 
 test "URL.canParse - returns false for invalid URL" {
     const allocator = std.testing.allocator;
 
-    const result = URL.call_canParse(allocator, "not-valid", null);
+    const result = URL.canParse(allocator, "not-valid", null);
     try std.testing.expect(!result);
 }
 
 test "URL.canParse - returns true for valid URL" {
     const allocator = std.testing.allocator;
 
-    const result = URL.call_canParse(allocator, "http://example.com/", null);
+    const result = URL.canParse(allocator, "http://example.com/", null);
     try std.testing.expect(result);
 }
 

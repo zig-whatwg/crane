@@ -22,7 +22,7 @@ pub const EventPathItem = struct {
     invocation_target_in_shadow_tree: bool,
     shadow_adjusted_target: ?*EventTarget,
     related_target: ?*EventTarget,
-    touch_target_list: std.ArrayList(*EventTarget),
+    touch_target_list: infra.List(*EventTarget),
     root_of_closed_tree: bool,
     slot_in_closed_tree: bool,
 };
@@ -51,9 +51,9 @@ pub const Event = struct {
     dispatch_flag: bool,
     is_trusted: bool,
     time_stamp: f64,
-    path: std.ArrayList(EventPathItem),
+    path: infra.List(EventPathItem),
     related_target: ?*EventTarget,
-    touch_target_list: std.ArrayList(*EventTarget),
+    touch_target_list: infra.List(*EventTarget),
 
     // ========================================================================
     // Constants
@@ -102,11 +102,11 @@ pub const Event = struct {
             .is_trusted = false,
             .time_stamp = 0,
             // DOM §2.3 - Path initially empty
-            .path = std.ArrayList(EventPathItem).init(allocator),
+            .path = infra.List(EventPathItem).init(allocator),
             // DOM §2.3 - Related target initially null
             .related_target = null,
             // DOM §2.3 - Touch target list initially empty
-            .touch_target_list = std.ArrayList(*EventTarget).init(allocator),
+            .touch_target_list = infra.List(*EventTarget).init(allocator),
         };
     
     }
@@ -165,13 +165,13 @@ pub const Event = struct {
     /// currentTarget.
     /// 
     /// The composedPath() method steps are (DOM §2.3):
-    pub fn call_composedPath(self: *Event) !std.ArrayList(*EventTarget) {
+    pub fn call_composedPath(self: *Event) !infra.List(*EventTarget) {
 
         // Step 1: Let composedPath be an empty list
-        var composed_path = std.ArrayList(*EventTarget).init(self.allocator);
+        var composed_path = infra.List(*EventTarget).init(self.allocator);
 
         // Step 2: Let path be this's path
-        const path = self.path.items;
+        const path = self.path.toSlice();
 
         // Step 3: If path is empty, then return composedPath
         if (path.len == 0) {

@@ -20,6 +20,7 @@ const ReadableStreamGenericReader = @import("readable_stream_generic_reader").Re
 pub const Requests = @import("requests").Requests;
 const common = @import("common");
 const eventLoop = @import("event_loop");
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -74,8 +75,8 @@ pub const ReadableStreamDefaultReader = struct {
     /// [[readRequests]]: List of pending read requests (async promises)
     /// 
     /// Spec: § 4.3.2 Internal slot [[readRequests]]
-    /// Changed from ArrayList(ReadRequest) to support async operations
-    readRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    /// Changed from List(ReadRequest) to support async operations
+    readRequests: infra.List(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
     // WebIDL Metadata
@@ -107,7 +108,7 @@ pub const ReadableStreamDefaultReader = struct {
             .eventLoop = loop,
             .closedPromise = closedPromise,
             .stream = stream,
-            .readRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
+            .readRequests = infra.List(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     
     }
@@ -118,7 +119,7 @@ pub const ReadableStreamDefaultReader = struct {
     pub fn deinit(self: *ReadableStreamDefaultReader) void {
 
         // Note: readRequests promises are owned by callers, just clear the list
-        self.readRequests.deinit(self.allocator);
+        self.readRequests.deinit();
     
     }
 

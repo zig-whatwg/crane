@@ -15,14 +15,14 @@ test "call_group - pushes group to stack" {
     defer console_obj.deinit();
 
     // Initially empty stack
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Create group
     try console_obj.call_group(&.{});
 
     // Stack should have one group
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
-    const group = console_obj.group_stack.peek().?;
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(!group.collapsed); // group() creates expanded groups
 }
 
@@ -32,14 +32,14 @@ test "call_groupCollapsed - pushes collapsed group to stack" {
     defer console_obj.deinit();
 
     // Initially empty stack
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Create collapsed group
     try console_obj.call_groupCollapsed(&.{});
 
     // Stack should have one collapsed group
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
-    const group = console_obj.group_stack.peek().?;
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(group.collapsed); // groupCollapsed() creates collapsed groups
 }
 
@@ -50,13 +50,13 @@ test "call_groupEnd - pops group from stack" {
 
     // Create a group
     try console_obj.call_group(&.{});
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
 
     // End the group
     console_obj.call_groupEnd();
 
     // Stack should be empty now
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "call_groupEnd - on empty stack does nothing" {
@@ -65,13 +65,13 @@ test "call_groupEnd - on empty stack does nothing" {
     defer console_obj.deinit();
 
     // Stack is empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // End group on empty stack (should not error)
     console_obj.call_groupEnd();
 
     // Stack should still be empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "grouping - nested groups work (LIFO)" {
@@ -86,7 +86,7 @@ test "grouping - nested groups work (LIFO)" {
 
     // Stack should have 3 groups
     var depth: usize = 0;
-    var temp_stack = console_obj.group_stack;
+    var temp_stack = console_obj.groupStack;
     while (temp_stack.pop()) |_| {
         depth += 1;
     }
@@ -98,7 +98,7 @@ test "grouping - nested groups work (LIFO)" {
     console_obj.call_groupEnd(); // Removes level 1
 
     // Stack should be empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "grouping - mixed group and groupCollapsed" {
@@ -112,13 +112,13 @@ test "grouping - mixed group and groupCollapsed" {
     try console_obj.call_group(&.{}); // Expanded
 
     // Pop and verify types
-    const group3 = console_obj.group_stack.pop().?;
+    const group3 = console_obj.groupStack.pop().?;
     try std.testing.expect(!group3.collapsed); // Expanded
 
-    const group2 = console_obj.group_stack.pop().?;
+    const group2 = console_obj.groupStack.pop().?;
     try std.testing.expect(group2.collapsed); // Collapsed
 
-    const group1 = console_obj.group_stack.pop().?;
+    const group1 = console_obj.groupStack.pop().?;
     try std.testing.expect(!group1.collapsed); // Expanded
 }
 
@@ -134,13 +134,13 @@ test "call_clear - empties group stack" {
     try console_obj.call_group(&.{});
 
     // Stack should have 4 groups
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
 
     // Clear the console
     console_obj.call_clear();
 
     // Stack should be empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "call_clear - on empty stack does nothing" {
@@ -149,13 +149,13 @@ test "call_clear - on empty stack does nothing" {
     defer console_obj.deinit();
 
     // Stack is empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 
     // Clear (should not error)
     console_obj.call_clear();
 
     // Stack should still be empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "grouping - deep nesting" {
@@ -171,7 +171,7 @@ test "grouping - deep nesting" {
 
     // Verify depth
     var depth: usize = 0;
-    while (console_obj.group_stack.pop()) |_| {
+    while (console_obj.groupStack.pop()) |_| {
         depth += 1;
     }
     try std.testing.expectEqual(@as(usize, 10), depth);
@@ -196,7 +196,7 @@ test "grouping - partial unwinding" {
 
     // Should have 2 groups remaining
     var depth: usize = 0;
-    while (console_obj.group_stack.pop()) |_| {
+    while (console_obj.groupStack.pop()) |_| {
         depth += 1;
     }
     try std.testing.expectEqual(@as(usize, 2), depth);
@@ -212,8 +212,8 @@ test "grouping - group with data (label)" {
     try console_obj.call_group(&.{});
 
     // Verify group exists
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
-    const group = console_obj.group_stack.peek().?;
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
+    const group = console_obj.groupStack.peek().?;
     try std.testing.expect(!group.collapsed);
 }
 
@@ -233,7 +233,7 @@ test "grouping - groupEnd more times than group" {
     }
 
     // Stack should be empty (excess ends are no-ops)
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "grouping - memory safety with many groups" {
@@ -250,7 +250,7 @@ test "grouping - memory safety with many groups" {
 
     // Stack should have 200 groups
     var depth: usize = 0;
-    while (console_obj.group_stack.pop()) |_| {
+    while (console_obj.groupStack.pop()) |_| {
         depth += 1;
     }
     try std.testing.expectEqual(@as(usize, 200), depth);
@@ -275,7 +275,7 @@ test "grouping - interleaved group operations" {
 
     // Should have 2 groups: original level 1 and new level 2
     var depth: usize = 0;
-    while (console_obj.group_stack.pop()) |_| {
+    while (console_obj.groupStack.pop()) |_| {
         depth += 1;
     }
     try std.testing.expectEqual(@as(usize, 2), depth);
@@ -297,5 +297,5 @@ test "grouping - clear after partial groups" {
     console_obj.call_clear();
 
     // Should be empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }

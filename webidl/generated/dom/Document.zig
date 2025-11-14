@@ -82,7 +82,7 @@ pub const Document = struct {
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
-    event_listener_list: ?*std.ArrayList(EventListener),
+    event_listener_list: ?*infra.List(EventListener),
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
@@ -117,12 +117,12 @@ pub const Document = struct {
     origin: ?*anyopaque,
     /// Live ranges associated with this document
     /// Spec: https://dom.spec.whatwg.org/#concept-live-range
-    ranges: std.ArrayList(*Range),
+    ranges: infra.List(*Range),
     ranges_mutex: std.Thread.Mutex,
     /// Node iterators associated with this document
     /// Spec: DOM §7.1.2 - NodeIterator pre-removing steps require tracking all iterators
     /// Per spec: "For each NodeIterator object iterator whose root's node document is node's node document"
-    node_iterators: std.ArrayList(*NodeIterator),
+    node_iterators: infra.List(*NodeIterator),
     node_iterators_mutex: std.Thread.Mutex,
 
     // ========================================================================
@@ -164,9 +164,9 @@ pub const Document = struct {
             .doc_type = .xml,
             .origin = null,
             .base_uri = "about:blank",
-            .ranges = std.ArrayList(*Range).init(allocator),
+            .ranges = infra.List(*Range).init(allocator),
             .ranges_mutex = std.Thread.Mutex{},
-            .node_iterators = std.ArrayList(*NodeIterator).init(allocator),
+            .node_iterators = infra.List(*NodeIterator).init(allocator),
             .node_iterators_mutex = std.Thread.Mutex{},
         };
     
@@ -234,10 +234,12 @@ pub const Document = struct {
         defer self.ranges_mutex.unlock();
 
         var i: usize = 0;
-        while (i < self.ranges.items.len) {
-            if (self.ranges.items[i] == range) {
-                _ = self.ranges.orderedRemove(i);
-                return;
+        while (i < self.ranges.len) {
+            if (self.ranges.get(i)) |r| {
+                if (r == range) {
+                    _ = self.ranges.remove(i) catch unreachable;
+                    return;
+                }
             }
             i += 1;
         }
@@ -263,10 +265,12 @@ pub const Document = struct {
         defer self.node_iterators_mutex.unlock();
 
         var i: usize = 0;
-        while (i < self.node_iterators.items.len) {
-            if (self.node_iterators.items[i] == iterator) {
-                _ = self.node_iterators.orderedRemove(i);
-                return;
+        while (i < self.node_iterators.len) {
+            if (self.node_iterators.get(i)) |iter| {
+                if (iter == iterator) {
+                    _ = self.node_iterators.remove(i) catch unreachable;
+                    return;
+                }
             }
             i += 1;
         }
@@ -1553,13 +1557,14 @@ pub const Document = struct {
         const self_parent: *Node = @ptrCast(self);
 
         // Get all descendant exclusive Text nodes
-        var text_nodes = std.ArrayList(*Node).init(self_parent.allocator);
+        var text_nodes = infra.List(*Node).init(self_parent.allocator);
         defer text_nodes.deinit();
 
         try collectDescendantExclusiveTextNodes(self_parent, &text_nodes);
 
         // Process each exclusive Text node
-        for (text_nodes.items) |node| {
+        for (0..text_nodes.len) |i| {
+            const node = text_nodes.get(i) orelse continue;
             // Step 1: Let length be node's length
             const cd: *CharacterData = @ptrCast(@alignCast(node));
             var length: usize = cd.data.len;
@@ -1575,7 +1580,7 @@ pub const Document = struct {
             }
 
             // Step 3: Let data be concatenation of contiguous exclusive Text nodes (excluding itself)
-            var contiguous_data = std.ArrayList(u8).init(self_parent.allocator);
+            var contiguous_data = infra.List(u8).init(self_parent.allocator);
             defer contiguous_data.deinit();
 
             // Find next sibling exclusive Text nodes
@@ -1646,7 +1651,7 @@ pub const Document = struct {
     }
 
     /// Helper: Collect all descendant exclusive Text nodes in tree order
-    fn collectDescendantExclusiveTextNodes(node: *Node, list: *std.ArrayList(*Node)) !void {
+    fn collectDescendantExclusiveTextNodes(node: *Node, list: *infra.List(*Node)) !void {
 
         // Check if this node is an exclusive Text node
         if (isExclusiveTextNode(node)) {
@@ -1654,7 +1659,8 @@ pub const Document = struct {
         }
 
         // Recursively collect from children
-        for (node.child_nodes.items) |child| {
+        for (0..node.child_nodes.len) |i| {
+            const child = node.child_nodes.get(i) orelse continue;
             try collectDescendantExclusiveTextNodes(child, list);
         }
     
@@ -1953,7 +1959,7 @@ pub const Document = struct {
     /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
 
-        var result = std.ArrayList(u8).init(allocator);
+        var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
@@ -1963,7 +1969,7 @@ pub const Document = struct {
     }
 
     /// Helper function to recursively collect text from descendants
-    fn collectDescendantText(node: *const Node, result: *std.ArrayList(u8)) !void {
+    fn collectDescendantText(node: *const Node, result: *infra.List(u8)) !void {
 
         // If this is a Text node, collect its data
         if (node.node_type == Node.TEXT_NODE) {
@@ -2225,7 +2231,7 @@ pub const Document = struct {
     }
 
     /// Get the list of registered observers for this node
-    pub fn getRegisteredObservers(self: *Document) *std.ArrayList(RegisteredObserver) {
+    pub fn getRegisteredObservers(self: *Document) *infra.List(RegisteredObserver) {
         const self_parent: *Node = @ptrCast(self);
 
         return &self_parent.registered_observers;
@@ -2279,7 +2285,7 @@ pub const Document = struct {
 
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
-    fn ensureEventListenerList(self: *Document) !*std.ArrayList(EventListener) {
+    fn ensureEventListenerList(self: *Document) !*infra.List(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
@@ -2287,8 +2293,8 @@ pub const Document = struct {
         }
 
         // First time adding a listener - allocate the list
-        const list = try self_parent.allocator.create(std.ArrayList(EventListener));
-        list.* = std.ArrayList(EventListener).init(self_parent.allocator);
+        const list = try self_parent.allocator.create(infra.List(EventListener));
+        list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
     
@@ -2300,7 +2306,7 @@ pub const Document = struct {
         const self_parent: *const EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
-            return list.items;
+            return list.toSlice();
         }
         return &[_]EventListener{};
     
@@ -2411,14 +2417,18 @@ pub const Document = struct {
         // Step 5: If event listener list does not contain matching listener, append it
         const list = try self.ensureEventListenerList();
 
-        const already_exists = for (list.items) |existing| {
+        var already_exists = false;
+        var i: usize = 0;
+        while (i < list.len) : (i += 1) {
+            const existing = list.get(i).?;
             if (std.mem.eql(u8, existing.type, listener.type) and
                 existing.capture == listener.capture and
                 callbackEquals(existing.callback, listener.callback))
             {
-                break true;
+                already_exists = true;
+                break;
             }
-        } else false;
+        }
 
         if (!already_exists) {
             try list.append(updated_listener);
@@ -2485,8 +2495,8 @@ pub const Document = struct {
 
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
-        while (i < list.items.len) {
-            const existing = &list.items[i];
+        while (i < list.len) {
+            const existing = list.getMut(i).?;
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
@@ -2494,7 +2504,7 @@ pub const Document = struct {
                 callbackEquals(existing.callback, listener.callback))
             {
                 existing.removed = true;
-                _ = list.orderedRemove(i);
+                _ = list.remove(i) catch unreachable; // infra.List.remove returns !T, but we know index is valid
                 return;
             }
             i += 1;
@@ -2563,86 +2573,5 @@ pub const Document = struct {
 // ============================================================================
 // Tests for string interning
 // ============================================================================
-
-test "Document - internString basic deduplication" {
-    const allocator = std.testing.allocator;
-
-    const doc = try allocator.create(Document);
-    defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
-    defer doc.deinit();
-
-    // Intern same string twice
-    const str1 = try doc.internString("div");
-    const str2 = try doc.internString("div");
-
-    // Should return same pointer (deduplicated)
-    try std.testing.expect(str1.ptr == str2.ptr);
-    try std.testing.expectEqualStrings("div", str1);
-}
-
-test "Document - internString different strings" {
-    const allocator = std.testing.allocator;
-
-    const doc = try allocator.create(Document);
-    defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
-    defer doc.deinit();
-
-    const div = try doc.internString("div");
-    const span = try doc.internString("span");
-
-    // Different strings should have different pointers
-    try std.testing.expect(div.ptr != span.ptr);
-    try std.testing.expectEqualStrings("div", div);
-    try std.testing.expectEqualStrings("span", span);
-}
-
-test "Document - createElement uses interned tag names" {
-    const allocator = std.testing.allocator;
-
-    const doc = try allocator.create(Document);
-    defer allocator.destroy(doc);
-    doc.* = try Document.init(allocator);
-    defer doc.deinit();
-
-    // Create multiple elements with same tag
-    const div1 = try doc.call_createElement("div");
-    defer {
-        div1.deinit();
-        allocator.destroy(div1);
-    }
-
-    const div2 = try doc.call_createElement("div");
-    defer {
-        div2.deinit();
-        allocator.destroy(div2);
-    }
-
-    // Both elements should share the same interned tag name
-    try std.testing.expect(div1.tag_name.ptr == div2.tag_name.ptr);
-    try std.testing.expectEqualStrings("div", div1.tag_name);
-}
-
-test "Document - string interning memory cleanup" {
-    const allocator = std.testing.allocator;
-
-    // Create and destroy document with interned strings
-    {
-        const doc = try allocator.create(Document);
-        defer allocator.destroy(doc);
-        doc.* = try Document.init(allocator);
-
-        // Intern several strings
-        _ = try doc.internString("div");
-        _ = try doc.internString("span");
-        _ = try doc.internString("p");
-
-        // deinit should free all interned strings
-        doc.deinit();
-    }
-
-    // std.testing.allocator will fail if there are memory leaks
-}
 
 

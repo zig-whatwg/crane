@@ -5,8 +5,9 @@
 
 const std = @import("std");
 const console_mod = @import("console");
+const webidl = @import("webidl");
 
-const JSValue = console_mod.JSValue;
+const JSValue = webidl.JSValue;
 
 test "Console - enabled by default" {
     const allocator = std.testing.allocator;
@@ -69,14 +70,14 @@ test "printer - respects group indentation" {
     defer console_obj.deinit();
 
     // No groups - indent level 0
-    try std.testing.expectEqual(@as(usize, 0), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 0), console_obj.groupStack.size());
 
     // Add groups
     try console_obj.call_group(&.{});
-    try std.testing.expectEqual(@as(usize, 1), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 1), console_obj.groupStack.size());
 
     try console_obj.call_group(&.{});
-    try std.testing.expectEqual(@as(usize, 2), console_obj.group_stack.size());
+    try std.testing.expectEqual(@as(usize, 2), console_obj.groupStack.size());
 
     // Printer should respect this indentation
     const mock_args: []const JSValue = &.{};

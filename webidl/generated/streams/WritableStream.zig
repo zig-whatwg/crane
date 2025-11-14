@@ -21,6 +21,7 @@ const WritableStreamDefaultWriter = @import("writable_stream_default_writer").Wr
 const common = @import("common");
 const dict_parsing = @import("dict_parsing");
 const eventLoop = @import("event_loop");
+const infra = @import("infra");
 const std = @import("std");
 const structured_clone = @import("structured_clone");
 const webidl = @import("webidl");
@@ -69,7 +70,7 @@ pub const WritableStream = struct {
     /// [[writer]]: WritableStreamDefaultWriter or undefined
     writer: Writer,
     /// [[writeRequests]]: list of async promises
-    writeRequests: std.ArrayList(*AsyncPromise(void)),
+    writeRequests: infra.List(*AsyncPromise(void)),
     /// Event loop for async operations (borrowed reference)
     eventLoop: eventLoop.EventLoop,
     /// Optional owned event loop for backward compatibility
@@ -108,7 +109,7 @@ pub const WritableStream = struct {
         self.controller.deinit();
         self.allocator.destroy(self.controller);
 
-        self.writeRequests.deinit(self.allocator);
+        self.writeRequests.deinit();
 
         switch (self.writer) {
             .default => |w| {
@@ -184,7 +185,7 @@ pub const WritableStream = struct {
             .state = .writable,
             .storedError = null,
             .writer = .none,
-            .writeRequests = std.ArrayList(*AsyncPromise(void)){},
+            .writeRequests = infra.List(*AsyncPromise(void)).init(allocator),
             .eventLoop = loop,
             .eventLoop_storage = null,
         };

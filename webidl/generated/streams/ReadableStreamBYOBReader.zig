@@ -23,6 +23,7 @@ const ReadableStream = @import("readable_stream").ReadableStream;
 const ReadableStreamGenericReader = @import("readable_stream_generic_reader").ReadableStreamGenericReader;
 const common = @import("common");
 const eventLoop = @import("event_loop");
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -42,7 +43,7 @@ pub const ReadableStreamBYOBReader = struct {
     /// Event loop for async operations
     eventLoop: eventLoop.EventLoop,
     /// [[readIntoRequests]]: List of pending read-into requests
-    readIntoRequests: std.ArrayList(*AsyncPromise(common.ReadResult)),
+    readIntoRequests: infra.List(*AsyncPromise(common.ReadResult)),
 
     // ========================================================================
     // WebIDL Metadata
@@ -70,14 +71,14 @@ pub const ReadableStreamBYOBReader = struct {
             .closedPromise = closedPromise,
             .stream = stream,
             .eventLoop = loop,
-            .readIntoRequests = std.ArrayList(*AsyncPromise(common.ReadResult)){},
+            .readIntoRequests = infra.List(*AsyncPromise(common.ReadResult)).init(allocator),
         };
     
     }
 
     pub fn deinit(self: *ReadableStreamBYOBReader) void {
 
-        self.readIntoRequests.deinit(self.allocator);
+        self.readIntoRequests.deinit();
     
     }
 

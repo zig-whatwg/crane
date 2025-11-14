@@ -30,6 +30,7 @@ pub const Request = @import("request").Request;
 const ViewConstruction = @import("view_construction");
 const common = @import("common");
 const eventLoop = @import("event_loop");
+const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -79,9 +80,9 @@ pub const ReadableByteStreamController = struct {
     /// [[pulling]]: boolean - pull algorithm currently executing
     pulling: bool,
     /// [[pendingPullIntos]]: List of pending pull-into descriptors
-    pendingPullIntos: std.ArrayList(*PullIntoDescriptor),
+    pendingPullIntos: infra.List(*PullIntoDescriptor),
     /// [[queue]]: List of byte stream queue entries
-    byteQueue: std.ArrayList(ByteStreamQueueEntry),
+    byteQueue: infra.List(ByteStreamQueueEntry),
     /// [[queueTotalSize]]: Total size of all byte chunks in queue
     queueTotalSize: f64,
     /// [[started]]: boolean - underlying source has finished starting
@@ -1099,7 +1100,7 @@ pub const ReadableByteStreamController = struct {
         // Step 4: If ! ReadableStreamHasBYOBReader(stream) is true
         if (stream.hasBYOBReader()) {
             // Step 4.1: Let filledPullIntos be a new empty list
-            var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+            var filled_pull_intos = infra.List(*PullIntoDescriptor){};
             defer filled_pull_intos.deinit(self.allocator);
 
             // Step 4.2: While filledPullIntos's size < ! ReadableStreamGetNumReadIntoRequests(stream)
@@ -1304,10 +1305,10 @@ pub const ReadableByteStreamController = struct {
     /// Spec: § 4.10.11 "ReadableByteStreamControllerProcessPullIntoDescriptorsUsingQueue"
     fn processPullIntoDescriptorsUsingQueue(
         self: *ReadableByteStreamController,
-    ) !std.ArrayList(*PullIntoDescriptor) {
+    ) !infra.List(*PullIntoDescriptor) {
 
         // Step 2: Create result list
-        var filled_pull_intos = std.ArrayList(*PullIntoDescriptor){};
+        var filled_pull_intos = infra.List(*PullIntoDescriptor){};
         errdefer filled_pull_intos.deinit(self.allocator);
 
         // Step 3: Process pending pull-intos

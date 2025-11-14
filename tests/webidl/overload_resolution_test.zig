@@ -2,8 +2,12 @@
 //! Per WHATWG specifications
 
 const std = @import("std");
+const testing = std.testing;
 
 const webidl = @import("webidl");
+const OverloadEntry = webidl.overload_resolution.OverloadEntry;
+const EffectiveOverloadSet = webidl.overload_resolution.EffectiveOverloadSet;
+const JSValue = webidl.JSValue;
 
 test "resolveOverload - not yet implemented" {
     const entries = [_]OverloadEntry{
@@ -18,5 +22,5 @@ test "resolveOverload - not yet implemented" {
     const args = [_]JSValue{.{ .string = "test" }};
 
     // Not implemented until JS runtime integration
-    try testing.expectError(error.NotImplemented, webidl.resolveOverload(testing.allocator, set, &args));
+    try testing.expectError(error.NotImplemented, webidl.overload_resolution.resolveOverload(testing.allocator, set, &args));
 }

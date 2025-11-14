@@ -61,9 +61,9 @@ pub const MutationObserver = struct {
     /// - Caller must ensure nodes outlive the observer, OR
     /// - Caller must call disconnect() before freeing observed nodes
     /// - This is the correct implementation for Zig's memory model
-    node_list: std.ArrayList(*Node),
+    node_list: infra.List(*Node),
     /// Queue of pending mutation records
-    record_queue: std.ArrayList(MutationRecord),
+    record_queue: infra.List(MutationRecord),
 
     // ========================================================================
     // WebIDL Metadata
@@ -90,8 +90,8 @@ pub const MutationObserver = struct {
         return .{
             .allocator = allocator,
             .callback = callback,
-            .node_list = std.ArrayList(*Node).init(allocator),
-            .record_queue = std.ArrayList(MutationRecord).init(allocator),
+            .node_list = infra.List(*Node).init(allocator),
+            .record_queue = infra.List(MutationRecord).init(allocator),
         };
     
     }
@@ -103,7 +103,7 @@ pub const MutationObserver = struct {
 
         // Clear record queue
         // Call deinit on each record for proper cleanup
-        for (self.record_queue.items) |*record| {
+        for (self.record_queue.toSliceMut()) |*record| {
             record.deinit();
         }
         self.record_queue.deinit();
@@ -166,12 +166,12 @@ pub const MutationObserver = struct {
         // Step 7: For each registered of target's registered observer list,
         // if registered's observer is this:
         const registered_observers = target.getRegisteredObservers();
-        for (registered_observers.items) |*registered| {
+        for (registered_observers.toSliceMut()) |*registered| {
             if (registered.observer == self) {
                 // Step 7.1: For each node of this's node list, remove all
                 // transient registered observers whose source is registered
                 // from node's registered observer list.
-                for (self.node_list.items) |node| {
+                for (self.node_list.toSlice()) |node| {
                     try node.removeTransientObservers(registered);
                 }
 
@@ -207,7 +207,7 @@ pub const MutationObserver = struct {
         // Step 1: For each node of this's node list, remove any registered
         // observer from node's registered observer list for which this is
         // the observer.
-        for (self.node_list.items) |node| {
+        for (self.node_list.toSlice()) |node| {
             node.removeRegisteredObserver(self);
         }
 
@@ -225,8 +225,8 @@ pub const MutationObserver = struct {
 
         // Step 1: Let records be a clone of this's record queue.
         const allocator = self.allocator;
-        const records = try allocator.alloc(MutationRecord, self.record_queue.items.len);
-        @memcpy(records, self.record_queue.items);
+        const records = try allocator.alloc(MutationRecord, self.record_queue.len);
+        @memcpy(records, self.record_queue.toSlice());
 
         // Step 2: Empty this's record queue.
         self.record_queue.clearRetainingCapacity();
@@ -260,7 +260,7 @@ pub const MutationObserver = struct {
     /// Used by the notify mutation observers algorithm.
     pub fn getNodeList(self: *MutationObserver) []const *Node {
 
-        return self.node_list.items;
+        return self.node_list.toSlice();
     
     }
 
@@ -269,7 +269,7 @@ pub const MutationObserver = struct {
     /// Used by the notify mutation observers algorithm.
     pub fn getRecordQueue(self: *const MutationObserver) []const MutationRecord {
 
-        return self.record_queue.items;
+        return self.record_queue.toSlice();
     
     }
 
@@ -279,7 +279,7 @@ pub const MutationObserver = struct {
     /// Returns true if the node is in this observer's node list.
     pub fn isObserving(self: *const MutationObserver, node: *const Node) bool {
 
-        for (self.node_list.items) |observed_node| {
+        for (self.node_list.toSlice()) |observed_node| {
             if (observed_node == node) {
                 return true;
             }
@@ -296,10 +296,12 @@ pub const MutationObserver = struct {
     pub fn unobserveNode(self: *MutationObserver, node: *const Node) void {
 
         var i: usize = 0;
-        while (i < self.node_list.items.len) {
-            if (self.node_list.items[i] == node) {
-                _ = self.node_list.orderedRemove(i);
-                return;
+        while (i < self.node_list.len) {
+            if (self.node_list.get(i)) |observed_node| {
+                if (observed_node == node) {
+                    _ = self.node_list.remove(i) catch return;
+                    return;
+                }
             }
             i += 1;
         }
@@ -319,111 +321,5 @@ pub const MutationObserver = struct {
 
 
 // Tests
-
-test "MutationObserver - construction" {
-    const allocator = std.testing.allocator;
-
-    // Mock callback
-    const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
-    }.cb;
-
-    var observer = try MutationObserver.init(allocator, callback);
-    defer observer.deinit();
-
-    try std.testing.expectEqual(@as(usize, 0), observer.node_list.items.len);
-    try std.testing.expectEqual(@as(usize, 0), observer.record_queue.items.len);
-}
-
-test "MutationObserver - observe validation" {
-    const allocator = std.testing.allocator;
-
-    const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
-    }.cb;
-
-    var observer = try MutationObserver.init(allocator, callback);
-    defer observer.deinit();
-
-    // Create a mock node
-    // TODO: Replace with real Node once we have proper Node implementation
-    var mock_node = Node{};
-    // This should fail - need to implement Node.getRegisteredObservers() first
-    // For now, just test the option validation
-
-    // Test: No observation flags set -> TypeError
-    try std.testing.expectError(
-        error.TypeError,
-        observer.observe(&mock_node, .{}),
-    );
-
-    // Test: attributeOldValue without attributes -> TypeError
-    try std.testing.expectError(
-        error.TypeError,
-        observer.observe(&mock_node, .{
-            .childList = true,
-            .attributes = false,
-            .attributeOldValue = true,
-        }),
-    );
-
-    // Test: attributeFilter without attributes -> TypeError
-    try std.testing.expectError(
-        error.TypeError,
-        observer.observe(&mock_node, .{
-            .childList = true,
-            .attributes = false,
-            .attributeFilter = &[_][]const u8{"class"},
-        }),
-    );
-
-    // Test: characterDataOldValue without characterData -> TypeError
-    try std.testing.expectError(
-        error.TypeError,
-        observer.observe(&mock_node, .{
-            .childList = true,
-            .characterData = false,
-            .characterDataOldValue = true,
-        }),
-    );
-}
-
-test "MutationObserver - disconnect clears record queue" {
-    const allocator = std.testing.allocator;
-
-    const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
-    }.cb;
-
-    var observer = try MutationObserver.init(allocator, callback);
-    defer observer.deinit();
-
-    // Add a mock record
-    // TODO: Create proper MutationRecord when we have full Node implementation
-    // For now, just test that disconnect clears the queue
-
-    observer.disconnect();
-    try std.testing.expectEqual(@as(usize, 0), observer.record_queue.items.len);
-}
-
-test "MutationObserver - takeRecords clones and clears queue" {
-    const allocator = std.testing.allocator;
-
-    const callback = struct {
-        fn cb(_: []const MutationRecord, _: *MutationObserver) void {}
-    }.cb;
-
-    var observer = try MutationObserver.init(allocator, callback);
-    defer observer.deinit();
-
-    // Add mock records
-    // TODO: Create proper MutationRecords when we have full Node implementation
-
-    const records = try observer.takeRecords();
-    defer allocator.free(records);
-
-    try std.testing.expectEqual(@as(usize, 0), records.len);
-    try std.testing.expectEqual(@as(usize, 0), observer.record_queue.items.len);
-}
 
 

@@ -8,7 +8,7 @@ const console_mod = @import("console");
 const webidl = @import("webidl");
 const mock_runtime = @import("mock_runtime.zig");
 
-const console_mod.console = console.console;
+const console = console_mod.console;
 const JSValue = webidl.JSValue;
 
 test "dirxml - without runtime - logs simple values" {

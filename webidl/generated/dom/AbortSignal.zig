@@ -63,7 +63,7 @@ pub const AbortSignal = struct {
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
-    event_listener_list: ?*std.ArrayList(EventListener),
+    event_listener_list: ?*infra.List(EventListener),
     allocator: std.mem.Allocator,
     aborted: bool,
     reason: ?webidl.Exception,
@@ -303,7 +303,7 @@ pub const AbortSignal = struct {
 
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
-    fn ensureEventListenerList(self: *AbortSignal) !*std.ArrayList(EventListener) {
+    fn ensureEventListenerList(self: *AbortSignal) !*infra.List(EventListener) {
         const self_parent: *EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
@@ -311,8 +311,8 @@ pub const AbortSignal = struct {
         }
 
         // First time adding a listener - allocate the list
-        const list = try self_parent.allocator.create(std.ArrayList(EventListener));
-        list.* = std.ArrayList(EventListener).init(self_parent.allocator);
+        const list = try self_parent.allocator.create(infra.List(EventListener));
+        list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
     
@@ -324,7 +324,7 @@ pub const AbortSignal = struct {
         const self_parent: *const EventTarget = @ptrCast(self);
 
         if (self_parent.event_listener_list) |list| {
-            return list.items;
+            return list.toSlice();
         }
         return &[_]EventListener{};
     
@@ -435,14 +435,18 @@ pub const AbortSignal = struct {
         // Step 5: If event listener list does not contain matching listener, append it
         const list = try self.ensureEventListenerList();
 
-        const already_exists = for (list.items) |existing| {
+        var already_exists = false;
+        var i: usize = 0;
+        while (i < list.len) : (i += 1) {
+            const existing = list.get(i).?;
             if (std.mem.eql(u8, existing.type, listener.type) and
                 existing.capture == listener.capture and
                 callbackEquals(existing.callback, listener.callback))
             {
-                break true;
+                already_exists = true;
+                break;
             }
-        } else false;
+        }
 
         if (!already_exists) {
             try list.append(updated_listener);
@@ -509,8 +513,8 @@ pub const AbortSignal = struct {
 
         // Step 2: Set listener's removed to true and remove listener from event listener list
         var i: usize = 0;
-        while (i < list.items.len) {
-            const existing = &list.items[i];
+        while (i < list.len) {
+            const existing = list.getMut(i).?;
 
             // Match on type, callback, and capture
             if (std.mem.eql(u8, existing.type, listener.type) and
@@ -518,7 +522,7 @@ pub const AbortSignal = struct {
                 callbackEquals(existing.callback, listener.callback))
             {
                 existing.removed = true;
-                _ = list.orderedRemove(i);
+                _ = list.remove(i) catch unreachable; // infra.List.remove returns !T, but we know index is valid
                 return;
             }
             i += 1;

@@ -4,13 +4,15 @@
 const std = @import("std");
 
 const url = @import("url");
-const Host = url.Host;
+const Host = url.host.Host;
+const getPublicSuffix = url.public_suffix.getPublicSuffix;
+const getRegistrableDomain = url.public_suffix.getRegistrableDomain;
 
 test "public suffix - basic TLDs" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.com" };
-    const ps = try url.getPublicSuffix(allocator, host);
+    const ps = try getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -20,7 +22,7 @@ test "public suffix - multi-level TLD" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.co.uk" };
-    const ps = try url.getPublicSuffix(allocator, host);
+    const ps = try getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -30,7 +32,7 @@ test "public suffix - TLD only" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "com" };
-    const ps = try url.getPublicSuffix(allocator, host);
+    const ps = try getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -40,7 +42,7 @@ test "public suffix - IPv4 returns null" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .ipv4 = 0x7F000001 }; // 127.0.0.1
-    const ps = try url.getPublicSuffix(allocator, host);
+    const ps = try getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps == null);
@@ -49,7 +51,7 @@ test "public suffix - trailing dot preserved" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "example.com." };
-    const ps = try url.getPublicSuffix(allocator, host);
+    const ps = try getPublicSuffix(allocator, host);
     defer if (ps) |p| allocator.free(p);
 
     try std.testing.expect(ps != null);
@@ -59,7 +61,7 @@ test "registrable domain - basic" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "www.example.com" };
-    const rd = try url.getRegistrableDomain(allocator, host);
+    const rd = try getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -69,7 +71,7 @@ test "registrable domain - subdomain" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "sub.www.example.com" };
-    const rd = try url.getRegistrableDomain(allocator, host);
+    const rd = try getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -79,7 +81,7 @@ test "registrable domain - TLD returns null" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "com" };
-    const rd = try url.getRegistrableDomain(allocator, host);
+    const rd = try getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd == null);
@@ -88,7 +90,7 @@ test "registrable domain - github.io" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "whatwg.github.io" };
-    const rd = try url.getRegistrableDomain(allocator, host);
+    const rd = try getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);
@@ -98,7 +100,7 @@ test "registrable domain - trailing dot preserved" {
     const allocator = std.testing.allocator;
 
     const host = Host{ .domain = "www.example.com." };
-    const rd = try url.getRegistrableDomain(allocator, host);
+    const rd = try getRegistrableDomain(allocator, host);
     defer if (rd) |r| allocator.free(r);
 
     try std.testing.expect(rd != null);

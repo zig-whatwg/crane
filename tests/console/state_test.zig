@@ -17,7 +17,7 @@ test "Console - init creates empty state" {
     // Verify all state is initialized empty
     try std.testing.expect(console_obj.countMap.isEmpty());
     try std.testing.expect(console_obj.timerTable.isEmpty());
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "Console - deinit cleans up all resources" {
@@ -29,7 +29,7 @@ test "Console - deinit cleans up all resources" {
 
     try console_obj.countMap.set(label, 5);
     try console_obj.timerTable.set(label, infra.Moment.now());
-    try console_obj.group_stack.push(Group.init(null));
+    try console_obj.groupStack.push(Group.init(null));
 
     // Deinit should clean everything up
     console_obj.deinit();
@@ -106,31 +106,31 @@ test "Console - group_stack operations" {
     const label2 = "Group 2";
 
     // Initially empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
-    try std.testing.expectEqual(@as(?Group, null), console_obj.group_stack.peek());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
+    try std.testing.expectEqual(@as(?Group, null), console_obj.groupStack.peek());
 
     // Push groups
     const group1 = Group.init(label1);
     const group2 = Group.initCollapsed(label2);
-    try console_obj.group_stack.push(group1);
-    try console_obj.group_stack.push(group2);
+    try console_obj.groupStack.push(group1);
+    try console_obj.groupStack.push(group2);
 
     // Verify stack
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
-    const top = console_obj.group_stack.peek().?;
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
+    const top = console_obj.groupStack.peek().?;
     try std.testing.expect(top.collapsed); // group2 is collapsed
     try std.testing.expect(top.label != null);
 
     // Pop groups (LIFO order)
-    const popped2 = console_obj.group_stack.pop().?;
+    const popped2 = console_obj.groupStack.pop().?;
     try std.testing.expect(popped2.collapsed);
 
-    const popped1 = console_obj.group_stack.pop().?;
+    const popped1 = console_obj.groupStack.pop().?;
     try std.testing.expect(!popped1.collapsed);
 
     // Stack now empty
-    try std.testing.expect(console_obj.group_stack.isEmpty());
-    try std.testing.expectEqual(@as(?Group, null), console_obj.group_stack.pop());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
+    try std.testing.expectEqual(@as(?Group, null), console_obj.groupStack.pop());
 }
 
 test "Console - multiple independent instances" {
@@ -147,17 +147,17 @@ test "Console - multiple independent instances" {
     // Modify console1 state
     try console1.countMap.set(label, 10);
     try console1.timerTable.set(label, infra.Moment.now());
-    try console1.group_stack.push(Group.init(null));
+    try console1.groupStack.push(Group.init(null));
 
     // console2 state should be unaffected (separate instances)
     try std.testing.expect(console2.countMap.isEmpty());
     try std.testing.expect(console2.timerTable.isEmpty());
-    try std.testing.expect(console2.group_stack.isEmpty());
+    try std.testing.expect(console2.groupStack.isEmpty());
 
     // Verify console1 state
     try std.testing.expect(console1.countMap.contains(label));
     try std.testing.expect(console1.timerTable.contains(label));
-    try std.testing.expect(!console1.group_stack.isEmpty());
+    try std.testing.expect(!console1.groupStack.isEmpty());
 }
 
 test "Console - concurrent timer operations" {
@@ -201,17 +201,17 @@ test "Console - nested group stack" {
     const label2 = "Middle";
     const label3 = "Inner";
 
-    try console_obj.group_stack.push(Group.init(label1));
-    try console_obj.group_stack.push(Group.init(label2));
-    try console_obj.group_stack.push(Group.init(label3));
+    try console_obj.groupStack.push(Group.init(label1));
+    try console_obj.groupStack.push(Group.init(label2));
+    try console_obj.groupStack.push(Group.init(label3));
 
     // Verify nesting depth
     var depth: usize = 0;
-    while (console_obj.group_stack.pop()) |_| {
+    while (console_obj.groupStack.pop()) |_| {
         depth += 1;
     }
     try std.testing.expectEqual(@as(usize, 3), depth);
-    try std.testing.expect(console_obj.group_stack.isEmpty());
+    try std.testing.expect(console_obj.groupStack.isEmpty());
 }
 
 test "Console - memory safety with many operations" {
@@ -229,13 +229,13 @@ test "Console - memory safety with many operations" {
 
         try console_obj.countMap.set(label, @intCast(i));
         try console_obj.timerTable.set(label, infra.Moment.fromMilliseconds(@floatFromInt(i)));
-        try console_obj.group_stack.push(Group.init(null));
+        try console_obj.groupStack.push(Group.init(null));
     }
 
     // Verify state
     try std.testing.expectEqual(@as(usize, 100), console_obj.countMap.size());
     try std.testing.expectEqual(@as(usize, 100), console_obj.timerTable.size());
-    try std.testing.expect(!console_obj.group_stack.isEmpty());
+    try std.testing.expect(!console_obj.groupStack.isEmpty());
 
     // deinit() should clean up all resources without leaks
 }
