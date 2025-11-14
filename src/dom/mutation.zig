@@ -101,6 +101,15 @@ pub const RemovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) vo
 ///   - Custom elements: batch reactions after insertion
 pub const PostConnectionStepsCallback = *const fn (node: *Node) void;
 
+/// Moving Steps Callback
+/// Spec: Specifications may define moving steps for all or some nodes.
+/// The algorithm is passed the moved node and optionally the old parent.
+///
+/// Examples:
+///   - Custom elements: connectedMoveCallback
+///   - HTML: element relocation handling
+pub const MovingStepsCallback = *const fn (node: *Node, old_parent: ?*Node) void;
+
 /// Global registry for insertion steps callbacks
 /// Uses page_allocator since this lives for the program lifetime and is never freed
 var insertion_steps_callbacks: ?infra.List(InsertionStepsCallback) = null;
@@ -112,6 +121,10 @@ var removing_steps_callbacks: ?infra.List(RemovingStepsCallback) = null;
 /// Global registry for post-connection steps callbacks
 /// Uses page_allocator since this lives for the program lifetime and is never freed
 var post_connection_steps_callbacks: ?infra.List(PostConnectionStepsCallback) = null;
+
+/// Global registry for moving steps callbacks
+/// Uses page_allocator since this lives for the program lifetime and is never freed
+var moving_steps_callbacks: ?infra.List(MovingStepsCallback) = null;
 
 /// Register a callback for insertion steps
 pub fn registerInsertionStepsCallback(callback: InsertionStepsCallback) !void {
@@ -135,6 +148,14 @@ pub fn registerPostConnectionStepsCallback(callback: PostConnectionStepsCallback
         post_connection_steps_callbacks = infra.List(PostConnectionStepsCallback).init(std.heap.page_allocator);
     }
     try post_connection_steps_callbacks.?.append(callback);
+}
+
+/// Register a callback for moving steps
+pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
+    if (moving_steps_callbacks == null) {
+        moving_steps_callbacks = infra.List(MovingStepsCallback).init(std.heap.page_allocator);
+    }
+    try moving_steps_callbacks.?.append(callback);
 }
 
 /// Run the insertion steps for a node
@@ -1466,8 +1487,13 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
                 runMovingSteps(descendant, null);
             }
 
-            // TODO: Step 24.2 - If inclusiveDescendant is custom and newParent is connected,
+            // Step 24.2: If inclusiveDescendant is custom and newParent is connected,
             // enqueue connectedMoveCallback reaction
+            // Note: This is handled via moving steps callbacks (see registerMovingStepsCallback)
+            // Custom element implementations should register a callback that checks:
+            // - if (node.is_custom_element() and node.parent_node.?.root().is_connected()) {
+            //     enqueue_connected_move_callback_reaction(node, old_parent);
+            // }
         }
     } else |_| {
         // Fallback to regular tree traversal if shadow-including fails
@@ -1496,13 +1522,13 @@ fn runMovingStepsForTree(node: *Node, old_parent: *Node) void {
 
 /// Helper: Run moving steps hook for a node
 /// Spec: Moving steps are defined by specifications
-/// For now, this is a placeholder for future custom element support
+/// Called during the move algorithm for each shadow-including descendant
 fn runMovingSteps(node: *Node, old_parent: ?*Node) void {
-    // NOTE: Moving steps callback system requires custom elements implementation
-    // Specifications define custom behavior for moved nodes
-    // For example, custom elements would enqueue connectedMoveCallback here
-    _ = node;
-    _ = old_parent;
+    if (moving_steps_callbacks) |*callbacks| {
+        for (callbacks.items()) |callback| {
+            callback(node, old_parent);
+        }
+    }
 }
 
 /// DOM §4.6 - Adopt
