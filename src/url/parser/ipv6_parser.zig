@@ -93,7 +93,7 @@ pub fn parseIPv6(
         // Step 5.1: If remaining does not start with U+003A (:), validation error, return failure
         if (!std.mem.startsWith(u8, pointer.remaining(), "::")) {
             if (errors) |errs| {
-                try errs.append(allocator, .{
+                try errs.append(.{
                     .type = .ipv6_invalid_compression,
                 });
             }
@@ -114,7 +114,7 @@ pub fn parseIPv6(
         // Step 6.1: If pieceIndex is 8, validation error, return failure
         if (piece_index == 8) {
             if (errors) |errs| {
-                try errs.append(allocator, .{
+                try errs.append(.{
                     .type = .ipv6_too_many_pieces,
                 });
             }
@@ -126,7 +126,7 @@ pub fn parseIPv6(
             // Step 6.2.1: If compress is non-null, validation error, return failure
             if (compress != null) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{
+                    try errs.append(.{
                         .type = .ipv6_multiple_compression,
                     });
                 }
@@ -161,7 +161,7 @@ pub fn parseIPv6(
             // Step 6.5.1: If length is 0, validation error, return failure
             if (length == 0) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{
+                    try errs.append(.{
                         .type = .ipv4_in_ipv6_invalid_code_point,
                     });
                 }
@@ -174,7 +174,7 @@ pub fn parseIPv6(
             // Step 6.5.3: If pieceIndex is greater than 6, validation error, return failure
             if (piece_index > 6) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{
+                    try errs.append(.{
                         .type = .ipv4_in_ipv6_too_many_pieces,
                     });
                 }
@@ -198,7 +198,7 @@ pub fn parseIPv6(
                     // Step 6.5.5.2.2: Otherwise, validation error, return failure
                     else {
                         if (errors) |errs| {
-                            try errs.append(allocator, .{
+                            try errs.append(.{
                                 .type = .ipv4_in_ipv6_invalid_code_point,
                             });
                         }
@@ -210,7 +210,7 @@ pub fn parseIPv6(
                 const cp_check = pointer.c();
                 if (cp_check >= 128 or !std.ascii.isDigit(@as(u8, @intCast(cp_check)))) {
                     if (errors) |errs| {
-                        try errs.append(allocator, .{
+                        try errs.append(.{
                             .type = .ipv4_in_ipv6_invalid_code_point,
                         });
                     }
@@ -233,7 +233,7 @@ pub fn parseIPv6(
                     // Otherwise, if ipv4Piece is 0, validation error, return failure
                     else if (ipv4_piece.? == 0) {
                         if (errors) |errs| {
-                            try errs.append(allocator, .{
+                            try errs.append(.{
                                 .type = .ipv4_in_ipv6_invalid_code_point,
                             });
                         }
@@ -247,7 +247,7 @@ pub fn parseIPv6(
                     // Step 6.5.5.4.3: If ipv4Piece is greater than 255, validation error, return failure
                     if (ipv4_piece.? > 255) {
                         if (errors) |errs| {
-                            try errs.append(allocator, .{
+                            try errs.append(.{
                                 .type = .ipv4_in_ipv6_out_of_range_part,
                             });
                         }
@@ -273,7 +273,7 @@ pub fn parseIPv6(
             // Step 6.5.6: If numbersSeen is not 4, validation error, return failure
             if (numbers_seen != 4) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{
+                    try errs.append(.{
                         .type = .ipv4_in_ipv6_too_few_parts,
                     });
                 }
@@ -291,7 +291,7 @@ pub fn parseIPv6(
             // Step 6.6.2: If c is the EOF code point, validation error, return failure
             if (pointer.c() == EOF) {
                 if (errors) |errs| {
-                    try errs.append(allocator, .{
+                    try errs.append(.{
                         .type = .ipv6_invalid_code_point,
                     });
                 }
@@ -301,7 +301,7 @@ pub fn parseIPv6(
         // Step 6.7: Otherwise, if c is not the EOF code point, validation error, return failure
         else if (pointer.c() != EOF) {
             if (errors) |errs| {
-                try errs.append(allocator, .{
+                try errs.append(.{
                     .type = .ipv6_invalid_code_point,
                 });
             }
@@ -338,7 +338,7 @@ pub fn parseIPv6(
     // Step 8: Otherwise, if compress is null and pieceIndex is not 8, validation error, return failure
     else if (piece_index != 8) {
         if (errors) |errs| {
-            try errs.append(allocator, .{
+            try errs.append(.{
                 .type = .ipv6_too_few_pieces,
             });
         }

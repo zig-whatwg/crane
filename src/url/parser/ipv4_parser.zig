@@ -109,7 +109,7 @@ pub fn parseIPv4(
     // Step 2: Handle trailing empty part
     if (parts.len > 0 and parts.get(parts.len - 1).?.len == 0) {
         if (errors) |errs| {
-            try errs.append(allocator, .{ .type = .ipv4_empty_part });
+            try errs.append(.{ .type = .ipv4_empty_part });
         }
 
         // Remove last item if there's more than one part
@@ -121,7 +121,7 @@ pub fn parseIPv4(
     // Step 3: Check for too many parts
     if (parts.len > 4) {
         if (errors) |errs| {
-            try errs.append(allocator, .{ .type = .ipv4_too_many_parts });
+            try errs.append(.{ .type = .ipv4_too_many_parts });
         }
         return IPv4Error.TooManyParts;
     }
@@ -134,7 +134,7 @@ pub fn parseIPv4(
     for (parts.toSlice()) |part| {
         const result = parseIPv4Number(part) catch {
             if (errors) |errs| {
-                try errs.append(allocator, .{ .type = .ipv4_non_numeric_part });
+                try errs.append(.{ .type = .ipv4_non_numeric_part });
             }
             return IPv4Error.NonNumericPart;
         };
@@ -142,7 +142,7 @@ pub fn parseIPv4(
         // Step 5.3: Non-decimal validation error
         if (result.validation_error) {
             if (errors) |errs| {
-                try errs.append(allocator, .{ .type = .ipv4_non_decimal_part });
+                try errs.append(.{ .type = .ipv4_non_decimal_part });
             }
         }
 
@@ -154,7 +154,7 @@ pub fn parseIPv4(
     for (numbers.toSlice()) |n| {
         if (n > 255) {
             if (errors) |errs| {
-                try errs.append(allocator, .{ .type = .ipv4_out_of_range_part });
+                try errs.append(.{ .type = .ipv4_out_of_range_part });
             }
             break; // Only report once
         }
