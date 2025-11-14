@@ -25,7 +25,7 @@ pub fn generateCode(
     var output = infra.List(u8).init(allocator);
     errdefer output.deinit();
 
-    const writer = output.writer(allocator);
+    const writer = output.writer();
 
     // Header
     try writeHeader(writer);

@@ -466,12 +466,12 @@ pub fn generateAllClasses(
         var output = infra.List(u8).init(allocator);
         defer output.deinit();
 
-        const writer = output.writer(allocator);
+        const writer = output.writer();
 
         // Process each class in the file
         for (file_ir.classes, 0..) |*class, idx| {
             var enhanced = try optimizer.enhanceClass(allocator, class, &ast_registry, file_ir.module_imports, file_ir.module_definitions, file_ir.module_constants, file_ir.post_class_definitions);
-            defer enhanced.deinit();
+            defer enhanced.deinit(allocator);
 
             // All classes get module definitions (helper functions need to be accessible)
             // Post-class definitions only for the last class
@@ -497,7 +497,7 @@ pub fn generateAllClasses(
         const output_file = try std.fs.cwd().createFile(output_path, .{});
         defer output_file.close();
 
-        try output_file.writeAll(output.items);
+        try output_file.writeAll(output.items());
 
         classes_generated += 1;
         std.debug.print("  Generated: {s}\n", .{file_path});
@@ -817,7 +817,7 @@ fn serializeManifest(allocator: std.mem.Allocator, manifest: *const CacheManifes
     var json_buf = infra.List(u8).init(allocator);
     errdefer json_buf.deinit();
 
-    var writer = json_buf.writer(allocator);
+    var writer = json_buf.writer();
 
     try writer.writeAll("{\"version\":");
     try writer.print("{d}", .{manifest.version});
@@ -3174,7 +3174,7 @@ fn adaptInitDeinit(
 
     var buf = infra.List(u8).init(allocator);
     defer buf.deinit();
-    const writer = buf.writer(allocator);
+    const writer = buf.writer();
 
     var pos: usize = 0;
     var in_signature = true;
@@ -3261,7 +3261,7 @@ fn generateSmartInit(
     var result = infra.List(u8).init(allocator);
     defer result.deinit();
 
-    const writer = result.writer(allocator);
+    const writer = result.writer();
 
     // Parse parent init signature
     // Example: "pub fn init(allocator: std.mem.Allocator, name_val: []const u8) !Parent {"
@@ -4412,7 +4412,7 @@ fn generateEnhancedClassWithRegistry(
     var code = infra.List(u8).init(allocator);
     defer code.deinit();
 
-    const writer = code.writer(allocator);
+    const writer = code.writer();
 
     // ========================================================================
     // DECLARATIVE IMPORT COLLECTION

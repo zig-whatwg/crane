@@ -31,7 +31,7 @@ pub fn generateEnhancedFile(
     var output = infra.List(u8).init(allocator);
     errdefer output.deinit();
 
-    const writer = output.writer(allocator);
+    const writer = output.writer();
 
     // Write header comment
     try writer.writeAll(
@@ -109,7 +109,7 @@ pub fn generateAllFiles(
         var output = infra.List(u8).init(allocator);
         errdefer output.deinit();
 
-        const writer = output.writer(allocator);
+        const writer = output.writer();
 
         // Write file header
         try writer.writeAll(

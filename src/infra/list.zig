@@ -368,6 +368,22 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
             }
         }
 
+        /// Returns a writer for appending bytes to the list (only valid for List(u8))
+        /// This provides compatibility with code generation that expects a writer interface
+        pub fn writer(self: *Self) if (T == u8) Writer else void {
+            if (T != u8) {
+                @compileError("writer() is only available for List(u8)");
+            }
+            return Writer{ .context = self };
+        }
+
+        const Writer = if (T == u8) std.io.GenericWriter(*Self, error{OutOfMemory}, writeImpl) else void;
+
+        fn writeImpl(self: *Self, bytes: []const u8) error{OutOfMemory}!usize {
+            try self.appendSlice(bytes);
+            return bytes.len;
+        }
+
         pub fn getIndices(self: *const Self, allocator: Allocator) ![]const usize {
             const indices = try allocator.alloc(usize, self.len);
             for (0..self.len) |i| {
@@ -476,37 +492,6 @@ pub fn ListWithCapacity(comptime T: type, comptime inline_capacity: usize) type 
     };
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ============================================================================
 // Configurable Inline Capacity Tests
 // ============================================================================
-
-
-
-
-
-
-

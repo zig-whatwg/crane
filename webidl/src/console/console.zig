@@ -993,7 +993,7 @@ pub const console = webidl.namespace(struct {
     /// WHATWG console Standard lines 278-293:
     /// The logger operation accepts a log level and a list of arguments.
     /// Its main output is printing the result to the console.
-    fn logger(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
+    pub fn logger(self: *console, log_level: LogLevel, args: []const webidl.JSValue) void {
         // Fast path if disabled
         if (!self.enabled) return;
 
@@ -1146,6 +1146,7 @@ pub const console = webidl.namespace(struct {
                 .boolean => |b| try self.allocator.dupe(u8, if (b) "true" else "false"),
                 .null => try self.allocator.dupe(u8, "null"),
                 .undefined => try self.allocator.dupe(u8, "undefined"),
+                .object => try self.allocator.dupe(u8, "[object Object]"),
             },
             .integer => switch (value) {
                 .string => |s| blk: {
@@ -1156,6 +1157,7 @@ pub const console = webidl.namespace(struct {
                 .boolean => |b| try std.fmt.allocPrint(self.allocator, "{d}", .{if (b) @as(i32, 1) else @as(i32, 0)}),
                 .null => try self.allocator.dupe(u8, "0"),
                 .undefined => try self.allocator.dupe(u8, "NaN"),
+                .object => try self.allocator.dupe(u8, "0"),
             },
             .float => switch (value) {
                 .string => |s| blk: {
@@ -1166,6 +1168,7 @@ pub const console = webidl.namespace(struct {
                 .boolean => |b| try std.fmt.allocPrint(self.allocator, "{d}", .{if (b) @as(f64, 1.0) else @as(f64, 0.0)}),
                 .null => try self.allocator.dupe(u8, "0"),
                 .undefined => try self.allocator.dupe(u8, "NaN"),
+                .object => try self.allocator.dupe(u8, "NaN"),
             },
             .optimal, .object => switch (value) {
                 .string => |s| try self.allocator.dupe(u8, s),
