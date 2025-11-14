@@ -15,7 +15,7 @@ const SlotAssignmentMode = dom.SlotAssignmentMode;
 test "Node.cloneNode - element with clonable shadow root is cloned" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     // Attach clonable shadow root
@@ -64,7 +64,7 @@ test "Node.cloneNode - element with clonable shadow root is cloned" {
 test "Node.cloneNode - element with non-clonable shadow root is not cloned" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     // Attach non-clonable shadow root
@@ -96,7 +96,7 @@ test "Node.cloneNode - element with non-clonable shadow root is not cloned" {
 test "Node.cloneNode - shadow root declarative flag is preserved" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     // Attach clonable declarative shadow root
@@ -135,7 +135,7 @@ test "Node.cloneNode - shadow root declarative flag is preserved" {
 test "Node.cloneNode - shadow root children are cloned with subtree=true" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     // Attach clonable shadow root
@@ -153,7 +153,7 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
     host.shadow_root = &shadow;
 
     // Add a child to the shadow root
-    var shadow_child = try Element.create(allocator, "span", null, null);
+    var shadow_child = try Element.init(allocator, "span");
     defer shadow_child.deinit();
 
     const shadow_node = shadow.asNode();

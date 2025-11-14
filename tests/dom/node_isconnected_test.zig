@@ -26,7 +26,7 @@ test "Node.isConnected - element in document is connected" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const doc_node = doc.asNode();
@@ -45,7 +45,7 @@ test "Node.isConnected - element in document is connected" {
 test "Node.isConnected - detached element is not connected" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -58,10 +58,10 @@ test "Node.isConnected - nested elements in document are connected" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const doc_node = doc.asNode();
@@ -85,7 +85,7 @@ test "Node.isConnected - element removed from document is not connected" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const doc_node = doc.asNode();
@@ -103,10 +103,10 @@ test "Node.isConnected - element removed from document is not connected" {
 test "Node.isConnected - orphaned subtree is not connected" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const parent_node = parent.asNode();

@@ -29,7 +29,7 @@ test "Node.getRootNode - element in document" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const doc_node = doc.asNode();
@@ -47,7 +47,7 @@ test "Node.getRootNode - element in document" {
 test "Node.getRootNode - detached element" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -63,10 +63,10 @@ test "Node.getRootNode - nested elements" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const doc_node = doc.asNode();
@@ -86,10 +86,10 @@ test "Node.getRootNode - nested elements" {
 test "Node.getRootNode - orphaned subtree" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const parent_node = parent.asNode();
@@ -110,7 +110,7 @@ test "Node.getRootNode - options.composed false" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const doc_node = doc.asNode();
@@ -130,7 +130,7 @@ test "Node.getRootNode - options.composed true (shadow root not yet implemented)
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const doc_node = doc.asNode();

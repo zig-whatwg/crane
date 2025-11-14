@@ -48,7 +48,7 @@ test "ShadowRoot - basic initialization with open mode" {
     try std.testing.expectEqual(ShadowRootMode.open, shadow.getMode());
 
     // Verify host
-    try std.testing.expectEqual(&host, shadow.getHost());
+    try std.testing.expectEqual(&host, shadow.get_host());
 
     // Verify delegates focus (default false)
     try std.testing.expectEqual(false, shadow.get_delegatesFocus());
@@ -57,7 +57,7 @@ test "ShadowRoot - basic initialization with open mode" {
     try std.testing.expectEqual(SlotAssignmentMode.named, shadow.getSlotAssignmentMode());
 
     // Verify clonable
-    try std.testing.expectEqual(false, shadow.getClonable());
+    try std.testing.expectEqual(false, shadow.get_clonable());
 
     // Verify serializable
     try std.testing.expectEqual(false, shadow.getSerializable());
@@ -143,7 +143,7 @@ test "ShadowRoot - clonable and serializable flags" {
     );
     defer shadow.deinit();
 
-    try std.testing.expectEqual(true, shadow.getClonable());
+    try std.testing.expectEqual(true, shadow.get_clonable());
     try std.testing.expectEqual(true, shadow.getSerializable());
 }
 
@@ -353,7 +353,7 @@ test "attachShadow - configuration options propagate correctly" {
     try std.testing.expect(element.shadow_root != null);
     if (element.shadow_root) |shadow| {
         try std.testing.expectEqual(ShadowRootMode.closed, shadow.getMode());
-        try std.testing.expectEqual(true, shadow.getClonable());
+        try std.testing.expectEqual(true, shadow.get_clonable());
         try std.testing.expectEqual(true, shadow.getSerializable());
         try std.testing.expectEqual(true, shadow.get_delegatesFocus());
         try std.testing.expectEqual(SlotAssignmentMode.manual, shadow.getSlotAssignmentMode());
@@ -389,7 +389,7 @@ test "attachShadow - host element maintains reference to shadow root" {
 
     // Shadow root knows its host
     if (element.shadow_root) |shadow| {
-        try std.testing.expectEqual(&element, shadow.getHost());
+        try std.testing.expectEqual(&element, shadow.get_host());
 
         // Clean up
         allocator.destroy(shadow);
@@ -459,7 +459,7 @@ test "HTMLSlotElement - assigned nodes tracking" {
     try std.testing.expectEqual(@as(usize, 3), slot.assigned_nodes.size());
 
     // Clear assigned nodes
-    slot.assigned_nodes.clearRetainingCapacity();
+    slot.assigned_nodes.clear();
     try std.testing.expectEqual(@as(usize, 0), slot.assigned_nodes.size());
     try std.testing.expect(!slot.hasAssignedNodes());
 }

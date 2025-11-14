@@ -13,7 +13,7 @@ const Node = dom.Node;
 test "Node.childNodes - [SameObject] returns same NodeList" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -31,13 +31,13 @@ test "Node.childNodes - [SameObject] returns same NodeList" {
 test "Node.childNodes - NodeList is initially populated" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child1 = try Element.create(allocator, "span", null, null);
+    var child1 = try Element.init(allocator, "span");
     defer child1.deinit();
 
-    var child2 = try Element.create(allocator, "p", null, null);
+    var child2 = try Element.init(allocator, "p");
     defer child2.deinit();
 
     const parent_node = parent.asNode();
@@ -60,7 +60,7 @@ test "Node.childNodes - NodeList is initially populated" {
 test "Node.childNodes - empty node has empty NodeList" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -75,10 +75,10 @@ test "Node.childNodes - empty node has empty NodeList" {
 test "Node.childNodes - NodeList uses item() method" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "ul", null, null);
+    var parent = try Element.init(allocator, "ul");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "li", null, null);
+    var child = try Element.init(allocator, "li");
     defer child.deinit();
 
     const parent_node = parent.asNode();

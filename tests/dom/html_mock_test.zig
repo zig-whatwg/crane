@@ -7,6 +7,8 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const Element = dom.Element;
+const parseOrderedSet = dom.html_mock.parseOrderedSet;
+const hasAllClasses = dom.html_mock.hasAllClasses;
 
 test "parseOrderedSet - single class" {
     const allocator = std.testing.allocator;

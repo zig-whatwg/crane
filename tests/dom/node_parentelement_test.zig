@@ -14,10 +14,10 @@ const Text = dom.Text;
 test "Node.parentElement - element parent returns element" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "div", null, null);
+    var parent = try Element.init(allocator, "div");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const parent_node = parent.asNode();
@@ -39,7 +39,7 @@ test "Node.parentElement - document parent returns null" {
     var doc = try Document.create(allocator);
     defer doc.deinit();
 
-    var elem = try Element.create(allocator, "html", null, null);
+    var elem = try Element.init(allocator, "html");
     defer elem.deinit();
 
     const doc_node = doc.asNode();
@@ -57,7 +57,7 @@ test "Node.parentElement - document parent returns null" {
 test "Node.parentElement - no parent returns null" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -71,7 +71,7 @@ test "Node.parentElement - no parent returns null" {
 test "Node.parentElement - text node with element parent" {
     const allocator = std.testing.allocator;
 
-    var parent = try Element.create(allocator, "p", null, null);
+    var parent = try Element.init(allocator, "p");
     defer parent.deinit();
 
     var text_node = try Text.create(allocator, "Hello");
@@ -93,13 +93,13 @@ test "Node.parentElement - text node with element parent" {
 test "Node.parentElement - nested elements" {
     const allocator = std.testing.allocator;
 
-    var grandparent = try Element.create(allocator, "div", null, null);
+    var grandparent = try Element.init(allocator, "div");
     defer grandparent.deinit();
 
-    var parent = try Element.create(allocator, "section", null, null);
+    var parent = try Element.init(allocator, "section");
     defer parent.deinit();
 
-    var child = try Element.create(allocator, "span", null, null);
+    var child = try Element.init(allocator, "span");
     defer child.deinit();
 
     const grandparent_node = grandparent.asNode();

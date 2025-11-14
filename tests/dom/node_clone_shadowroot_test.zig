@@ -15,7 +15,7 @@ const SlotAssignmentMode = dom.SlotAssignmentMode;
 test "Node.cloneNode - ShadowRoot throws NotSupportedError" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     // Create a ShadowRoot
@@ -57,7 +57,7 @@ test "Node.cloneNode - DocumentFragment can be cloned" {
 test "Node.cloneNode - ShadowRoot deep clone also throws" {
     const allocator = std.testing.allocator;
 
-    var host = try Element.create(allocator, "div", null, null);
+    var host = try Element.init(allocator, "div");
     defer host.deinit();
 
     var shadow = try ShadowRoot.init(

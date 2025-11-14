@@ -41,7 +41,7 @@ test "Node.nodeValue - Comment node returns data" {
 test "Node.nodeValue - Element returns null" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
@@ -98,7 +98,7 @@ test "Node.nodeValue - set Attr value" {
 test "Node.nodeValue - set Element value does nothing" {
     const allocator = std.testing.allocator;
 
-    var elem = try Element.create(allocator, "div", null, null);
+    var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
     const elem_node = elem.asNode();
