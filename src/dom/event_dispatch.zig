@@ -402,7 +402,7 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 
         // Step 2: Set A to A's root's host
         const host_element = a_shadow_root.get_host();
-        current_a = @ptrCast(&host_element.base);
+        current_a = @ptrCast(host_element);
     }
 
     // If A becomes null, return null
@@ -426,7 +426,7 @@ fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
         // Get shadow root's host
         const shadow: *ShadowRoot = @ptrCast(@alignCast(node_root));
         const host_element = shadow.get_host();
-        const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
+        const host_node: *Node = @ptrCast(host_element);
 
         // Recursively check if ancestor is shadow-including inclusive ancestor of host
         return isShadowIncludingInclusiveAncestor(ancestor, host_node);
@@ -460,7 +460,7 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
             // If composed is true, return the host
             const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
             const host_element = shadow.get_host();
-            return @ptrCast(@alignCast(&host_element.base));
+            return @ptrCast(host_element);
         }
 
         // Regular Node - check if assigned to a slot
@@ -476,7 +476,7 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
 
         // Return parent_node
         if (node.parent_node) |parent| {
-            return &parent.base;
+            return @ptrCast(parent);
         }
     }
 

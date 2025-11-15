@@ -20,7 +20,7 @@ test "Document.getElementById - finds element by id attribute" {
     try div.call_setAttribute("id", "test-id");
 
     // Find by id
-    const found = doc.call_getElementById(allocator, "test-id");
+    const found = try doc.call_getElementById(allocator, "test-id");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }
@@ -36,7 +36,7 @@ test "Document.getElementById - returns null for non-existent id" {
     try div.call_setAttribute("id", "existing");
 
     // Try to find non-existent id
-    const found = doc.call_getElementById(allocator, "nonexistent");
+    const found = try doc.call_getElementById(allocator, "nonexistent");
     try std.testing.expect(found == null);
 }
 
@@ -59,7 +59,7 @@ test "Document.getElementById - finds nested element" {
     try em.call_setAttribute("id", "nested");
 
     // Find by id
-    const found = doc.call_getElementById(allocator, "nested");
+    const found = try doc.call_getElementById(allocator, "nested");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(em)), @as(*Node, @ptrCast(found.?)));
 }
@@ -81,7 +81,7 @@ test "Document.getElementById - returns first element when multiple have same id
     try div2.call_setAttribute("id", "duplicate");
 
     // Should return first in tree order
-    const found = doc.call_getElementById(allocator, "duplicate");
+    const found = try doc.call_getElementById(allocator, "duplicate");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(div1)), @as(*Node, @ptrCast(found.?)));
 }
@@ -124,7 +124,7 @@ test "Document.getElementById - ignores elements without id attribute" {
     // Only middle element has id
     try div2.call_setAttribute("id", "middle");
 
-    const found = doc.call_getElementById(allocator, "middle");
+    const found = try doc.call_getElementById(allocator, "middle");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(div2)), @as(*Node, @ptrCast(found.?)));
 }
@@ -142,7 +142,7 @@ test "Document.getElementById - empty id never matches" {
     try div.call_setAttribute("id", "");
 
     // Search for empty id - should not match
-    const found = doc.call_getElementById(allocator, "");
+    const found = try doc.call_getElementById(allocator, "");
     try std.testing.expect(found == null);
 }
 
@@ -202,7 +202,7 @@ test "Document.getElementById - special characters in id" {
     // Set id with special characters (valid per HTML spec)
     try div.call_setAttribute("id", "my:id-with.special_chars");
 
-    const found = doc.call_getElementById(allocator, "my:id-with.special_chars");
+    const found = try doc.call_getElementById(allocator, "my:id-with.special_chars");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }
@@ -219,7 +219,7 @@ test "Document.getElementById - unicode in id" {
     // Set id with unicode characters
     try div.call_setAttribute("id", "元素-🌍");
 
-    const found = doc.call_getElementById(allocator, "元素-🌍");
+    const found = try doc.call_getElementById(allocator, "元素-🌍");
     try std.testing.expect(found != null);
     try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }
