@@ -1480,6 +1480,9 @@ pub fn build(b: *std.Build) void {
         const webidl_imports = [_]std.Build.Module.Import{
             .{ .name = "infra", .module = infra_mod },
             .{ .name = "webidl", .module = webidl_mod },
+            .{ .name = "dom", .module = dom_mod },
+            .{ .name = "streams", .module = streams_mod },
+            .{ .name = "console", .module = console_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/webidl", target, &webidl_imports) catch |err| {
             std.debug.print("Warning: Failed to add webidl test files: {}\n", .{err});

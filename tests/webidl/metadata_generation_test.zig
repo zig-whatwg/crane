@@ -61,7 +61,7 @@ test "ReadableStream extended_attrs includes Exposed" {
     const metadata = ReadableStream.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found = true;
             break;
@@ -74,7 +74,7 @@ test "ReadableStream extended_attrs includes Transferable" {
     const metadata = ReadableStream.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Transferable")) {
             found = true;
             try testing.expectEqual(ir.ExtendedAttributeValue.none, attr.value);
@@ -88,7 +88,7 @@ test "WritableStream has Transferable attribute" {
     const metadata = WritableStream.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Transferable")) {
             found = true;
             break;
@@ -101,7 +101,7 @@ test "TransformStream has Transferable attribute" {
     const metadata = TransformStream.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Transferable")) {
             found = true;
             break;
@@ -114,7 +114,7 @@ test "Event has [Exposed=*] (wildcard)" {
     const metadata = Event.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found = true;
             try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
@@ -128,7 +128,7 @@ test "Node has [Exposed=Window] (identifier)" {
     const metadata = Node.__webidl__;
 
     var found = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found = true;
             switch (attr.value) {

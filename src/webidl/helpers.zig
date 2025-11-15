@@ -63,7 +63,7 @@ pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
     const metadata = T.__webidl__;
 
     // Iterate through extended attributes looking for [Exposed]
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (!std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
@@ -114,7 +114,7 @@ pub fn isTransferable(comptime T: type) bool {
     const metadata = T.__webidl__;
 
     // Look for [Transferable] attribute
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Transferable")) {
             return true;
         }
@@ -139,7 +139,7 @@ pub fn isSerializable(comptime T: type) bool {
     const metadata = T.__webidl__;
 
     // Look for [Serializable] attribute
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Serializable")) {
             return true;
         }
@@ -172,7 +172,7 @@ pub fn getGlobalNames(comptime T: type) ?[]const []const u8 {
     const metadata = T.__webidl__;
 
     // Look for [Exposed] attribute
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (!std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
@@ -238,14 +238,17 @@ pub fn isNamespace(comptime T: type) bool {
     return metadata.kind == .namespace;
 }
 
-/// Check if a type is a WebIDL interface
+/// Check if a type is a WebIDL interface (type-based check)
 ///
 /// Usage:
 /// ```zig
 /// const EventTarget = @import("dom").EventTarget;
-/// const is_iface = isInterface(EventTarget); // true
+/// const is_iface = isInterfaceType(EventTarget); // true
 /// ```
-pub fn isInterface(comptime T: type) bool {
+///
+/// Note: This checks if a TYPE is a WebIDL interface at comptime.
+/// For runtime value checking, use interfaces.isInterface(value).
+pub fn isInterfaceType(comptime T: type) bool {
     // Check if type has __webidl__ metadata
     if (!@hasDecl(T, "__webidl__")) {
         return false;

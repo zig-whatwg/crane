@@ -23,7 +23,7 @@ test "generated EventTarget has [Exposed=*]" {
 
     // Should have Exposed attribute
     var found_exposed = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
             try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
@@ -37,7 +37,7 @@ test "generated Node has [Exposed=Window]" {
 
     // Should have Exposed=Window
     var found_exposed = false;
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
             switch (attr.value) {
@@ -58,7 +58,7 @@ test "generated ReadableStream has [Exposed=*, Transferable]" {
     var found_exposed = false;
     var found_transferable = false;
 
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
             try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
@@ -76,7 +76,7 @@ test "parser correctly handles .exposed = &.{.global} syntax" {
     // Verify that .global in source maps to .wildcard in metadata
     const metadata = Event.__webidl__;
 
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             // .global should become .wildcard
             try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
@@ -91,7 +91,7 @@ test "parser correctly handles .exposed = &.{.Window} syntax" {
     // Verify that .Window in source maps to .identifier in metadata
     const metadata = Node.__webidl__;
 
-    for (metadata.extended_attrs) |attr| {
+    inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             // .Window should become .{ .identifier = "Window" }
             switch (attr.value) {

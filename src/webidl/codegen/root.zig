@@ -6,6 +6,9 @@
 
 const std = @import("std");
 
+/// IR types used by codegen (exposed for testing)
+pub const ir = @import("ir.zig");
+
 /// Extended attribute value types
 /// Spec: https://webidl.spec.whatwg.org/#idl-extended-attributes
 pub const ExtendedAttributeValue = union(enum) {
