@@ -84,15 +84,15 @@ test "message buffer - message content" {
     // Check message log levels
     const msg0 = console_obj.messageBuffer.get(0);
     try std.testing.expect(msg0 != null);
-    try std.testing.expectEqual(console.LogLevel.log, msg0.?.logLevel);
+    try std.testing.expectEqual(console_mod.LogLevel.log, msg0.?.logLevel);
 
     const msg1 = console_obj.messageBuffer.get(1);
     try std.testing.expect(msg1 != null);
-    try std.testing.expectEqual(console.LogLevel.warn, msg1.?.logLevel);
+    try std.testing.expectEqual(console_mod.LogLevel.warn, msg1.?.logLevel);
 
     const msg2 = console_obj.messageBuffer.get(2);
     try std.testing.expect(msg2 != null);
-    try std.testing.expectEqual(console.LogLevel.error_level, msg2.?.logLevel);
+    try std.testing.expectEqual(console_mod.LogLevel.error_level, msg2.?.logLevel);
 }
 
 test "message buffer - grouping indentation in messages" {
@@ -118,15 +118,21 @@ test "message buffer - grouping indentation in messages" {
     // Check indentation in formatted strings
     const msg0 = console_obj.messageBuffer.get(0);
     try std.testing.expect(msg0 != null);
-    try std.testing.expect(!std.mem.startsWith(u8, msg0.?.formatted, "  ")); // No indent
+    const fmt0 = try msg0.?.format(allocator);
+    defer allocator.free(fmt0);
+    try std.testing.expect(!std.mem.startsWith(u8, fmt0, "  ")); // No indent
 
     const msg1 = console_obj.messageBuffer.get(1);
     try std.testing.expect(msg1 != null);
-    try std.testing.expect(std.mem.startsWith(u8, msg1.?.formatted, "  ")); // 1 level
+    const fmt1 = try msg1.?.format(allocator);
+    defer allocator.free(fmt1);
+    try std.testing.expect(std.mem.startsWith(u8, fmt1, "  ")); // 1 level
 
     const msg2 = console_obj.messageBuffer.get(2);
     try std.testing.expect(msg2 != null);
-    try std.testing.expect(std.mem.startsWith(u8, msg2.?.formatted, "    ")); // 2 levels
+    const fmt2 = try msg2.?.format(allocator);
+    defer allocator.free(fmt2);
+    try std.testing.expect(std.mem.startsWith(u8, fmt2, "    ")); // 2 levels
 }
 
 test "message buffer - disabled console doesn't buffer" {

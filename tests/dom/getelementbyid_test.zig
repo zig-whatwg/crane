@@ -22,7 +22,7 @@ test "Document.getElementById - finds element by id attribute" {
     // Find by id
     const found = doc.call_getElementById("test-id");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }
 
 test "Document.getElementById - returns null for non-existent id" {
@@ -61,7 +61,7 @@ test "Document.getElementById - finds nested element" {
     // Find by id
     const found = doc.call_getElementById("nested");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(em)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(em)), @as(*Node, @ptrCast(found.?)));
 }
 
 test "Document.getElementById - returns first element when multiple have same id" {
@@ -83,7 +83,7 @@ test "Document.getElementById - returns first element when multiple have same id
     // Should return first in tree order
     const found = doc.call_getElementById("duplicate");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div1)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div1)), @as(*Node, @ptrCast(found.?)));
 }
 
 test "Document.getElementById - case sensitive matching" {
@@ -126,7 +126,7 @@ test "Document.getElementById - ignores elements without id attribute" {
 
     const found = doc.call_getElementById("middle");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div2)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div2)), @as(*Node, @ptrCast(found.?)));
 }
 
 test "Document.getElementById - empty id never matches" {
@@ -204,7 +204,7 @@ test "Document.getElementById - special characters in id" {
 
     const found = doc.call_getElementById("my:id-with.special_chars");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }
 
 test "Document.getElementById - unicode in id" {
@@ -221,5 +221,5 @@ test "Document.getElementById - unicode in id" {
 
     const found = doc.call_getElementById("元素-🌍");
     try std.testing.expect(found != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found.?)));
 }

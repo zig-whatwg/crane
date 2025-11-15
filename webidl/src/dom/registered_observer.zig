@@ -2,7 +2,10 @@
 //! Spec: https://dom.spec.whatwg.org/#mutation-observers
 
 const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
-const MutationObserver = @import("mutation_observer").MutationObserver;
+
+/// Forward declaration - will be resolved to the actual type at comptime
+/// Using anyopaque allows type erasure without circular dependencies
+const MutationObserver = anyopaque;
 
 /// DOM §7.1 - RegisteredObserver
 ///
