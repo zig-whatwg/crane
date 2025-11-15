@@ -306,7 +306,7 @@ pub const NamedNodeMap = struct {
         element: *Element,
     ) ?*Attr {
 
-        for (element.attributes.toSlice()) |*attr| {
+        for (element.attributes.toSliceMut()) |*attr| {
             // Check namespace match
             const ns_match = if (namespace == null and attr.namespace_uri == null)
                 true
@@ -336,7 +336,7 @@ pub const NamedNodeMap = struct {
 
             if (std.mem.eql(u8, attr_qualified_name, qualified_name)) {
                 // Step 2: If attr is non-null, remove attr
-                const removed = element.attributes.remove(i);
+                var removed = try element.attributes.remove(i);
                 removed.owner_element = null;
 
                 // Step 3: Return attr

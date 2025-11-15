@@ -68,7 +68,7 @@ test "Range.setStart - throws IndexSizeError when offset > node length" {
     defer range.deinit();
 
     // Attempt to set start with offset 3 (element has only 2 children)
-    const result = range.call_setStart(@ptrCast(&element), 3);
+    const result = range.call_setStart(@ptrCast(element), 3);
     try std.testing.expectError(error.IndexSizeError, result);
 }
 
@@ -91,7 +91,7 @@ test "Range.setEnd - throws IndexSizeError when offset > node length" {
     defer range.deinit();
 
     // Attempt to set end with offset 3 (element has only 2 children)
-    const result = range.call_setEnd(@ptrCast(&element), 3);
+    const result = range.call_setEnd(@ptrCast(element), 3);
     try std.testing.expectError(error.IndexSizeError, result);
 }
 
@@ -114,8 +114,8 @@ test "Range.setStart - valid offset within node length" {
     defer range.deinit();
 
     // Set start with valid offset
-    try range.call_setStart(@ptrCast(&element), 1);
-    try std.testing.expectEqual(@ptrCast(&element), range.start_container);
+    try range.call_setStart(@ptrCast(element), 1);
+    try std.testing.expectEqual(@ptrCast(element), range.start_container);
     try std.testing.expectEqual(@as(u32, 1), range.start_offset);
 }
 
@@ -138,8 +138,8 @@ test "Range.setEnd - valid offset within node length" {
     defer range.deinit();
 
     // Set end with valid offset
-    try range.call_setEnd(@ptrCast(&element), 1);
-    try std.testing.expectEqual(@ptrCast(&element), range.end_container);
+    try range.call_setEnd(@ptrCast(element), 1);
+    try std.testing.expectEqual(@ptrCast(element), range.end_container);
     try std.testing.expectEqual(@as(u32, 1), range.end_offset);
 }
 
@@ -218,10 +218,10 @@ test "Range.setStart - CharacterData node uses data length" {
     defer range.deinit();
 
     // Valid: offset 5 (equal to length)
-    try range.call_setStart(@ptrCast(&text).base, 5);
+    try range.call_setStart(@ptrCast(text), 5);
     try std.testing.expectEqual(@as(u32, 5), range.start_offset);
 
     // Invalid: offset 6 (greater than length)
-    const result = range.call_setStart(@ptrCast(&text).base, 6);
+    const result = range.call_setStart(@ptrCast(text), 6);
     try std.testing.expectError(error.IndexSizeError, result);
 }

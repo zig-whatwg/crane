@@ -60,7 +60,7 @@ test "Range insertion - insert before range shifts offsets" {
     // Create range: [parent, 1] to [parent, 2]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
     try range.call_setStart(parent, 1);
@@ -131,7 +131,7 @@ test "Range insertion - insert at end boundary shifts end offset" {
     // Create range: [parent, 0] to [parent, 1]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
     try range.call_setStart(parent, 0);
@@ -202,7 +202,7 @@ test "Range insertion - multiple ranges shifted by single insertion" {
     // Create range1: [parent, 0] to [parent, 2]
     const range1 = try allocator.create(dom.Range);
     defer allocator.destroy(range1);
-    range1.* = try dom.Range.init(allocator, doc_ptr);
+    range1.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range1.deinit();
 
     try range1.call_setStart(parent, 0);
@@ -212,7 +212,7 @@ test "Range insertion - multiple ranges shifted by single insertion" {
     // Create range2: [parent, 1] to [parent, 3]
     const range2 = try allocator.create(dom.Range);
     defer allocator.destroy(range2);
-    range2.* = try dom.Range.init(allocator, doc_ptr);
+    range2.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range2.deinit();
 
     try range2.call_setStart(parent, 1);
@@ -270,7 +270,7 @@ test "Range insertion - collapsed range shifts when inserted before" {
     // Create collapsed range: [parent, 1] to [parent, 1]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
     try range.call_setStart(parent, 1);

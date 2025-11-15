@@ -167,10 +167,6 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
 
     // Create an attribute with prefix
     var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -194,10 +190,6 @@ test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute with prefix "xlink:href"
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
-    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
     var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
 
     try element.attributes.append(attr);

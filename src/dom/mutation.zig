@@ -819,7 +819,7 @@ pub fn replace(
     var added_count: usize = 0;
 
     if (isDocumentFragment(node)) {
-        added_nodes = node.child_nodes.items();
+        added_nodes = node.child_nodes.toSliceMut();
         added_count = added_nodes.len;
     } else {
         added_nodes_buf[0] = node;

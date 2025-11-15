@@ -147,7 +147,7 @@ test "integration - state isolation between instances" {
     const label = "test";
 
     // Modify console1
-    try console1.call_time(label);
+    console1.call_time(label);
     try console1.call_count(label);
     try console1.call_group(&.{});
 
@@ -290,9 +290,7 @@ test "integration - memory stress test" {
         // Counting
         const count_buf = try std.fmt.allocPrint(allocator, "count{d}", .{i});
         defer allocator.free(count_buf);
-        const counter = try infra.string.utf8ToUtf16(allocator, count_buf);
-        defer allocator.free(counter);
-        console_obj.call_count(counter);
+        console_obj.call_count(count_buf);
 
         // Grouping
         console_obj.call_group(&.{});

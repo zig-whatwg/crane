@@ -561,7 +561,7 @@ test "Range: insertNode adds node at range start" {
 
     // Insert new node
     const newNode = try doc.call_createElement("a");
-    try range.call_insertNode((&newNode));
+    try range.call_insertNode(@ptrCast(newNode));
 
     // newNode should be inserted between child1 and child2
     try testing.expectEqual(@as(usize, 3), parent.child_nodes.size());
@@ -579,13 +579,13 @@ test "Range: insertNode throws for invalid start node" {
     // Create a comment node (invalid for insertion)
     const comment = try doc.call_createComment("test");
 
-    try range.call_setStart(@ptrCast(&comment), 0);
-    try range.call_setEnd(@ptrCast(&comment), 0);
+    try range.call_setStart(@ptrCast(comment), 0);
+    try range.call_setEnd(@ptrCast(comment), 0);
 
     const newNode = try doc.call_createElement("div");
 
     // Should throw HierarchyRequestError
-    try testing.expectError(error.HierarchyRequestError, range.call_insertNode((&newNode)));
+    try testing.expectError(error.HierarchyRequestError, range.call_insertNode(@ptrCast(newNode)));
 }
 
 test "Range: surroundContents wraps range content in new parent" {
@@ -610,7 +610,7 @@ test "Range: surroundContents wraps range content in new parent" {
 
     // Surround with new parent
     const wrapper = try doc.call_createElement("section");
-    try range.call_surroundContents((&wrapper));
+    try range.call_surroundContents(@ptrCast(wrapper));
 
     // wrapper should now be in parent
     // Note: Simplified test - full behavior depends on extractContents implementation
@@ -656,7 +656,7 @@ test "Range: insertNode removes node from old parent" {
     try range.call_setEnd(@ptrCast(parent2), 0);
 
     // Insert node (should remove from parent1)
-    try range.call_insertNode((&node));
+    try range.call_insertNode(@ptrCast(node));
 
     // node should be removed from parent1 and added to parent2
     try testing.expectEqual(@as(usize, 0), parent1.child_nodes.size());

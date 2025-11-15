@@ -117,6 +117,6 @@ test "Range.surroundContents - throws for DocumentFragment parent" {
     fragment.* = try dom.DocumentFragment.init(allocator);
     defer fragment.deinit();
 
-    const result = range.call_surroundContents(@ptrCast(&fragment));
+    const result = range.call_surroundContents(@ptrCast(@constCast(&fragment)));
     try std.testing.expectError(error.InvalidNodeTypeError, result);
 }

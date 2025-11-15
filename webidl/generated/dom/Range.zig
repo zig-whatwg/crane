@@ -844,7 +844,7 @@ pub const Range = struct {
         try self.call_insertNode(newParent);
 
         // Step 6: Append fragment to newParent
-        _ = try newParent.call_appendChild(@ptrCast(&fragment));
+        _ = try newParent.call_appendChild(@ptrCast(@constCast(&fragment)));
 
         // Step 7: Select newParent within range
         try self.call_selectNode(newParent);
