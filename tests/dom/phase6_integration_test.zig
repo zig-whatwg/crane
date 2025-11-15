@@ -234,7 +234,7 @@ test "Integration: Element with Attr nodes" {
     try testing.expectEqual(@as(usize, 2), elem.attributes.toSlice().len);
 
     // Access via NamedNodeMap
-    var map = NamedNodeMap.init(&elem);
+    var map = NamedNodeMap.init(elem);
     try testing.expectEqual(@as(usize, 2), map.length);
 
     const class_attr = map.getNamedItem("class");
@@ -455,7 +455,7 @@ test "Integration: NamedNodeMap wraps Element attributes" {
     try elem.attributes.append(attr3);
 
     // Access via NamedNodeMap
-    var map = NamedNodeMap.init(&elem);
+    var map = NamedNodeMap.init(elem);
 
     // Test length
     try testing.expectEqual(@as(usize, 3), map.length);

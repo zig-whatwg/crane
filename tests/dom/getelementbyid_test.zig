@@ -165,7 +165,7 @@ test "Document.getElementById - finds element after id attribute added" {
     // Now should find it
     const found_after = doc.call_getElementById("added-later");
     try std.testing.expect(found_after != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found_after?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found_after.?));
 }
 
 test "Document.getElementById - does not find element after id attribute removed" {

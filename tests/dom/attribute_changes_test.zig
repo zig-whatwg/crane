@@ -23,7 +23,7 @@ test "changeAttribute - updates value and calls handle" {
         allocator.destroy(attr);
     }
 
-    attr.* = try Attr.init(allocator, "class", "foo", null, null);
+    attr.* = try Attr.init(allocator, null, null, "class", "foo");
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
@@ -45,7 +45,7 @@ test "appendAttribute - adds to list and handles changes" {
         allocator.destroy(attr);
     }
 
-    attr.* = try Attr.init(allocator, "title", "Hello", null, null);
+    attr.* = try Attr.init(allocator, null, null, "title", "Hello");
 
     // Append the attribute
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
@@ -69,7 +69,7 @@ test "removeAttribute - removes from list and handles changes" {
         allocator.destroy(attr);
     }
 
-    attr.* = try Attr.init(allocator, "data-test", "value", null, null);
+    attr.* = try Attr.init(allocator, null, null, "data-test", "value");
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Remove the attribute
@@ -100,8 +100,8 @@ test "replaceAttribute - swaps in list and handles changes" {
         allocator.destroy(new_attr);
     }
 
-    old_attr.* = try Attr.init(allocator, "id", "old-id", null, null);
-    new_attr.* = try Attr.init(allocator, "id", "new-id", null, null);
+    old_attr.* = try Attr.init(allocator, null, null, "id", "old-id");
+    new_attr.* = try Attr.init(allocator, null, null, "id", "new-id");
 
     try attribute_algorithms.appendAttribute(old_attr, &element);
 
@@ -155,7 +155,7 @@ test "setAttributeValue - changes existing attribute" {
         allocator.destroy(attr);
     }
 
-    attr.* = try Attr.init(allocator, "class", "old-class", null, null);
+    attr.* = try Attr.init(allocator, null, null, "class", "old-class");
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
