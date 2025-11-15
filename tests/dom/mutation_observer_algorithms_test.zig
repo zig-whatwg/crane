@@ -11,19 +11,19 @@ const Node = dom.Node;
 test "queueMutationRecord - basic childList mutation" {
     const allocator = std.testing.allocator;
     _ = allocator;
-    dom.resetAgent();
+    // dom.resetAgent(); // TODO: Implement mutation observer agent reset
 
     // TODO: Create real Node instances when fully integrated
     // For now, this test is incomplete
 
-    dom.resetAgent();
+    // dom.resetAgent(); // TODO: Implement mutation observer agent reset
 }
 test "notifyMutationObservers - callback invocation" {
     const allocator = std.testing.allocator;
     _ = allocator;
-    dom.resetAgent();
+    // dom.resetAgent(); // TODO: Implement mutation observer agent reset
 
     // TODO: Create real test with nodes and observers
 
-    dom.resetAgent();
+    // dom.resetAgent(); // TODO: Implement mutation observer agent reset
 }

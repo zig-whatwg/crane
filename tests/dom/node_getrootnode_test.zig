@@ -3,12 +3,11 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
-
 // Type aliases
 const Document = dom.Document;
 const Element = dom.Element;
 const Node = dom.Node;
+const GetRootNodeOptions = dom.Node.GetRootNodeOptions;
 
 test "Node.getRootNode - document root" {
     const allocator = std.testing.allocator;

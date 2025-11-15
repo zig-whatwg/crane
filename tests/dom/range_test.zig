@@ -20,12 +20,12 @@ test "Range: init creates range with document boundary" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    try testing.expect(range.get_startContainer() == @ptrCast(&doc));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(&doc)));
     try testing.expectEqual(@as(u32, 0), range.get_startOffset());
-    try testing.expect(range.get_endContainer() == @ptrCast(&doc));
+    try testing.expect(range.get_endContainer() == @as(*Node, @ptrCast(&doc)));
     try testing.expectEqual(@as(u32, 0), range.get_endOffset());
 }
 
@@ -35,7 +35,7 @@ test "Range: collapsed returns true for same boundary points" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Initially collapsed
@@ -57,7 +57,7 @@ test "Range: setStart updates start boundary point" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -74,7 +74,7 @@ test "Range: setEnd updates end boundary point" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -91,7 +91,7 @@ test "Range: collapse to start" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Set different start and end
@@ -117,7 +117,7 @@ test "Range: collapse to end" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Set different start and end
@@ -143,7 +143,7 @@ test "Range: selectNodeContents sets range to node's children" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -170,7 +170,7 @@ test "Range: cloneRange creates independent copy" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range1 = try Range.init(allocator, @ptrCast(&doc));
+    var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -190,7 +190,7 @@ test "Range: cloneRange creates independent copy" {
     try testing.expectEqual(@as(u32, 10), range2.get_endOffset());
 
     // Should be independent
-    try range2.call_setStart(@ptrCast(&doc), 0);
+    try range2.call_setStart(@as(*Node, @ptrCast(&doc)), 0);
     try testing.expect(range1.get_startContainer() == @as(*Node, @ptrCast(elem))); // Original unchanged
 }
 
@@ -200,13 +200,13 @@ test "Range: detach does nothing (compatibility)" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Should not crash or change state
     range.call_detach();
 
-    try testing.expect(range.get_startContainer() == @ptrCast(&doc));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(&doc)));
     try testing.expectEqual(@as(u32, 0), range.get_startOffset());
 }
 
@@ -216,7 +216,7 @@ test "Range: commonAncestorContainer for same node" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -225,7 +225,7 @@ test "Range: commonAncestorContainer for same node" {
     try range.call_setEnd(@ptrCast(elem), 5);
 
     const common = range.get_commonAncestorContainer();
-    try testing.expect(common == (&elem));
+    try testing.expect(common == @as(*Node, @ptrCast(elem)));
 }
 
 test "Range: commonAncestorContainer finds parent" {
@@ -234,7 +234,7 @@ test "Range: commonAncestorContainer finds parent" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Create: parent > child1, child2
@@ -263,10 +263,10 @@ test "Range: compareBoundaryPoints START_TO_START" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range1 = try Range.init(allocator, @ptrCast(&doc));
+    var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
-    var range2 = try Range.init(allocator, @ptrCast(&doc));
+    var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -288,10 +288,10 @@ test "Range: compareBoundaryPoints END_TO_END" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range1 = try Range.init(allocator, @ptrCast(&doc));
+    var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
-    var range2 = try Range.init(allocator, @ptrCast(&doc));
+    var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -313,10 +313,10 @@ test "Range: compareBoundaryPoints START_TO_END" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range1 = try Range.init(allocator, @ptrCast(&doc));
+    var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
-    var range2 = try Range.init(allocator, @ptrCast(&doc));
+    var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -338,10 +338,10 @@ test "Range: compareBoundaryPoints equal points" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range1 = try Range.init(allocator, @ptrCast(&doc));
+    var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
-    var range2 = try Range.init(allocator, @ptrCast(&doc));
+    var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -360,7 +360,7 @@ test "Range: isPointInRange returns true for point in range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -379,7 +379,7 @@ test "Range: isPointInRange returns false for point outside range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -398,7 +398,7 @@ test "Range: comparePoint returns -1 for point before range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -417,7 +417,7 @@ test "Range: comparePoint returns 0 for point in range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -436,7 +436,7 @@ test "Range: comparePoint returns 1 for point after range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -455,7 +455,7 @@ test "Range: intersectsNode returns true for intersecting node" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Create: parent > child1, child2, child3
@@ -473,7 +473,7 @@ test "Range: intersectsNode returns true for intersecting node" {
     try range.call_setEnd(@ptrCast(parent), 2);
 
     // child2 should intersect (it's at index 1, which is within [0, 2))
-    const result = range.call_intersectsNode((&child2));
+    const result = range.call_intersectsNode(@ptrCast(child2));
     try testing.expect(result);
 }
 
@@ -483,7 +483,7 @@ test "Range: intersectsNode returns false for non-intersecting node" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Create: parent > child1, child2, child3
@@ -501,7 +501,7 @@ test "Range: intersectsNode returns false for non-intersecting node" {
     try range.call_setEnd(@ptrCast(parent), 1);
 
     // child3 should not intersect (it's at index 2, which is >= 1)
-    const result = range.call_intersectsNode((&child3));
+    const result = range.call_intersectsNode(@ptrCast(child3));
     try testing.expect(!result);
 }
 
@@ -515,7 +515,7 @@ test "Range: deleteContents removes contained children" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Create: parent > child1, child2, child3
@@ -546,7 +546,7 @@ test "Range: insertNode adds node at range start" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var parent = try doc.call_createElement("div");
@@ -574,7 +574,7 @@ test "Range: insertNode throws for invalid start node" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Create a comment node (invalid for insertion)
@@ -595,7 +595,7 @@ test "Range: surroundContents wraps range content in new parent" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var parent = try doc.call_createElement("div");
@@ -623,7 +623,7 @@ test "Range: surroundContents throws for invalid newParent type" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -631,7 +631,7 @@ test "Range: surroundContents throws for invalid newParent type" {
     try range.call_setEnd(@ptrCast(elem), 0);
 
     // Document node is invalid for surroundContents
-    try testing.expectError(error.InvalidNodeTypeError, range.call_surroundContents(@ptrCast(&doc)));
+    try testing.expectError(error.InvalidNodeTypeError, range.call_surroundContents(@as(*Node, @ptrCast(&doc))));
 }
 
 test "Range: insertNode removes node from old parent" {
@@ -640,7 +640,7 @@ test "Range: insertNode removes node from old parent" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var parent1 = try doc.call_createElement("div");
@@ -674,7 +674,7 @@ test "Range: extractContents returns empty fragment for collapsed range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -698,7 +698,7 @@ test "Range: extractContents moves contained children to fragment" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var parent = try doc.call_createElement("div");
@@ -733,7 +733,7 @@ test "Range: cloneContents returns empty fragment for collapsed range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var elem = try doc.call_createElement("div");
@@ -757,7 +757,7 @@ test "Range: cloneContents copies children without removing them" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     var parent = try doc.call_createElement("div");
@@ -790,13 +790,13 @@ test "Range: extractContents throws for doctype in range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Try to create a range that would contain a doctype
     // This is a simplified test - in practice doctypes have special handling
-    try range.call_setStart(@ptrCast(&doc), 0);
-    try range.call_setEnd(@ptrCast(&doc), 1);
+    try range.call_setStart(@as(*Node, @ptrCast(&doc)), 0);
+    try range.call_setEnd(@as(*Node, @ptrCast(&doc)), 1);
 
     // Note: This test is simplified - full spec compliance would require
     // proper doctype handling in the DOM tree
@@ -810,12 +810,12 @@ test "Range: cloneContents throws for doctype in range" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    var range = try Range.init(allocator, @ptrCast(&doc));
+    var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
     // Try to create a range that would contain a doctype
-    try range.call_setStart(@ptrCast(&doc), 0);
-    try range.call_setEnd(@ptrCast(&doc), 1);
+    try range.call_setStart(@as(*Node, @ptrCast(&doc)), 0);
+    try range.call_setEnd(@as(*Node, @ptrCast(&doc)), 1);
 
     // Note: This test is simplified - full spec compliance would require
     // proper doctype handling in the DOM tree
