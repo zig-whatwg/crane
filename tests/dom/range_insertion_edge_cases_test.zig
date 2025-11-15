@@ -43,13 +43,13 @@ test "Range insertion - insert before range shifts offsets" {
     // Create children
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const a_text = try doc_ptr.call_createTextNode("text");
     defer a_text.deinit();
     try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
-    const b_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const b_text = try doc_ptr.call_createTextNode("text");
     defer b_text.deinit();
     try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 
@@ -114,13 +114,13 @@ test "Range insertion - insert at end boundary shifts end offset" {
     // Create children
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const a_text = try doc_ptr.call_createTextNode("text");
     defer a_text.deinit();
     try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
-    const b_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const b_text = try doc_ptr.call_createTextNode("text");
     defer b_text.deinit();
     try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 

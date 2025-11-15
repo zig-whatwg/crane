@@ -64,7 +64,7 @@ test "Range: setStart updates start boundary point" {
 
     try range.call_setStart(@ptrCast(elem), 5);
 
-    try testing.expect(range.get_startContainer() == (&elem));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 5), range.get_startOffset());
 }
 
@@ -81,7 +81,7 @@ test "Range: setEnd updates end boundary point" {
 
     try range.call_setEnd(@ptrCast(elem), 10);
 
-    try testing.expect(range.get_endContainer() == (&elem));
+    try testing.expect(range.get_endContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 10), range.get_endOffset());
 }
 
@@ -105,8 +105,8 @@ test "Range: collapse to start" {
     range.call_collapse(true);
 
     try testing.expect(range.get_collapsed());
-    try testing.expect(range.get_startContainer() == (&elem1));
-    try testing.expect(range.get_endContainer() == (&elem1));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(elem1)));
+    try testing.expect(range.get_endContainer() == @as(*Node, @ptrCast(elem1)));
     try testing.expectEqual(@as(u32, 0), range.get_startOffset());
     try testing.expectEqual(@as(u32, 0), range.get_endOffset());
 }
@@ -131,8 +131,8 @@ test "Range: collapse to end" {
     range.call_collapse(false);
 
     try testing.expect(range.get_collapsed());
-    try testing.expect(range.get_startContainer() == (&elem2));
-    try testing.expect(range.get_endContainer() == (&elem2));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(elem2)));
+    try testing.expect(range.get_endContainer() == @as(*Node, @ptrCast(elem2)));
     try testing.expectEqual(@as(u32, 5), range.get_startOffset());
     try testing.expectEqual(@as(u32, 5), range.get_endOffset());
 }
@@ -150,17 +150,17 @@ test "Range: selectNodeContents sets range to node's children" {
 
     // Add some children
     const text1 = try doc.call_createTextNode("Hello");
-    try elem.call_appendChild((&text1));
+    try elem.call_appendChild(@ptrCast(text1));
 
     const text2 = try doc.call_createTextNode(" World");
-    try elem.call_appendChild((&text2));
+    try elem.call_appendChild(@ptrCast(text2));
 
     // Select node contents
-    try range.call_selectNodeContents((&elem));
+    try range.call_selectNodeContents(@ptrCast(elem));
 
-    try testing.expect(range.get_startContainer() == (&elem));
+    try testing.expect(range.get_startContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 0), range.get_startOffset());
-    try testing.expect(range.get_endContainer() == (&elem));
+    try testing.expect(range.get_endContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 2), range.get_endOffset()); // 2 children
 }
 
@@ -184,14 +184,14 @@ test "Range: cloneRange creates independent copy" {
     }
 
     // Should have same boundary points
-    try testing.expect(range2.get_startContainer() == (&elem));
+    try testing.expect(range2.get_startContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 5), range2.get_startOffset());
-    try testing.expect(range2.get_endContainer() == (&elem));
+    try testing.expect(range2.get_endContainer() == @as(*Node, @ptrCast(elem)));
     try testing.expectEqual(@as(u32, 10), range2.get_endOffset());
 
     // Should be independent
     try range2.call_setStart(@ptrCast(&doc), 0);
-    try testing.expect(range1.get_startContainer() == (&elem)); // Original unchanged
+    try testing.expect(range1.get_startContainer() == @as(*Node, @ptrCast(elem))); // Original unchanged
 }
 
 test "Range: detach does nothing (compatibility)" {

@@ -175,7 +175,7 @@ test "Range move - boundaries in moved subtree remain valid" {
     defer parent1.deinit();
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    const text = try dom.NodeBase.createText(allocator, "content", doc_ptr);
+    const text = try doc_ptr.call_createTextNode("content");
     defer text.deinit();
     try dom.mutation.append(text, a);
     try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);

@@ -251,8 +251,8 @@ test "Range.extractContents vs cloneContents - different behavior" {
     }
 
     // Both fragments should contain "World"
-    const extracted = try fragment1.child_nodes.get(0.as(dom.Text) orelse unreachable.?);
-    const cloned = try fragment2.child_nodes.get(0.as(dom.Text) orelse unreachable.?);
+    const extracted = try fragment1.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
+    const cloned = try fragment2.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("World", extracted.get_data());
     try std.testing.expectEqualStrings("World", cloned.get_data());
 

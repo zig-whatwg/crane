@@ -148,13 +148,13 @@ test "Element.insertAdjacentText - multiple insertions accumulate" {
     try std.testing.expectEqual(@as(usize, 3), element.child_nodes.size());
 
     // Check order: "Before First", "First", "Last"
-    const first = try element.child_nodes.get(0.as(dom.Text) orelse unreachable.?);
+    const first = try element.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Before First", first.get_data());
 
-    const second = try element.child_nodes.get(1.as(dom.Text) orelse unreachable.?);
+    const second = try element.child_nodes.get(1).?.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("First", second.get_data());
 
-    const third = try element.child_nodes.get(2.as(dom.Text) orelse unreachable.?);
+    const third = try element.child_nodes.get(2).?.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Last", third.get_data());
 }
 

@@ -42,19 +42,19 @@ test "Range removal - start in removed, end in kept" {
     // Create children
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const a_text = try doc_ptr.call_createTextNode("text");
     defer a_text.deinit();
     try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
-    const b_text = try dom.NodeBase.createText(allocator, "remove", doc_ptr);
+    const b_text = try doc_ptr.call_createTextNode("remove");
     defer b_text.deinit();
     try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
-    const c_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
+    const c_text = try doc_ptr.call_createTextNode("text");
     defer c_text.deinit();
     try dom.mutation.append(@ptrCast(c_text), @ptrCast(c));
 
@@ -123,13 +123,13 @@ test "Range removal - fully contained in removed subtree" {
 
     const child1 = try doc_ptr.call_createElement("child1");
     defer child1.deinit();
-    const child1_text = try dom.NodeBase.createText(allocator, "start", doc_ptr);
+    const child1_text = try doc_ptr.call_createTextNode("start");
     defer child1_text.deinit();
     try dom.mutation.append(child1_text, child1);
 
     const child2 = try doc_ptr.call_createElement("child2");
     defer child2.deinit();
-    const child2_text = try dom.NodeBase.createText(allocator, "end", doc_ptr);
+    const child2_text = try doc_ptr.call_createTextNode("end");
     defer child2_text.deinit();
     try dom.mutation.append(child2_text, child2);
 
@@ -189,16 +189,16 @@ test "Range removal - multiple overlapping ranges" {
     const parent = try doc_ptr.call_createElement("parent");
     defer parent.deinit();
 
-    const before = try dom.NodeBase.createText(allocator, "before text", doc_ptr);
+    const before = try doc_ptr.call_createTextNode("before text");
     defer before.deinit();
 
     const removed = try doc_ptr.call_createElement("removed");
     defer removed.deinit();
-    const removed_child = try dom.NodeBase.createText(allocator, "child", doc_ptr);
+    const removed_child = try doc_ptr.call_createTextNode("child");
     defer removed_child.deinit();
     try dom.mutation.append(removed_child, removed);
 
-    const after = try dom.NodeBase.createText(allocator, "after text", doc_ptr);
+    const after = try doc_ptr.call_createTextNode("after text");
     defer after.deinit();
 
     // Build tree
