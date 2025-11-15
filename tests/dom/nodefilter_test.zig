@@ -6,7 +6,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
 // Type aliases
 const Document = dom.Document;
 const Node = dom.Node;
@@ -101,7 +100,7 @@ test "NodeFilter: filterNode skips non-matching types" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_TEXT only (element should be skipped)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, elem);
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
@@ -114,7 +113,7 @@ test "NodeFilter: filterNode accepts matching types with no callback" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_ELEMENT and no callback (should accept)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, elem);
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -134,7 +133,7 @@ test "NodeFilter: filterNode calls callback for matching types" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, elem);
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }
 
@@ -154,7 +153,7 @@ test "NodeFilter: filterNode callback can accept nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, elem);
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -174,7 +173,7 @@ test "NodeFilter: filterNode callback can skip nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, elem);
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
@@ -190,9 +189,9 @@ test "NodeFilter: filterNode with SHOW_ALL and no callback accepts all" {
     const comment = try doc.call_createComment("comment");
 
     // All should be accepted with SHOW_ALL
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&elem)));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&text)));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, (&comment)));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, elem));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, text));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, comment));
 }
 
 test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
@@ -210,6 +209,6 @@ test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
         }
     }.filter;
 
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, (&elem));
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, elem);
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }
