@@ -268,6 +268,46 @@ pub const TextDecoder = struct {
     
     }
 
+    /// Strip BOM (Byte Order Mark) from input bytes
+    /// 
+    /// WHATWG Encoding Standard § 5.1.4 step 4
+    /// 
+    /// Checks for BOM at start of bytes and removes it if present.
+    /// Marks bomSeen flag to prevent stripping on subsequent calls.
+    /// 
+    /// Supported BOMs:
+    /// - UTF-8: EF BB BF
+    /// - UTF-16LE: FF FE
+    /// - UTF-16BE: FE FF
+    fn stripBOM(self: *TextDecoder, bytes: []const u8) []const u8 {
+
+        // UTF-8 BOM: EF BB BF (3 bytes)
+        if (std.mem.eql(u8, self.enc.whatwg_name, "utf-8")) {
+            if (bytes.len >= 3 and bytes[0] == 0xEF and bytes[1] == 0xBB and bytes[2] == 0xBF) {
+                self.bomSeen = true;
+                return bytes[3..];
+            }
+        }
+        // UTF-16LE BOM: FF FE (2 bytes)
+        else if (std.mem.eql(u8, self.enc.whatwg_name, "utf-16le")) {
+            if (bytes.len >= 2 and bytes[0] == 0xFF and bytes[1] == 0xFE) {
+                self.bomSeen = true;
+                return bytes[2..];
+            }
+        }
+        // UTF-16BE BOM: FE FF (2 bytes)
+        else if (std.mem.eql(u8, self.enc.whatwg_name, "utf-16be")) {
+            if (bytes.len >= 2 and bytes[0] == 0xFE and bytes[1] == 0xFF) {
+                self.bomSeen = true;
+                return bytes[2..];
+            }
+        }
+
+        // No BOM found or encoding doesn't use BOM
+        return bytes;
+    
+    }
+
     /// Get the encoding name (WHATWG canonical name)
     /// 
     /// WHATWG Encoding Standard § 5.1.1

@@ -201,7 +201,7 @@ test "Integration: CDATASection extends Text extends CharacterData" {
     try testing.expectEqual(@as(usize, 23), cdata.data.len);
 
     // Text operations work (splitText)
-    const new_text = try cdata.splitText(4);
+    const new_text = try cdata.call_splitText(4);
     defer {
         new_text.deinit();
         allocator.destroy(new_text);
@@ -385,7 +385,7 @@ test "Integration: Text.splitText creates new Text node" {
     }
 
     // Split at offset 6
-    const new_text = try original_text.splitText(6);
+    const new_text = try original_text.call_splitText(6);
     defer {
         new_text.deinit();
         allocator.destroy(new_text);

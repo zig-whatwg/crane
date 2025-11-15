@@ -662,7 +662,7 @@ pub fn getShadowIncludingRoot(node: *const Node) *Node {
         const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(@constCast(current))));
 
         // Get the host element and recursively get its shadow-including root
-        const host = shadow_root.getHost();
+        const host = shadow_root.get_host();
         const host_node: *const Node = @ptrCast(@alignCast(host));
         return getShadowIncludingRoot(host_node);
     }
@@ -695,7 +695,7 @@ pub fn isShadowIncludingDescendant(nodeA: *const Node, nodeB: *const Node) bool 
     if (rootA.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
         // Cast to ShadowRoot to access host
         const shadow_root = @as(*ShadowRoot, @ptrCast(@alignCast(@constCast(rootA))));
-        const host = shadow_root.getHost();
+        const host = shadow_root.get_host();
         const host_node: *const Node = @ptrCast(@alignCast(host));
 
         // Check if host is a shadow-including inclusive descendant of B

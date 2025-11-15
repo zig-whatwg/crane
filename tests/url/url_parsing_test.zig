@@ -39,7 +39,7 @@ test "parse - HTTPS URL with all components" {
     defer allocator.free(protocol);
     try helpers.expectEqualStrings(allocator, "https:", protocol);
 
-    const username = try url.get_username();
+    const username = try url.username();
     defer allocator.free(username);
     try helpers.expectEqualStrings(allocator, "user", username);
 
@@ -47,23 +47,23 @@ test "parse - HTTPS URL with all components" {
     defer allocator.free(password);
     try helpers.expectEqualStrings(allocator, "pass", password);
 
-    const hostname = try url.get_hostname();
+    const hostname = try url.hostname();
     defer allocator.free(hostname);
     try helpers.expectEqualStrings(allocator, "example.com", hostname);
 
-    const port = try url.get_port();
+    const port = try url.port();
     defer allocator.free(port);
     try helpers.expectEqualStrings(allocator, "8080", port);
 
-    const pathname = try url.get_pathname();
+    const pathname = try url.pathname();
     defer allocator.free(pathname);
     try helpers.expectEqualStrings(allocator, "/path", pathname);
 
-    const search = try url.get_search();
+    const search = try url.search();
     defer allocator.free(search);
     try helpers.expectEqualStrings(allocator, "?query=value", search);
 
-    const hash = try url.get_hash();
+    const hash = try url.hash();
     defer allocator.free(hash);
     try helpers.expectEqualStrings(allocator, "#frag", hash);
 }
@@ -74,7 +74,7 @@ test "parse - URL without port uses default" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    const port = try url.get_port();
+    const port = try url.port();
     defer allocator.free(port);
 
     // Default port (80) should be omitted
@@ -87,7 +87,7 @@ test "parse - URL with explicit default port omits it" {
     var url = try helpers.initURL(allocator, "http://example.com:80/", null);
     defer url.deinit();
 
-    const port = try url.get_port();
+    const port = try url.port();
     defer allocator.free(port);
 
     try std.testing.expectEqualStrings("", port);
@@ -99,7 +99,7 @@ test "parse - URL with non-default port" {
     var url = try helpers.initURL(allocator, "http://example.com:8080/", null);
     defer url.deinit();
 
-    const port = try url.get_port();
+    const port = try url.port();
     defer allocator.free(port);
 
     try std.testing.expectEqualStrings("8080", port);
@@ -119,7 +119,7 @@ test "parse - file URL with host" {
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("file:", protocol);
 
-    const hostname = try url.get_hostname();
+    const hostname = try url.hostname();
     defer allocator.free(hostname);
     try std.testing.expectEqualStrings("host", hostname);
 }
@@ -187,7 +187,7 @@ test "parse - mailto URL" {
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("mailto:", protocol);
 
-    const pathname = try url.get_pathname();
+    const pathname = try url.pathname();
     defer allocator.free(pathname);
     try std.testing.expectEqualStrings("user@example.com", pathname);
 }
@@ -324,7 +324,7 @@ test "parse - trailing slash preserved" {
     var url = try helpers.initURL(allocator, "http://example.com/path/", null);
     defer url.deinit();
 
-    const pathname = try url.get_pathname();
+    const pathname = try url.pathname();
     defer allocator.free(pathname);
 
     try std.testing.expectEqualStrings("/path/", pathname);
@@ -340,7 +340,7 @@ test "parse - URL with username only" {
     var url = try helpers.initURL(allocator, "http://user@example.com/", null);
     defer url.deinit();
 
-    const username = url.get_username();
+    const username = url.username();
     try std.testing.expectEqualStrings("user", username);
 
     const password = url.get_password();
@@ -353,7 +353,7 @@ test "parse - URL with percent-encoded username" {
     var url = try helpers.initURL(allocator, "http://user%40host@example.com/", null);
     defer url.deinit();
 
-    const username = url.get_username();
+    const username = url.username();
     try std.testing.expect(std.mem.indexOf(u8, username, "%40") != null);
 }
 
@@ -367,7 +367,7 @@ test "parse - URL with empty query" {
     var url = try helpers.initURL(allocator, "http://example.com/?", null);
     defer url.deinit();
 
-    const search = try url.get_search();
+    const search = try url.search();
     defer allocator.free(search);
 
     try std.testing.expectEqualStrings("?", search);
@@ -379,7 +379,7 @@ test "parse - URL with empty fragment" {
     var url = try helpers.initURL(allocator, "http://example.com/#", null);
     defer url.deinit();
 
-    const hash = try url.get_hash();
+    const hash = try url.hash();
     defer allocator.free(hash);
 
     try std.testing.expectEqualStrings("#", hash);
@@ -391,11 +391,11 @@ test "parse - URL without query or fragment" {
     var url = try helpers.initURL(allocator, "http://example.com/path", null);
     defer url.deinit();
 
-    const search = try url.get_search();
+    const search = try url.search();
     defer allocator.free(search);
     try std.testing.expectEqualStrings("", search);
 
-    const hash = try url.get_hash();
+    const hash = try url.hash();
     defer allocator.free(hash);
     try std.testing.expectEqualStrings("", hash);
 }
@@ -434,7 +434,7 @@ test "parse - tab and newline removed" {
     var url = try helpers.initURL(allocator, "http://exa\tmple.com/", null);
     defer url.deinit();
 
-    const hostname = try url.get_hostname();
+    const hostname = try url.hostname();
     defer allocator.free(hostname);
 
     try std.testing.expectEqualStrings("example.com", hostname);
@@ -487,7 +487,7 @@ test "parse - host is case-insensitive" {
     var url = try helpers.initURL(allocator, "http://EXAMPLE.COM/", null);
     defer url.deinit();
 
-    const hostname = try url.get_hostname();
+    const hostname = try url.hostname();
     defer allocator.free(hostname);
 
     try std.testing.expectEqualStrings("example.com", hostname);
@@ -499,7 +499,7 @@ test "parse - path is case-sensitive" {
     var url = try helpers.initURL(allocator, "http://example.com/PATH", null);
     defer url.deinit();
 
-    const pathname = try url.get_pathname();
+    const pathname = try url.pathname();
     defer allocator.free(pathname);
 
     try std.testing.expectEqualStrings("/PATH", pathname);
@@ -568,11 +568,11 @@ test "parse - GitHub URL" {
     var url = try helpers.initURL(allocator, "https://github.com/zig-lang/zig/issues/12345", null);
     defer url.deinit();
 
-    const hostname = try url.get_hostname();
+    const hostname = try url.hostname();
     defer allocator.free(hostname);
     try std.testing.expectEqualStrings("github.com", hostname);
 
-    const pathname = try url.get_pathname();
+    const pathname = try url.pathname();
     defer allocator.free(pathname);
     try std.testing.expectEqualStrings("/zig-lang/zig/issues/12345", pathname);
 }
@@ -583,7 +583,7 @@ test "parse - URL with many query parameters" {
     var url = try helpers.initURL(allocator, "http://example.com/?a=1&b=2&c=3", null);
     defer url.deinit();
 
-    const search = try url.get_search();
+    const search = try url.search();
     defer allocator.free(search);
 
     try std.testing.expectEqualStrings("?a=1&b=2&c=3", search);
@@ -595,7 +595,7 @@ test "parse - URL with encoded characters in query" {
     var url = try helpers.initURL(allocator, "http://example.com/?q=hello%20world", null);
     defer url.deinit();
 
-    const search = try url.get_search();
+    const search = try url.search();
     defer allocator.free(search);
 
     try std.testing.expect(std.mem.indexOf(u8, search, "hello%20world") != null);

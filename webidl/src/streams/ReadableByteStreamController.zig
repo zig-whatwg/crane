@@ -466,7 +466,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             self.allocator.destroy(descriptor.buffer);
             self.allocator.destroy(descriptor);
         }
-        self.pendingPullIntos.clearRetainingCapacity();
+        self.pendingPullIntos.clear();
     }
 
     // ============================================================================
@@ -605,7 +605,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
             entry.buffer.deinit(self.allocator);
             self.allocator.destroy(entry.buffer);
         }
-        self.byteQueue.clearRetainingCapacity();
+        self.byteQueue.clear();
         self.queueTotalSize = 0.0;
 
         // Step 5: Clear algorithms

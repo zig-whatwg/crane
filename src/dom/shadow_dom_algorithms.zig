@@ -295,7 +295,7 @@ pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyop
     const shadow = slot_helpers.asShadowRoot(root) orelse return result;
 
     // Step 4: Let host be root's host
-    const host = shadow.getHost();
+    const host = shadow.get_host();
 
     // Step 5: If root's slot assignment is "manual":
     if (shadow.getSlotAssignmentMode() == .manual) {
