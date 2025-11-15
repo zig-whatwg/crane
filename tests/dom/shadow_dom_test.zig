@@ -40,7 +40,7 @@ test "Shadow DOM: attachShadow creates open shadow root" {
 
     const shadow = try div.call_attachShadow(init);
 
-    try std.testing.expect(shadow != null);
+    // attachShadow always returns a valid shadow root (or errors)
     try std.testing.expectEqualStrings("open", shadow.get_mode());
     try std.testing.expect(!shadow.get_delegatesFocus());
     try std.testing.expectEqualStrings("named", shadow.get_slotAssignment());

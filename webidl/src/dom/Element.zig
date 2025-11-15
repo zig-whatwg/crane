@@ -140,9 +140,9 @@ pub const Element = webidl.interface(struct {
     /// 2. Set attribute's element to element
     /// 3. Set attribute's node document to element's node document
     /// 4. Handle attribute changes for attribute with element, null, and attribute's value
-    fn appendAttribute(self: *Element, attribute: *Attr) !void {
+    fn appendAttribute(self: *Element, attribute: Attr) !void {
         // Step 1: Append to attribute list
-        try self.attributes.append(attribute.*);
+        try self.attributes.append(attribute);
 
         // Get pointer to the appended attribute
         const appended_attr = &self.attributes.toSlice()[self.attributes.len - 1];
@@ -214,7 +214,7 @@ pub const Element = webidl.interface(struct {
                 local_name,
                 value,
             );
-            try self.appendAttribute(&new_attr);
+            try self.appendAttribute(new_attr);
         }
     }
 
@@ -422,7 +422,7 @@ pub const Element = webidl.interface(struct {
                 normalized_name,
                 value,
             );
-            try self.appendAttribute(&new_attr);
+            try self.appendAttribute(new_attr);
         }
     }
 
@@ -523,7 +523,7 @@ pub const Element = webidl.interface(struct {
                     normalized_name,
                     "", // empty value
                 );
-                try self.appendAttribute(&new_attr);
+                try self.appendAttribute(new_attr);
                 return true;
             }
             // Step 4b: Return false
