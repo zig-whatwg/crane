@@ -1802,16 +1802,6 @@ pub const Node = struct {
         return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;
     }
 
-    /// Safe downcast to Text (returns null if not a Text)
-    pub fn asText(self: *Node) ?*Text {
-        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to Text
-    pub fn asTextConst(self: *const Node) ?*const Text {
-        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
     /// Safe downcast to Attr (returns null if not a Attr)
     pub fn asAttr(self: *Node) ?*Attr {
         return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;

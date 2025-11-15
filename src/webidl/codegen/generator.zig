@@ -447,142 +447,122 @@ fn detectDiscriminatorField(class: ir.ClassDef, enhanced: ir.EnhancedClassIR) ?[
     return null;
 }
 
+/// Find all direct children of a class in the registry
+fn findDirectChildren(allocator: Allocator, class_name: []const u8, registry: *const optimizer.ClassRegistry) ![][]const u8 {
+    var children = infra.List([]const u8).init(allocator);
+
+    // Iterate through all classes in registry
+    var iter = registry.classes.iterator();
+    while (iter.next()) |entry| {
+        const potential_child = entry.value_ptr.*;
+
+        // Check if this class's parent matches our class_name
+        if (potential_child.parent) |parent_name| {
+            if (std.mem.eql(u8, parent_name, class_name)) {
+                try children.append(try allocator.dupe(u8, potential_child.name));
+            }
+        }
+    }
+
+    return try children.toOwnedSlice();
+}
+
 /// Build inheritance information for generating downcast helpers
 fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !?InheritanceInfo {
-    _ = registry; // TODO: Use registry to build dynamic inheritance tree
     // Detect discriminator field
     const discriminator = detectDiscriminatorField(class, enhanced) orelse return null;
 
-    // For now, hardcode Node hierarchy mapping
-    // In a full implementation, this would analyze all classes in the registry
+    // Find all direct children dynamically from registry
+    const child_names = try findDirectChildren(allocator, class.name, registry);
+    defer {
+        for (child_names) |name| allocator.free(name);
+        allocator.free(child_names);
+    }
+
+    // If no children, no downcast helpers needed
+    if (child_names.len == 0) return null;
+
+    // Build children info dynamically
+    var children_list = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
+
+    // For each child, try to determine which discriminator values map to it
+    // For now, use hardcoded mappings but validate against actual children
     if (std.mem.eql(u8, class.name, "Node")) {
-        var children = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
+        // Hardcoded Node->child mappings (TODO: make dynamic)
+        const node_mappings = [_]struct { name: []const u8, values: []const []const u8 }{
+            .{ .name = "CharacterData", .values = &[_][]const u8{ "TEXT_NODE", "COMMENT_NODE", "CDATA_SECTION_NODE", "PROCESSING_INSTRUCTION_NODE" } },
+            .{ .name = "Element", .values = &[_][]const u8{"ELEMENT_NODE"} },
+            .{ .name = "Document", .values = &[_][]const u8{"DOCUMENT_NODE"} },
+            .{ .name = "DocumentFragment", .values = &[_][]const u8{"DOCUMENT_FRAGMENT_NODE"} },
+            .{ .name = "Text", .values = &[_][]const u8{"TEXT_NODE"} },
+            .{ .name = "Attr", .values = &[_][]const u8{"ATTRIBUTE_NODE"} },
+        };
 
-        // CharacterData (TEXT, COMMENT, CDATA_SECTION, PROCESSING_INSTRUCTION)
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("TEXT_NODE");
-            try values.append("COMMENT_NODE");
-            try values.append("CDATA_SECTION_NODE");
-            try values.append("PROCESSING_INSTRUCTION_NODE");
-            try children.append(.{
-                .class_name = "CharacterData",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
+        // Only include children that actually exist in the registry
+        for (node_mappings) |mapping| {
+            const child_exists = blk: {
+                for (child_names) |name| {
+                    if (std.mem.eql(u8, name, mapping.name)) break :blk true;
+                }
+                break :blk false;
+            };
 
-        // Element
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("ELEMENT_NODE");
-            try children.append(.{
-                .class_name = "Element",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // Document
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("DOCUMENT_NODE");
-            try children.append(.{
-                .class_name = "Document",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // DocumentFragment
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("DOCUMENT_FRAGMENT_NODE");
-            try children.append(.{
-                .class_name = "DocumentFragment",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // Text (direct child, not through CharacterData)
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("TEXT_NODE");
-            try children.append(.{
-                .class_name = "Text",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // Attr
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("ATTRIBUTE_NODE");
-            try children.append(.{
-                .class_name = "Attr",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
+            if (child_exists) {
+                var values = infra.List([]const u8).init(allocator);
+                for (mapping.values) |v| {
+                    try values.append(v);
+                }
+                try children_list.append(.{
+                    .class_name = mapping.name,
+                    .discriminator_values = try values.toOwnedSlice(),
+                });
+            }
         }
 
         return InheritanceInfo{
             .discriminator_field = discriminator,
-            .children = try children.toOwnedSlice(),
+            .children = try children_list.toOwnedSlice(),
         };
     }
 
-    // CharacterData hierarchy
     if (std.mem.eql(u8, class.name, "CharacterData")) {
-        var children = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
+        // Hardcoded CharacterData->child mappings (TODO: make dynamic)
+        const char_data_mappings = [_]struct { name: []const u8, values: []const []const u8 }{
+            .{ .name = "Text", .values = &[_][]const u8{"TEXT_NODE"} },
+            .{ .name = "Comment", .values = &[_][]const u8{"COMMENT_NODE"} },
+            .{ .name = "ProcessingInstruction", .values = &[_][]const u8{"PROCESSING_INSTRUCTION_NODE"} },
+            .{ .name = "CDATASection", .values = &[_][]const u8{"CDATA_SECTION_NODE"} },
+        };
 
-        // Text
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("TEXT_NODE");
-            try children.append(.{
-                .class_name = "Text",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
+        // Only include children that actually exist in the registry
+        for (char_data_mappings) |mapping| {
+            const child_exists = blk: {
+                for (child_names) |name| {
+                    if (std.mem.eql(u8, name, mapping.name)) break :blk true;
+                }
+                break :blk false;
+            };
 
-        // Comment
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("COMMENT_NODE");
-            try children.append(.{
-                .class_name = "Comment",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // ProcessingInstruction
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("PROCESSING_INSTRUCTION_NODE");
-            try children.append(.{
-                .class_name = "ProcessingInstruction",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
-        }
-
-        // CDATASection
-        {
-            var values = infra.List([]const u8).init(allocator);
-            try values.append("CDATA_SECTION_NODE");
-            try children.append(.{
-                .class_name = "CDATASection",
-                .discriminator_values = try values.toOwnedSlice(),
-            });
+            if (child_exists) {
+                var values = infra.List([]const u8).init(allocator);
+                for (mapping.values) |v| {
+                    try values.append(v);
+                }
+                try children_list.append(.{
+                    .class_name = mapping.name,
+                    .discriminator_values = try values.toOwnedSlice(),
+                });
+            }
         }
 
         return InheritanceInfo{
             .discriminator_field = discriminator,
-            .children = try children.toOwnedSlice(),
+            .children = try children_list.toOwnedSlice(),
         };
     }
 
-    // TODO: Detect from actual class hierarchy instead of hardcoding
-    // This would involve:
-    // 1. Analyzing all classes in the registry
-    // 2. Building a complete inheritance tree
-    // 3. Detecting which constants map to which child types
-
+    // For other classes with children but no known mappings, skip for now
+    // TODO: Auto-detect constant->type mappings (task 3)
     return null;
 }
 
