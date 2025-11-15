@@ -67,7 +67,7 @@ pub const Slottable = struct {
     /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-slottable-assignedslot
     pub fn get_assignedSlot(self: *const Slottable) ?*anyopaque {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         // The assignedSlot getter steps are to return the result of
         // find a slot given this and true (open flag)
@@ -83,7 +83,7 @@ pub const Slottable = struct {
 
     /// Get the slottable name
     pub fn getSlottableName(self: *const Slottable) []const u8 {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.slottable_name;
     
@@ -91,7 +91,7 @@ pub const Slottable = struct {
 
     /// Set the slottable name
     pub fn setSlottableName(self: *Slottable, name: []const u8) void {
-        const self_parent: *@This() = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.slottable_name = name;
     
@@ -99,7 +99,7 @@ pub const Slottable = struct {
 
     /// Check if this slottable is assigned
     pub fn isAssigned(self: *const Slottable) bool {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.assigned_slot != null;
     
@@ -107,7 +107,7 @@ pub const Slottable = struct {
 
     /// Get the assigned slot
     pub fn getAssignedSlotInternal(self: *const Slottable) ?*anyopaque {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.assigned_slot;
     
@@ -115,7 +115,7 @@ pub const Slottable = struct {
 
     /// Set the assigned slot
     pub fn setAssignedSlot(self: *Slottable, slot: ?*anyopaque) void {
-        const self_parent: *@This() = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.assigned_slot = slot;
     
@@ -123,7 +123,7 @@ pub const Slottable = struct {
 
     /// Get the manual slot assignment
     pub fn getManualSlotAssignment(self: *const Slottable) ?*anyopaque {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.manual_slot_assignment;
     
@@ -131,7 +131,7 @@ pub const Slottable = struct {
 
     /// Set the manual slot assignment
     pub fn setManualSlotAssignment(self: *Slottable, slot: ?*anyopaque) void {
-        const self_parent: *@This() = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.manual_slot_assignment = slot;
     

@@ -25,6 +25,7 @@ pub const CustomEvent = struct {
     // Fields
     // ========================================================================
 
+    allocator: Allocator,
     event_type: []const u8,
     target: ?*EventTarget,
     current_target: ?*EventTarget,
@@ -43,7 +44,6 @@ pub const CustomEvent = struct {
     path: infra.List(EventPathItem),
     related_target: ?*EventTarget,
     touch_target_list: infra.List(*EventTarget),
-    allocator: std.mem.Allocator,
     detail: ?webidl.JSValue,
 
     // ========================================================================
@@ -88,7 +88,7 @@ pub const CustomEvent = struct {
     /// stopPropagation()
     /// Spec: https://dom.spec.whatwg.org/#dom-event-stoppropagation
     pub fn call_stopPropagation(self: *CustomEvent) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.stop_propagation_flag = true;
     
@@ -97,7 +97,7 @@ pub const CustomEvent = struct {
     /// stopImmediatePropagation()
     /// Spec: https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
     pub fn call_stopImmediatePropagation(self: *CustomEvent) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.stop_propagation_flag = true;
         self_parent.stop_immediate_propagation_flag = true;
@@ -109,7 +109,7 @@ pub const CustomEvent = struct {
     /// attribute value is true and event's in passive listener flag is unset,
     /// then set event's canceled flag, and do nothing otherwise.
     fn setCanceledFlag(self: *CustomEvent) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.cancelable and !self_parent.in_passive_listener_flag) {
             self_parent.canceled_flag = true;
@@ -136,7 +136,7 @@ pub const CustomEvent = struct {
     /// 
     /// The composedPath() method steps are (DOM §2.3):
     pub fn call_composedPath(self: *CustomEvent) !infra.List(*EventTarget) {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Let composedPath be an empty list
         var composed_path = infra.List(*EventTarget).init(self_parent.allocator);
@@ -274,7 +274,7 @@ pub const CustomEvent = struct {
     /// DOM §2.3 - initialize an event
     /// To initialize an event, with type, bubbles, and cancelable, run these steps:
     fn initializeEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Set event's initialized flag
         self_parent.initialized_flag = true;
@@ -307,7 +307,7 @@ pub const CustomEvent = struct {
     /// 1. If this's dispatch flag is set, then return.
     /// 2. Initialize this with type, bubbles, and cancelable.
     pub fn call_initEvent(self: *CustomEvent, event_type: []const u8, bubbles: bool, cancelable: bool) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: If dispatch flag is set, return
         if (self_parent.dispatch_flag) return;
@@ -319,14 +319,14 @@ pub const CustomEvent = struct {
 
     /// Getters
     pub fn get_type(self: *const CustomEvent) []const u8 {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.event_type;
     
     }
 
     pub fn get_target(self: *const CustomEvent) ?*EventTarget {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.target;
     
@@ -335,63 +335,63 @@ pub const CustomEvent = struct {
     /// DOM §2.3 - srcElement getter (legacy)
     /// The srcElement getter steps are to return this's target.
     pub fn get_srcElement(self: *const CustomEvent) ?*EventTarget {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.target;
     
     }
 
     pub fn get_currentTarget(self: *const CustomEvent) ?*EventTarget {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.current_target;
     
     }
 
     pub fn get_eventPhase(self: *const CustomEvent) u16 {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.event_phase;
     
     }
 
     pub fn get_bubbles(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.bubbles;
     
     }
 
     pub fn get_cancelable(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.cancelable;
     
     }
 
     pub fn get_defaultPrevented(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.canceled_flag;
     
     }
 
     pub fn get_composed(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.composed;
     
     }
 
     pub fn get_isTrusted(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.is_trusted;
     
     }
 
     pub fn get_timeStamp(self: *const CustomEvent) f64 {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.time_stamp;
     
@@ -401,7 +401,7 @@ pub const CustomEvent = struct {
     /// The cancelBubble getter steps are to return true if this's stop propagation
     /// flag is set; otherwise false.
     pub fn get_cancelBubble(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.stop_propagation_flag;
     
@@ -411,7 +411,7 @@ pub const CustomEvent = struct {
     /// The cancelBubble setter steps are to set this's stop propagation flag if
     /// the given value is true; otherwise do nothing.
     pub fn set_cancelBubble(self: *CustomEvent, value: bool) void {
-        const self_parent: *Event = @ptrCast(self);
+        const self_parent = self;
 
         if (value) {
             self_parent.stop_propagation_flag = true;
@@ -423,7 +423,7 @@ pub const CustomEvent = struct {
     /// The returnValue getter steps are to return false if this's canceled flag
     /// is set; otherwise true.
     pub fn get_returnValue(self: *const CustomEvent) bool {
-        const self_parent: *const Event = @ptrCast(self);
+        const self_parent = self;
 
         return !self_parent.canceled_flag;
     

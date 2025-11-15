@@ -1142,7 +1142,7 @@ fn writeMethod(
         };
 
         if (parent_type_info) |pti| {
-            if (pti.type_name) |pt| {
+            if (pti.type_name != null) {
                 // Rewrite body to use self_parent for field access, self for method calls
                 const rewritten_body = try rewriteSelfReferences(allocator, method.body, "self_parent");
                 defer allocator.free(rewritten_body);
@@ -1152,26 +1152,10 @@ fn writeMethod(
 
                 // Only declare self_parent if it's actually used (for field access)
                 if (needs_self_parent) {
-                    // Cast self to parent type for method body
-                    // This works because flattened fields guarantee compatible memory layout
-                    if (pti.has_pointer) {
-                        // Check if the rewritten signature has const to preserve it
-                        const is_const = std.mem.indexOf(u8, rewritten_signature, "self: *const ") != null;
-                        if (is_const and pti.has_const) {
-                            try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
-                        } else if (is_const and !pti.has_const) {
-                            // Parent was not const, but child is - need @constCast
-                            try writer.print("        const self_parent: *{s} = @ptrCast(@constCast(self));\n", .{pt});
-                        } else if (!is_const and pti.has_const) {
-                            // Parent was const, child is not - preserve const
-                            try writer.print("        const self_parent: *const {s} = @ptrCast(self);\n", .{pt});
-                        } else {
-                            try writer.print("        const self_parent: *{s} = @ptrCast(self);\n", .{pt});
-                        }
-                    } else {
-                        // Non-pointer self (e.g., self: anytype) - no cast needed, just rename
-                        try writer.print("        const self_parent = self;\n", .{});
-                    }
+                    // Don't cast - just pass self directly
+                    // Child structs have all parent fields duplicated, so they can be used directly
+                    // Note: @ptrCast doesn't work due to Zig's field reordering optimization
+                    try writer.print("        const self_parent = self;\n", .{});
                 }
 
                 const cleaned_body = try stripShadowingImports(allocator, rewritten_body, top_level_imports, class_name);

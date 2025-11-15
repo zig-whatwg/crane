@@ -64,7 +64,7 @@ pub const AbortSignal = struct {
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     aborted: bool,
     reason: ?webidl.Exception,
     /// [[abortAlgorithms]]: List of algorithms to run when aborted
@@ -304,7 +304,7 @@ pub const AbortSignal = struct {
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *AbortSignal) !*infra.List(EventListener) {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list;
@@ -321,7 +321,7 @@ pub const AbortSignal = struct {
     /// Get event listener list (read-only access)
     /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const AbortSignal) []const EventListener {
-        const self_parent: *const EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list.toSlice();
@@ -414,7 +414,7 @@ pub const AbortSignal = struct {
     /// To add an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn addAnEventListener(self: *AbortSignal, listener: EventListener) !void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -504,7 +504,7 @@ pub const AbortSignal = struct {
     /// To remove an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *AbortSignal, listener: EventListener) void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -567,7 +567,7 @@ pub const AbortSignal = struct {
     /// 2. Initialize event's isTrusted attribute to false.
     /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *AbortSignal, event: *Event) !bool {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Check flags
         if (event.dispatch_flag or !event.initialized_flag) {

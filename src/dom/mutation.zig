@@ -64,11 +64,14 @@ pub fn registerChildrenChangedCallback(callback: ChildrenChangedCallback) !void 
 /// - insert (step 9)
 /// - remove (step 17)
 /// - replace data in CharacterData (step 12)
-pub fn runChildrenChangedSteps(parent: *Node) void {
+pub fn runChildrenChangedSteps(parent: anytype) void {
+    // Cast to *Node for callbacks (all DOM types have Node fields duplicated)
+    const parent_node: *Node = @ptrCast(parent);
+
     // Call all registered callbacks
     if (children_changed_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
-            callback(parent);
+            callback(parent_node);
         }
     }
 
@@ -254,33 +257,33 @@ fn createTransientObserverForNodeAndDescendants(node: *Node, source: RegisteredO
     }
 }
 
-/// Helper to get node type from Node pointer
-fn getNodeType(node: *Node) u16 {
+/// Helper to get node type from any node-like type
+fn getNodeType(node: anytype) u16 {
     return node.node_type;
 }
 
 /// Helper to check if node is a Document
-fn isDocument(node: *Node) bool {
+fn isDocument(node: anytype) bool {
     return getNodeType(node) == Node.DOCUMENT_NODE;
 }
 
 /// Helper to check if node is a DocumentFragment
-fn isDocumentFragment(node: *Node) bool {
+fn isDocumentFragment(node: anytype) bool {
     return getNodeType(node) == Node.DOCUMENT_FRAGMENT_NODE;
 }
 
 /// Helper to check if node is an Element
-fn isElement(node: *Node) bool {
+fn isElement(node: anytype) bool {
     return getNodeType(node) == Node.ELEMENT_NODE;
 }
 
 /// Helper to check if node is a DocumentType
-fn isDocumentType(node: *Node) bool {
+fn isDocumentType(node: anytype) bool {
     return getNodeType(node) == Node.DOCUMENT_TYPE_NODE;
 }
 
 /// Helper to check if node is a Text node
-fn isText(node: *Node) bool {
+fn isText(node: anytype) bool {
     return getNodeType(node) == Node.TEXT_NODE;
 }
 
@@ -299,7 +302,7 @@ fn createNodeList(allocator: std.mem.Allocator, nodes: []const *Node) !*NodeList
 }
 
 /// Helper to check if node is a CharacterData node
-fn isCharacterData(node: *Node) bool {
+fn isCharacterData(node: anytype) bool {
     const node_type = getNodeType(node);
     return node_type == Node.TEXT_NODE or
         node_type == Node.COMMENT_NODE or
@@ -317,7 +320,7 @@ fn getChildIndex(child: *Node) ?usize {
 }
 
 /// Check if a doctype is following a given child in parent
-fn isDoctypeFollowing(parent: *Node, child: ?*Node) bool {
+fn isDoctypeFollowing(parent: anytype, child: anytype) bool {
     if (child == null) return false;
 
     const child_idx = getChildIndex(child.?) orelse return false;
@@ -331,7 +334,7 @@ fn isDoctypeFollowing(parent: *Node, child: ?*Node) bool {
 }
 
 /// Check if an element is preceding a given child in parent
-fn isElementPreceding(parent: *Node, child: ?*Node) bool {
+fn isElementPreceding(parent: anytype, child: anytype) bool {
     if (child == null) {
         // If child is null, check if parent has any element children
         for (parent.child_nodes.items()) |node| {
@@ -351,7 +354,7 @@ fn isElementPreceding(parent: *Node, child: ?*Node) bool {
 }
 
 /// Count element children of a node
-fn countElementChildren(node: *Node) usize {
+fn countElementChildren(node: anytype) usize {
     var count: usize = 0;
     for (node.child_nodes.items()) |child| {
         if (isElement(child)) count += 1;
@@ -360,7 +363,7 @@ fn countElementChildren(node: *Node) usize {
 }
 
 /// Check if node has a Text child
-fn hasTextChild(node: *Node) bool {
+fn hasTextChild(node: anytype) bool {
     for (node.child_nodes.items()) |child| {
         if (isText(child)) return true;
     }
@@ -368,7 +371,7 @@ fn hasTextChild(node: *Node) bool {
 }
 
 /// Check if parent has a doctype child
-fn hasDoctypeChild(parent: *Node) bool {
+fn hasDoctypeChild(parent: anytype) bool {
     for (parent.child_nodes.items()) |child| {
         if (isDocumentType(child)) return true;
     }
@@ -376,7 +379,7 @@ fn hasDoctypeChild(parent: *Node) bool {
 }
 
 /// Check if parent has an element child (optionally excluding one node)
-fn hasElementChild(parent: *Node, exclude: ?*Node) bool {
+fn hasElementChild(parent: anytype, exclude: anytype) bool {
     for (parent.child_nodes.items()) |child| {
         if (exclude) |ex| {
             if (child == ex) continue;
@@ -397,9 +400,9 @@ fn hasElementChild(parent: *Node, exclude: ?*Node) bool {
 /// 5. If either node is a Text node and parent is a document, or node is a doctype and parent is not a document, throw HierarchyRequestError
 /// 6. If parent is a document, perform additional validation based on node type
 pub fn ensurePreInsertValidity(
-    node: *Node,
-    parent: *Node,
-    child: ?*Node,
+    node: anytype,
+    parent: anytype,
+    child: anytype,
 ) DOMException!void {
     // Step 1: Check parent is Document, DocumentFragment, or Element
     if (!isDocument(parent) and !isDocumentFragment(parent) and !isElement(parent)) {
@@ -481,28 +484,25 @@ pub fn ensurePreInsertValidity(
 /// 4. Insert node into parent before referenceChild
 /// 5. Return node
 pub fn preInsert(
-    node: *Node,
-    parent: *Node,
-    child: ?*Node,
-) DOMException!*Node {
+    node: anytype,
+    parent: anytype,
+    child: anytype,
+) DOMException!@TypeOf(node) {
     // Step 1: Ensure pre-insertion validity
     try ensurePreInsertValidity(node, parent, child);
 
     // Step 2: Let referenceChild be child
-    var referenceChild = child;
-
     // Step 3: If referenceChild is node, set to node's next sibling
-    if (referenceChild != null and referenceChild.? == node) {
+    const referenceChild = if (child != null and child.? == node) blk: {
         // Find node's next sibling
         if (node.parent_node) |node_parent| {
-            const idx = getChildIndex(node) orelse return node;
+            const idx = getChildIndex(node) orelse break :blk null;
             if (idx + 1 < node_parent.child_nodes.size()) {
-                referenceChild = node_parent.child_nodes.items()[idx + 1];
-            } else {
-                referenceChild = null;
+                break :blk node_parent.child_nodes.items()[idx + 1];
             }
         }
-    }
+        break :blk null;
+    } else child;
 
     // Step 4: Insert node into parent before referenceChild
     try insert(node, parent, referenceChild, false);
@@ -522,9 +522,9 @@ pub fn preInsert(
 /// - Insertion steps callbacks
 /// - Mutation observer notifications
 pub fn insert(
-    node: *Node,
-    parent: *Node,
-    child: ?*Node,
+    node: anytype,
+    parent: anytype,
+    child: anytype,
     suppress_observers: bool,
 ) DOMException!void {
     // Step 1: Let nodes be node's children if node is DocumentFragment, otherwise « node »
@@ -613,7 +613,8 @@ pub fn insert(
         } else {
             try parent.child_nodes.append(n);
         }
-        n.parent_node = parent;
+        // Cast parent to *Node when assigning (all DOM types have Node fields duplicated)
+        n.parent_node = @ptrCast(parent);
 
         // Step 7.4: If parent is a shadow host and node is slottable, assign a slot
         // TODO: Implement when shadow DOM is fully integrated
@@ -675,7 +676,7 @@ pub fn insert(
         }
         try mutation_observer.queueTreeMutationRecord(
             allocator,
-            parent,
+            @ptrCast(parent),
             added_list,
             empty_list,
             previousSibling,
@@ -703,7 +704,7 @@ pub fn insert(
 /// Spec: https://dom.spec.whatwg.org/#concept-node-append
 ///
 /// This is a convenience wrapper that pre-inserts before null
-pub fn append(node: *Node, parent: *Node) DOMException!*Node {
+pub fn append(node: anytype, parent: anytype) DOMException!@TypeOf(node) {
     return preInsert(node, parent, null);
 }
 
@@ -713,10 +714,10 @@ pub fn append(node: *Node, parent: *Node) DOMException!*Node {
 /// Steps are similar to pre-insert but with additional validation
 /// and removal of the old child
 pub fn replace(
-    child: *Node,
-    node: *Node,
-    parent: *Node,
-) DOMException!*Node {
+    child: anytype,
+    node: anytype,
+    parent: anytype,
+) DOMException!@TypeOf(child) {
     // Step 1: If parent is not Document, DocumentFragment, or Element, throw HierarchyRequestError
     if (!isDocument(parent) and !isDocumentFragment(parent) and !isElement(parent)) {
         return error.HierarchyRequestError;
@@ -933,13 +934,13 @@ pub fn replaceAll(
 /// Spec: https://dom.spec.whatwg.org/#concept-node-pre-remove
 ///
 /// Steps:
-/// 1. If child's parent is not parent, throw NotFoundError
+/// 1. If child's parent is not parent, then throw NotFoundError
 /// 2. Remove child
 /// 3. Return child
 pub fn preRemove(
-    child: *Node,
-    parent: *Node,
-) (DOMException || error{OutOfMemory})!*Node {
+    child: anytype,
+    parent: anytype,
+) (DOMException || error{OutOfMemory})!@TypeOf(child) {
     // Step 1: If child's parent is not parent, throw NotFoundError
     if (child.parent_node != parent) {
         return error.NotFoundError;
@@ -963,7 +964,7 @@ pub fn preRemove(
 /// - Custom element disconnection
 /// - Mutation observer notifications
 pub fn remove(
-    node: *Node,
+    node: anytype,
     suppress_observers: bool,
 ) (DOMException || error{OutOfMemory})!void {
     // Step 1: Let parent be node's parent
@@ -1102,9 +1103,9 @@ pub fn remove(
 /// 24. Run moving steps for all shadow-including inclusive descendants
 /// 25-26. Queue tree mutation records
 pub fn move(
-    node: *Node,
-    new_parent: *Node,
-    child: ?*Node,
+    node: anytype,
+    new_parent: anytype,
+    child: anytype,
 ) DOMException!void {
     // Step 1: If newParent's shadow-including root is not the same as node's shadow-including root,
     // throw HierarchyRequestError
@@ -1290,16 +1291,19 @@ pub fn move(
 
 /// Helper: Get shadow-including root of a node
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-root
-fn getShadowIncludingRoot(node: *Node) *Node {
+fn getShadowIncludingRoot(node: anytype) @TypeOf(node) {
     // For now, just return regular root (shadow DOM TODO)
     return tree_helpers.getRoot(node);
 }
 
 /// Helper: Check if node is a host-including inclusive ancestor of other
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
-fn isHostIncludingInclusiveAncestor(node: *Node, other: *Node) bool {
+fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
     // For now, just check inclusive ancestor (shadow DOM TODO)
-    return tree_helpers.isInclusiveAncestor(node, other);
+    // Since all DOM types have Node fields duplicated, we can treat them as Node
+    const node_ptr: *const Node = @ptrCast(node);
+    const other_ptr: *const Node = @ptrCast(other);
+    return tree_helpers.isInclusiveAncestor(node_ptr, other_ptr);
 }
 
 /// Helper: Run live range pre-remove steps
@@ -1542,8 +1546,8 @@ fn runMovingSteps(node: *Node, old_parent: ?*Node) void {
 /// 2. If node's parent is non-null, then remove node
 /// 3. If document is not oldDocument, update node document for all descendants
 pub fn adopt(
-    node: *Node,
-    document: *Document,
+    node: anytype,
+    document: anytype,
 ) DOMException!void {
     // Step 1: Let oldDocument be node's node document
     const oldDocument = node.owner_document;

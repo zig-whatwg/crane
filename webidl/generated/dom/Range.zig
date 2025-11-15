@@ -1065,7 +1065,7 @@ pub const Range = struct {
     /// DOM §5 - AbstractRange.startContainer
     /// Returns the node at the start of the range
     pub fn get_startContainer(self: *const Range) *Node {
-        const self_parent: *const AbstractRange = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.start_container;
     
@@ -1074,7 +1074,7 @@ pub const Range = struct {
     /// DOM §5 - AbstractRange.startOffset
     /// Returns the offset within the start node
     pub fn get_startOffset(self: *const Range) u32 {
-        const self_parent: *const AbstractRange = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.start_offset;
     
@@ -1083,7 +1083,7 @@ pub const Range = struct {
     /// DOM §5 - AbstractRange.endContainer
     /// Returns the node at the end of the range
     pub fn get_endContainer(self: *const Range) *Node {
-        const self_parent: *const AbstractRange = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.end_container;
     
@@ -1092,7 +1092,7 @@ pub const Range = struct {
     /// DOM §5 - AbstractRange.endOffset
     /// Returns the offset within the end node
     pub fn get_endOffset(self: *const Range) u32 {
-        const self_parent: *const AbstractRange = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.end_offset;
     
@@ -1101,7 +1101,7 @@ pub const Range = struct {
     /// DOM §5 - AbstractRange.collapsed
     /// Returns true if the range's start and end are the same position
     pub fn get_collapsed(self: *const Range) bool {
-        const self_parent: *const AbstractRange = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.start_container == self_parent.end_container and
             self_parent.start_offset == self_parent.end_offset;

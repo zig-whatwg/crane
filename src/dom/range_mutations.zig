@@ -85,7 +85,6 @@ pub fn deleteContents(range: anytype) !void {
 pub fn extractContents(range: anytype) !*@import("document_fragment").DocumentFragment {
     const allocator = range.allocator;
     const DocumentFragment = @import("document_fragment").DocumentFragment;
-    const dom = @import("dom");
 
     // Step 1: Create new DocumentFragment
     const start_container = range.get_startContainer();
@@ -116,7 +115,7 @@ pub fn extractContents(range: anytype) !*@import("document_fragment").DocumentFr
         text_node_ptr.* = try @import("dom").NodeBase.createText(allocator, extracted, doc);
 
         // Append to fragment
-        try dom.mutation.append(text_node_ptr, fragment_ptr.asNode());
+        _ = try fragment_ptr.call_appendChild(text_node_ptr);
 
         // Remove the data from original
         const before = current_data[0..start_offset];
@@ -144,7 +143,6 @@ pub fn extractContents(range: anytype) !*@import("document_fragment").DocumentFr
 pub fn cloneContents(range: anytype) !*@import("document_fragment").DocumentFragment {
     const allocator = range.allocator;
     const DocumentFragment = @import("document_fragment").DocumentFragment;
-    const dom = @import("dom");
 
     // Step 1: Create new DocumentFragment
     const start_container = range.get_startContainer();
@@ -175,7 +173,7 @@ pub fn cloneContents(range: anytype) !*@import("document_fragment").DocumentFrag
         text_node_ptr.* = try @import("dom").NodeBase.createText(allocator, cloned, doc);
 
         // Append to fragment
-        try dom.mutation.append(text_node_ptr, fragment_ptr.asNode());
+        _ = try fragment_ptr.call_appendChild(text_node_ptr);
 
         // Note: Original data is NOT modified (clone, not extract)
 

@@ -49,7 +49,7 @@ pub const DocumentOrShadowRoot = struct {
     /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-documentorshadowroot-customelementregistry
     pub fn get_customElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: If this is a document, then return this's custom element registry
         // Step 2: Assert: this is a ShadowRoot node
@@ -62,7 +62,7 @@ pub const DocumentOrShadowRoot = struct {
 
     /// Get the custom element registry
     pub fn getCustomElementRegistry(self: *const DocumentOrShadowRoot) ?*anyopaque {
-        const self_parent: *const @This() = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.custom_element_registry;
     
@@ -70,7 +70,7 @@ pub const DocumentOrShadowRoot = struct {
 
     /// Set the custom element registry
     pub fn setCustomElementRegistry(self: *DocumentOrShadowRoot, registry: ?*anyopaque) void {
-        const self_parent: *@This() = @ptrCast(self);
+        const self_parent = self;
 
         self_parent.custom_element_registry = registry;
     

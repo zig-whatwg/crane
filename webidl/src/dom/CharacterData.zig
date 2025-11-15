@@ -26,6 +26,7 @@ pub const CharacterData = webidl.interface(struct {
         // NOTE: Parent Node/EventTarget fields must be initialized here
         return .{
             .event_listener_list = null, // From EventTarget
+            .allocator = allocator,
             .node_type = 3, // TEXT_NODE (default, subclasses override)
             .node_name = "#text", // Default, subclasses may override
             .parent_node = null,
@@ -34,7 +35,6 @@ pub const CharacterData = webidl.interface(struct {
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
-            .allocator = allocator,
             .data = try allocator.dupe(u8, ""),
         };
     }

@@ -176,30 +176,36 @@ fn collectStructFields(
     return fields.toOwnedSlice();
 }
 
-/// Deduplicate fields by name (last occurrence wins - child overrides parent)
+/// Deduplicate fields by name (first occurrence wins - parent layout preserved)
+///
+/// Critical for Zig: When a child class is cast to parent via @ptrCast, the memory layout
+/// must match exactly. Parent fields MUST appear in the same positions in both parent and child.
+///
+/// Example:
+///   Parent: [field_a, field_b, field_c]
+///   Child inherits Parent and adds own fields: [field_a, field_b, field_c, field_d, field_e]
+///
+/// If child redeclares field_b, we MUST keep parent's field_b in position 1, not move it.
+/// Otherwise @ptrCast(*Child) to *Parent will read wrong memory offsets.
 fn deduplicateFields(allocator: Allocator, all_fields: []ir.Field) ![]ir.Field {
-    var seen_indices = std.StringHashMap(usize).init(allocator);
-    defer seen_indices.deinit();
+    var seen = std.StringHashMap(void).init(allocator);
+    defer seen.deinit();
 
-    // Build map of field name -> last index
-    for (all_fields, 0..) |field, i| {
-        try seen_indices.put(field.name, i);
-    }
-
-    // Collect unique fields (only the last occurrence of each name)
+    // Collect unique fields (only the first occurrence of each name)
+    // This preserves parent field positions for correct @ptrCast behavior
     var result = infra.List(ir.Field).init(allocator);
     errdefer {
         for (result.toSliceMut()) |*field| field.deinit(allocator);
         result.deinit();
     }
 
-    for (all_fields, 0..) |field, i| {
-        if (seen_indices.get(field.name)) |last_idx| {
-            if (i == last_idx) {
-                // This is the last occurrence - keep it
-                try result.append(try cloneField(allocator, field));
-            }
+    for (all_fields) |field| {
+        const gop = try seen.getOrPut(field.name);
+        if (!gop.found_existing) {
+            // First occurrence - keep it
+            try result.append(try cloneField(allocator, field));
         }
+        // Duplicate occurrence - skip it (parent wins)
     }
 
     return result.toOwnedSlice();

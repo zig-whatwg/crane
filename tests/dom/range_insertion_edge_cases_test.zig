@@ -63,8 +63,8 @@ test "Range insertion - insert before range shifts offsets" {
     range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(parent, 1);
-    try range.call_setEnd(parent, 2);
+    try range.call_setStart(@ptrCast(parent), 1);
+    try range.call_setEnd(@ptrCast(parent), 2);
 
     // Register range with document
     try doc_ptr.ranges.append(range);

@@ -650,14 +650,15 @@ test "tree_helpers - getShadowIncludingInclusiveDescendants without shadow" {
     defer descendants.deinit();
 
     // Should be: root, a, d, e, b, c, f (preorder traversal)
-    try expectEqual(@as(usize, 7), descendants.data.len);
-    try expect(descendants.data[0] == tree.root);
-    try expect(descendants.data[1] == tree.a);
-    try expect(descendants.data[2] == tree.d);
-    try expect(descendants.data[3] == tree.e);
-    try expect(descendants.data[4] == tree.b);
-    try expect(descendants.data[5] == tree.c);
-    try expect(descendants.data[6] == tree.f);
+    const desc_slice = descendants.toSlice();
+    try expectEqual(@as(usize, 7), desc_slice.len);
+    try expect(desc_slice[0] == tree.root);
+    try expect(desc_slice[1] == tree.a);
+    try expect(desc_slice[2] == tree.d);
+    try expect(desc_slice[3] == tree.e);
+    try expect(desc_slice[4] == tree.b);
+    try expect(desc_slice[5] == tree.c);
+    try expect(desc_slice[6] == tree.f);
 }
 
 test "tree_helpers - getShadowIncludingDescendants without shadow" {
@@ -670,13 +671,14 @@ test "tree_helpers - getShadowIncludingDescendants without shadow" {
     defer descendants.deinit();
 
     // Should be: a, d, e, b, c, f (not including root)
-    try expectEqual(@as(usize, 6), descendants.data.len);
-    try expect(descendants.data[0] == tree.a);
-    try expect(descendants.data[1] == tree.d);
-    try expect(descendants.data[2] == tree.e);
-    try expect(descendants.data[3] == tree.b);
-    try expect(descendants.data[4] == tree.c);
-    try expect(descendants.data[5] == tree.f);
+    const desc_slice = descendants.toSlice();
+    try expectEqual(@as(usize, 6), desc_slice.len);
+    try expect(desc_slice[0] == tree.a);
+    try expect(desc_slice[1] == tree.d);
+    try expect(desc_slice[2] == tree.e);
+    try expect(desc_slice[3] == tree.b);
+    try expect(desc_slice[4] == tree.c);
+    try expect(desc_slice[5] == tree.f);
 }
 
 // TODO: Add tests with actual shadow roots

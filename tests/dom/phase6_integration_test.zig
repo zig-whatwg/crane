@@ -235,7 +235,7 @@ test "Integration: Element with Attr nodes" {
 
     // Access via NamedNodeMap
     var map = NamedNodeMap.init(elem);
-    try testing.expectEqual(@as(usize, 2), map.length);
+    try testing.expectEqual(@as(u32, 2), map.get_length());
 
     const class_attr = map.getNamedItem("class");
     try testing.expect(class_attr != null);
@@ -256,7 +256,7 @@ test "Integration: NodeList with multiple elements" {
     const elem3 = try doc.call_createElement("p");
 
     // Create a NodeList (simulated collection)
-    var nodes = std.ArrayList(*Element).init(allocator);
+    var nodes = std.ArrayList(*dom.Element).init(allocator);
     defer nodes.deinit();
     try nodes.append(elem1);
     try nodes.append(elem2);
@@ -414,10 +414,12 @@ test "Integration: Attr namespace handling" {
         allocator.destroy(xmlns_attr);
     }
 
-    try testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", xmlns_attr.namespaceURI.?);
+    try testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", xmlns_attr.namespace_uri.?);
     try testing.expectEqualStrings("xmlns", xmlns_attr.prefix.?);
-    try testing.expectEqualStrings("xlink", xmlns_attr.localName);
-    try testing.expectEqualStrings("xmlns:xlink", xmlns_attr.name);
+    try testing.expectEqualStrings("xlink", xmlns_attr.local_name);
+    const xmlns_name = try xmlns_attr.get_name();
+    defer allocator.free(xmlns_name);
+    try testing.expectEqualStrings("xmlns:xlink", xmlns_name);
 
     // Create non-namespaced attribute
     const simple_attr = try Attr.init(allocator, null, null, "class", "container");
@@ -458,7 +460,7 @@ test "Integration: NamedNodeMap wraps Element attributes" {
     var map = NamedNodeMap.init(elem);
 
     // Test length
-    try testing.expectEqual(@as(usize, 3), map.length);
+    try testing.expectEqual(@as(u32, 3), map.get_length());
 
     // Test item() access
     const first = map.get(0);

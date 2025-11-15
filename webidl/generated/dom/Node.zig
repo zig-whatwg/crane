@@ -1459,7 +1459,7 @@ pub const Node = struct {
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *Node) !*infra.List(EventListener) {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list;
@@ -1476,7 +1476,7 @@ pub const Node = struct {
     /// Get event listener list (read-only access)
     /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const Node) []const EventListener {
-        const self_parent: *const EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list.toSlice();
@@ -1569,7 +1569,7 @@ pub const Node = struct {
     /// To add an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn addAnEventListener(self: *Node, listener: EventListener) !void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -1659,7 +1659,7 @@ pub const Node = struct {
     /// To remove an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *Node, listener: EventListener) void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -1722,7 +1722,7 @@ pub const Node = struct {
     /// 2. Initialize event's isTrusted attribute to false.
     /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *Node, event: *Event) !bool {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Check flags
         if (event.dispatch_flag or !event.initialized_flag) {

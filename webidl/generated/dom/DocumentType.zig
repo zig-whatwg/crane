@@ -66,6 +66,7 @@ pub const DocumentType = struct {
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
+    allocator: Allocator,
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,
@@ -82,7 +83,6 @@ pub const DocumentType = struct {
     /// Per WebIDL [SameObject], the same NodeList object is returned each time
     /// This is a live view of the child_nodes list
     cached_child_nodes: ?*@import("node_list").NodeList,
-    allocator: std.mem.Allocator,
     /// The name of the doctype (e.g., "html" for <!DOCTYPE html>)
     name: []const u8,
     /// The public identifier (empty string if not specified)
@@ -131,6 +131,7 @@ pub const DocumentType = struct {
         // NOTE: Parent Node/EventTarget fields must be initialized here
         return .{
             .event_listener_list = null, // From EventTarget
+            .allocator = allocator,
             .node_type = 10, // DOCUMENT_TYPE_NODE
             .node_name = name, // Per DOM spec, DocumentType's nodeName is its name
             .parent_node = null,
@@ -139,7 +140,6 @@ pub const DocumentType = struct {
             .registered_observers = infra.List(@import("registered_observer").RegisteredObserver).init(allocator),
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
-            .allocator = allocator,
             .name = try allocator.dupe(u8, name),
             .public_id = try allocator.dupe(u8, public_id),
             .system_id = try allocator.dupe(u8, system_id),
@@ -404,7 +404,7 @@ pub const DocumentType = struct {
     /// insertBefore(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-insertbefore
     pub fn call_insertBefore(self: *DocumentType, node: *Node, child: ?*Node) !*Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Call mutation.preInsert algorithm from src/dom/mutation.zig
         const mutation = @import("dom").mutation;
@@ -421,7 +421,7 @@ pub const DocumentType = struct {
     /// appendChild(node)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-appendchild
     pub fn call_appendChild(self: *DocumentType, node: *Node) !*Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Call mutation.append algorithm from src/dom/mutation.zig
         const mutation = @import("dom").mutation;
@@ -438,7 +438,7 @@ pub const DocumentType = struct {
     /// replaceChild(node, child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-replacechild
     pub fn call_replaceChild(self: *DocumentType, node: *Node, child: *Node) !*Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Call mutation.replace algorithm from src/dom/mutation.zig
         const mutation = @import("dom").mutation;
@@ -455,7 +455,7 @@ pub const DocumentType = struct {
     /// removeChild(child)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-removechild
     pub fn call_removeChild(self: *DocumentType, child: *Node) !*Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Call mutation.preRemove algorithm from src/dom/mutation.zig
         const mutation = @import("dom").mutation;
@@ -475,7 +475,7 @@ pub const DocumentType = struct {
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *DocumentType, options: ?GetRootNodeOptions) *Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         const tree = @import("dom").tree;
 
@@ -521,7 +521,7 @@ pub const DocumentType = struct {
     /// contains(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const DocumentType, other: ?*const Node) bool {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         if (other == null) return false;
         // Check if other is an inclusive descendant of this
@@ -534,7 +534,7 @@ pub const DocumentType = struct {
     /// compareDocumentPosition(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const DocumentType, other: *const Node) u16 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         const tree = @import("dom").tree;
 
@@ -588,7 +588,7 @@ pub const DocumentType = struct {
     /// isEqualNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-isequalnode
     pub fn call_isEqualNode(self: *const DocumentType, other_node: ?*const Node) bool {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
@@ -723,7 +723,7 @@ pub const DocumentType = struct {
     /// isSameNode(otherNode)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-issamenode
     pub fn call_isSameNode(self: *const DocumentType, other_node: ?*const Node) bool {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
@@ -734,7 +734,7 @@ pub const DocumentType = struct {
     /// hasChildNodes()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const DocumentType) bool {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.child_nodes.len > 0;
     
@@ -743,7 +743,7 @@ pub const DocumentType = struct {
     /// cloneNode(deep)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-clonenode
     pub fn call_cloneNode(self: *DocumentType, deep: bool) !*Node {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: If this is a shadow root, throw NotSupportedError
         if (self_parent.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
@@ -998,7 +998,7 @@ pub const DocumentType = struct {
     /// 6. While currentNode is exclusive Text node: update ranges and advance
     /// 7. Remove node's contiguous exclusive Text nodes (excluding itself)
     pub fn call_normalize(self: *DocumentType) !void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Get all descendant exclusive Text nodes
         var text_nodes = infra.List(*Node).init(self_parent.allocator);
@@ -1144,28 +1144,28 @@ pub const DocumentType = struct {
 
     /// Getters
     pub fn get_nodeType(self: *const DocumentType) u16 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.node_type;
     
     }
 
     pub fn get_nodeName(self: *const DocumentType) []const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.node_name;
     
     }
 
     pub fn get_parentNode(self: *const DocumentType) ?*Node {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.parent_node;
     
     }
 
     pub fn get_parentElement(self: *const DocumentType) ?*Element {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Returns parent if it's an Element, null otherwise
         const parent = self_parent.parent_node orelse return null;
@@ -1178,7 +1178,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_childNodes(self: *DocumentType) !*@import("node_list").NodeList {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // [SameObject] - Return the same NodeList object each time
         // The NodeList is a live view of this node's children
@@ -1202,7 +1202,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_firstChild(self: *const DocumentType) ?*Node {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.child_nodes.len > 0) {
             return self_parent.child_nodes.get(0);
@@ -1212,7 +1212,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_lastChild(self: *const DocumentType) ?*Node {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.child_nodes.len > 0) {
             return self_parent.child_nodes.get(self_parent.child_nodes.len - 1);
@@ -1222,14 +1222,14 @@ pub const DocumentType = struct {
     }
 
     pub fn get_ownerDocument(self: *const DocumentType) ?*Document {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.owner_document;
     
     }
 
     pub fn get_previousSibling(self: *const DocumentType) ?*Node {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         const parent = self_parent.parent_node orelse return null;
         for (parent.child_nodes.toSlice(), 0..) |child, i| {
@@ -1243,7 +1243,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_nextSibling(self: *const DocumentType) ?*Node {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         const parent = self_parent.parent_node orelse return null;
         for (parent.child_nodes.toSlice(), 0..) |child, i| {
@@ -1257,7 +1257,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_isConnected(self: *const DocumentType) bool {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // A node is connected if its root is a document
         const tree = @import("dom").tree;
@@ -1276,7 +1276,7 @@ pub const DocumentType = struct {
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const DocumentType) []const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Get owner document
         const doc = self_parent.owner_document orelse {
@@ -1290,7 +1290,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_nodeValue(self: *const DocumentType) ?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
         // The nodeValue getter steps are to return the following, switching on the interface:
@@ -1318,7 +1318,7 @@ pub const DocumentType = struct {
     }
 
     pub fn set_nodeValue(self: *DocumentType, value: ?[]const u8) !void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Spec: https://dom.spec.whatwg.org/#dom-node-nodevalue
         // The nodeValue setter steps are to, if given value is null, act as if it was empty string
@@ -1350,7 +1350,7 @@ pub const DocumentType = struct {
     }
 
     pub fn get_textContent(self: *const DocumentType) !?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
@@ -1359,7 +1359,7 @@ pub const DocumentType = struct {
     }
 
     pub fn set_textContent(self: *DocumentType, value: ?[]const u8) !void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // If the given value is null, act as if it was the empty string instead
@@ -1486,7 +1486,7 @@ pub const DocumentType = struct {
     /// lookupPrefix(namespace)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-lookupprefix
     pub fn call_lookupPrefix(self: *const DocumentType, namespace_param: ?[]const u8) ?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         // Spec step 1: If namespace is null or empty, return null
         const namespace = namespace_param orelse return null;
@@ -1552,7 +1552,7 @@ pub const DocumentType = struct {
     /// Locate a namespace prefix for element (internal algorithm)
     /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const DocumentType, namespace: []const u8) ?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.node_type != ELEMENT_NODE) return null;
 
@@ -1589,7 +1589,7 @@ pub const DocumentType = struct {
     /// Locate a namespace for node (internal algorithm)
     /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const DocumentType, prefix: ?[]const u8) ?[]const u8 {
-        const self_parent: *const Node = @ptrCast(self);
+        const self_parent = self;
 
         switch (self_parent.node_type) {
             ELEMENT_NODE => {
@@ -1690,7 +1690,7 @@ pub const DocumentType = struct {
 
     /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *DocumentType) *infra.List(RegisteredObserver) {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         return &self_parent.registered_observers;
     
@@ -1698,7 +1698,7 @@ pub const DocumentType = struct {
 
     /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *DocumentType, registered: RegisteredObserver) !void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         try self_parent.registered_observers.append(registered);
     
@@ -1706,7 +1706,7 @@ pub const DocumentType = struct {
 
     /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *DocumentType, observer: *const @import("mutation_observer").MutationObserver) void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         var i: usize = 0;
         while (i < self_parent.registered_observers.toSlice().len) {
@@ -1725,7 +1725,7 @@ pub const DocumentType = struct {
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *DocumentType, source: *const RegisteredObserver) void {
-        const self_parent: *Node = @ptrCast(self);
+        const self_parent = self;
 
         // Note: In our current implementation, we don't have a way to distinguish
         // transient observers from regular ones in the registered_observers list.
@@ -1744,7 +1744,7 @@ pub const DocumentType = struct {
     /// Ensure event listener list is allocated
     /// Lazily allocates the list on first use to save memory
     fn ensureEventListenerList(self: *DocumentType) !*infra.List(EventListener) {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list;
@@ -1761,7 +1761,7 @@ pub const DocumentType = struct {
     /// Get event listener list (read-only access)
     /// Returns empty slice if no listeners have been added yet
     fn getEventListenerList(self: *const DocumentType) []const EventListener {
-        const self_parent: *const EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.event_listener_list) |list| {
             return list.toSlice();
@@ -1854,7 +1854,7 @@ pub const DocumentType = struct {
     /// To add an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn addAnEventListener(self: *DocumentType, listener: EventListener) !void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -1944,7 +1944,7 @@ pub const DocumentType = struct {
     /// To remove an event listener, given an EventTarget object eventTarget and
     /// an event listener listener, run these steps:
     fn removeAnEventListener(self: *DocumentType, listener: EventListener) void {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: ServiceWorkerGlobalScope warning (skipped - not applicable)
 
@@ -2007,7 +2007,7 @@ pub const DocumentType = struct {
     /// 2. Initialize event's isTrusted attribute to false.
     /// 3. Return the result of dispatching event to this.
     pub fn call_dispatchEvent(self: *DocumentType, event: *Event) !bool {
-        const self_parent: *EventTarget = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Check flags
         if (event.dispatch_flag or !event.initialized_flag) {

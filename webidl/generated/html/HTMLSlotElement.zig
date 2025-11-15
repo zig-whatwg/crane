@@ -85,7 +85,7 @@ pub const HTMLSlotElement = struct {
 
     /// Clean up resources
     pub fn deinit(self: *HTMLSlotElement) void {
-        const self_parent: *Self = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.name.len > 0) {
             self_parent.allocator.free(self_parent.name);
@@ -97,7 +97,7 @@ pub const HTMLSlotElement = struct {
 
     /// Set the slot name
     pub fn setName(self: *HTMLSlotElement, name: []const u8) !void {
-        const self_parent: *Self = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.name.len > 0) {
             self_parent.allocator.free(self_parent.name);
@@ -108,7 +108,7 @@ pub const HTMLSlotElement = struct {
 
     /// Get the slot name
     pub fn getName(self: *const HTMLSlotElement) []const u8 {
-        const self_parent: *const Self = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.name;
     
@@ -116,7 +116,7 @@ pub const HTMLSlotElement = struct {
 
     /// Get assigned nodes list
     pub fn getAssignedNodes(self: *HTMLSlotElement) *infra.List(*anyopaque) {
-        const self_parent: *Self = @ptrCast(self);
+        const self_parent = self;
 
         return &self_parent.assigned_nodes;
     
@@ -124,7 +124,7 @@ pub const HTMLSlotElement = struct {
 
     /// Get manually assigned nodes list
     pub fn getManuallyAssignedNodes(self: *HTMLSlotElement) *infra.List(*anyopaque) {
-        const self_parent: *Self = @ptrCast(self);
+        const self_parent = self;
 
         return &self_parent.manually_assigned_nodes;
     
@@ -132,7 +132,7 @@ pub const HTMLSlotElement = struct {
 
     /// Check if this slot has any assigned nodes
     pub fn hasAssignedNodes(self: *const HTMLSlotElement) bool {
-        const self_parent: *const Self = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.assigned_nodes.len > 0;
     

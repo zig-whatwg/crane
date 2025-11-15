@@ -78,8 +78,6 @@ pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
 
 /// EventTarget WebIDL interface
 pub const EventTarget = webidl.interface(struct {
-    allocator: Allocator,
-
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
     ///
@@ -87,6 +85,8 @@ pub const EventTarget = webidl.interface(struct {
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
+
+    allocator: Allocator,
 
     pub fn init(allocator: Allocator) !EventTarget {
         return .{

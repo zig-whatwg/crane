@@ -65,6 +65,7 @@ pub const Element = webidl.interface(struct {
         return .{
             // Inherited from EventTarget (via Node)
             .event_listener_list = null,
+            .allocator = allocator,
             // Inherited from Node
             .node_type = 1, // ELEMENT_NODE
             .node_name = tag_name,
@@ -79,7 +80,6 @@ pub const Element = webidl.interface(struct {
             .assigned_slot = null,
             .manual_slot_assignment = null,
             // Element own fields
-            .allocator = allocator,
             .tag_name = tag_name,
             .namespace_uri = null,
             .prefix = null,

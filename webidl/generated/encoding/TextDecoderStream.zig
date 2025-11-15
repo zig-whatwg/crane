@@ -196,7 +196,7 @@ pub const TextDecoderStream = struct {
     /// Spec: § 6.4.3.3 "The readable getter steps are to return
     /// this's transform.[[readable]]."
     pub fn get_readable(self: *const TextDecoderStream) *ReadableStream {
-        const self_parent: *const GenericTransformStream = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.transform.readableStream;
     
@@ -209,7 +209,7 @@ pub const TextDecoderStream = struct {
     /// Spec: § 6.4.3.3 "The writable getter steps are to return
     /// this's transform.[[writable]]."
     pub fn get_writable(self: *const TextDecoderStream) *WritableStream {
-        const self_parent: *const GenericTransformStream = @ptrCast(self);
+        const self_parent = self;
 
         return self_parent.transform.writableStream;
     

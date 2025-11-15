@@ -290,7 +290,7 @@ pub const ReadableStreamBYOBReader = struct {
     /// 
     /// Spec: § 4.2.3 "The closed getter steps are:"
     pub fn get_closed(self: *const ReadableStreamBYOBReader) webidl.Promise(void) {
-        const self_parent: *const ReadableStreamGenericReader = @ptrCast(self);
+        const self_parent = self;
 
         if (self_parent.closedPromise.isFulfilled()) {
             return webidl.Promise(void).fulfilled({});
@@ -308,7 +308,7 @@ pub const ReadableStreamBYOBReader = struct {
     /// 
     /// Spec: § 4.2.3 "The cancel(reason) method steps are:"
     pub fn call_cancel(self: *ReadableStreamBYOBReader, reason: ?webidl.JSValue) !*AsyncPromise(void) {
-        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: If this.[[stream]] is undefined, return a promise rejected with a TypeError exception.
         if (self_parent.stream == null) {
@@ -334,7 +334,7 @@ pub const ReadableStreamBYOBReader = struct {
     /// 
     /// Spec: § 4.2.5 "Generic cancel implementation shared by all reader types"
     fn genericCancel(self: *ReadableStreamBYOBReader, reason: ?common.JSValue) !*AsyncPromise(void) {
-        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Let stream be reader.[[stream]].
         const stream = self_parent.stream.?;
@@ -351,7 +351,7 @@ pub const ReadableStreamBYOBReader = struct {
     /// 
     /// Spec: § 4.2.6 "Generic release implementation shared by all reader types"
     pub fn genericRelease(self: *ReadableStreamBYOBReader) void {
-        const self_parent: *ReadableStreamGenericReader = @ptrCast(self);
+        const self_parent = self;
 
         // Step 1: Let stream be reader.[[stream]].
         const stream = self_parent.stream.?;

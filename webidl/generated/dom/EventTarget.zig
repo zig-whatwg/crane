@@ -92,7 +92,6 @@ pub const EventTarget = struct {
     // Fields
     // ========================================================================
 
-    allocator: Allocator,
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
     /// 
@@ -100,6 +99,7 @@ pub const EventTarget = struct {
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
+    allocator: Allocator,
 
     // ========================================================================
     // WebIDL Metadata
