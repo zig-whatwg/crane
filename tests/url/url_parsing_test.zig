@@ -23,7 +23,7 @@ test "parse - basic HTTP URL" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try helpers.expectEqualStrings(allocator, "http://example.com/", href);
@@ -35,7 +35,7 @@ test "parse - HTTPS URL with all components" {
     var url = try helpers.initURL(allocator, "https://user:pass@example.com:8080/path?query=value#frag", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try helpers.expectEqualStrings(allocator, "https:", protocol);
 
@@ -115,7 +115,7 @@ test "parse - file URL with host" {
     var url = try helpers.initURL(allocator, "file://host/path", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("file:", protocol);
 
@@ -130,7 +130,7 @@ test "parse - file URL without host (localhost implied)" {
     var url = try helpers.initURL(allocator, "file:///path/to/file", null);
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expect(std.mem.startsWith(u8, href, "file:///"));
@@ -146,7 +146,7 @@ test "parse - FTP URL" {
     var url = try helpers.initURL(allocator, "ftp://ftp.example.com/file.txt", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("ftp:", protocol);
 }
@@ -157,7 +157,7 @@ test "parse - WebSocket URL" {
     var url = try helpers.initURL(allocator, "ws://example.com/socket", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("ws:", protocol);
 }
@@ -168,7 +168,7 @@ test "parse - WebSocket Secure URL" {
     var url = try helpers.initURL(allocator, "wss://example.com/socket", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("wss:", protocol);
 }
@@ -183,7 +183,7 @@ test "parse - mailto URL" {
     var url = try helpers.initURL(allocator, "mailto:user@example.com", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("mailto:", protocol);
 
@@ -198,7 +198,7 @@ test "parse - data URL" {
     var url = try helpers.initURL(allocator, "data:text/plain;base64,SGVsbG8=", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("data:", protocol);
 }
@@ -209,7 +209,7 @@ test "parse - javascript URL" {
     var url = try helpers.initURL(allocator, "javascript:alert('test')", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
     try std.testing.expectEqualStrings("javascript:", protocol);
 }
@@ -224,7 +224,7 @@ test "parse - relative path with base" {
     var url = try helpers.initURL(allocator, "other", "http://example.com/path");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/other", href);
@@ -236,7 +236,7 @@ test "parse - relative path with ../ with base" {
     var url = try helpers.initURL(allocator, "../other", "http://example.com/path/file");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/other", href);
@@ -248,7 +248,7 @@ test "parse - absolute path with base" {
     var url = try helpers.initURL(allocator, "/absolute", "http://example.com/path");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/absolute", href);
@@ -260,7 +260,7 @@ test "parse - scheme-relative URL with base" {
     var url = try helpers.initURL(allocator, "//other.com/path", "http://example.com/");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://other.com/path", href);
@@ -272,7 +272,7 @@ test "parse - query-only relative URL" {
     var url = try helpers.initURL(allocator, "?newquery", "http://example.com/path");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/path?newquery", href);
@@ -284,7 +284,7 @@ test "parse - fragment-only relative URL" {
     var url = try helpers.initURL(allocator, "#frag", "http://example.com/path?query");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/path?query#frag", href);
@@ -300,7 +300,7 @@ test "parse - multiple ../ segments" {
     var url = try helpers.initURL(allocator, "../../other", "http://example.com/a/b/c");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/a/other", href);
@@ -312,7 +312,7 @@ test "parse - ./ segments are removed" {
     var url = try helpers.initURL(allocator, "./file", "http://example.com/path/");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/path/file", href);
@@ -410,7 +410,7 @@ test "parse - empty string with base" {
     var url = try helpers.initURL(allocator, "", "http://example.com/path");
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/path", href);
@@ -422,7 +422,7 @@ test "parse - whitespace is trimmed" {
     var url = try helpers.initURL(allocator, "  http://example.com/  ", null);
     defer url.deinit();
 
-    const href = try url.get_href();
+    const href = try url.href();
     defer allocator.free(href);
 
     try std.testing.expectEqualStrings("http://example.com/", href);
@@ -475,7 +475,7 @@ test "parse - scheme is case-insensitive" {
     var url = try helpers.initURL(allocator, "HTTP://example.com/", null);
     defer url.deinit();
 
-    const protocol = try url.get_protocol();
+    const protocol = try url.protocol();
     defer allocator.free(protocol);
 
     try std.testing.expectEqualStrings("http:", protocol);

@@ -60,63 +60,63 @@ pub fn initURLSearchParamsFromSequence(allocator: std.mem.Allocator, seq_utf8: [
 pub fn setProtocol(url: *URL, allocator: std.mem.Allocator, protocol_utf8: []const u8) !void {
     const protocol_usv = try usv(allocator, protocol_utf8);
     defer allocator.free(protocol_usv);
-    return url.set_protocol(protocol_usv);
+    return url.setProtocol(protocol_usv);
 }
 
 /// Set username from UTF-8 string
 pub fn setUsername(url: *URL, allocator: std.mem.Allocator, username_utf8: []const u8) !void {
     const username_usv = try usv(allocator, username_utf8);
     defer allocator.free(username_usv);
-    return url.set_username(username_usv);
+    return url.setUsername(username_usv);
 }
 
 /// Set password from UTF-8 string
 pub fn setPassword(url: *URL, allocator: std.mem.Allocator, password_utf8: []const u8) !void {
     const password_usv = try usv(allocator, password_utf8);
     defer allocator.free(password_usv);
-    return url.set_password(password_usv);
+    return url.setPassword(password_usv);
 }
 
 /// Set host from UTF-8 string
 pub fn setHost(url: *URL, allocator: std.mem.Allocator, host_utf8: []const u8) !void {
     const host_usv = try usv(allocator, host_utf8);
     defer allocator.free(host_usv);
-    return url.set_host(host_usv);
+    return url.setHost(host_usv);
 }
 
 /// Set hostname from UTF-8 string
 pub fn setHostname(url: *URL, allocator: std.mem.Allocator, hostname_utf8: []const u8) !void {
     const hostname_usv = try usv(allocator, hostname_utf8);
     defer allocator.free(hostname_usv);
-    return url.set_hostname(hostname_usv);
+    return url.setHostname(hostname_usv);
 }
 
 /// Set port from UTF-8 string
 pub fn setPort(url: *URL, allocator: std.mem.Allocator, port_utf8: []const u8) !void {
     const port_usv = try usv(allocator, port_utf8);
     defer allocator.free(port_usv);
-    return url.set_port(port_usv);
+    return url.setPort(port_usv);
 }
 
 /// Set pathname from UTF-8 string
 pub fn setPathname(url: *URL, allocator: std.mem.Allocator, pathname_utf8: []const u8) !void {
     const pathname_usv = try usv(allocator, pathname_utf8);
     defer allocator.free(pathname_usv);
-    return url.set_pathname(pathname_usv);
+    return url.setPathname(pathname_usv);
 }
 
 /// Set search from UTF-8 string
 pub fn setSearch(url: *URL, allocator: std.mem.Allocator, search_utf8: []const u8) !void {
     const search_usv = try usv(allocator, search_utf8);
     defer allocator.free(search_usv);
-    return url.set_search(search_usv);
+    return url.setSearch(search_usv);
 }
 
 /// Set hash from UTF-8 string
 pub fn setHash(url: *URL, allocator: std.mem.Allocator, hash_utf8: []const u8) !void {
     const hash_usv = try usv(allocator, hash_utf8);
     defer allocator.free(hash_usv);
-    return url.set_hash(hash_usv);
+    return url.setHash(hash_usv);
 }
 
 /// Set href from UTF-8 string
@@ -132,70 +132,68 @@ pub fn setHref(url: *URL, allocator: std.mem.Allocator, href_utf8: []const u8) !
 
 /// Get href as UTF-8 string
 pub fn getHref(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const href_usv = try url.get_href();
+    const href_usv = try url.href();
     defer allocator.free(href_usv);
     return toUtf8(allocator, href_usv);
 }
 
 /// Get protocol as UTF-8 string
 pub fn getProtocol(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const protocol_usv = try url.get_protocol();
+    const protocol_usv = try url.protocol();
     defer allocator.free(protocol_usv);
     return toUtf8(allocator, protocol_usv);
 }
 
 /// Get username as UTF-8 string
 pub fn getUsername(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const username_usv = try url.get_username();
-    defer allocator.free(username_usv);
+    const username_usv = url.username();
     return toUtf8(allocator, username_usv);
 }
 
 /// Get password as UTF-8 string
 pub fn getPassword(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const password_usv = try url.get_password();
-    defer allocator.free(password_usv);
+    const password_usv = url.password();
     return toUtf8(allocator, password_usv);
 }
 
 /// Get host as UTF-8 string
 pub fn getHost(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const host_usv = try url.get_host();
+    const host_usv = try url.host();
     defer allocator.free(host_usv);
     return toUtf8(allocator, host_usv);
 }
 
 /// Get hostname as UTF-8 string
 pub fn getHostname(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const hostname_usv = try url.get_hostname();
+    const hostname_usv = try url.hostname();
     defer allocator.free(hostname_usv);
     return toUtf8(allocator, hostname_usv);
 }
 
 /// Get port as UTF-8 string
 pub fn getPort(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const port_usv = try url.get_port();
+    const port_usv = try url.port();
     defer allocator.free(port_usv);
     return toUtf8(allocator, port_usv);
 }
 
 /// Get pathname as UTF-8 string
 pub fn getPathname(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const pathname_usv = try url.get_pathname();
+    const pathname_usv = try url.pathname();
     defer allocator.free(pathname_usv);
     return toUtf8(allocator, pathname_usv);
 }
 
 /// Get search as UTF-8 string
 pub fn getSearch(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const search_usv = try url.get_search();
+    const search_usv = try url.search();
     defer allocator.free(search_usv);
     return toUtf8(allocator, search_usv);
 }
 
 /// Get hash as UTF-8 string
 pub fn getHash(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
-    const hash_usv = try url.get_hash();
+    const hash_usv = try url.hash();
     defer allocator.free(hash_usv);
     return toUtf8(allocator, hash_usv);
 }
