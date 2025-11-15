@@ -157,14 +157,14 @@ pub const URL = webidl.interface(struct {
     /// href getter (also used by toJSON)
     /// Spec: https://url.spec.whatwg.org/#dom-url-href (line 1855)
     /// Returns the serialization of this's URL
-    pub fn href(self: *const URL) ![]const u8 {
+    pub fn get_href(self: *const URL) ![]const u8 {
         return url_serializer.serialize(self.allocator, &self.url_record, false);
     }
 
     /// origin getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-origin (line 1871)
     /// Returns serialization of this's URL's origin
-    pub fn origin(self: *const URL) ![]const u8 {
+    pub fn get_origin(self: *const URL) ![]const u8 {
         const origin_module = @import("origin");
         const url_origin = try origin_module.getOrigin(self.allocator, &self.url_record);
         defer url_origin.deinit(self.allocator);
@@ -174,7 +174,7 @@ pub const URL = webidl.interface(struct {
     /// protocol getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1873)
     /// Returns scheme + ":"
-    pub fn protocol(self: *const URL) ![]const u8 {
+    pub fn get_protocol(self: *const URL) ![]const u8 {
         const scheme = self.url_record.scheme();
         const result = try self.allocator.alloc(u8, scheme.len + 1);
         @memcpy(result[0..scheme.len], scheme);
@@ -185,21 +185,21 @@ pub const URL = webidl.interface(struct {
     /// username getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-username (line 1877)
     /// Returns this's URL's username
-    pub fn username(self: *const URL) []const u8 {
+    pub fn get_username(self: *const URL) []const u8 {
         return self.url_record.username();
     }
 
     /// password getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-password (line 1885)
     /// Returns this's URL's password
-    pub fn password(self: *const URL) []const u8 {
+    pub fn get_password(self: *const URL) []const u8 {
         return self.url_record.password();
     }
 
     /// host getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1893-1901)
     /// Returns serialized host with port if present
-    pub fn host(self: *const URL) ![]const u8 {
+    pub fn get_host(self: *const URL) ![]const u8 {
         const host_serializer = @import("host_serializer");
 
         // Step 2: If url's host is null, return empty string
@@ -223,7 +223,7 @@ pub const URL = webidl.interface(struct {
     /// hostname getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1911-1915)
     /// Returns serialized host without port
-    pub fn hostname(self: *const URL) ![]const u8 {
+    pub fn get_hostname(self: *const URL) ![]const u8 {
         const host_serializer = @import("host_serializer");
 
         // Step 1: If url's host is null, return empty string
@@ -236,7 +236,7 @@ pub const URL = webidl.interface(struct {
     /// port getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1923-1927)
     /// Returns serialized port or empty string if null
-    pub fn port(self: *const URL) ![]const u8 {
+    pub fn get_port(self: *const URL) ![]const u8 {
         // Step 1: If port is null, return empty string
         const p = self.url_record.port orelse return try self.allocator.dupe(u8, "");
 
@@ -247,7 +247,7 @@ pub const URL = webidl.interface(struct {
     /// pathname getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (line 1937)
     /// Returns URL path serialized
-    pub fn pathname(self: *const URL) ![]const u8 {
+    pub fn get_pathname(self: *const URL) ![]const u8 {
         const path_serializer = @import("path_serializer");
         return path_serializer.serializePath(self.allocator, &self.url_record);
     }
@@ -255,7 +255,7 @@ pub const URL = webidl.interface(struct {
     /// search getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1947-1951)
     /// Returns "?" + query or empty string
-    pub fn search(self: *const URL) ![]const u8 {
+    pub fn get_search(self: *const URL) ![]const u8 {
         const q = self.url_record.query();
 
         // Step 1: If query is null or empty, return empty string
@@ -272,14 +272,14 @@ pub const URL = webidl.interface(struct {
     /// Returns this's query object (via implementation wrapper)
     /// [SameObject] - must return same instance each time
     /// Note: Returns pointer to implementation for now - will wrap in URLSearchParams type later
-    pub fn searchParams(self: *const URL) *URLSearchParamsImpl {
+    pub fn get_searchParams(self: *const URL) *URLSearchParamsImpl {
         return self.query_impl;
     }
 
     /// hash getter
     /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1969-1973)
     /// Returns "#" + fragment or empty string
-    pub fn hash(self: *const URL) ![]const u8 {
+    pub fn get_hash(self: *const URL) ![]const u8 {
         const f = self.url_record.fragment();
 
         // Step 1: If fragment is null or empty, return empty string
@@ -298,7 +298,7 @@ pub const URL = webidl.interface(struct {
     /// href setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-href (lines 1855-1870)
     /// Parse value, throw TypeError on failure, update URL and query object
-    pub fn setHref(self: *URL, value: []const u8) !void {
+    pub fn set_href(self: *URL, value: []const u8) !void {
         // Parse the new URL
         const parsed = api_parser.parseURL(self.allocator, value, null) catch {
             return error.TypeError;
@@ -320,7 +320,7 @@ pub const URL = webidl.interface(struct {
     /// protocol setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-protocol (line 1875)
     /// Basic URL parse with scheme start state override
-    pub fn setProtocol(self: *URL, value: []const u8) !void {
+    pub fn set_protocol(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 
@@ -344,7 +344,7 @@ pub const URL = webidl.interface(struct {
     /// username setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-username (lines 1879-1883)
     /// Check cannotHaveUsernamePasswordPort, call set the username
-    pub fn setUsername(self: *URL, value: []const u8) !void {
+    pub fn set_username(self: *URL, value: []const u8) !void {
         const percent_encoding = @import("percent_encoding");
         const EncodeSet = @import("encode_sets").EncodeSet;
         const form_urlencoded = @import("form_urlencoded");
@@ -439,7 +439,7 @@ pub const URL = webidl.interface(struct {
     /// password setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-password (lines 1887-1891)
     /// Check cannotHaveUsernamePasswordPort, call set the password
-    pub fn setPassword(self: *URL, value: []const u8) !void {
+    pub fn set_password(self: *URL, value: []const u8) !void {
         const percent_encoding = @import("percent_encoding");
         const EncodeSet = @import("encode_sets").EncodeSet;
         const form_urlencoded = @import("form_urlencoded");
@@ -524,7 +524,7 @@ pub const URL = webidl.interface(struct {
     /// host setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-host (lines 1903-1907)
     /// Check opaque path, parse with host state override
-    pub fn setHost(self: *URL, value: []const u8) !void {
+    pub fn set_host(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 
@@ -547,7 +547,7 @@ pub const URL = webidl.interface(struct {
     /// hostname setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-hostname (lines 1917-1921)
     /// Check opaque path, parse with hostname state override
-    pub fn setHostname(self: *URL, value: []const u8) !void {
+    pub fn set_hostname(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 
@@ -570,7 +570,7 @@ pub const URL = webidl.interface(struct {
     /// port setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-port (lines 1929-1935)
     /// Check cannotHaveUsernamePasswordPort, handle empty string, parse with port state
-    pub fn setPort(self: *URL, value: []const u8) !void {
+    pub fn set_port(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 
@@ -599,7 +599,7 @@ pub const URL = webidl.interface(struct {
     /// pathname setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-pathname (lines 1939-1945)
     /// Check opaque path, empty path, parse with path start state
-    pub fn setPathname(self: *URL, value: []const u8) !void {
+    pub fn set_pathname(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 
@@ -625,7 +625,7 @@ pub const URL = webidl.interface(struct {
     /// search setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-search (lines 1953-1965)
     /// Handle empty, remove leading "?", parse, update query object
-    pub fn setSearch(self: *URL, value: []const u8) !void {
+    pub fn set_search(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
         const form_parser = @import("form_parser");
@@ -667,7 +667,7 @@ pub const URL = webidl.interface(struct {
     /// hash setter
     /// Spec: https://url.spec.whatwg.org/#dom-url-hash (lines 1975-1983)
     /// Handle empty, remove leading "#", parse with fragment state
-    pub fn setHash(self: *URL, value: []const u8) !void {
+    pub fn set_hash(self: *URL, value: []const u8) !void {
         const basic_parser = @import("basic_parser");
         const ParserState = @import("parser_state").ParserState;
 

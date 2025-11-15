@@ -768,11 +768,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
     });
 
-    const url_serializer_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/serialization/url_serializer.zig"),
-        .target = target,
-    });
-
     const url_origin_mod = b.createModule(.{
         .root_source_file = b.path("src/url/origin.zig"),
         .target = target,
@@ -782,11 +777,24 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/url/serialization/host_serializer.zig"),
         .target = target,
     });
+    url_host_serializer_mod.addImport("host", url_internal_host_mod);
+    url_host_serializer_mod.addImport("infra", infra_mod);
 
     const url_path_serializer_mod = b.createModule(.{
         .root_source_file = b.path("src/url/serialization/url_path_serializer.zig"),
         .target = target,
     });
+    url_path_serializer_mod.addImport("url_record", url_internal_url_record_mod);
+    url_path_serializer_mod.addImport("infra", infra_mod);
+
+    const url_serializer_mod = b.createModule(.{
+        .root_source_file = b.path("src/url/serialization/url_serializer.zig"),
+        .target = target,
+    });
+    url_serializer_mod.addImport("url_record", url_internal_url_record_mod);
+    url_serializer_mod.addImport("path_serializer", url_path_serializer_mod);
+    url_serializer_mod.addImport("host_serializer", url_host_serializer_mod);
+    url_serializer_mod.addImport("infra", infra_mod);
 
     const url_basic_parser_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/basic_url_parser.zig"),
@@ -870,6 +878,10 @@ pub fn build(b: *std.Build) void {
             .{ .name = "infra", .module = infra_mod },
         },
     });
+
+    // Add serializer dependencies to host_serializer (needed after ipv4/ipv6 serializers are defined)
+    url_host_serializer_mod.addImport("ipv4_serializer", url_ipv4_serializer_mod);
+    url_host_serializer_mod.addImport("ipv6_serializer", url_ipv6_serializer_mod);
 
     const url_ipv4_parser_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/ipv4_parser.zig"),

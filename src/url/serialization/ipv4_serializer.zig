@@ -39,8 +39,10 @@ pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
         const octet_str = try std.fmt.allocPrint(allocator, "{d}", .{octet});
         defer allocator.free(octet_str);
 
-        // Prepend octet to output
-        try output.insertSlice(0, octet_str);
+        // Prepend octet to output (insert each character individually)
+        for (octet_str, 0..) |ch, idx| {
+            try output.insert(idx, ch);
+        }
 
         // Step 3.2: If i is not 4, then prepend U+002E (.) to output
         if (i != 4) {
@@ -54,8 +56,3 @@ pub fn serializeIPv4(allocator: std.mem.Allocator, address: u32) ![]u8 {
     // Step 4: Return output
     return output.toOwnedSlice();
 }
-
-
-
-
-

@@ -112,7 +112,7 @@ pub fn serialize(allocator: std.mem.Allocator, url: *const URLRecord, exclude_fr
     // P1.3 Optimization: Pre-calculate capacity to avoid reallocations
     const capacity = estimateSerializedSize(url, exclude_fragment);
     var output = infra.List(u8).init(allocator);
-    try output.ensureTotalCapacity(capacity);
+    try output.ensureCapacity(capacity);
     errdefer output.deinit();
 
     // Step 1: Append scheme and ":"
