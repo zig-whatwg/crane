@@ -19,7 +19,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const root = @import("root.zig");
-const ExtendedAttribute = root.ExtendedAttribute;
+pub const ExtendedAttribute = root.ExtendedAttribute;
 
 /// Visibility modifier for declarations
 pub const Visibility = enum {

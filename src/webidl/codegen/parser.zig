@@ -752,13 +752,31 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
 /// Extract extended attributes from: webidl.interface(struct { ... }, &.{ exposed("*"), ... });
 /// Returns the attributes list after the struct closing brace
 fn extractExtendedAttributes(allocator: Allocator, source: []const u8, struct_end: usize) ![]ir.ExtendedAttribute {
+    // Look for ", &.{" (new syntax) or ", .{" (old syntax) after struct_end
+    const new_attrs_start = std.mem.indexOfPos(u8, source, struct_end, ", &.{");
+    const old_attrs_start = std.mem.indexOfPos(u8, source, struct_end, ", .{");
 
-    // Look for ", &.{" after struct_end
-    const attrs_start_pattern = ", &.{";
-    const attrs_start = std.mem.indexOfPos(u8, source, struct_end, attrs_start_pattern) orelse {
+    if (new_attrs_start == null and old_attrs_start == null) {
         // No attributes provided - return empty slice
         return &.{};
-    };
+    }
+
+    // Check which syntax is being used
+    const is_old_syntax = if (new_attrs_start) |new_pos| blk: {
+        if (old_attrs_start) |old_pos| {
+            break :blk old_pos < new_pos;
+        }
+        break :blk false;
+    } else true;
+
+    if (is_old_syntax) {
+        // Old syntax: .{ .exposed = ... } - return empty for now
+        // Will be migrated in task whatwg-q6re
+        return &.{};
+    }
+
+    const attrs_start = new_attrs_start.?;
+    const attrs_start_pattern = ", &.{";
 
     const attrs_body_start = attrs_start + attrs_start_pattern.len;
 

@@ -107,8 +107,8 @@ pub fn identifierAttr(comptime name: []const u8, comptime value: []const u8) Ext
 ///     noArgs("Transferable"),
 /// });
 /// ```
-pub fn interface(comptime T: type, comptime attrs: []const ExtendedAttribute) type {
-    _ = attrs; // Attributes are parsed by codegen at build time
+pub fn interface(comptime T: type, comptime attrs: anytype) type {
+    _ = attrs; // Attributes are parsed by codegen at build time (accepts both old and new syntax)
     return T;
 }
 
@@ -122,8 +122,8 @@ pub fn interface(comptime T: type, comptime attrs: []const ExtendedAttribute) ty
 ///     exposed("*"),
 /// });
 /// ```
-pub fn namespace(comptime T: type, comptime attrs: []const ExtendedAttribute) type {
-    _ = attrs; // Attributes are parsed by codegen at build time
+pub fn namespace(comptime T: type, comptime attrs: anytype) type {
+    _ = attrs; // Attributes are parsed by codegen at build time (accepts both old and new syntax)
     return T;
 }
 
@@ -140,8 +140,8 @@ pub fn namespace(comptime T: type, comptime attrs: []const ExtendedAttribute) ty
 ///     exposed("*"),
 /// });
 /// ```
-pub fn mixin(comptime T: type, comptime attrs: []const ExtendedAttribute) type {
-    _ = attrs; // Attributes are parsed by codegen at build time
+pub fn mixin(comptime T: type, comptime attrs: anytype) type {
+    _ = attrs; // Attributes are parsed by codegen at build time (accepts both old and new syntax)
     return T;
 }
 

@@ -392,6 +392,52 @@ fn findDiscriminatorConstantForChild(
     return null;
 }
 
+/// Write an ExtendedAttributeValue to the output
+fn writeExtendedAttributeValue(writer: anytype, value: anytype) !void {
+    switch (value) {
+        .none => try writer.writeAll(".none"),
+        .identifier => |id| {
+            try writer.writeAll(".{ .identifier = \"");
+            try writer.writeAll(id);
+            try writer.writeAll("\" }");
+        },
+        .identifier_list => |list| {
+            try writer.writeAll(".{ .identifier_list = &.{");
+            for (list, 0..) |id, i| {
+                if (i > 0) try writer.writeAll(", ");
+                try writer.writeAll("\"");
+                try writer.writeAll(id);
+                try writer.writeAll("\"");
+            }
+            try writer.writeAll("} }");
+        },
+        .wildcard => try writer.writeAll(".wildcard"),
+        .string => |s| {
+            try writer.writeAll(".{ .string = \"");
+            try writer.writeAll(s);
+            try writer.writeAll("\" }");
+        },
+        .integer => |i| {
+            try writer.print(".{{ .integer = {} }}", .{i});
+        },
+        .decimal => |d| {
+            try writer.print(".{{ .decimal = {} }}", .{d});
+        },
+        .named_arg_list => |args| {
+            try writer.writeAll(".{ .named_arg_list = &.{");
+            for (args, 0..) |arg, i| {
+                if (i > 0) try writer.writeAll(", ");
+                try writer.writeAll(".{ .name = \"");
+                try writer.writeAll(arg.name);
+                try writer.writeAll("\", .value = \"");
+                try writer.writeAll(arg.value);
+                try writer.writeAll("\" }");
+            }
+            try writer.writeAll("} }");
+        },
+    }
+}
+
 fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
     const class = enhanced.class;
 
@@ -475,6 +521,29 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
         .mixin => "mixin",
     };
     try writer.print("        .kind = .{s},\n", .{kind_str});
+
+    // Parent interface (for inheritance chain)
+    if (class.parent) |parent| {
+        try writer.print("        .parent = \"{s}\",\n", .{parent});
+    } else {
+        try writer.writeAll("        .parent = null,\n");
+    }
+
+    // Extended attributes
+    if (class.extended_attrs.len > 0) {
+        try writer.writeAll("        .extended_attrs = &.{\n");
+        for (class.extended_attrs) |attr| {
+            try writer.writeAll("            .{ .name = \"");
+            try writer.writeAll(attr.name);
+            try writer.writeAll("\", .value = ");
+            try writeExtendedAttributeValue(writer, attr.value);
+            try writer.writeAll(" },\n");
+        }
+        try writer.writeAll("        },\n");
+    } else {
+        try writer.writeAll("        .extended_attrs = &.{},\n");
+    }
+
     try writer.writeAll("    };\n");
 
     // Methods
