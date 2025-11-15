@@ -11,7 +11,6 @@ const testing = std.testing;
 // Import Event and EventTarget from generated WebIDL
 const event_dispatch = @import("dom").event_dispatch;
 
-
 // Type aliases
 const Event = dom.Event;
 const EventTarget = dom.EventTarget;
@@ -23,12 +22,12 @@ test "Event: constructor with type only" {
     var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
-    try testing.expectEqualStrings("test", event.type_name);
-    try testing.expect(!event.bubbles);
-    try testing.expect(!event.cancelable);
-    try testing.expect(!event.composed);
-    try testing.expectEqual(Event.NONE, event.event_phase);
-    try testing.expect(!event.isTrusted);
+    try testing.expectEqualStrings("test", event.get_type());
+    try testing.expect(!event.get_bubbles());
+    try testing.expect(!event.get_cancelable());
+    try testing.expect(!event.get_composed());
+    try testing.expectEqual(Event.NONE, event.get_eventPhase());
+    try testing.expect(!event.get_isTrusted());
 }
 
 test "Event: constructor with EventInit" {
@@ -42,10 +41,10 @@ test "Event: constructor with EventInit" {
     });
     defer event1.deinit();
 
-    try testing.expectEqualStrings("click", event1.type_name);
-    try testing.expect(event1.bubbles);
-    try testing.expect(event1.cancelable);
-    try testing.expect(!event1.composed);
+    try testing.expectEqualStrings("click", event1.get_type());
+    try testing.expect(event1.get_bubbles());
+    try testing.expect(event1.get_cancelable());
+    try testing.expect(!event1.get_composed());
 }
 
 test "Event: stopPropagation sets flag" {
@@ -56,7 +55,7 @@ test "Event: stopPropagation sets flag" {
 
     try testing.expect(!event.stop_propagation_flag);
 
-    event.stopPropagation();
+    event.call_stopPropagation();
 
     try testing.expect(event.stop_propagation_flag);
 }
@@ -70,7 +69,7 @@ test "Event: stopImmediatePropagation sets both flags" {
     try testing.expect(!event.stop_propagation_flag);
     try testing.expect(!event.stop_immediate_propagation_flag);
 
-    event.stopImmediatePropagation();
+    event.call_stopImmediatePropagation();
 
     try testing.expect(event.stop_propagation_flag);
     try testing.expect(event.stop_immediate_propagation_flag);
@@ -84,12 +83,12 @@ test "Event: preventDefault on cancelable event" {
     });
     defer event.deinit();
 
-    try testing.expect(!event.defaultPrevented);
+    try testing.expect(!event.get_defaultPrevented());
     try testing.expect(!event.canceled_flag);
 
-    event.preventDefault();
+    event.call_preventDefault();
 
-    try testing.expect(event.defaultPrevented);
+    try testing.expect(event.get_defaultPrevented());
     try testing.expect(event.canceled_flag);
 }
 
@@ -99,12 +98,12 @@ test "Event: preventDefault on non-cancelable event has no effect" {
     var event = try Event.init(allocator, "load", null);
     defer event.deinit();
 
-    try testing.expect(!event.cancelable);
-    try testing.expect(!event.defaultPrevented);
+    try testing.expect(!event.get_cancelable());
+    try testing.expect(!event.get_defaultPrevented());
 
-    event.preventDefault(); // Should have no effect
+    event.call_preventDefault(); // Should have no effect
 
-    try testing.expect(!event.defaultPrevented);
+    try testing.expect(!event.get_defaultPrevented());
     try testing.expect(!event.canceled_flag);
 }
 
@@ -115,7 +114,7 @@ test "Event: isTrusted defaults to false" {
     defer event.deinit();
 
     // Events created by scripts (via constructor) have isTrusted = false
-    try testing.expect(!event.isTrusted);
+    try testing.expect(!event.get_isTrusted());
 }
 
 test "Event: composedPath returns empty for non-dispatched event" {
@@ -124,10 +123,10 @@ test "Event: composedPath returns empty for non-dispatched event" {
     var event = try Event.init(allocator, "test", null);
     defer event.deinit();
 
-    const path = try event.composedPath(allocator);
-    defer allocator.free(path);
+    var path = try event.call_composedPath();
+    defer path.deinit();
 
-    try testing.expectEqual(@as(usize, 0), path.len);
+    try testing.expectEqual(@as(usize, 0), path.toSlice().len);
 }
 
 test "EventTarget: addEventListener and removeEventListener" {
@@ -150,16 +149,16 @@ test "Event: cancelBubble getter/setter (legacy)" {
     defer event.deinit();
 
     // Initially false
-    try testing.expect(!event.cancelBubble);
+    try testing.expect(!event.get_cancelBubble());
     try testing.expect(!event.stop_propagation_flag);
 
     // Setting to true sets stop propagation flag
-    event.cancelBubble = true;
-    try testing.expect(event.cancelBubble);
+    event.set_cancelBubble(true);
+    try testing.expect(event.get_cancelBubble());
     try testing.expect(event.stop_propagation_flag);
 
     // Setting to false does nothing (cannot un-stop)
-    event.cancelBubble = false;
+    event.set_cancelBubble(false);
     try testing.expect(event.stop_propagation_flag);
 }
 
@@ -172,16 +171,16 @@ test "Event: returnValue getter/setter (legacy)" {
     defer event.deinit();
 
     // Initially true (not canceled)
-    try testing.expect(event.returnValue);
+    try testing.expect(event.get_returnValue());
     try testing.expect(!event.canceled_flag);
 
     // Setting to false cancels the event
-    event.returnValue = false;
-    try testing.expect(!event.returnValue);
+    event.set_returnValue(false);
+    try testing.expect(!event.get_returnValue());
     try testing.expect(event.canceled_flag);
 
     // Setting to true does nothing (cannot un-cancel)
-    event.returnValue = true;
+    event.set_returnValue(true);
     try testing.expect(event.canceled_flag);
 }
 
@@ -192,20 +191,20 @@ test "Event: eventPhase transitions" {
     defer event.deinit();
 
     // Initially NONE
-    try testing.expectEqual(Event.NONE, event.event_phase);
+    try testing.expectEqual(Event.NONE, event.get_eventPhase());
 
     // Can be set to different phases (during dispatch)
     event.event_phase = Event.CAPTURING_PHASE;
-    try testing.expectEqual(Event.CAPTURING_PHASE, event.event_phase);
+    try testing.expectEqual(Event.CAPTURING_PHASE, event.get_eventPhase());
 
     event.event_phase = Event.AT_TARGET;
-    try testing.expectEqual(Event.AT_TARGET, event.event_phase);
+    try testing.expectEqual(Event.AT_TARGET, event.get_eventPhase());
 
     event.event_phase = Event.BUBBLING_PHASE;
-    try testing.expectEqual(Event.BUBBLING_PHASE, event.event_phase);
+    try testing.expectEqual(Event.BUBBLING_PHASE, event.get_eventPhase());
 
     event.event_phase = Event.NONE;
-    try testing.expectEqual(Event.NONE, event.event_phase);
+    try testing.expectEqual(Event.NONE, event.get_eventPhase());
 }
 
 test "Event: target and currentTarget" {
@@ -215,8 +214,8 @@ test "Event: target and currentTarget" {
     defer event.deinit();
 
     // Initially null
-    try testing.expect(event.target == null);
-    try testing.expect(event.current_target == null);
+    try testing.expect(event.get_target() == null);
+    try testing.expect(event.get_currentTarget() == null);
 
     // Can be set during dispatch
     var target = try EventTarget.init(allocator);
@@ -225,8 +224,8 @@ test "Event: target and currentTarget" {
     event.target = &target;
     event.current_target = &target;
 
-    try testing.expect(event.target == &target);
-    try testing.expect(event.current_target == &target);
+    try testing.expect(event.get_target() == &target);
+    try testing.expect(event.get_currentTarget() == &target);
 }
 
 test "Event: event path manipulation" {
@@ -353,7 +352,7 @@ test "Event dispatch: activation behavior with canceled event" {
     defer event.deinit();
 
     // Cancel the event (preventDefault)
-    event.preventDefault();
+    event.call_preventDefault();
     try testing.expect(event.canceled_flag);
 
     // Dispatch click event - should go through activation behavior flow

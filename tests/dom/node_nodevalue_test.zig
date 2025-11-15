@@ -18,7 +18,7 @@ test "Node.nodeValue - Text node returns data" {
     var text = try Text.init(allocator, "Hello World");
     defer text.deinit();
 
-    const text_node = text.asNode();
+    const text_node = &text;
 
     const node_value = text_node.get_nodeValue();
     try std.testing.expect(node_value != null);
@@ -31,7 +31,7 @@ test "Node.nodeValue - Comment node returns data" {
     var comment = try Comment.init(allocator, "This is a comment");
     defer comment.deinit();
 
-    const comment_node = comment.asNode();
+    const comment_node = &comment;
 
     const node_value = comment_node.get_nodeValue();
     try std.testing.expect(node_value != null);
@@ -44,7 +44,7 @@ test "Node.nodeValue - Element returns null" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
 
     const node_value = elem_node.get_nodeValue();
     try std.testing.expect(node_value == null);
@@ -56,7 +56,7 @@ test "Node.nodeValue - Attr returns value" {
     var attr = try Attr.init(allocator, null, null, "id", "myId");
     defer attr.deinit();
 
-    const attr_node = attr.asNode();
+    const attr_node = &attr;
 
     const node_value = attr_node.get_nodeValue();
     try std.testing.expect(node_value != null);
@@ -69,7 +69,7 @@ test "Node.nodeValue - set Text node value" {
     var text = try Text.init(allocator, "Original");
     defer text.deinit();
 
-    const text_node = text.asNode();
+    const text_node = &text;
 
     // Set new value
     try text_node.set_nodeValue("Updated");
@@ -85,7 +85,7 @@ test "Node.nodeValue - set Attr value" {
     var attr = try Attr.init(allocator, null, null, "class", "old-class");
     defer attr.deinit();
 
-    const attr_node = attr.asNode();
+    const attr_node = &attr;
 
     // Set new value
     try attr_node.set_nodeValue("new-class");
@@ -101,7 +101,7 @@ test "Node.nodeValue - set Element value does nothing" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
 
     // Set value on element (should do nothing)
     try elem_node.set_nodeValue("ignored");
@@ -117,7 +117,7 @@ test "Node.nodeValue - set null treated as empty string" {
     var text = try Text.init(allocator, "Original");
     defer text.deinit();
 
-    const text_node = text.asNode();
+    const text_node = &text;
 
     // Set null (should be treated as empty string)
     try text_node.set_nodeValue(null);

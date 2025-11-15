@@ -20,8 +20,8 @@ test "Node.parentElement - element parent returns element" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Append child to parent
     _ = try parent_node.appendChild(child_node);
@@ -42,8 +42,8 @@ test "Node.parentElement - document parent returns null" {
     var elem = try Element.init(allocator, "html");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     // Append element to document
     _ = try doc_node.appendChild(elem_node);
@@ -60,7 +60,7 @@ test "Node.parentElement - no parent returns null" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
 
     const parent_element = elem_node.get_parentElement();
 
@@ -77,8 +77,8 @@ test "Node.parentElement - text node with element parent" {
     var text_node = try Text.create(allocator, "Hello");
     defer text_node.deinit();
 
-    const parent_node = parent.asNode();
-    const text_as_node = text_node.asNode();
+    const parent_node = &parent;
+    const text_as_node = &text_node;
 
     // Append text to element
     _ = try parent_node.appendChild(text_as_node);
@@ -102,9 +102,9 @@ test "Node.parentElement - nested elements" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const grandparent_node = grandparent.asNode();
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const grandparent_node = &grandparent;
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Build tree: grandparent -> parent -> child
     _ = try grandparent_node.appendChild(parent_node);

@@ -28,7 +28,7 @@ test "Node.cloneNode - element with clonable shadow root is cloned" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = host.asNode();
+    const host_node = &host;
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -77,7 +77,7 @@ test "Node.cloneNode - element with non-clonable shadow root is not cloned" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = host.asNode();
+    const host_node = &host;
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -109,7 +109,7 @@ test "Node.cloneNode - shadow root declarative flag is preserved" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = host.asNode();
+    const host_node = &host;
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -152,11 +152,11 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
     var shadow_child = try Element.init(allocator, "span");
     defer shadow_child.deinit();
 
-    const shadow_node = shadow.asNode();
-    const shadow_child_node = shadow_child.asNode();
+    const shadow_node = &shadow;
+    const shadow_child_node = &shadow_child;
     _ = try shadow_node.appendChild(shadow_child_node);
 
-    const host_node = host.asNode();
+    const host_node = &host;
 
     // Clone the host element with subtree=true
     const cloned_node = try host_node.call_cloneNode(true);
@@ -164,7 +164,7 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
         const cloned_elem: *Element = @ptrCast(@alignCast(cloned_node));
         if (cloned_elem.shadow_root) |cloned_shadow| {
             // Clean up shadow root children
-            const cloned_shadow_node = cloned_shadow.asNode();
+            const cloned_shadow_node = &cloned_shadow;
             for (cloned_shadow_node.child_nodes.items) |child| {
                 child.deinit();
             }
@@ -175,7 +175,7 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
 
     const cloned_elem: *Element = @ptrCast(@alignCast(cloned_node));
     const cloned_shadow = cloned_elem.shadow_root.?;
-    const cloned_shadow_node = cloned_shadow.asNode();
+    const cloned_shadow_node = &cloned_shadow;
 
     // Shadow root should have cloned children
     try std.testing.expectEqual(@as(usize, 1), cloned_shadow_node.child_nodes.len);

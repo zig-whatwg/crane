@@ -16,7 +16,7 @@ test "Node.childNodes - [SameObject] returns same NodeList" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
 
     // Get childNodes first time
     const list1 = try elem_node.get_childNodes();
@@ -40,7 +40,7 @@ test "Node.childNodes - NodeList is initially populated" {
     var child2 = try Element.init(allocator, "p");
     defer child2.deinit();
 
-    const parent_node = parent.asNode();
+    const parent_node = &parent;
     const child1_node = child1.asNode();
     const child2_node = child2.asNode();
 
@@ -63,7 +63,7 @@ test "Node.childNodes - empty node has empty NodeList" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
 
     // Get childNodes for empty node
     const list = try elem_node.get_childNodes();
@@ -81,8 +81,8 @@ test "Node.childNodes - NodeList uses item() method" {
     var child = try Element.init(allocator, "li");
     defer child.deinit();
 
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const parent_node = &parent;
+    const child_node = &child;
 
     _ = try parent_node.appendChild(child_node);
 

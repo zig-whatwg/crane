@@ -163,7 +163,7 @@ test "NodeBase - tree navigation with mixed types" {
     defer child2.deinit();
 
     // Build tree using NodeBase pointers
-    const parent_node = parent.asNode();
+    const parent_node = &parent;
     const child1_node = child1.asNode();
     const child2_node = child2.asNode();
 
@@ -206,8 +206,8 @@ test "NodeBase - contains check across type hierarchy" {
     var child = try MockCharacterData.init(allocator, "Text");
     defer child.deinit();
 
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const parent_node = &parent;
+    const child_node = &child;
 
     try parent_node.child_nodes.append(child_node);
     child_node.parent_node = parent_node;

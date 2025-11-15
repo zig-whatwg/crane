@@ -16,7 +16,7 @@ test "Node.isConnected - document is connected" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    const doc_node = doc.asNode();
+    const doc_node = &doc;
     try std.testing.expect(doc_node.isConnected());
 }
 
@@ -29,8 +29,8 @@ test "Node.isConnected - element in document is connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     // Before appending, element is not connected
     try std.testing.expect(!elem_node.isConnected());
@@ -48,7 +48,7 @@ test "Node.isConnected - detached element is not connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
     try std.testing.expect(!elem_node.isConnected());
 }
 
@@ -64,9 +64,9 @@ test "Node.isConnected - nested elements in document are connected" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const doc_node = doc.asNode();
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const doc_node = &doc;
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Append parent to document
     _ = try doc_node.appendChild(parent_node);
@@ -88,8 +88,8 @@ test "Node.isConnected - element removed from document is not connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     // Append to document
     _ = try doc_node.appendChild(elem_node);
@@ -109,8 +109,8 @@ test "Node.isConnected - orphaned subtree is not connected" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Create orphaned subtree
     _ = try parent_node.appendChild(child_node);

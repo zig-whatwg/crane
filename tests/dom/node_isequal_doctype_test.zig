@@ -3,8 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
-
 // Type aliases
 const DocumentType = dom.DocumentType;
 const Node = dom.Node;
@@ -18,11 +16,8 @@ test "Node.isEqualNode - DocumentType with same properties" {
     var doctype_b = try DocumentType.init(allocator, "html", "", "");
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with same name, public ID, system ID are equal
-    try std.testing.expect(node_a.call_isEqualNode(node_b));
+    try std.testing.expect(doctype_a.call_isEqualNode(&doctype_b));
 }
 
 test "Node.isEqualNode - DocumentType with different name" {
@@ -34,11 +29,8 @@ test "Node.isEqualNode - DocumentType with different name" {
     var doctype_b = try DocumentType.init(allocator, "xml", "", "");
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with different names are not equal
-    try std.testing.expect(!node_a.call_isEqualNode(node_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
 }
 
 test "Node.isEqualNode - DocumentType with different public ID" {
@@ -50,11 +42,8 @@ test "Node.isEqualNode - DocumentType with different public ID" {
     var doctype_b = try DocumentType.init(allocator, "html", "", "");
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with different public IDs are not equal
-    try std.testing.expect(!node_a.call_isEqualNode(node_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
 }
 
 test "Node.isEqualNode - DocumentType with different system ID" {
@@ -66,11 +55,8 @@ test "Node.isEqualNode - DocumentType with different system ID" {
     var doctype_b = try DocumentType.init(allocator, "html", "", "");
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with different system IDs are not equal
-    try std.testing.expect(!node_a.call_isEqualNode(node_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
 }
 
 test "Node.isEqualNode - DocumentType with all properties different" {
@@ -82,11 +68,8 @@ test "Node.isEqualNode - DocumentType with all properties different" {
     var doctype_b = try DocumentType.init(allocator, "xml", "", "");
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with all properties different are not equal
-    try std.testing.expect(!node_a.call_isEqualNode(node_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
 }
 
 test "Node.isEqualNode - DocumentType with all properties matching" {
@@ -108,9 +91,6 @@ test "Node.isEqualNode - DocumentType with all properties matching" {
     );
     defer doctype_b.deinit();
 
-    const node_a = doctype_a.asNode();
-    const node_b = doctype_b.asNode();
-
     // DocumentTypes with all properties matching are equal
-    try std.testing.expect(node_a.call_isEqualNode(node_b));
+    try std.testing.expect(doctype_a.call_isEqualNode(&doctype_b));
 }

@@ -16,7 +16,7 @@ test "Node.getRootNode - document root" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    const doc_node = doc.asNode();
+    const doc_node = &doc;
     const root_node = doc_node.call_getRootNode(null);
 
     // Document is its own root
@@ -32,8 +32,8 @@ test "Node.getRootNode - element in document" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     // Append element to document
     _ = try doc_node.appendChild(elem_node);
@@ -50,7 +50,7 @@ test "Node.getRootNode - detached element" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = elem.asNode();
+    const elem_node = &elem;
     const root_node = elem_node.call_getRootNode(null);
 
     // Detached element is its own root
@@ -69,9 +69,9 @@ test "Node.getRootNode - nested elements" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const doc_node = doc.asNode();
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const doc_node = &doc;
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Build tree: doc -> parent -> child
     _ = try doc_node.appendChild(parent_node);
@@ -92,8 +92,8 @@ test "Node.getRootNode - orphaned subtree" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const parent_node = parent.asNode();
-    const child_node = child.asNode();
+    const parent_node = &parent;
+    const child_node = &child;
 
     // Build orphaned subtree: parent -> child
     _ = try parent_node.appendChild(child_node);
@@ -113,8 +113,8 @@ test "Node.getRootNode - options.composed false" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     _ = try doc_node.appendChild(elem_node);
 
@@ -133,8 +133,8 @@ test "Node.getRootNode - options.composed true (shadow root not yet implemented)
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = doc.asNode();
-    const elem_node = elem.asNode();
+    const doc_node = &doc;
+    const elem_node = &elem;
 
     _ = try doc_node.appendChild(elem_node);
 
