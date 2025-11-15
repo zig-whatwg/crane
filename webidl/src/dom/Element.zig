@@ -916,23 +916,23 @@ pub const Element = webidl.interface(struct {
             const parent = element.parent_node orelse return null;
 
             // Return the result of pre-inserting node into element's parent before element
-            return try mutation.preInsert(node, parent, @ptrCast(element));
+            return try mutation.preInsert(node, parent, @as(*Node, @ptrCast(element)));
         } else if (eqlIgnoreCase(where, "afterbegin")) {
             // Return the result of pre-inserting node into element before element's first child
             const first_child = if (element.child_nodes.toSlice().len > 0)
                 element.child_nodes.toSlice()[0]
             else
                 null;
-            return try mutation.preInsert(node, @ptrCast(element), first_child);
+            return try mutation.preInsert(node, @as(*Node, @ptrCast(element)), first_child);
         } else if (eqlIgnoreCase(where, "beforeend")) {
             // Return the result of pre-inserting node into element before null
-            return try mutation.preInsert(node, @ptrCast(element), null);
+            return try mutation.preInsert(node, @as(*Node, @ptrCast(element)), null);
         } else if (eqlIgnoreCase(where, "afterend")) {
             // If element's parent is null, return null
             const parent = element.parent_node orelse return null;
 
             // Return the result of pre-inserting node into element's parent before element's next sibling
-            const next_sibling = dom.tree_helpers.getNextSibling(@ptrCast(element));
+            const next_sibling = dom.tree_helpers.getNextSibling(@as(*Node, @ptrCast(element)));
             return try mutation.preInsert(node, parent, next_sibling);
         } else {
             // Otherwise: Throw a "SyntaxError" DOMException
@@ -944,7 +944,7 @@ pub const Element = webidl.interface(struct {
     /// The insertAdjacentElement(where, element) method steps are to return the result of
     /// running insert adjacent, given this, where, and element.
     pub fn call_insertAdjacentElement(self: *Element, where: []const u8, element: *Element) !?*Element {
-        const result = try insertAdjacent(self, where, @ptrCast(element));
+        const result = try insertAdjacent(self, where, @as(*Node, @ptrCast(element)));
         return if (result) |node| @ptrCast(@alignCast(node)) else null;
     }
 
