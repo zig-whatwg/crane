@@ -24,10 +24,10 @@ test "changeAttribute - updates value and calls handle" {
     }
 
     attr.* = try AttrWithBase.init(allocator, "class", "foo", null, null);
-    try attribute_algorithms.appendAttribute(attr, &element);
+    try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
-    try attribute_algorithms.changeAttribute(attr, "bar");
+    try attribute_algorithms.changeAttribute(@ptrCast(attr), "bar");
 
     // Verify the value changed
     try std.testing.expectEqualStrings("bar", attr.value);
@@ -48,7 +48,7 @@ test "appendAttribute - adds to list and handles changes" {
     attr.* = try AttrWithBase.init(allocator, "title", "Hello", null, null);
 
     // Append the attribute
-    try attribute_algorithms.appendAttribute(attr, &element);
+    try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Verify it was added to the attribute list
     try std.testing.expectEqual(@as(usize, 1), element.attributes.size());
@@ -70,7 +70,7 @@ test "removeAttribute - removes from list and handles changes" {
     }
 
     attr.* = try AttrWithBase.init(allocator, "data-test", "value", null, null);
-    try attribute_algorithms.appendAttribute(attr, &element);
+    try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Remove the attribute
     try attribute_algorithms.removeAttribute(attr);
@@ -156,7 +156,7 @@ test "setAttributeValue - changes existing attribute" {
     }
 
     attr.* = try AttrWithBase.init(allocator, "class", "old-class", null, null);
-    try attribute_algorithms.appendAttribute(attr, &element);
+    try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
     try attribute_algorithms.setAttributeValue(&element, "class", "new-class", null, null);
