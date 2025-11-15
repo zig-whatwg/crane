@@ -73,6 +73,11 @@ pub const ProcessingInstruction = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
     allocator: Allocator,
+    /// Runtime type discriminator for duck typing
+    /// This field helps distinguish EventTarget types at runtime.
+    /// - 0: Plain EventTarget or AbortSignal
+    /// - 1-12: Node types (ELEMENT_NODE, TEXT_NODE, etc.)
+    /// This is filled in by Node's init - EventTarget itself uses 0.
     node_type: u16,
     node_name: []const u8,
     parent_node: ?*Node,

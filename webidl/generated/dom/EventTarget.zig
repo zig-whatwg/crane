@@ -100,6 +100,12 @@ pub const EventTarget = struct {
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
     event_listener_list: ?*infra.List(EventListener),
     allocator: Allocator,
+    /// Runtime type discriminator for duck typing
+    /// This field helps distinguish EventTarget types at runtime.
+    /// - 0: Plain EventTarget or AbortSignal
+    /// - 1-12: Node types (ELEMENT_NODE, TEXT_NODE, etc.)
+    /// This is filled in by Node's init - EventTarget itself uses 0.
+    node_type: u16,
 
     // ========================================================================
     // WebIDL Metadata
@@ -119,6 +125,7 @@ pub const EventTarget = struct {
         return .{
             .allocator = allocator,
             .event_listener_list = null, // Lazy allocation - created on first addEventListener
+            .node_type = 0, // Plain EventTarget, not a Node
         };
     
     }
@@ -410,6 +417,47 @@ pub const EventTarget = struct {
             return err;
         };
     
+    }
+
+
+    // ========================================================================
+    // Type Conversion Helper (Safe Downcasting)
+    // ========================================================================
+    // Generic downcast that works for any child type.
+    // Child types must declare: pub const node_type_VALUE = <discriminator_constant>
+
+    /// Safe downcast to child type T
+    /// Returns null if this instance is not of type T
+    /// 
+    /// Requires: T must declare `pub const node_type_VALUE`
+    /// 
+    /// Example:
+    ///   if (node.as(Element)) |elem| {
+    ///       // use elem
+    ///   }
+    pub fn as(self: *EventTarget, comptime T: type) ?*T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
+    }
+
+    /// Safe downcast to child type T (const version)
+    pub fn asConst(self: *const EventTarget, comptime T: type) ?*const T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
     }
 
 };

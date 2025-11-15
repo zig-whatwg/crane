@@ -12,7 +12,8 @@ const EventTarget = dom.EventTarget;
 const Event = dom.Event;
 const AbortSignal = dom.AbortSignal;
 const AbortController = dom.AbortController;
-const AddEventListenerOptions = EventTarget.AddEventListenerOptions;
+// Import from event_target module, not EventTarget struct
+const AddEventListenerOptions = @import("event_target").AddEventListenerOptions;
 
 test "addEventListener with aborted signal does not add listener" {
     const allocator = std.testing.allocator;

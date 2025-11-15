@@ -52,7 +52,7 @@ pub const NonElementParentNode = webidl.mixin(struct {
                     }
 
                     // Recursively search descendants
-                    if (findById(node.child_nodes.items, target_id)) |found| {
+                    if (findById(node.child_nodes.items(), target_id)) |found| {
                         return found;
                     }
                 }
@@ -62,7 +62,6 @@ pub const NonElementParentNode = webidl.mixin(struct {
         };
 
         // Traverse descendants in tree order (preorder depth-first)
-        return SearchHelper.findById(self.child_nodes.items, element_id);
+        return SearchHelper.findById(self.child_nodes.items(), element_id);
     }
 });
-

@@ -10,7 +10,8 @@ const event_dispatch = @import("event_dispatch");
 
 const EventTarget = dom.EventTarget;
 const Event = dom.Event;
-const AddEventListenerOptions = EventTarget.AddEventListenerOptions;
+// Import from event_target module, not EventTarget struct
+const AddEventListenerOptions = @import("event_target").AddEventListenerOptions;
 
 // Test state for callback tracking
 var callback_count: usize = 0;

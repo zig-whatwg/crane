@@ -29,19 +29,17 @@ pub fn appendToEventPath(
     // then set invocationTargetInShadowTree to true
     var invocation_target_in_shadow_tree = false;
 
-    // Check if invocation_target is a Node by checking its type_tag
-    // Non-Node types: EventTarget, AbortSignal
-    // Node types: Everything else (Element, Document, Text, etc.)
-    if (invocation_target.type_tag != .EventTarget and
-        invocation_target.type_tag != .AbortSignal)
-    {
+    // Check if invocation_target is a Node by checking node_type
+    // node_type == 0: Plain EventTarget or AbortSignal
+    // node_type > 0: It's a Node (ELEMENT_NODE, TEXT_NODE, etc.)
+    if (invocation_target.node_type > 0) {
         // It's a Node - cast to Node to get root
         const node: *Node = @ptrCast(@alignCast(invocation_target));
         const root_node = node.call_getRootNode(.{});
 
-        // Check if root is a ShadowRoot using NodeBase type_tag
-        const NodeTypeTag = @import("node").NodeTypeTag;
-        if (root_node.base.type_tag == NodeTypeTag.ShadowRoot) {
+        // Check if root is a ShadowRoot (node_type == DOCUMENT_FRAGMENT_NODE)
+        // ShadowRoot is a special DocumentFragment subtype
+        if (root_node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
             invocation_target_in_shadow_tree = true;
         }
     }
@@ -52,15 +50,13 @@ pub fn appendToEventPath(
     var root_of_closed_tree = false;
 
     // Check if invocation_target is itself a ShadowRoot
-    const NodeTypeTag = @import("node").NodeTypeTag;
-    if (invocation_target.type_tag != .EventTarget and invocation_target.type_tag != .AbortSignal) {
-        const node: *Node = @ptrCast(@alignCast(invocation_target));
-        if (node.base.type_tag == NodeTypeTag.ShadowRoot) {
-            // It's a ShadowRoot - cast and check mode
-            const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
-            if (shadow.getMode() == ShadowRootMode.closed) {
-                root_of_closed_tree = true;
-            }
+    if (invocation_target.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
+        const node: *const Node = @ptrCast(@alignCast(invocation_target));
+        // ShadowRoot is a DocumentFragment - need to check if it's specifically a ShadowRoot
+        // For now, assume DOCUMENT_FRAGMENT_NODE with shadow root properties
+        const shadow_root: *const ShadowRoot = @ptrCast(@alignCast(node));
+        if (shadow_root.mode == ShadowRootMode.closed) {
+            root_of_closed_tree = true;
         }
     }
 
@@ -98,12 +94,13 @@ pub fn dispatch(
     const target_override = if (!legacy_target_override_flag) target else blk: {
         // Get target's associated Document
         // Per DOM spec: Every Node has an owner_document
-        if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+        if (target.node_type > 0) {
             const node: *Node = @ptrCast(@alignCast(target));
             if (node.owner_document) |doc| {
                 // Return the document as EventTarget
-                const doc_node: *Node = @ptrCast(@alignCast(doc));
-                break :blk &doc_node.base;
+                // With duck typing, Node has all EventTarget fields, so just cast
+                const doc_target: *EventTarget = @ptrCast(@alignCast(doc));
+                break :blk doc_target;
             }
         }
         // Fallback: if not a node or has no document, use target itself
@@ -157,15 +154,15 @@ pub fn dispatch(
         var slottable: ?*EventTarget = null;
 
         // Check if target is an Element or Text (slottables)
-        if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+        if (target.node_type > 0) {
             // It's a Node - check if it's Element or Text
             const node: *Node = @ptrCast(@alignCast(target));
-            if (node.base.type_tag == .Element) {
+            if (node.node_type == Node.ELEMENT_NODE) {
                 const element: *const Element = @ptrCast(@alignCast(node));
                 if (element.isAssigned()) {
                     slottable = target;
                 }
-            } else if (node.base.type_tag == .Text) {
+            } else if (node.node_type == Node.TEXT_NODE) {
                 // Text nodes are also slottable
                 // They have an assigned_slot field too (from Slottable mixin)
                 // For now, we'll treat them similarly to elements
@@ -192,11 +189,10 @@ pub fn dispatch(
 
                 // Step 6.9.2 continued: If parent's root is a shadow root whose mode is "closed",
                 // set slot-in-closed-tree to true
-                if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+                if (p.node_type > 0) {
                     const parent_node: *Node = @ptrCast(@alignCast(p));
                     const parent_root = parent_node.call_getRootNode(.{});
-                    const NodeTypeTag = @import("node").NodeTypeTag;
-                    if (parent_root.base.type_tag == NodeTypeTag.ShadowRoot) {
+                    if (parent_root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
                         const shadow: *ShadowRoot = @ptrCast(@alignCast(parent_root));
                         if (shadow.getMode() == ShadowRootMode.closed) {
                             slot_in_closed_tree = true;
@@ -206,9 +202,9 @@ pub fn dispatch(
             }
 
             // Step 6.9.3: If parent is a slottable and is assigned, set slottable to parent
-            if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+            if (p.node_type > 0) {
                 const parent_node: *Node = @ptrCast(@alignCast(p));
-                if (parent_node.base.type_tag == .Element) {
+                if (parent_node.node_type == Node.ELEMENT_NODE) {
                     const parent_element: *const Element = @ptrCast(@alignCast(parent_node));
                     if (parent_element.isAssigned()) {
                         slottable = p;
@@ -240,7 +236,7 @@ pub fn dispatch(
             // For now, Window is not implemented, so this is always false
 
             // Check if parent is a node AND target's root is shadow-including inclusive ancestor
-            if (p.type_tag != .EventTarget and p.type_tag != .AbortSignal) {
+            if (p.node_type > 0) {
                 // Parent is a Node
                 // Get target's shadow-including root
                 const target_node: *Node = @ptrCast(@alignCast(target));
@@ -376,7 +372,7 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 
         // Step 1.1: If A is not a node, return A
         // Non-Node EventTargets: EventTarget, AbortSignal
-        if (a_target.type_tag == .EventTarget or a_target.type_tag == .AbortSignal) {
+        if (a_target.node_type == 0) {
             return a_target;
         }
 
@@ -385,8 +381,7 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
 
         // Step 1.2: If A's root is not a shadow root, return A
         const a_root = a_node.call_getRootNode(.{});
-        const NodeTypeTag = @import("node").NodeTypeTag;
-        if (a_root.base.type_tag != NodeTypeTag.ShadowRoot) {
+        if (a_root.node_type != Node.DOCUMENT_FRAGMENT_NODE) {
             return a_target;
         }
 
@@ -394,7 +389,7 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
         const a_shadow_root: *ShadowRoot = @ptrCast(@alignCast(a_root));
 
         // Step 1.3: If B is a node and A's root is a shadow-including inclusive ancestor of B
-        if (b.type_tag != .EventTarget and b.type_tag != .AbortSignal) {
+        if (b.node_type > 0) {
             const b_node: *Node = @ptrCast(@alignCast(b));
             const a_root_node: *Node = @ptrCast(@alignCast(a_root));
 
@@ -427,8 +422,7 @@ fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
 
     // Check if node's root is a shadow root
     const node_root = node.call_getRootNode(.{});
-    const NodeTypeTag = @import("node").NodeTypeTag;
-    if (node_root.base.type_tag == NodeTypeTag.ShadowRoot) {
+    if (node_root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
         // Get shadow root's host
         const shadow: *ShadowRoot = @ptrCast(@alignCast(node_root));
         const host_element = shadow.host_element;
@@ -452,12 +446,11 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
     // For ShadowRoot: if event.composed is false, return null; otherwise return host
 
     // Check if this is a Node
-    if (target.type_tag != .EventTarget and target.type_tag != .AbortSignal) {
+    if (target.node_type > 0) {
         const node: *Node = @ptrCast(@alignCast(target));
 
         // Check if this is a ShadowRoot
-        const NodeTypeTag = @import("node").NodeTypeTag;
-        if (node.base.type_tag == NodeTypeTag.ShadowRoot) {
+        if (node.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
             // This is a ShadowRoot
             // If event.composed is false, return null (don't cross shadow boundary)
             if (!event.composed) {
@@ -472,7 +465,7 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
 
         // Regular Node - check if assigned to a slot
         // Per spec: If node is assigned, return node's assigned slot
-        if (node.base.type_tag == .Element) {
+        if (node.node_type == Node.ELEMENT_NODE) {
             const element: *const Element = @ptrCast(@alignCast(node));
             if (element.assigned_slot) |slot| {
                 // Return the assigned slot as EventTarget

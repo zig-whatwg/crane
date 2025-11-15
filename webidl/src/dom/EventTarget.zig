@@ -88,10 +88,18 @@ pub const EventTarget = webidl.interface(struct {
 
     allocator: Allocator,
 
+    /// Runtime type discriminator for duck typing
+    /// This field helps distinguish EventTarget types at runtime.
+    /// - 0: Plain EventTarget or AbortSignal
+    /// - 1-12: Node types (ELEMENT_NODE, TEXT_NODE, etc.)
+    /// This is filled in by Node's init - EventTarget itself uses 0.
+    node_type: u16 = 0,
+
     pub fn init(allocator: Allocator) !EventTarget {
         return .{
             .allocator = allocator,
             .event_listener_list = null, // Lazy allocation - created on first addEventListener
+            .node_type = 0, // Plain EventTarget, not a Node
         };
     }
 

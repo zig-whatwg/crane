@@ -52,10 +52,12 @@ pub fn handleAttributeChanges(
     var empty_removed = try NodeList.init(allocator);
     defer empty_removed.deinit();
 
+    // Element has all Node fields (duck typing), so just cast
+    const element_node: *Node = @ptrCast(element);
     try mutation_observer.queueMutationRecord(
         allocator,
         "attributes",
-        element.asNode(),
+        element_node,
         attribute.local_name,
         attribute.namespace_uri,
         old_value,
@@ -273,10 +275,10 @@ pub fn setAttributeValue(
 
         new_attr.* = try Attr.init(
             allocator,
-            local_name,
-            value,
-            namespace,
-            prefix,
+            namespace, // namespace_uri
+            prefix, // prefix
+            local_name, // local_name
+            value, // value
         );
 
         try appendAttribute(new_attr, element);
@@ -299,18 +301,19 @@ fn getAttributeByNamespaceAndLocalName(
 
     // Step 2: Return the attribute in element's attribute list
     // whose namespace is namespace and local name is localName, if any; otherwise null
-    for (0..element.attributes.size()) |i| {
-        if (element.attributes.get(i)) |attr| {
-            const attr_ns_matches = if (ns == null and attr.namespace_uri == null)
-                true
-            else if (ns != null and attr.namespace_uri != null)
-                std.mem.eql(u8, ns.?, attr.namespace_uri.?)
-            else
-                false;
+    // NOTE: attributes is List(Attr), not List(*Attr), so we use toSliceMut to get pointers
+    var attrs = @constCast(&element.attributes);
+    const attr_slice = attrs.toSliceMut();
+    for (attr_slice) |*attr| {
+        const attr_ns_matches = if (ns == null and attr.namespace_uri == null)
+            true
+        else if (ns != null and attr.namespace_uri != null)
+            std.mem.eql(u8, ns.?, attr.namespace_uri.?)
+        else
+            false;
 
-            if (attr_ns_matches and std.mem.eql(u8, attr.local_name, local_name)) {
-                return attr;
-            }
+        if (attr_ns_matches and std.mem.eql(u8, attr.local_name, local_name)) {
+            return attr;
         }
     }
 

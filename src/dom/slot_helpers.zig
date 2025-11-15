@@ -129,9 +129,9 @@ pub fn getRoot(node: *anyopaque) *anyopaque {
 /// Returns empty string if not accessible
 pub fn getSlottableName(node: *const anyopaque) []const u8 {
     if (asElementConst(node)) |element| {
-        // Element has Slottable mixin with slottable_name field
-        // Access through the generated interface
-        return element.Slottable.getSlottableName();
+        // Element has Slottable mixin fields flattened into Element struct
+        // Call the generated getter method
+        return element.getSlottableName();
     }
     // TODO: Handle Text nodes when they have Slottable mixin accessible
     return "";
@@ -140,8 +140,9 @@ pub fn getSlottableName(node: *const anyopaque) []const u8 {
 /// Set the assigned slot for a slottable
 pub fn setSlottableAssignedSlot(node: *anyopaque, slot: ?*anyopaque) void {
     if (asElement(node)) |element| {
-        // Element has Slottable mixin with setAssignedSlot method
-        element.Slottable.setAssignedSlot(slot);
+        // Element has Slottable mixin fields flattened into Element struct
+        // Call the generated setter method
+        element.setAssignedSlot(slot);
     }
     // TODO: Handle Text nodes when they have Slottable mixin accessible
 }
@@ -169,9 +170,3 @@ pub fn getChildren(node: *const anyopaque) *const @import("infra").List(*Node) {
 // ============================================================================
 // Tests
 // ============================================================================
-
-
-
-
-
-
