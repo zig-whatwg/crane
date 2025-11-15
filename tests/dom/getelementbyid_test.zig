@@ -103,7 +103,7 @@ test "Document.getElementById - case sensitive matching" {
     // Exact match - should match
     const found_exact = doc.call_getElementById("MyID");
     try std.testing.expect(found_exact != null);
-    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @ptrCast(found_exact?));
+    try std.testing.expectEqual(@as(*Node, @ptrCast(div)), @as(*Node, @ptrCast(found_exact.?)));
 }
 
 test "Document.getElementById - ignores elements without id attribute" {

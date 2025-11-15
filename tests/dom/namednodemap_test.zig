@@ -7,10 +7,9 @@ const infra = @import("infra");
 const webidl = @import("webidl");
 
 const testing = std.testing;
-const NamedNodeMap = @import("NamedNodeMap").NamedNodeMap;
-
 
 // Type aliases
+const NamedNodeMap = dom.NamedNodeMap;
 const Attr = dom.Attr;
 const Document = dom.Document;
 
