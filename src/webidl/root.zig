@@ -70,6 +70,7 @@ pub const namespaces = @import("types/namespaces.zig");
 pub const constants = @import("types/constants.zig");
 pub const interfaces = @import("types/interfaces.zig");
 pub const extended_attrs = @import("extended_attrs.zig");
+pub const helpers = @import("helpers.zig");
 pub const wrappers = @import("wrappers.zig");
 pub const overload_resolution = @import("overload_resolution.zig");
 pub const legacy_platform_objects = @import("legacy_platform_objects.zig");
@@ -174,6 +175,16 @@ pub const TypeMetadata = type_metadata.TypeMetadata;
 pub const TypeKind = type_metadata.TypeKind;
 pub const ConversionInfo = type_metadata.ConversionInfo;
 pub const FunctionSignature = type_metadata.FunctionSignature;
+
+// Re-export runtime helpers for WebIDL metadata
+pub const GlobalScope = helpers.GlobalScope;
+pub const isExposedIn = helpers.isExposedIn;
+pub const isTransferable = helpers.isTransferable;
+pub const isSerializable = helpers.isSerializable;
+pub const getGlobalNames = helpers.getGlobalNames;
+pub const getParent = helpers.getParent;
+pub const isNamespace = helpers.isNamespace;
+pub const isMixin = helpers.isMixin;
 
 // Re-export WebIDL primitive type aliases (with exact spec casing)
 pub const any = primitives.any_type;
