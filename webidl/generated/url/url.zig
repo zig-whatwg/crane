@@ -64,7 +64,7 @@ pub const URL = struct {
         defer if (base_record) |*br| br.deinit();
 
         // Step 1: Parse URL with optional base
-        const parsed_url = api_parser.parseURL(
+        var parsed_url = api_parser.parseURL(
             allocator,
             url,
             if (base_record) |*br| br else null,
@@ -159,7 +159,7 @@ pub const URL = struct {
         defer if (base_record) |*br| br.deinit();
 
         // Try to parse URL
-        const parsed = api_parser.parseURL(
+        var parsed = api_parser.parseURL(
             allocator,
             url,
             if (base_record) |*br| br else null,
