@@ -176,7 +176,9 @@ pub const ShadowRoot = struct {
         .name = "ShadowRoot",
         .kind = .interface,
         .parent = "DocumentFragment",
-        .extended_attrs = &.{},
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

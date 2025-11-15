@@ -228,11 +228,8 @@ pub const ShadowRoot = webidl.interface(struct {
     pub fn setDeclarative(self: *ShadowRoot, value: bool) void {
         self.declarative_flag = value;
     }
+}, .{
+    .exposed = &.{.Window},
 });
 
 // Tests
-
-
-
-
-

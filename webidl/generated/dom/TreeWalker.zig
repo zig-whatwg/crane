@@ -60,7 +60,9 @@ pub const TreeWalker = struct {
         .name = "TreeWalker",
         .kind = .interface,
         .parent = null,
-        .extended_attrs = &.{},
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

@@ -452,4 +452,6 @@ pub const TreeWalker = webidl.interface(struct {
         // Step 8: Return result
         return result;
     }
+}, .{
+    .exposed = &.{.Window},
 });

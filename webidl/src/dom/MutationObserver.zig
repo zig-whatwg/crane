@@ -274,6 +274,8 @@ pub const MutationObserver = webidl.interface(struct {
     pub fn clearRecordQueue(self: *MutationObserver) void {
         self.record_queue.clearRetainingCapacity();
     }
+}, .{
+    .exposed = &.{.Window},
 });
 
 // Tests

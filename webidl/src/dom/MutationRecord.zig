@@ -148,4 +148,6 @@ pub const MutationRecord = webidl.interface(struct {
 
     /// Mutation type: children added/removed
     pub const TYPE_CHILD_LIST: []const u8 = "childList";
+}, .{
+    .exposed = &.{.Window},
 });

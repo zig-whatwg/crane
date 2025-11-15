@@ -73,7 +73,9 @@ pub const MutationObserver = struct {
         .name = "MutationObserver",
         .kind = .interface,
         .parent = null,
-        .extended_attrs = &.{},
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

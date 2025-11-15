@@ -258,4 +258,6 @@ pub const NodeIterator = webidl.interface(struct {
             }
         }
     }
+}, .{
+    .exposed = &.{.Window},
 });
