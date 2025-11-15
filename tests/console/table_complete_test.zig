@@ -22,12 +22,12 @@ test "console.table() - complete implementation with mock data" {
 
     // Set up mock to return keys for objects
     const test_keys = [_][]const u8{ "name", "age" };
-    mock_runtime.setTestObjectKeys(runtime, &test_keys);
+    mock_runtime.setTestObjectKeys(runtime, test_keys[0..]);
 
     // Note: With current MockRuntime implementation, isArray returns false
     // This tests the fallback behavior
     const data = webidl.JSValue{ .string = "array data" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     // Should have logged (fallback behavior)
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -50,7 +50,7 @@ test "console.table() - with properties filter" {
     const properties = [_]webidl.DOMString{prop_name};
 
     const data = webidl.JSValue{ .string = "array data" };
-    console_obj.call_table(&data, &properties);
+    console_obj.call_table(data, properties[0..]);
 
     // Should have processed and logged
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -71,7 +71,7 @@ test "console.table() - empty array" {
     mock_runtime.setTestArrayLength(runtime, 0);
 
     const data = webidl.JSValue{ .string = "empty array" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
@@ -89,10 +89,10 @@ test "console.table() - table formatting structure" {
 
     mock_runtime.setTestArrayLength(runtime, 2);
     const test_keys = [_][]const u8{"id"};
-    mock_runtime.setTestObjectKeys(runtime, &test_keys);
+    mock_runtime.setTestObjectKeys(runtime, test_keys[0..]);
 
     const data = webidl.JSValue{ .string = "test" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     // Verify message was buffered
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -116,10 +116,10 @@ test "console.table() - memory safety with large dataset" {
     // Large dataset
     mock_runtime.setTestArrayLength(runtime, 100);
     const test_keys = [_][]const u8{ "a", "b", "c", "d", "e" };
-    mock_runtime.setTestObjectKeys(runtime, &test_keys);
+    mock_runtime.setTestObjectKeys(runtime, test_keys[0..]);
 
     const data = webidl.JSValue{ .string = "large dataset" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     // Should complete without memory leaks (verified by test allocator)
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -138,10 +138,10 @@ test "console.table() - with special characters in keys" {
 
     mock_runtime.setTestArrayLength(runtime, 1);
     const test_keys = [_][]const u8{ "name-with-dash", "key_with_underscore" };
-    mock_runtime.setTestObjectKeys(runtime, &test_keys);
+    mock_runtime.setTestObjectKeys(runtime, test_keys[0..]);
 
     const data = webidl.JSValue{ .string = "special chars" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
@@ -159,7 +159,7 @@ test "console.table() - properties filter with no matches" {
 
     mock_runtime.setTestArrayLength(runtime, 2);
     const test_keys = [_][]const u8{ "name", "age" };
-    mock_runtime.setTestObjectKeys(runtime, &test_keys);
+    mock_runtime.setTestObjectKeys(runtime, test_keys[0..]);
 
     // Filter for a property that doesn't exist
     const prop_missing = "nonexistent";
@@ -167,7 +167,7 @@ test "console.table() - properties filter with no matches" {
     const properties = [_]webidl.DOMString{prop_missing};
 
     const data = webidl.JSValue{ .string = "filtered data" };
-    console_obj.call_table(&data, &properties);
+    console_obj.call_table(data, properties[0..]);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

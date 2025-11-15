@@ -36,7 +36,7 @@ test "console.table() - with runtime (array)" {
     // Note: MockRuntime.isArray returns false for simple JSValue
     // This test verifies the fallback behavior
     const data = webidl.JSValue{ .string = "array data" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     // Should have logged (fallback since isArray returns false)
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -81,7 +81,7 @@ test "console.dir() - with runtime" {
 
     // dir() should use runtime's toString
     const item = webidl.JSValue{ .string = "test object" };
-    console_obj.call_dir(&item, null);
+    console_obj.call_dir(item, null);
 
     // Verify message was buffered
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -101,7 +101,7 @@ test "console.dir() - with options" {
     // dir() with options (options are currently ignored but accepted)
     const item = webidl.JSValue{ .string = "test object" };
     const options = webidl.JSValue{ .string = "{depth: 2}" };
-    console_obj.call_dir(&item, &options);
+    console_obj.call_dir(item, &options);
 
     // Verify message was buffered
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -132,7 +132,7 @@ test "console.dir() - number value" {
 
     // dir() should work with any value type
     const item = webidl.JSValue{ .number = 42 };
-    console_obj.call_dir(&item, null);
+    console_obj.call_dir(item, null);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }
@@ -149,7 +149,7 @@ test "console.dir() - boolean value" {
     console_obj.runtime = runtime;
 
     const item = webidl.JSValue{ .boolean = true };
-    console_obj.call_dir(&item, null);
+    console_obj.call_dir(item, null);
 
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
 }

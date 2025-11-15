@@ -209,6 +209,6 @@ test "NodeFilter: filterNode respects callback even with SHOW_ALL" {
         }
     }.filter;
 
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ALL, rejectFilter, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }

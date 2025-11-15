@@ -164,8 +164,8 @@ test "NodeBase - tree navigation with mixed types" {
 
     // Build tree using NodeBase pointers
     const parent_node: *Node = @ptrCast(&parent);
-    const child1_node = child1.asNode();
-    const child2_node = child2.asNode();
+    const child1_node: *Node = @ptrCast(child1.asNode());
+    const child2_node: *Node = @ptrCast(child2.asNode());
 
     try parent_node.child_nodes.append(child1_node);
     try parent_node.child_nodes.append(child2_node);

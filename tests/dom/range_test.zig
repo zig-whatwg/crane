@@ -369,7 +369,7 @@ test "Range: isPointInRange returns true for point in range" {
     try range.call_setEnd(@ptrCast(elem), 8);
 
     // Point at offset 5 is within range [2, 8]
-    const result = try range.call_isPointInRange((&elem), 5);
+    const result = try range.call_isPointInRange(@ptrCast(elem), 5);
     try testing.expect(result);
 }
 
@@ -388,7 +388,7 @@ test "Range: isPointInRange returns false for point outside range" {
     try range.call_setEnd(@ptrCast(elem), 8);
 
     // Point at offset 10 is after range [2, 8]
-    const result = try range.call_isPointInRange((&elem), 10);
+    const result = try range.call_isPointInRange(@ptrCast(elem), 10);
     try testing.expect(!result);
 }
 
@@ -407,7 +407,7 @@ test "Range: comparePoint returns -1 for point before range" {
     try range.call_setEnd(@ptrCast(elem), 10);
 
     // Point at offset 2 is before range [5, 10]
-    const result = try range.call_comparePoint((&elem), 2);
+    const result = try range.call_comparePoint(@ptrCast(elem), 2);
     try testing.expectEqual(@as(i16, -1), result);
 }
 
@@ -426,7 +426,7 @@ test "Range: comparePoint returns 0 for point in range" {
     try range.call_setEnd(@ptrCast(elem), 10);
 
     // Point at offset 7 is in range [5, 10]
-    const result = try range.call_comparePoint((&elem), 7);
+    const result = try range.call_comparePoint(@ptrCast(elem), 7);
     try testing.expectEqual(@as(i16, 0), result);
 }
 
@@ -445,7 +445,7 @@ test "Range: comparePoint returns 1 for point after range" {
     try range.call_setEnd(@ptrCast(elem), 10);
 
     // Point at offset 15 is after range [5, 10]
-    const result = try range.call_comparePoint((&elem), 15);
+    const result = try range.call_comparePoint(@ptrCast(elem), 15);
     try testing.expectEqual(@as(i16, 1), result);
 }
 
@@ -648,7 +648,7 @@ test "Range: insertNode removes node from old parent" {
 
     // Node starts in parent1
     const node = try doc.call_createElement("span");
-    try parent1.call_appendChild((&node));
+    try parent1.call_appendChild(@ptrCast(node));
 
     try testing.expectEqual(@as(usize, 1), parent1.child_nodes.size());
 

@@ -131,9 +131,9 @@ test "Range.deleteContents - deletes contained element nodes" {
     _ = try span1.call_appendChild(@ptrCast(textA));
     _ = try span2.call_appendChild(@ptrCast(textB));
     _ = try span3.call_appendChild(@ptrCast(textC));
-    _ = try div.call_appendChild((&span1));
-    _ = try div.call_appendChild((&span2));
-    _ = try div.call_appendChild((&span3));
+    _ = try div.call_appendChild(@ptrCast(span1));
+    _ = try div.call_appendChild(@ptrCast(span2));
+    _ = try div.call_appendChild(@ptrCast(span3));
     _ = try doc.call_appendChild(@ptrCast(div));
 
     var range = try dom.Range.init(allocator, @ptrCast(&doc));
