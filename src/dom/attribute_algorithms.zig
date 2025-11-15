@@ -111,7 +111,7 @@ fn runAttributeChangeSteps(
         // then set element's ID to value
         else {
             // Store the ID value (needs to be heap-allocated for lifetime)
-            const allocator = element.base.allocator;
+            const allocator = element.allocator;
             if (element.unique_id) |old_id| {
                 allocator.free(old_id);
             }
@@ -155,7 +155,7 @@ pub fn appendAttribute(
     element: *Element,
 ) !void {
     // Step 1: Append attribute to element's attribute list
-    try element.attributes.append(attribute);
+    try element.attributes.append(attribute.*);
 
     // Step 2: Set attribute's element to element
     attribute.owner_element = element;

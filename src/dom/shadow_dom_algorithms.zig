@@ -307,9 +307,8 @@ pub fn findSlottables(allocator: Allocator, slot: *anyopaque) !infra.List(*anyop
 
     // Step 6: Otherwise, for each slottable child of host, in tree order:
     const host_node: *Node = @ptrCast(@alignCast(host));
-    const children = host_node.get_childNodes();
 
-    for (children.toSlice()) |child| {
+    for (host_node.child_nodes.items()) |child| {
         // Check if child is a slottable
         if (!slot_helpers.isSlottable(child)) continue;
 

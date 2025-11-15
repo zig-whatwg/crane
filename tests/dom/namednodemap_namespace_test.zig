@@ -125,8 +125,9 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
 
     // Remove by qualified name "xlink:href"
     const removed = try map.call_removeNamedItem("xlink:href");
-    try std.testing.expect(removed != null);
-    try std.testing.expectEqualStrings("xlink:href", try removed.?.get_name());
+    const removed_name = try removed.get_name();
+    defer allocator.free(removed_name);
+    try std.testing.expectEqualStrings("xlink:href", removed_name);
 
     // Verify element no longer has the attribute
     try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
@@ -150,8 +151,9 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
 
     // Remove by local name "id"
     const removed = try map.call_removeNamedItem("id");
-    try std.testing.expect(removed != null);
-    try std.testing.expectEqualStrings("id", try removed.?.get_name());
+    const removed_name = try removed.get_name();
+    defer allocator.free(removed_name);
+    try std.testing.expectEqualStrings("id", removed_name);
 
     // Verify element no longer has the attribute
     try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
@@ -173,9 +175,8 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
 
     const map = try element.get_attributes();
 
-    // Try to remove by wrong qualified name
-    const removed = try map.call_removeNamedItem("svg:href");
-    try std.testing.expect(removed == null);
+    // Try to remove by wrong qualified name (should throw NotFoundError)
+    try std.testing.expectError(error.NotFoundError, map.call_removeNamedItem("svg:href"));
 
     // Verify element still has the attribute
     try std.testing.expectEqual(@as(usize, 1), element.attributes.toSlice().len);
@@ -197,16 +198,14 @@ test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
 
     const map = try element.get_attributes();
 
-    // Try to remove by local name only (should fail)
-    const removed1 = try map.call_removeNamedItem("href");
-    try std.testing.expect(removed1 == null);
+    // Try to remove by local name only (should throw NotFoundError)
+    try std.testing.expectError(error.NotFoundError, map.call_removeNamedItem("href"));
 
     // Verify attribute still exists
     try std.testing.expectEqual(@as(usize, 1), element.attributes.toSlice().len);
 
     // Remove by full qualified name (should succeed)
-    const removed2 = try map.call_removeNamedItem("xlink:href");
-    try std.testing.expect(removed2 != null);
+    _ = try map.call_removeNamedItem("xlink:href");
 
     // Verify element no longer has the attribute
     try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
