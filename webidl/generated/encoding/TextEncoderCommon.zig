@@ -93,6 +93,20 @@ pub const TextEncoderCommon = struct {
         .name = "TextEncoderCommon",
         .kind = .mixin,
     };
+
+    // ========================================================================
+    // Methods
+    // ========================================================================
+
+    /// Get the encoding name
+    /// WebIDL readonly attribute: encoding
+    pub fn get_encoding(self: *const TextEncoderCommon) []const u8 {
+        const self_parent = self;
+
+        return self_parent.encoding;
+    
+    }
+
 };
 
 

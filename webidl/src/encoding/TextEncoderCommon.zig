@@ -38,4 +38,10 @@ pub const TextEncoderCommon = webidl.mixin(struct {
     ///
     /// This is a readonly attribute - set during construction and never changes.
     encoding: []const u8,
+
+    /// Get the encoding name
+    /// WebIDL readonly attribute: encoding
+    pub fn get_encoding(self: *const @This()) []const u8 {
+        return self.encoding;
+    }
 });

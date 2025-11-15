@@ -57,4 +57,22 @@ pub const TextDecoderCommon = webidl.mixin(struct {
     ///
     /// This is a readonly attribute - set during construction and never changes.
     ignoreBOM: webidl.boolean,
+
+    /// Get the encoding name
+    /// WebIDL readonly attribute: encoding
+    pub fn get_encoding(self: *const @This()) []const u8 {
+        return self.encoding;
+    }
+
+    /// Get the fatal error mode flag
+    /// WebIDL readonly attribute: fatal
+    pub fn get_fatal(self: *const @This()) bool {
+        return self.fatal;
+    }
+
+    /// Get the BOM handling flag
+    /// WebIDL readonly attribute: ignoreBOM
+    pub fn get_ignoreBOM(self: *const @This()) bool {
+        return self.ignoreBOM;
+    }
 });

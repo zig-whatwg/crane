@@ -189,6 +189,33 @@ pub const TextDecoderStream = struct {
     
     }
 
+    /// Get the encoding name
+    /// WebIDL readonly attribute: encoding
+    pub fn get_encoding(self: *const TextDecoderStream) []const u8 {
+        const self_parent = self;
+
+        return self_parent.encoding;
+    
+    }
+
+    /// Get the fatal error mode flag
+    /// WebIDL readonly attribute: fatal
+    pub fn get_fatal(self: *const TextDecoderStream) bool {
+        const self_parent = self;
+
+        return self_parent.fatal;
+    
+    }
+
+    /// Get the BOM handling flag
+    /// WebIDL readonly attribute: ignoreBOM
+    pub fn get_ignoreBOM(self: *const TextDecoderStream) bool {
+        const self_parent = self;
+
+        return self_parent.ignoreBOM;
+    
+    }
+
     /// readable attribute getter
     /// 
     /// IDL: readonly attribute ReadableStream readable;
