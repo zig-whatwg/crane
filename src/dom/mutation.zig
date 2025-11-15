@@ -178,7 +178,14 @@ fn runInsertionSteps(node: anytype) void {
 /// Called during the remove algorithm
 fn runRemovingSteps(node: anytype, old_parent: anytype) void {
     const node_ptr: *Node = @ptrCast(node);
-    const old_parent_ptr: ?*Node = if (old_parent) |p| @as(*Node, @ptrCast(p)) else null;
+    // Handle optional or non-optional old_parent
+    const old_parent_ptr: ?*Node = if (@TypeOf(old_parent) == @TypeOf(null))
+        null
+    else if (@typeInfo(@TypeOf(old_parent)) == .optional)
+        if (old_parent) |p| @ptrCast(p) else null
+    else
+        @ptrCast(old_parent);
+
     if (removing_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
             callback(node_ptr, old_parent_ptr);
