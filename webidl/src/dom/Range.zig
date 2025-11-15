@@ -672,7 +672,7 @@ pub const Range = webidl.interface(struct {
 
         // Step 7: If start node is Text, split it
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
+            const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
             const newText = try textNode.call_splitText(self.start_offset);
             referenceNode = &newText.base.base;
         }
@@ -900,7 +900,7 @@ pub const Range = webidl.interface(struct {
         if (self.start_container == self.end_container and
             self.start_container.node_type == Node.TEXT_NODE)
         {
-            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
+            const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
 
             // Return substring from start offset to end offset
@@ -913,7 +913,7 @@ pub const Range = webidl.interface(struct {
 
         // Step 3: If start node is a Text node, append from start offset to end
         if (self.start_container.node_type == Node.TEXT_NODE) {
-            const textNode = self.start_container.asText() orelse return error.InvalidNodeTypeError;
+            const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             if (self.start_offset <= data.len) {
                 const substring = data[self.start_offset..];
@@ -929,7 +929,7 @@ pub const Range = webidl.interface(struct {
         if (self.end_container.node_type == Node.TEXT_NODE and
             self.end_container != self.start_container)
         {
-            const textNode = self.end_container.asText() orelse return error.InvalidNodeTypeError;
+            const textNode = self.end_container.as(Text) orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             if (self.end_offset <= data.len) {
                 const substring = data[0..self.end_offset];
@@ -945,7 +945,7 @@ pub const Range = webidl.interface(struct {
     fn appendContainedTextNodes(self: *const Range, node: *Node, result: *infra.List(u8)) !void {
         // If this node is contained and is a Text node, append its data
         if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
-            const textNode = node.asText() orelse return error.InvalidNodeTypeError;
+            const textNode = node.as(Text) orelse return error.InvalidNodeTypeError;
             const data = textNode.base.get_data();
             try result.appendSlice(data);
             return;

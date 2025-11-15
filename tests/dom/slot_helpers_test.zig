@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const dom = @import("dom");
+const slot_helpers = @import("slot_helpers");
 const Slottable = @import("slottable").Slottable;
 const infra = @import("infra");
 const webidl = @import("webidl");
@@ -39,7 +40,7 @@ test "slot_helpers - isSlottable" {
     defer element.deinit();
 
     // Elements are slottables
-    try std.testing.expect(dom.isSlottable(@ptrCast(&element)));
+    try std.testing.expect(slot_helpers.isSlottable(@ptrCast(&element)));
 }
 test "slot_helpers - isSlot detects slot elements" {
     const allocator = std.testing.allocator;
@@ -51,10 +52,10 @@ test "slot_helpers - isSlot detects slot elements" {
     defer div_elem.deinit();
 
     // Slot element should be detected
-    try std.testing.expect(dom.isSlot(@ptrCast(&slot_elem)));
+    try std.testing.expect(slot_helpers.isSlot(@ptrCast(&slot_elem)));
 
     // Non-slot element should not be detected
-    try std.testing.expect(!dom.isSlot(@ptrCast(&div_elem)));
+    try std.testing.expect(!slot_helpers.isSlot(@ptrCast(&div_elem)));
 }
 test "slot_helpers - getSlottableName" {
     const allocator = std.testing.allocator;
@@ -63,11 +64,11 @@ test "slot_helpers - getSlottableName" {
     defer element.deinit();
 
     // Default slottable name is empty
-    const name = dom.getSlottableName(@ptrCast(&element));
+    const name = slot_helpers.getSlottableName(@ptrCast(&element));
     try std.testing.expectEqualStrings("", name);
 
     // Set a name
     element.Slottable.setSlottableName("header");
-    const name2 = dom.getSlottableName(@ptrCast(&element));
+    const name2 = slot_helpers.getSlottableName(@ptrCast(&element));
     try std.testing.expectEqualStrings("header", name2);
 }

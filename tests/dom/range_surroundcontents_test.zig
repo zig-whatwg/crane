@@ -27,14 +27,14 @@ test "Range.surroundContents - wraps range content in new parent" {
 
     // Wrap in span
     const span = try doc.call_createElement("span");
-    try range.call_surroundContents((&span));
+    try range.call_surroundContents(@ptrCast(span));
 
     // div should contain: "Hello " + span + "" (empty text from split)
     const firstText = try div.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello ", firstText.get_data());
 
     const middleSpan = div.child_nodes.get(1).?;
-    try std.testing.expectEqual((&span), middleSpan);
+    try std.testing.expectEqual(@as(*dom.Node, @ptrCast(span)), middleSpan);
 
     // Span should contain "World"
     const spanText = try span.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
@@ -60,10 +60,10 @@ test "Range.surroundContents - clears existing newParent children" {
     // Create span with existing child
     const span = try doc.call_createElement("span");
     const oldChild = try doc.call_createTextNode("Old");
-    _ = try span.call_appendChild((&oldChild));
+    _ = try span.call_appendChild(@ptrCast(oldChild));
 
     // Old child should be removed
-    try range.call_surroundContents((&span));
+    try range.call_surroundContents(@ptrCast(span));
 
     // Span should only contain "Hello", not "Old"
     try std.testing.expectEqual(@as(usize, 1), span.child_nodes.size());
@@ -91,7 +91,7 @@ test "Range.surroundContents - throws for Document parent" {
     var newDoc = try dom.Document.init(allocator);
     defer newDoc.deinit();
 
-    const result = range.call_surroundContents((&newDoc));
+    const result = range.call_surroundContents(@ptrCast(&newDoc));
     try std.testing.expectError(error.InvalidNodeTypeError, result);
 }
 
@@ -117,6 +117,6 @@ test "Range.surroundContents - throws for DocumentFragment parent" {
     fragment.* = try dom.DocumentFragment.init(allocator);
     defer fragment.deinit();
 
-    const result = range.call_surroundContents((&fragment));
+    const result = range.call_surroundContents(@ptrCast(&fragment));
     try std.testing.expectError(error.InvalidNodeTypeError, result);
 }

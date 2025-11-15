@@ -73,12 +73,12 @@ test "NamedNodeMap: item returns attribute at index" {
 
     const first = map.call_item(0);
     try testing.expect(first != null);
-    try testing.expectEqualStrings("id", first.?.name);
+    try testing.expectEqualStrings("id", first.?.get_name());
     try testing.expectEqualStrings("test", first.?.value);
 
     const second = map.call_item(1);
     try testing.expect(second != null);
-    try testing.expectEqualStrings("class", second.?.name);
+    try testing.expectEqualStrings("class", second.?.get_name());
     try testing.expectEqualStrings("button", second.?.value);
 }
 
@@ -180,7 +180,7 @@ test "NamedNodeMap: is live collection" {
     try testing.expectEqual(@as(u32, 1), map.get_length());
     const attr = map.call_item(0);
     try testing.expect(attr != null);
-    try testing.expectEqualStrings("id", attr.?.name);
+    try testing.expectEqualStrings("id", attr.?.get_name());
 }
 
 test "NamedNodeMap: multiple attributes in order" {
@@ -207,10 +207,10 @@ test "NamedNodeMap: multiple attributes in order" {
     try testing.expectEqual(@as(u32, 4), map.get_length());
 
     // Check order is preserved
-    try testing.expectEqualStrings("type", map.call_item(0).?.name);
-    try testing.expectEqualStrings("name", map.call_item(1).?.name);
-    try testing.expectEqualStrings("placeholder", map.call_item(2).?.name);
-    try testing.expectEqualStrings("required", map.call_item(3).?.name);
+    try testing.expectEqualStrings("type", map.call_item(0).?.get_name());
+    try testing.expectEqualStrings("name", map.call_item(1).?.get_name());
+    try testing.expectEqualStrings("placeholder", map.call_item(2).?.get_name());
+    try testing.expectEqualStrings("required", map.call_item(3).?.get_name());
 }
 
 test "NamedNodeMap: getNamedItem is case-sensitive" {

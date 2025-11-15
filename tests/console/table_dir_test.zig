@@ -13,7 +13,7 @@ test "console.table() - without runtime (fallback)" {
 
     // No runtime - should fall back to logging
     const data = webidl.JSValue{ .string = "test data" };
-    console_obj.call_table(&data, null);
+    console_obj.call_table(data, null);
 
     // Verify message was buffered
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());
@@ -62,7 +62,7 @@ test "console.dir() - without runtime" {
 
     // No runtime - should use simple logging
     const item = webidl.JSValue{ .string = "test object" };
-    console_obj.call_dir(&item, null);
+    console_obj.call_dir(item, null);
 
     // Verify message was buffered
     try std.testing.expectEqual(@as(usize, 1), console_obj.messageBuffer.size());

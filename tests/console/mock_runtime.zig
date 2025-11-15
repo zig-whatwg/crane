@@ -198,7 +198,7 @@ fn mockGetKeys(
 fn mockGetLength(
     ctx: *anyopaque,
     _: webidl.JSValue,
-) anyerror!u32 {
+) anyerror!?u32 {
     const context: *MockRuntimeContext = @ptrCast(@alignCast(ctx));
 
     // If test length was set, return it
