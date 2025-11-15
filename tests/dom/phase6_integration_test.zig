@@ -120,24 +120,24 @@ test "Integration: Text node (CharacterData) operations" {
     }
 
     // Test initial data
-    const initial_data = try text.substringData(0, 5);
+    const initial_data = try text.call_substringData(0, 5);
     defer allocator.free(initial_data);
     try testing.expectEqualStrings("Hello", initial_data);
 
     // Append data
-    try text.appendData(" of DOM!");
+    try text.call_appendData(" of DOM!");
     try testing.expectEqual(@as(usize, 21), text.data.len);
 
     // Insert data
-    try text.insertData(11, " Amazing");
+    try text.call_insertData(11, " Amazing");
     try testing.expectEqual(@as(usize, 29), text.data.len);
 
     // Delete data
-    try text.deleteData(11, 8);
+    try text.call_deleteData(11, 8);
     try testing.expectEqual(@as(usize, 21), text.data.len);
 
     // Replace data
-    try text.replaceData(6, 5, "DOM");
+    try text.call_replaceData(6, 5, "DOM");
     try testing.expectEqual(@as(usize, 19), text.data.len);
 }
 
@@ -154,12 +154,12 @@ test "Integration: Comment node (CharacterData) operations" {
     }
 
     // Test substringData
-    const substr = try comment.substringData(0, 7);
+    const substr = try comment.call_substringData(0, 7);
     defer allocator.free(substr);
     try testing.expectEqualStrings("Initial", substr);
 
     // Test appendData
-    try comment.appendData(" text");
+    try comment.call_appendData(" text");
     try testing.expectEqual(@as(usize, 20), comment.data.len);
 }
 
@@ -179,7 +179,7 @@ test "Integration: ProcessingInstruction extends CharacterData" {
     try testing.expectEqualStrings("xml-stylesheet", pi.target);
 
     // CharacterData operations work
-    try pi.appendData(" type=\"text/css\"");
+    try pi.call_appendData(" type=\"text/css\"");
     const new_data_len = std.mem.len(pi.data);
     try testing.expect(new_data_len > 16);
 }
@@ -197,7 +197,7 @@ test "Integration: CDATASection extends Text extends CharacterData" {
     }
 
     // CharacterData operations work
-    try cdata.appendData(" more");
+    try cdata.call_appendData(" more");
     try testing.expectEqual(@as(usize, 23), cdata.data.len);
 
     // Text operations work (splitText)
@@ -393,13 +393,13 @@ test "Integration: Text.splitText creates new Text node" {
 
     // Original should have "Hello "
     try testing.expectEqual(@as(usize, 6), original_text.data.len);
-    const original_str = try original_text.substringData(0, 6);
+    const original_str = try original_text.call_substringData(0, 6);
     defer allocator.free(original_str);
     try testing.expectEqualStrings("Hello ", original_str);
 
     // New should have "World"
     try testing.expectEqual(@as(usize, 5), new_text.data.len);
-    const new_str = try new_text.substringData(0, 5);
+    const new_str = try new_text.call_substringData(0, 5);
     defer allocator.free(new_str);
     try testing.expectEqualStrings("World", new_str);
 }
