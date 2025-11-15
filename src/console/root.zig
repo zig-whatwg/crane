@@ -8,8 +8,8 @@
 
 const std = @import("std");
 
-// Re-export generated console namespace struct (from webidl/generated/console/console.zig)
-pub const console = @import("console").console;
+// Re-export generated console module (from webidl/generated/console/console.zig)
+pub const console = @import("console");
 
 // Re-export supporting types (from webidl/src/console/types.zig)
 pub const types = @import("types");

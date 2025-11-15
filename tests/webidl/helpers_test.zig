@@ -13,7 +13,7 @@ const Node = @import("dom").Node;
 const Element = @import("dom").Element;
 const ReadableStream = @import("streams").ReadableStream;
 const WritableStream = @import("streams").WritableStream;
-const console = @import("console").console;
+const console = @import("console").console.console;
 // TODO: ParentNode not exported from dom module yet
 // const ParentNode = @import("dom").ParentNode;
 
