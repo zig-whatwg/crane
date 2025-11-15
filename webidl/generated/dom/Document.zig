@@ -1306,7 +1306,7 @@ pub const Document = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
+                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 
                 // Check name

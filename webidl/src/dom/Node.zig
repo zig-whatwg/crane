@@ -9,6 +9,7 @@ const Allocator = std.mem.Allocator;
 const EventTarget = @import("event_target").EventTarget;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
+const DocumentType = @import("document_type").DocumentType;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
 const CharacterData = @import("character_data").CharacterData;
@@ -278,7 +279,6 @@ pub const Node = webidl.interface(struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                const DocumentType = @import("document_type").DocumentType;
                 const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 

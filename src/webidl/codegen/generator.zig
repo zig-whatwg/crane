@@ -644,7 +644,7 @@ fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.Enha
 
     // Generate downcast method for each child type
     for (inheritance_info.children) |child| {
-        // Check if the child type is imported (to avoid undeclared identifier errors)
+        // Check if the child type is imported
         const is_imported = blk: {
             for (enhanced.all_imports) |import| {
                 if (import.is_type and std.mem.eql(u8, import.name, child.class_name)) {
@@ -654,8 +654,9 @@ fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.Enha
             break :blk false;
         };
 
-        // Skip if not imported (would cause compilation error)
-        // TODO: Auto-add imports for child types in downcast helpers
+        // Skip if not imported - we can't generate a helper without the type definition
+        // The import must be added to the source file or optimizer resolution
+        // TODO: Auto-detect and suggest missing imports as compiler hints
         if (!is_imported) continue;
 
         const method_name = try std.fmt.allocPrint(allocator, "as{s}", .{child.class_name});
