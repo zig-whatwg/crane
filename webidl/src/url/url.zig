@@ -703,7 +703,7 @@ pub const URL = webidl.interface(struct {
     /// toJSON() method
     /// Spec: https://url.spec.whatwg.org/#dom-url-tojson (line 1855)
     /// Returns the result of running the href getter on this
-    pub fn toJSON(self: *const URL) ![]const u8 {
+    pub fn call_toJSON(self: *const URL) ![]const u8 {
         return self.href();
     }
 }, .{

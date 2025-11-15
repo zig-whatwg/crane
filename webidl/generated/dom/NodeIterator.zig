@@ -134,7 +134,7 @@ pub const NodeIterator = struct {
 
     /// DOM §6.2 - NodeIterator.nextNode()
     /// Returns the next node in the iteration, or null if none
-    pub fn nextNode(self: *NodeIterator) !?*Node {
+    pub fn call_nextNode(self: *NodeIterator) !?*Node {
 
         return try self.traverse(.next);
     
@@ -142,7 +142,7 @@ pub const NodeIterator = struct {
 
     /// DOM §6.2 - NodeIterator.previousNode()
     /// Returns the previous node in the iteration, or null if none
-    pub fn previousNode(self: *NodeIterator) !?*Node {
+    pub fn call_previousNode(self: *NodeIterator) !?*Node {
 
         return try self.traverse(.previous);
     
@@ -150,7 +150,7 @@ pub const NodeIterator = struct {
 
     /// DOM §6.2 - NodeIterator.detach()
     /// Legacy method - does nothing (functionality removed, kept for compatibility)
-    pub fn detach(self: *NodeIterator) void {
+    pub fn call_detach(self: *NodeIterator) void {
 
         _ = self;
         // Do nothing per spec

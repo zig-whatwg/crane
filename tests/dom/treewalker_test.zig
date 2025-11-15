@@ -33,7 +33,7 @@ test "TreeWalker - parentNode moves to filtered parent" {
     walker.set_currentNode(@ptrCast(&grandchild));
 
     // Move to parent
-    const parent = try walker.parentNode();
+    const parent = try walker.call_parentNode();
     try std.testing.expect(parent == @as(*Node, @ptrCast(&child)));
     try std.testing.expect(walker.get_currentNode() == @as(*Node, @ptrCast(&child)));
 }
@@ -56,7 +56,7 @@ test "TreeWalker - firstChild moves to first filtered child" {
     var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer walker.deinit();
 
-    const first = try walker.firstChild();
+    const first = try walker.call_firstChild();
     try std.testing.expect(first == @as(*Node, @ptrCast(&child1)));
 }
 
@@ -78,7 +78,7 @@ test "TreeWalker - lastChild moves to last filtered child" {
     var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ALL, null);
     defer walker.deinit();
 
-    const last = try walker.lastChild();
+    const last = try walker.call_lastChild();
     try std.testing.expect(last == @as(*Node, @ptrCast(&child2)));
 }
 
@@ -105,7 +105,7 @@ test "TreeWalker - nextSibling moves to next filtered sibling" {
     defer walker.deinit();
     walker.set_currentNode(@ptrCast(&child1));
 
-    const next = try walker.nextSibling();
+    const next = try walker.call_nextSibling();
     try std.testing.expect(next == @as(*Node, @ptrCast(&child2)));
 }
 
@@ -128,7 +128,7 @@ test "TreeWalker - previousSibling moves to previous filtered sibling" {
     defer walker.deinit();
     walker.set_currentNode(@ptrCast(&child2));
 
-    const prev = try walker.previousSibling();
+    const prev = try walker.call_previousSibling();
     try std.testing.expect(prev == @as(*Node, @ptrCast(&child1)));
 }
 
@@ -155,16 +155,16 @@ test "TreeWalker - nextNode traverses in tree order" {
     defer walker.deinit();
 
     // Traverse: root -> child1 -> grandchild -> child2
-    const n1 = try walker.nextNode();
+    const n1 = try walker.call_nextNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&child1)));
 
-    const n2 = try walker.nextNode();
+    const n2 = try walker.call_nextNode();
     try std.testing.expect(n2 == @as(*Node, @ptrCast(&grandchild)));
 
-    const n3 = try walker.nextNode();
+    const n3 = try walker.call_nextNode();
     try std.testing.expect(n3 == @as(*Node, @ptrCast(&child2)));
 
-    const n4 = try walker.nextNode();
+    const n4 = try walker.call_nextNode();
     try std.testing.expect(n4 == null);
 }
 
@@ -187,13 +187,13 @@ test "TreeWalker - previousNode traverses in reverse order" {
     defer walker.deinit();
     walker.set_currentNode(@ptrCast(&child2));
 
-    const n1 = try walker.previousNode();
+    const n1 = try walker.call_previousNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&child1)));
 
-    const n2 = try walker.previousNode();
+    const n2 = try walker.call_previousNode();
     try std.testing.expect(n2 == @as(*Node, @ptrCast(&root)));
 
-    const n3 = try walker.previousNode();
+    const n3 = try walker.call_previousNode();
     try std.testing.expect(n3 == null);
 }
 
@@ -220,13 +220,13 @@ test "TreeWalker - whatToShow filters by node type" {
     var walker = try TreeWalker.init(allocator, @ptrCast(&root), NodeFilter.SHOW_ELEMENT, null);
     defer walker.deinit();
 
-    const n1 = try walker.nextNode();
+    const n1 = try walker.call_nextNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&element1)));
 
-    const n2 = try walker.nextNode();
+    const n2 = try walker.call_nextNode();
     try std.testing.expect(n2 == @as(*Node, @ptrCast(&element2)));
 
-    const n3 = try walker.nextNode();
+    const n3 = try walker.call_nextNode();
     try std.testing.expect(n3 == null);
 }
 
@@ -258,10 +258,10 @@ test "TreeWalker - filter callback with FILTER_SKIP descends" {
     defer walker.deinit();
 
     // Should skip text but include elements
-    const n1 = try walker.nextNode();
+    const n1 = try walker.call_nextNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&element)));
 
-    const n2 = try walker.nextNode();
+    const n2 = try walker.call_nextNode();
     try std.testing.expect(n2 == null);
 }
 
@@ -298,7 +298,7 @@ test "TreeWalker - filter callback with FILTER_REJECT skips subtree" {
     defer walker.deinit();
 
     // Should reject text and skip its children
-    const n1 = try walker.nextNode();
+    const n1 = try walker.call_nextNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&element)));
 }
 
@@ -327,7 +327,7 @@ test "TreeWalker - currentNode setter changes position" {
     try std.testing.expect(walker.get_currentNode() == @as(*Node, @ptrCast(&child2)));
 
     // Previous from child2 should get child1
-    const prev = try walker.previousNode();
+    const prev = try walker.call_previousNode();
     try std.testing.expect(prev == @as(*Node, @ptrCast(&child1)));
 }
 
@@ -363,7 +363,7 @@ test "TreeWalker - parentNode at root returns null" {
     defer walker.deinit();
 
     // At root, parentNode returns null
-    const parent = try walker.parentNode();
+    const parent = try walker.call_parentNode();
     try std.testing.expect(parent == null);
 }
 
@@ -377,7 +377,7 @@ test "TreeWalker - nextSibling at root returns null" {
     defer walker.deinit();
 
     // At root, nextSibling returns null (root has no siblings in traversal)
-    const sibling = try walker.nextSibling();
+    const sibling = try walker.call_nextSibling();
     try std.testing.expect(sibling == null);
 }
 
@@ -414,10 +414,10 @@ test "TreeWalker - complex nested traversal" {
     // Full traversal: root -> a -> a1 -> a2 -> b -> b1
     const nodes = [_]*Node{ @ptrCast(&a), @ptrCast(&a1), @ptrCast(&a2), @ptrCast(&b), @ptrCast(&b1) };
     for (nodes) |expected| {
-        const node = try walker.nextNode();
+        const node = try walker.call_nextNode();
         try std.testing.expect(node == expected);
     }
 
-    const end = try walker.nextNode();
+    const end = try walker.call_nextNode();
     try std.testing.expect(end == null);
 }

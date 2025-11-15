@@ -62,7 +62,7 @@ test "URL.toJSON" {
     var url = try URL.init(allocator, "https://json.example", null);
     defer url.deinit();
 
-    const json = try url.toJSON();
+    const json = try url.call_toJSON();
     defer allocator.free(json);
 
     try std.testing.expect(std.mem.eql(u8, json, "https://json.example/"));
@@ -100,14 +100,13 @@ test "URLSearchParams - initialize with string" {
 
 test "URLSearchParams - entries iterator" {
     const allocator = std.testing.allocator;
-    const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
-    
+
     var params = try URLSearchParams.initWithString(allocator, "a=1&b=2&a=3");
     defer params.deinit();
-    
+
     var iter = params.entries();
     var count: usize = 0;
-    
+
     while (iter.next()) |entry| {
         count += 1;
         if (count == 1) {
@@ -121,59 +120,56 @@ test "URLSearchParams - entries iterator" {
             try std.testing.expectEqualStrings("3", entry.value);
         }
     }
-    
+
     try std.testing.expectEqual(@as(usize, 3), count);
 }
 
 test "URLSearchParams - keys iterator" {
     const allocator = std.testing.allocator;
-    const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
-    
+
     var params = try URLSearchParams.initWithString(allocator, "a=1&b=2&c=3");
     defer params.deinit();
-    
+
     var iter = params.keys();
-    
+
     const key1 = iter.next().?;
     try std.testing.expectEqualStrings("a", key1);
-    
+
     const key2 = iter.next().?;
     try std.testing.expectEqualStrings("b", key2);
-    
+
     const key3 = iter.next().?;
     try std.testing.expectEqualStrings("c", key3);
-    
+
     try std.testing.expect(iter.next() == null);
 }
 
 test "URLSearchParams - values iterator" {
     const allocator = std.testing.allocator;
-    const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
-    
+
     var params = try URLSearchParams.initWithString(allocator, "a=1&b=2&c=3");
     defer params.deinit();
-    
+
     var iter = params.values();
-    
+
     const val1 = iter.next().?;
     try std.testing.expectEqualStrings("1", val1);
-    
+
     const val2 = iter.next().?;
     try std.testing.expectEqualStrings("2", val2);
-    
+
     const val3 = iter.next().?;
     try std.testing.expectEqualStrings("3", val3);
-    
+
     try std.testing.expect(iter.next() == null);
 }
 
 test "URLSearchParams - forEach" {
     const allocator = std.testing.allocator;
-    const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
-    
+
     var params = try URLSearchParams.initWithString(allocator, "a=1&b=2");
     defer params.deinit();
-    
+
     const TestContext = struct {
         var call_count: usize = 0;
         fn callback(value: []const u8, name: []const u8, _: *const URLSearchParams) void {
@@ -187,7 +183,7 @@ test "URLSearchParams - forEach" {
             }
         }
     };
-    
+
     TestContext.call_count = 0;
     params.forEach(TestContext.callback);
     try std.testing.expectEqual(@as(usize, 2), TestContext.call_count);
@@ -195,20 +191,19 @@ test "URLSearchParams - forEach" {
 
 test "URLSearchParams - default iterator (same as entries)" {
     const allocator = std.testing.allocator;
-    const URLSearchParams = @import("../webidl/src/url/URLSearchParams.zig").URLSearchParams;
-    
+
     var params = try URLSearchParams.initWithString(allocator, "x=100&y=200");
     defer params.deinit();
-    
+
     var iter = params.iterator();
-    
+
     const entry1 = iter.next().?;
     try std.testing.expectEqualStrings("x", entry1.name);
     try std.testing.expectEqualStrings("100", entry1.value);
-    
+
     const entry2 = iter.next().?;
     try std.testing.expectEqualStrings("y", entry2.name);
     try std.testing.expectEqualStrings("200", entry2.value);
-    
+
     try std.testing.expect(iter.next() == null);
 }

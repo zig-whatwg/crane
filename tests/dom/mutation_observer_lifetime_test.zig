@@ -44,7 +44,7 @@ test "MutationObserver: node list stores weak references (doesn't own nodes)" {
         .characterDataOldValue = null,
         .attributeFilter = null,
     };
-    try observer.observe(@ptrCast(elem), options);
+    try observer.call_observe(@ptrCast(elem), options);
 
     // Verify node is in observation list
     try std.testing.expect(observer.isObserving(@ptrCast(elem)));
@@ -55,7 +55,7 @@ test "MutationObserver: node list stores weak references (doesn't own nodes)" {
     // 3. Call unobserveNode() before freeing the node
     
     // For this test, we disconnect before the node is freed (by defer)
-    observer.disconnect();
+    observer.call_disconnect();
     
     // Verify node is no longer observed
     try std.testing.expect(!observer.isObserving(@ptrCast(elem)));
@@ -98,21 +98,21 @@ test "MutationObserver: isObserving checks if node is observed" {
         .characterDataOldValue = null,
         .attributeFilter = null,
     };
-    try observer.observe(@ptrCast(elem1), options);
+    try observer.call_observe(@ptrCast(elem1), options);
 
     // Only elem1 should be observed
     try std.testing.expect(observer.isObserving(@ptrCast(elem1)));
     try std.testing.expect(!observer.isObserving(@ptrCast(elem2)));
 
     // Observe second element
-    try observer.observe(@ptrCast(elem2), options);
+    try observer.call_observe(@ptrCast(elem2), options);
 
     // Both should be observed
     try std.testing.expect(observer.isObserving(@ptrCast(elem1)));
     try std.testing.expect(observer.isObserving(@ptrCast(elem2)));
 
     // Disconnect to clean up before nodes are freed
-    observer.disconnect();
+    observer.call_disconnect();
 }
 
 test "MutationObserver: unobserveNode removes specific node" {
@@ -148,8 +148,8 @@ test "MutationObserver: unobserveNode removes specific node" {
         .characterDataOldValue = null,
         .attributeFilter = null,
     };
-    try observer.observe(@ptrCast(elem1), options);
-    try observer.observe(@ptrCast(elem2), options);
+    try observer.call_observe(@ptrCast(elem1), options);
+    try observer.call_observe(@ptrCast(elem2), options);
 
     // Both observed
     try std.testing.expect(observer.isObserving(@ptrCast(elem1)));
@@ -199,15 +199,15 @@ test "MutationObserver: disconnect removes all observations" {
         .characterDataOldValue = null,
         .attributeFilter = null,
     };
-    try observer.observe(@ptrCast(elem1), options);
-    try observer.observe(@ptrCast(elem2), options);
+    try observer.call_observe(@ptrCast(elem1), options);
+    try observer.call_observe(@ptrCast(elem2), options);
 
     // Both observed
     try std.testing.expect(observer.isObserving(@ptrCast(elem1)));
     try std.testing.expect(observer.isObserving(@ptrCast(elem2)));
 
     // Disconnect removes all
-    observer.disconnect();
+    observer.call_disconnect();
 
     // Neither should be observed
     try std.testing.expect(!observer.isObserving(@ptrCast(elem1)));
@@ -257,16 +257,16 @@ test "MutationObserver: node list length via getNodeList" {
         .attributeFilter = null,
     };
     
-    try observer.observe(@ptrCast(elem1), options);
+    try observer.call_observe(@ptrCast(elem1), options);
     try std.testing.expectEqual(@as(usize, 1), observer.getNodeList().len);
 
-    try observer.observe(@ptrCast(elem2), options);
+    try observer.call_observe(@ptrCast(elem2), options);
     try std.testing.expectEqual(@as(usize, 2), observer.getNodeList().len);
 
-    try observer.observe(@ptrCast(elem3), options);
+    try observer.call_observe(@ptrCast(elem3), options);
     try std.testing.expectEqual(@as(usize, 3), observer.getNodeList().len);
 
     // Disconnect clears all
-    observer.disconnect();
+    observer.call_disconnect();
     try std.testing.expectEqual(@as(usize, 0), observer.getNodeList().len);
 }

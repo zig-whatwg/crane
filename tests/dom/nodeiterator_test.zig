@@ -36,20 +36,20 @@ test "NodeIterator - basic forward iteration" {
     defer iterator.deinit();
 
     // Iterator starts before root, so first nextNode() returns root
-    const node1 = try iterator.nextNode();
+    const node1 = try iterator.call_nextNode();
     try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
-    const node2 = try iterator.nextNode();
+    const node2 = try iterator.call_nextNode();
     try std.testing.expect(node2 == @as(*Node, @ptrCast(&child1)));
 
-    const node3 = try iterator.nextNode();
+    const node3 = try iterator.call_nextNode();
     try std.testing.expect(node3 == @as(*Node, @ptrCast(&child2)));
 
-    const node4 = try iterator.nextNode();
+    const node4 = try iterator.call_nextNode();
     try std.testing.expect(node4 == @as(*Node, @ptrCast(&child3)));
 
     // No more nodes
-    const node5 = try iterator.nextNode();
+    const node5 = try iterator.call_nextNode();
     try std.testing.expect(node5 == null);
 }
 
@@ -73,7 +73,7 @@ test "NodeIterator - basic backward iteration" {
     defer iterator.deinit();
 
     // First call to previousNode() returns null (already before root)
-    const node1 = try iterator.previousNode();
+    const node1 = try iterator.call_previousNode();
     try std.testing.expect(node1 == null);
 }
 
@@ -96,12 +96,12 @@ test "NodeIterator - forward then backward" {
     defer iterator.deinit();
 
     // Go forward to child1
-    _ = try iterator.nextNode(); // root
-    const forward = try iterator.nextNode(); // child1
+    _ = try iterator.call_nextNode(); // root
+    const forward = try iterator.call_nextNode(); // child1
     try std.testing.expect(forward == @as(*Node, @ptrCast(&child1)));
 
     // Go backward
-    const backward = try iterator.previousNode(); // back to root
+    const backward = try iterator.call_previousNode(); // back to root
     try std.testing.expect(backward == @as(*Node, @ptrCast(&root)));
 }
 
@@ -129,16 +129,16 @@ test "NodeIterator - whatToShow SHOW_ELEMENT" {
     defer iterator.deinit();
 
     // Should get root, element1, element2 (skipping text)
-    const node1 = try iterator.nextNode();
+    const node1 = try iterator.call_nextNode();
     try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
-    const node2 = try iterator.nextNode();
+    const node2 = try iterator.call_nextNode();
     try std.testing.expect(node2 == @as(*Node, @ptrCast(&element1)));
 
-    const node3 = try iterator.nextNode();
+    const node3 = try iterator.call_nextNode();
     try std.testing.expect(node3 == @as(*Node, @ptrCast(&element2)));
 
-    const node4 = try iterator.nextNode();
+    const node4 = try iterator.call_nextNode();
     try std.testing.expect(node4 == null);
 }
 
@@ -166,10 +166,10 @@ test "NodeIterator - whatToShow SHOW_TEXT" {
     defer iterator.deinit();
 
     // Should get only text node
-    const node1 = try iterator.nextNode();
+    const node1 = try iterator.call_nextNode();
     try std.testing.expect(node1 == @as(*Node, @ptrCast(&text)));
 
-    const node2 = try iterator.nextNode();
+    const node2 = try iterator.call_nextNode();
     try std.testing.expect(node2 == null);
 }
 
@@ -194,10 +194,10 @@ test "NodeIterator - filter callback accepts all" {
     defer iterator.deinit();
 
     // Should iterate all nodes
-    const node1 = try iterator.nextNode();
+    const node1 = try iterator.call_nextNode();
     try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
-    const node2 = try iterator.nextNode();
+    const node2 = try iterator.call_nextNode();
     try std.testing.expect(node2 == @as(*Node, @ptrCast(&child)));
 }
 
@@ -233,13 +233,13 @@ test "NodeIterator - filter callback skips nodes" {
     defer iterator.deinit();
 
     // Should skip text nodes
-    const node1 = try iterator.nextNode();
+    const node1 = try iterator.call_nextNode();
     try std.testing.expect(node1 == @as(*Node, @ptrCast(&root)));
 
-    const node2 = try iterator.nextNode();
+    const node2 = try iterator.call_nextNode();
     try std.testing.expect(node2 == @as(*Node, @ptrCast(&element)));
 
-    const node3 = try iterator.nextNode();
+    const node3 = try iterator.call_nextNode();
     try std.testing.expect(node3 == null);
 }
 
@@ -253,10 +253,10 @@ test "NodeIterator - detach does nothing" {
     defer iterator.deinit();
 
     // detach() is a no-op
-    iterator.detach();
+    iterator.call_detach();
 
     // Iterator still works after detach
-    const node = try iterator.nextNode();
+    const node = try iterator.call_nextNode();
     try std.testing.expect(node == @as(*Node, @ptrCast(&root)));
 }
 
@@ -307,18 +307,18 @@ test "NodeIterator - nested tree traversal" {
     defer iterator.deinit();
 
     // Traverse in tree order: root, child1, grandchild, child2
-    const n1 = try iterator.nextNode();
+    const n1 = try iterator.call_nextNode();
     try std.testing.expect(n1 == @as(*Node, @ptrCast(&root)));
 
-    const n2 = try iterator.nextNode();
+    const n2 = try iterator.call_nextNode();
     try std.testing.expect(n2 == @as(*Node, @ptrCast(&child1)));
 
-    const n3 = try iterator.nextNode();
+    const n3 = try iterator.call_nextNode();
     try std.testing.expect(n3 == @as(*Node, @ptrCast(&grandchild)));
 
-    const n4 = try iterator.nextNode();
+    const n4 = try iterator.call_nextNode();
     try std.testing.expect(n4 == @as(*Node, @ptrCast(&child2)));
 
-    const n5 = try iterator.nextNode();
+    const n5 = try iterator.call_nextNode();
     try std.testing.expect(n5 == null);
 }

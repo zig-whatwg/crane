@@ -58,7 +58,7 @@ test "MutationObserver - takeRecords returns empty array initially" {
     var observer = try MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
-    const records = try observer.takeRecords();
+    const records = try observer.call_takeRecords();
     defer allocator.free(records);
 
     try std.testing.expectEqual(@as(usize, 0), records.len);
@@ -74,7 +74,7 @@ test "MutationObserver - disconnect clears state" {
     var observer = try MutationObserver.init(allocator, callback);
     defer observer.deinit();
 
-    observer.disconnect();
+    observer.call_disconnect();
 
     try std.testing.expectEqual(@as(usize, 0), observer.getRecordQueue().len);
 }
@@ -254,7 +254,7 @@ test "MutationObserver - childList mutation records queued on insert" {
     try std.testing.expect(observer.getRecordQueue().len > 0);
 
     // Take records to verify
-    const records = try observer.takeRecords();
+    const records = try observer.call_takeRecords();
     defer allocator.free(records);
 
     try std.testing.expectEqual(@as(usize, 1), records.len);
@@ -301,7 +301,7 @@ test "MutationObserver - childList mutation records queued on remove" {
     mutation.remove(child1.asNode());
 
     // Verify record was queued
-    const records = try observer.takeRecords();
+    const records = try observer.call_takeRecords();
     defer allocator.free(records);
 
     try std.testing.expectEqual(@as(usize, 1), records.len);
@@ -349,7 +349,7 @@ test "MutationObserver - multiple mutations queue multiple records" {
     _ = try mutation.insert(child2.asNode(), parent.asNode(), null);
 
     // Verify multiple records were queued
-    const records = try observer.takeRecords();
+    const records = try observer.call_takeRecords();
     defer allocator.free(records);
 
     try std.testing.expectEqual(@as(usize, 2), records.len);

@@ -134,7 +134,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.parentNode()
     /// Move to parent node if it passes filter, return null otherwise
-    pub fn parentNode(self: *TreeWalker) !?*Node {
+    pub fn call_parentNode(self: *TreeWalker) !?*Node {
 
         const dom = @import("dom");
 
@@ -162,7 +162,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.firstChild()
     /// Move to first child that passes filter
-    pub fn firstChild(self: *TreeWalker) !?*Node {
+    pub fn call_firstChild(self: *TreeWalker) !?*Node {
 
         return try self.traverseChildren(.first);
     
@@ -170,7 +170,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.lastChild()
     /// Move to last child that passes filter
-    pub fn lastChild(self: *TreeWalker) !?*Node {
+    pub fn call_lastChild(self: *TreeWalker) !?*Node {
 
         return try self.traverseChildren(.last);
     
@@ -178,7 +178,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.previousSibling()
     /// Move to previous sibling that passes filter
-    pub fn previousSibling(self: *TreeWalker) !?*Node {
+    pub fn call_previousSibling(self: *TreeWalker) !?*Node {
 
         return try self.traverseSiblings(.previous);
     
@@ -186,7 +186,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.nextSibling()
     /// Move to next sibling that passes filter
-    pub fn nextSibling(self: *TreeWalker) !?*Node {
+    pub fn call_nextSibling(self: *TreeWalker) !?*Node {
 
         return try self.traverseSiblings(.next);
     
@@ -194,7 +194,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.previousNode()
     /// Move to previous node in tree order that passes filter
-    pub fn previousNode(self: *TreeWalker) !?*Node {
+    pub fn call_previousNode(self: *TreeWalker) !?*Node {
 
         const dom = @import("dom");
 
@@ -256,7 +256,7 @@ pub const TreeWalker = struct {
 
     /// DOM §6.3 - TreeWalker.nextNode()
     /// Move to next node in tree order that passes filter
-    pub fn nextNode(self: *TreeWalker) !?*Node {
+    pub fn call_nextNode(self: *TreeWalker) !?*Node {
 
         const dom = @import("dom");
 

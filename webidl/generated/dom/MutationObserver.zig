@@ -116,7 +116,7 @@ pub const MutationObserver = struct {
     /// any mutations based on the criteria given by options (an object).
     /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-observe
-    pub fn observe(self: *MutationObserver, target: *Node, options: MutationObserverInit) !void {
+    pub fn call_observe(self: *MutationObserver, target: *Node, options: MutationObserverInit) !void {
 
         // Step 1: If either options["attributeOldValue"] or options["attributeFilter"]
         // exists, and options["attributes"] does not exist, then set
@@ -202,7 +202,7 @@ pub const MutationObserver = struct {
     /// is used again, observer's callback will not be invoked.
     /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-disconnect
-    pub fn disconnect(self: *MutationObserver) void {
+    pub fn call_disconnect(self: *MutationObserver) void {
 
         // Step 1: For each node of this's node list, remove any registered
         // observer from node's registered observer list for which this is
@@ -221,7 +221,7 @@ pub const MutationObserver = struct {
     /// Empties the record queue and returns what was in there.
     /// 
     /// Spec: https://dom.spec.whatwg.org/#dom-mutationobserver-takerecords
-    pub fn takeRecords(self: *MutationObserver) ![]MutationRecord {
+    pub fn call_takeRecords(self: *MutationObserver) ![]MutationRecord {
 
         // Step 1: Let records be a clone of this's record queue.
         const allocator = self.allocator;

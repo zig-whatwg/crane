@@ -289,7 +289,7 @@ pub fn notifyMutationObservers(allocator: Allocator) !void {
     // Step 6: For each mo of notifySet
     for (notify_set.items()) |mo| {
         // Step 6.1: Let records be a clone of mo's record queue
-        const records = try mo.takeRecords();
+        const records = try mo.call_takeRecords();
         defer allocator.free(records);
 
         // Step 6.2: Empty mo's record queue (done by takeRecords())
@@ -329,5 +329,3 @@ fn removeTransientObservers(node: *Node, observer: *MutationObserver) void {
 }
 
 // Tests
-
-
