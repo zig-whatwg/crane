@@ -276,7 +276,7 @@ pub const Element = struct {
         // Step 2: Remove from attribute list
         for (self.attributes.toSlice(), 0..) |*attr, i| {
             if (attr == attr_to_remove) {
-                _ = self.attributes.orderedRemove(i);
+                _ = self.attributes.remove(i);
                 break;
             }
         }
@@ -3148,7 +3148,7 @@ pub const Element = struct {
         var i: usize = 0;
         while (i < self_parent.registered_observers.toSlice().len) {
             if (self_parent.registered_observers.toSlice()[i].observer == observer) {
-                _ = self_parent.registered_observers.orderedRemove(i);
+                _ = self_parent.registered_observers.remove(i);
                 // Don't increment i, we just shifted everything down
             } else {
                 i += 1;

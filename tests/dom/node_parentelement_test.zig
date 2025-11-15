@@ -3,8 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
-
 // Type aliases
 const Document = dom.Document;
 const Element = dom.Element;
@@ -74,11 +72,11 @@ test "Node.parentElement - text node with element parent" {
     var parent = try Element.init(allocator, "p");
     defer parent.deinit();
 
-    var text_node = try Text.create(allocator, "Hello");
+    var text_node = try Text.init(allocator);
     defer text_node.deinit();
 
     const parent_node: *Node = @ptrCast(&parent);
-    const text_as_node = &text_node;
+    const text_as_node: *Node = @ptrCast(&text_node);
 
     // Append text to element
     _ = try parent_node.call_appendChild(text_as_node);

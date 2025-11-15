@@ -1278,7 +1278,7 @@ pub const Node = webidl.interface(struct {
         var i: usize = 0;
         while (i < self.registered_observers.toSlice().len) {
             if (self.registered_observers.toSlice()[i].observer == observer) {
-                _ = self.registered_observers.orderedRemove(i);
+                _ = self.registered_observers.remove(i);
                 // Don't increment i, we just shifted everything down
             } else {
                 i += 1;

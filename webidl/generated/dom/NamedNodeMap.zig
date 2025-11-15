@@ -256,7 +256,7 @@ pub const NamedNodeMap = struct {
         // Step 2: Remove attribute from element's attribute list
         for (element.attributes.toSliceMut(), 0..) |*attr, i| {
             if (attr == attribute) {
-                _ = element.attributes.orderedRemove(i);
+                _ = element.attributes.remove(i);
                 break;
             }
         }
@@ -336,7 +336,7 @@ pub const NamedNodeMap = struct {
 
             if (std.mem.eql(u8, attr_qualified_name, qualified_name)) {
                 // Step 2: If attr is non-null, remove attr
-                const removed = element.attributes.orderedRemove(i);
+                const removed = element.attributes.remove(i);
                 removed.owner_element = null;
 
                 // Step 3: Return attr

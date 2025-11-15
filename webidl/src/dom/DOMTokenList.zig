@@ -116,7 +116,7 @@ pub const DOMTokenList = webidl.interface(struct {
             // Find and remove token
             for (self.tokens.items(), 0..) |t, i| {
                 if (std.mem.eql(u8, t, token)) {
-                    const removed = self.tokens.orderedRemove(i);
+                    const removed = self.tokens.remove(i);
                     self.allocator.free(removed);
                     break;
                 }
@@ -143,7 +143,7 @@ pub const DOMTokenList = webidl.interface(struct {
                 // Remove token
                 for (self.tokens.items(), 0..) |t, i| {
                     if (std.mem.eql(u8, t, token)) {
-                        const removed = self.tokens.orderedRemove(i);
+                        const removed = self.tokens.remove(i);
                         self.allocator.free(removed);
                         break;
                     }
