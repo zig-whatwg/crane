@@ -37,25 +37,25 @@ test "Range removal - start in removed, end in kept" {
 
     // Create parent element
     const parent = try doc_ptr.call_createElement("parent");
-    defer parent.deinit(allocator);
+    defer parent.deinit();
 
     // Create children
     const a = try doc_ptr.call_createElement("a");
-    defer a.deinit(allocator);
+    defer a.deinit();
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
-    defer a_text.deinit(allocator);
+    defer a_text.deinit();
     try dom.mutation.append(a_text, a);
 
     const b = try doc_ptr.call_createElement("b");
-    defer b.deinit(allocator);
+    defer b.deinit();
     const b_text = try dom.NodeBase.createText(allocator, "remove", doc_ptr);
-    defer b_text.deinit(allocator);
+    defer b_text.deinit();
     try dom.mutation.append(b_text, b);
 
     const c = try doc_ptr.call_createElement("c");
-    defer c.deinit(allocator);
+    defer c.deinit();
     const c_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
-    defer c_text.deinit(allocator);
+    defer c_text.deinit();
     try dom.mutation.append(c_text, c);
 
     // Build tree
@@ -115,22 +115,22 @@ test "Range removal - fully contained in removed subtree" {
 
     // Create parent element
     const parent = try doc_ptr.call_createElement("parent");
-    defer parent.deinit(allocator);
+    defer parent.deinit();
 
     // Create removed subtree
     const removed = try doc_ptr.call_createElement("removed");
-    defer removed.deinit(allocator);
+    defer removed.deinit();
 
     const child1 = try doc_ptr.call_createElement("child1");
-    defer child1.deinit(allocator);
+    defer child1.deinit();
     const child1_text = try dom.NodeBase.createText(allocator, "start", doc_ptr);
-    defer child1_text.deinit(allocator);
+    defer child1_text.deinit();
     try dom.mutation.append(child1_text, child1);
 
     const child2 = try doc_ptr.call_createElement("child2");
-    defer child2.deinit(allocator);
+    defer child2.deinit();
     const child2_text = try dom.NodeBase.createText(allocator, "end", doc_ptr);
-    defer child2_text.deinit(allocator);
+    defer child2_text.deinit();
     try dom.mutation.append(child2_text, child2);
 
     // Build tree
@@ -187,19 +187,19 @@ test "Range removal - multiple overlapping ranges" {
 
     // Create parent and siblings
     const parent = try doc_ptr.call_createElement("parent");
-    defer parent.deinit(allocator);
+    defer parent.deinit();
 
     const before = try dom.NodeBase.createText(allocator, "before text", doc_ptr);
-    defer before.deinit(allocator);
+    defer before.deinit();
 
     const removed = try doc_ptr.call_createElement("removed");
-    defer removed.deinit(allocator);
+    defer removed.deinit();
     const removed_child = try dom.NodeBase.createText(allocator, "child", doc_ptr);
-    defer removed_child.deinit(allocator);
+    defer removed_child.deinit();
     try dom.mutation.append(removed_child, removed);
 
     const after = try dom.NodeBase.createText(allocator, "after text", doc_ptr);
-    defer after.deinit(allocator);
+    defer after.deinit();
 
     // Build tree
     try dom.mutation.append(before, parent);
@@ -283,16 +283,16 @@ test "Range removal - offset adjustment in parent" {
 
     // Create parent and children
     const parent = try doc_ptr.call_createElement("parent");
-    defer parent.deinit(allocator);
+    defer parent.deinit();
 
     const a = try doc_ptr.call_createElement("a");
-    defer a.deinit(allocator);
+    defer a.deinit();
 
     const b = try doc_ptr.call_createElement("b");
-    defer b.deinit(allocator);
+    defer b.deinit();
 
     const c = try doc_ptr.call_createElement("c");
-    defer c.deinit(allocator);
+    defer c.deinit();
 
     // Build tree
     try dom.mutation.append(a, parent);
