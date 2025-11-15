@@ -242,15 +242,15 @@ test "Range: commonAncestorContainer finds parent" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
 
     // Range from child1 to child2
     try range.call_setStart(@ptrCast(child1), 0);
     try range.call_setEnd(@ptrCast(child2), 0);
 
     const common = range.get_commonAncestorContainer();
-    try testing.expect(common == (&parent));
+    try testing.expect(common == @as(*Node, @ptrCast(parent)));
 }
 
 // ============================================================================
@@ -464,9 +464,9 @@ test "Range: intersectsNode returns true for intersecting node" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
-    try parent.call_appendChild((&child3));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
+    try parent.call_appendChild(@ptrCast(child3));
 
     // Range covers child1 to child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -492,9 +492,9 @@ test "Range: intersectsNode returns false for non-intersecting node" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
-    try parent.call_appendChild((&child3));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
+    try parent.call_appendChild(@ptrCast(child3));
 
     // Range covers only child1
     try range.call_setStart(@ptrCast(parent), 0);
@@ -524,9 +524,9 @@ test "Range: deleteContents removes contained children" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
-    try parent.call_appendChild((&child3));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
+    try parent.call_appendChild(@ptrCast(child3));
 
     // Range contains child1 and child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -553,8 +553,8 @@ test "Range: insertNode adds node at range start" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
 
     // Range between child1 and child2
     try range.call_setStart(@ptrCast(parent), 1);
@@ -602,8 +602,8 @@ test "Range: surroundContents wraps range content in new parent" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
 
     // Range covers all children
     try range.call_setStart(@ptrCast(parent), 0);
@@ -706,9 +706,9 @@ test "Range: extractContents moves contained children to fragment" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
-    try parent.call_appendChild((&child3));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
+    try parent.call_appendChild(@ptrCast(child3));
 
     // Range contains child1 and child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -764,8 +764,8 @@ test "Range: cloneContents copies children without removing them" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild((&child1));
-    try parent.call_appendChild((&child2));
+    try parent.call_appendChild(@ptrCast(child1));
+    try parent.call_appendChild(@ptrCast(child2));
 
     // Range contains both children
     try range.call_setStart(@ptrCast(parent), 0);

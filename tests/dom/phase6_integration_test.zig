@@ -89,8 +89,8 @@ test "Integration: DOMImplementation creates documents with nodes" {
     }
 
     try testing.expectEqualStrings("html", doctype.name);
-    try testing.expectEqualStrings("-//W3C//DTD HTML 4.01//EN", doctype.publicId);
-    try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.systemId);
+    try testing.expectEqualStrings("-//W3C//DTD HTML 4.01//EN", doctype.public_id);
+    try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.system_id);
 
     // Create XML document
     const xml_doc = try impl.call_createDocument("http://www.w3.org/1999/xhtml", "html", null);
@@ -301,8 +301,8 @@ test "Integration: DocumentType with DOMImplementation" {
         allocator.destroy(html5_doctype);
     }
     try testing.expectEqualStrings("html", html5_doctype.name);
-    try testing.expectEqualStrings("", html5_doctype.publicId);
-    try testing.expectEqualStrings("", html5_doctype.systemId);
+    try testing.expectEqualStrings("", html5_doctype.public_id);
+    try testing.expectEqualStrings("", html5_doctype.system_id);
 
     const html4_doctype = try impl.call_createDocumentType("HTML", "-//W3C//DTD HTML 4.01 Transitional//EN", "http://www.w3.org/TR/html4/loose.dtd");
     defer {

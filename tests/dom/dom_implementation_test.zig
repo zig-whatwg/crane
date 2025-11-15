@@ -27,8 +27,8 @@ test "DOMImplementation: createDocumentType with valid name" {
     }
 
     try testing.expectEqualStrings("html", doctype.name);
-    try testing.expectEqualStrings("", doctype.publicId);
-    try testing.expectEqualStrings("", doctype.systemId);
+    try testing.expectEqualStrings("", doctype.public_id);
+    try testing.expectEqualStrings("", doctype.system_id);
 }
 
 test "DOMImplementation: createDocumentType with public and system IDs" {
@@ -47,8 +47,8 @@ test "DOMImplementation: createDocumentType with public and system IDs" {
     }
 
     try testing.expectEqualStrings("html", doctype.name);
-    try testing.expectEqualStrings("-//W3C//DTD HTML 4.01//EN", doctype.publicId);
-    try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.systemId);
+    try testing.expectEqualStrings("-//W3C//DTD HTML 4.01//EN", doctype.public_id);
+    try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.system_id);
 }
 
 test "DOMImplementation: createDocumentType with empty name (valid)" {

@@ -75,7 +75,7 @@ test "mutation - ensurePreInsertValidity: reject when child parent mismatch" {
     defer node.deinit();
 
     // Should throw NotFoundError (child's parent is parent1, not parent2)
-    try testing.expectError(error.NotFoundError, mutation.ensurePreInsertValidity(@ptrCast(&node), &parent2, &child));
+    try testing.expectError(error.NotFoundError, mutation.ensurePreInsertValidity(@ptrCast(&node), @ptrCast(&parent2), @ptrCast(&child)));
 }
 
 test "mutation - appendChild: basic insertion" {
@@ -87,7 +87,7 @@ test "mutation - appendChild: basic insertion" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const result = try mutation.append(&child, @ptrCast(&parent));
+    const result = try mutation.append(@ptrCast(&child), @ptrCast(&parent));
 
     // Should return the child
     try testing.expect(result == &child);
@@ -115,9 +115,9 @@ test "mutation - appendChild: multiple children" {
     var child3 = try Element.init(allocator, "a");
     defer child3.deinit();
 
-    _ = try mutation.append(&child1, @ptrCast(&parent));
-    _ = try mutation.append(&child2, @ptrCast(&parent));
-    _ = try mutation.append(&child3, @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child1), @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child2), @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child3), @ptrCast(&parent));
 
     // Should have 3 children in order
     try testing.expectEqual(@as(usize, 3), parent.child_nodes.items.len);
@@ -134,12 +134,12 @@ test "mutation - insertBefore: insert at beginning" {
 
     var existing = try Element.init(allocator, "span");
     defer existing.deinit();
-    _ = try mutation.append(&existing, @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&existing), @ptrCast(&parent));
 
     var new_child = try Element.init(allocator, "p");
     defer new_child.deinit();
 
-    _ = try mutation.preInsert(&new_child, @ptrCast(&parent), @ptrCast(&existing));
+    _ = try mutation.preInsert(@ptrCast(&new_child), @ptrCast(&parent), @ptrCast(&existing));
 
     // new_child should be first
     try testing.expectEqual(@as(usize, 2), parent.child_nodes.items.len);
@@ -156,10 +156,10 @@ test "mutation - removeChild: basic removal" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    _ = try mutation.append(&child, @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child), @ptrCast(&parent));
     try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
 
-    const removed = try mutation.preRemove(&child, @ptrCast(&parent));
+    const removed = try mutation.preRemove(@ptrCast(&child), @ptrCast(&parent));
 
     // Should return the child
     try testing.expect(removed == &child);
@@ -184,9 +184,9 @@ test "mutation - removeChild: remove from middle" {
     var child3 = try Element.init(allocator, "a");
     defer child3.deinit();
 
-    _ = try mutation.append(&child1, @ptrCast(&parent));
-    _ = try mutation.append(&child2, @ptrCast(&parent));
-    _ = try mutation.append(&child3, @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child1), @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child2), @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child3), @ptrCast(&parent));
 
     _ = try mutation.preRemove(&child2, @ptrCast(&parent));
 
@@ -261,7 +261,7 @@ test "mutation - adopt: with descendants" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
     child.owner_document = &doc1;
-    _ = try mutation.append(&child, @ptrCast(&parent));
+    _ = try mutation.append(@ptrCast(&child), @ptrCast(&parent));
 
     // Adopt parent to doc2
     try mutation.adopt(&parent, &doc2);
