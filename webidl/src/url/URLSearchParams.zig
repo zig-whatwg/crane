@@ -4,6 +4,9 @@ const webidl = @import("webidl");
 // Import internal implementation
 const URLSearchParamsImpl = @import("url_search_params_impl").URLSearchParamsImpl;
 
+// Re-export RecordEntry type for external use
+pub const RecordEntry = URLSearchParamsImpl.RecordEntry;
+
 pub const URLSearchParams = webidl.interface(struct {
     // ========================================================================
     // Internal Implementation
@@ -45,7 +48,7 @@ pub const URLSearchParams = webidl.interface(struct {
     /// Initialize URLSearchParams from record (key-value pairs)
     /// Spec: https://url.spec.whatwg.org/#concept-urlsearchparams-new (lines 2049)
     /// This implements step 2 of the initialize algorithm (init is a record)
-    pub fn initWithRecord(allocator: std.mem.Allocator, record: []const URLSearchParamsImpl.RecordEntry) !URLSearchParams {
+    pub fn initWithRecord(allocator: std.mem.Allocator, record: []const RecordEntry) !URLSearchParams {
         return .{
             .impl = try URLSearchParamsImpl.initFromRecord(allocator, record),
         };
