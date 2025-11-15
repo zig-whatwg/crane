@@ -12,9 +12,9 @@ const AbortSignal = @import("abort_signal").AbortSignal;
 const Allocator = std.mem.Allocator;
 const Attr = @import("attr").Attr;
 const ChildNode = @import("child_node").ChildNode;
+const Comment = @import("comment").Comment;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
 pub const EventListener = @import("event_target").EventListener;
@@ -23,6 +23,7 @@ pub const GetRootNodeOptions = @import("get_root_node_options").GetRootNodeOptio
 const Node = @import("node").Node;
 const NodeList = @import("node_list").NodeList;
 const NonDocumentTypeChildNode = @import("non_document_type_child_node").NonDocumentTypeChildNode;
+const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
 const RegisteredObserver = @import("registered_observer").RegisteredObserver;
 const ShadowRoot = @import("shadow_root").ShadowRoot;
 const Text = @import("text").Text;
@@ -817,6 +818,7 @@ pub const CharacterData = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
+                const DocumentType = @import("document_type").DocumentType;
                 const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 

@@ -16,7 +16,6 @@ const ChildNode = @import("child_node").ChildNode;
 pub const DOMTokenList = @import("d_o_m_token_list").DOMTokenList;
 const Document = @import("document").Document;
 const DocumentFragment = @import("document_fragment").DocumentFragment;
-const DocumentType = @import("document_type").DocumentType;
 const Event = @import("event").Event;
 pub const EventListener = @import("event_target").EventListener;
 const EventTarget = @import("event_target").EventTarget;
@@ -2046,6 +2045,7 @@ pub const Element = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
+                const DocumentType = @import("document_type").DocumentType;
                 const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 

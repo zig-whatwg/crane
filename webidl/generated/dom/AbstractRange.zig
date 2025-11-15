@@ -10,6 +10,8 @@
 
 const Allocator = std.mem.Allocator;
 const Node = @import("node").Node;
+const Range = @import("range").Range;
+const StaticRange = @import("static_range").StaticRange;
 const std = @import("std");
 const webidl = @import("webidl");
 

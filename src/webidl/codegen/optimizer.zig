@@ -393,6 +393,75 @@ fn collectInheritedImports(
     return result.toOwnedSlice();
 }
 
+/// Add imports for child types that will need downcast helpers
+fn addImportsForChildTypes(
+    allocator: Allocator,
+    class: *ir.ClassDef,
+    imports: *std.StringHashMap(ir.Import),
+    registry: *ClassRegistry,
+) !void {
+    // Find all direct children of this class
+    var children = infra.List([]const u8).init(allocator);
+    defer {
+        for (children.toSlice()) |name| allocator.free(name);
+        children.deinit();
+    }
+
+    // Iterate through all classes in registry to find children
+    var iter = registry.classes.iterator();
+    while (iter.next()) |entry| {
+        const potential_child = entry.value_ptr.*;
+
+        // Check if this class's parent matches our class_name
+        if (potential_child.parent) |parent_name| {
+            if (std.mem.eql(u8, parent_name, class.name)) {
+                try children.append(try allocator.dupe(u8, potential_child.name));
+            }
+        }
+    }
+
+    // For each child, add import if not already present
+    for (children.toSlice()) |child_name| {
+        // Skip if already imported
+        if (imports.contains(child_name)) continue;
+
+        // Convert ChildName to child_name module format
+        // e.g., "DocumentType" -> "document_type"
+        const module_name = try convertClassNameToModuleName(allocator, child_name);
+        defer allocator.free(module_name);
+
+        // Add import for this child type
+        try imports.put(child_name, ir.Import{
+            .name = try allocator.dupe(u8, child_name),
+            .module = try allocator.dupe(u8, module_name),
+            .is_type = true,
+            .visibility = .private,
+            .source_line = 0, // Auto-generated import
+        });
+    }
+}
+
+/// Convert CamelCase class name to snake_case module name
+/// e.g., "DocumentType" -> "document_type", "HTMLElement" -> "h_t_m_l_element"
+fn convertClassNameToModuleName(allocator: Allocator, class_name: []const u8) ![]const u8 {
+    var result = infra.List(u8).init(allocator);
+    defer result.deinit();
+
+    for (class_name, 0..) |c, i| {
+        if (std.ascii.isUpper(c)) {
+            // Add underscore before uppercase (except first char)
+            if (i > 0 and !std.ascii.isUpper(class_name[i - 1])) {
+                try result.append('_');
+            }
+            try result.append(std.ascii.toLower(c));
+        } else {
+            try result.append(c);
+        }
+    }
+
+    return result.toOwnedSlice();
+}
+
 /// Resolve all imports needed for this class
 fn resolveImports(
     allocator: Allocator,
@@ -499,6 +568,9 @@ fn resolveImports(
 
     // Note: Imports are now propagated through inheritance chain via collectInheritedImports
     // Additional types are detected automatically from method bodies via extractTypesFromCode
+
+    // Add imports for child types (for downcast helpers)
+    try addImportsForChildTypes(allocator, class, &imports, registry);
 
     // Convert to array
     var result = infra.List(ir.Import).init(allocator);

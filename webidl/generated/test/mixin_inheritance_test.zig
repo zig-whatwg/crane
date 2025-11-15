@@ -44,6 +44,7 @@ pub const TestMixin = struct {
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
+const Child = @import("child").Child;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -187,6 +188,7 @@ pub const MixinB = struct {
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
+const ChildMulti = @import("child_multi").ChildMulti;
 const std = @import("std");
 const webidl = @import("webidl");
 
@@ -224,6 +226,7 @@ pub const ParentMulti = struct {
 //   - Automatic import resolution
 
 const Allocator = std.mem.Allocator;
+const GrandChild = @import("grand_child").GrandChild;
 const std = @import("std");
 const webidl = @import("webidl");
 

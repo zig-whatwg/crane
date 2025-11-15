@@ -13,7 +13,6 @@ const Allocator = std.mem.Allocator;
 const Attr = @import("attr").Attr;
 const CharacterData = @import("character_data").CharacterData;
 const Document = @import("document").Document;
-const DocumentType = @import("document_type").DocumentType;
 const Element = @import("element").Element;
 const Event = @import("event").Event;
 pub const EventListener = @import("event_target").EventListener;
@@ -683,6 +682,7 @@ pub const DocumentFragment = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
+                const DocumentType = @import("document_type").DocumentType;
                 const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 
