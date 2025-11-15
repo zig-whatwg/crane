@@ -28,7 +28,7 @@ test "setProtocol - basic HTTP to HTTPS" {
     var url = try helpers.initURL(allocator, "http://example.com/path", null);
     defer url.deinit();
 
-    try helpers.setProtocol(&url, allocator, "https");
+    try helpers.set_protocol(&url, allocator, "https");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -43,7 +43,7 @@ test "setProtocol - remove colon if provided" {
     defer url.deinit();
 
     // Spec: input is "https:", parser removes trailing ":"
-    try helpers.setProtocol(&url, allocator, "https:");
+    try helpers.set_protocol(&url, allocator, "https:");
 
     const protocol = try helpers.getProtocol(&url, allocator);
     defer allocator.free(protocol);
@@ -61,7 +61,7 @@ test "setProtocol - reject invalid characters" {
     defer allocator.free(old_href);
 
     // Invalid scheme (contains space) - should not change
-    try helpers.setProtocol(&url, allocator, "ht tp");
+    try helpers.set_protocol(&url, allocator, "ht tp");
 
     const new_href = try helpers.getHref(&url, allocator);
     defer allocator.free(new_href);
@@ -76,7 +76,7 @@ test "setProtocol - disallow special to non-special transition" {
     defer url.deinit();
 
     // Try to change from special (http) to non-special (mailto)
-    try helpers.setProtocol(&url, allocator, "mailto");
+    try helpers.set_protocol(&url, allocator, "mailto");
 
     const protocol = try helpers.getProtocol(&url, allocator);
     defer allocator.free(protocol);
@@ -92,7 +92,7 @@ test "setProtocol - disallow non-special to special transition" {
     defer url.deinit();
 
     // Try to change from non-special (mailto) to special (http)
-    try helpers.setProtocol(&url, allocator, "http");
+    try helpers.set_protocol(&url, allocator, "http");
 
     const protocol = try helpers.getProtocol(&url, allocator);
     defer allocator.free(protocol);
@@ -108,7 +108,7 @@ test "setProtocol - reset default port" {
     defer url.deinit();
 
     // Port 80 is default for http, so it's normalized to null during parsing
-    try helpers.setProtocol(&url, allocator, "https");
+    try helpers.set_protocol(&url, allocator, "https");
 
     // Per WHATWG spec, default ports are normalized to null during parsing.
     // Since http://example.com:80/ has port=null after parsing (80 is default),
@@ -126,7 +126,7 @@ test "setUsername - basic" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setUsername(&url, allocator, "user");
+    try helpers.set_username(&url, allocator, "user");
 
     const username = try helpers.getUsername(&url, allocator);
     defer allocator.free(username);
@@ -143,7 +143,7 @@ test "setUsername - with existing password" {
     var url = try helpers.initURL(allocator, "http://olduser:pass@example.com/", null);
     defer url.deinit();
 
-    try helpers.setUsername(&url, allocator, "newuser");
+    try helpers.set_username(&url, allocator, "newuser");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -156,7 +156,7 @@ test "setUsername - percent encode special characters" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setUsername(&url, allocator, "user@host");
+    try helpers.set_username(&url, allocator, "user@host");
 
     const username = try helpers.getUsername(&url, allocator);
     defer allocator.free(username);
@@ -174,7 +174,7 @@ test "setUsername - cannot set on file URL without host" {
     defer allocator.free(old_href);
 
     // Should not change (file: without host cannot have username)
-    try helpers.setUsername(&url, allocator, "user");
+    try helpers.set_username(&url, allocator, "user");
 
     const new_href = try helpers.getHref(&url, allocator);
     defer allocator.free(new_href);
@@ -188,7 +188,7 @@ test "setPassword - basic" {
     var url = try helpers.initURL(allocator, "http://user@example.com/", null);
     defer url.deinit();
 
-    try helpers.setPassword(&url, allocator, "secret");
+    try helpers.set_password(&url, allocator, "secret");
 
     const password = try helpers.getPassword(&url, allocator);
     defer allocator.free(password);
@@ -205,7 +205,7 @@ test "setPassword - without username creates empty username" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setPassword(&url, allocator, "secret");
+    try helpers.set_password(&url, allocator, "secret");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -220,7 +220,7 @@ test "setPassword - percent encode special characters" {
     var url = try helpers.initURL(allocator, "http://user@example.com/", null);
     defer url.deinit();
 
-    try helpers.setPassword(&url, allocator, "p@ss");
+    try helpers.set_password(&url, allocator, "p@ss");
 
     const password = try helpers.getPassword(&url, allocator);
     defer allocator.free(password);
@@ -234,7 +234,7 @@ test "setHost - basic" {
     var url = try helpers.initURL(allocator, "http://example.com/path", null);
     defer url.deinit();
 
-    try helpers.setHost(&url, allocator, "newhost.com");
+    try helpers.set_host(&url, allocator, "newhost.com");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -247,7 +247,7 @@ test "setHost - with port" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setHost(&url, allocator, "newhost.com:8080");
+    try helpers.set_host(&url, allocator, "newhost.com:8080");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -264,7 +264,7 @@ test "setHost - cannot set on URL with opaque path" {
     defer allocator.free(old_href);
 
     // Should not change (opaque path)
-    try helpers.setHost(&url, allocator, "newhost.com");
+    try helpers.set_host(&url, allocator, "newhost.com");
 
     const new_href = try helpers.getHref(&url, allocator);
     defer allocator.free(new_href);
@@ -278,7 +278,7 @@ test "setHostname - basic" {
     var url = try helpers.initURL(allocator, "http://example.com:8080/", null);
     defer url.deinit();
 
-    try helpers.setHostname(&url, allocator, "newhost.com");
+    try helpers.set_hostname(&url, allocator, "newhost.com");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -293,7 +293,7 @@ test "setHostname - preserves existing port" {
     var url = try helpers.initURL(allocator, "http://example.com:9000/", null);
     defer url.deinit();
 
-    try helpers.setHostname(&url, allocator, "another.com");
+    try helpers.set_hostname(&url, allocator, "another.com");
 
     const port = try helpers.getPort(&url, allocator);
     defer allocator.free(port);
@@ -307,7 +307,7 @@ test "setPort - basic" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setPort(&url, allocator, "8080");
+    try helpers.set_port(&url, allocator, "8080");
 
     const port = try helpers.getPort(&url, allocator);
     defer allocator.free(port);
@@ -324,7 +324,7 @@ test "setPort - empty string removes port" {
     var url = try helpers.initURL(allocator, "http://example.com:8080/", null);
     defer url.deinit();
 
-    try helpers.setPort(&url, allocator, "");
+    try helpers.set_port(&url, allocator, "");
 
     const port = try helpers.getPort(&url, allocator);
     defer allocator.free(port);
@@ -341,7 +341,7 @@ test "setPort - reject invalid port" {
     defer allocator.free(old_port);
 
     // Invalid port (contains letter)
-    try helpers.setPort(&url, allocator, "80abc");
+    try helpers.set_port(&url, allocator, "80abc");
 
     const new_port = try helpers.getPort(&url, allocator);
     defer allocator.free(new_port);
@@ -360,7 +360,7 @@ test "setPort - reject out of range port" {
     defer allocator.free(old_port);
 
     // Port > 65535
-    try helpers.setPort(&url, allocator, "99999");
+    try helpers.set_port(&url, allocator, "99999");
 
     const new_port = try helpers.getPort(&url, allocator);
     defer allocator.free(new_port);
@@ -378,7 +378,7 @@ test "setPort - cannot set on file URL" {
     const old_href = try helpers.getHref(&url, allocator);
     defer allocator.free(old_href);
 
-    try helpers.setPort(&url, allocator, "8080");
+    try helpers.set_port(&url, allocator, "8080");
 
     const new_href = try helpers.getHref(&url, allocator);
     defer allocator.free(new_href);
@@ -393,7 +393,7 @@ test "setPathname - basic" {
     var url = try helpers.initURL(allocator, "http://example.com/old/path", null);
     defer url.deinit();
 
-    try helpers.setPathname(&url, allocator, "/new/path");
+    try helpers.set_pathname(&url, allocator, "/new/path");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -406,7 +406,7 @@ test "setPathname - adds leading slash for special schemes" {
     var url = try helpers.initURL(allocator, "http://example.com/old", null);
     defer url.deinit();
 
-    try helpers.setPathname(&url, allocator, "new/path");
+    try helpers.set_pathname(&url, allocator, "new/path");
 
     const pathname = try helpers.getPathname(&url, allocator);
     defer allocator.free(pathname);
@@ -421,7 +421,7 @@ test "setPathname - preserves query and fragment" {
     var url = try helpers.initURL(allocator, "http://example.com/old?query=1#frag", null);
     defer url.deinit();
 
-    try helpers.setPathname(&url, allocator, "/new");
+    try helpers.set_pathname(&url, allocator, "/new");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -437,7 +437,7 @@ test "setPathname - cannot set on URL with opaque path" {
     const old_href = try helpers.getHref(&url, allocator);
     defer allocator.free(old_href);
 
-    try helpers.setPathname(&url, allocator, "/new");
+    try helpers.set_pathname(&url, allocator, "/new");
 
     const new_href = try helpers.getHref(&url, allocator);
     defer allocator.free(new_href);
@@ -452,7 +452,7 @@ test "setHash - basic" {
     var url = try helpers.initURL(allocator, "http://example.com/path", null);
     defer url.deinit();
 
-    try helpers.setHash(&url, allocator, "section");
+    try helpers.set_hash(&url, allocator, "section");
 
     const hash = try helpers.getHash(&url, allocator);
     defer allocator.free(hash);
@@ -469,7 +469,7 @@ test "setHash - removes leading # if provided" {
     var url = try helpers.initURL(allocator, "http://example.com/", null);
     defer url.deinit();
 
-    try helpers.setHash(&url, allocator, "#section");
+    try helpers.set_hash(&url, allocator, "#section");
 
     const hash = try helpers.getHash(&url, allocator);
     defer allocator.free(hash);
@@ -482,7 +482,7 @@ test "setHash - empty string removes fragment" {
     var url = try helpers.initURL(allocator, "http://example.com/path#old", null);
     defer url.deinit();
 
-    try helpers.setHash(&url, allocator, "");
+    try helpers.set_hash(&url, allocator, "");
 
     const hash = try helpers.getHash(&url, allocator);
     defer allocator.free(hash);
@@ -499,7 +499,7 @@ test "setHash - preserves query" {
     var url = try helpers.initURL(allocator, "http://example.com/path?query=1", null);
     defer url.deinit();
 
-    try helpers.setHash(&url, allocator, "frag");
+    try helpers.set_hash(&url, allocator, "frag");
 
     const href = try helpers.getHref(&url, allocator);
     defer allocator.free(href);
@@ -512,7 +512,7 @@ test "setHash - replaces existing fragment" {
     var url = try helpers.initURL(allocator, "http://example.com/#old", null);
     defer url.deinit();
 
-    try helpers.setHash(&url, allocator, "new");
+    try helpers.set_hash(&url, allocator, "new");
 
     const hash = try helpers.getHash(&url, allocator);
     defer allocator.free(hash);

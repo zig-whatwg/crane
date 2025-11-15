@@ -34,7 +34,7 @@ test "debug setUsername corruption" {
 
     std.debug.print("4. Checking internal fields:\n", .{});
     std.debug.print("   scheme = '{s}'\n", .{url.internal.scheme()});
-    std.debug.print("   username = '{s}'\n", .{url.internal.username()});
+    std.debug.print("   username = '{s}'\n", .{url.internal.get_username()});
     std.debug.print("   host = {?}\n", .{url.internal.host});
     std.debug.print("   path = {any}\n", .{url.internal.path});
 
