@@ -31,14 +31,8 @@ const TransformStream = @import("transform_stream").TransformStream;
 /// transform streams. Any platform object that includes this mixin has an
 /// associated [[transform]] internal slot containing an actual TransformStream.
 ///
-/// Usage pattern (in another spec):
-/// ```zig
-/// pub const CompressionStream = webidl.interface(struct {
-///     mixin: GenericTransformStream,
-///
-///     // Custom constructor and methods...
-/// });
-/// ```
+/// Usage: Other specs create interfaces with this mixin to get readable/writable properties.
+/// Example: CompressionStream, TextDecoderStream include this mixin.
 pub const GenericTransformStream = webidl.mixin(struct {
     /// [[transform]]: The actual TransformStream backing this object
     ///
