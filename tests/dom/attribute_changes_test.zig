@@ -6,24 +6,24 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const ElementWithBase = @import("dom").ElementWithBase;
-const AttrWithBase = @import("dom").AttrWithBase;
+const Element = dom.Element;
+const Attr = dom.Attr;
 const attribute_algorithms = @import("dom").attribute_algorithms;
 
 test "changeAttribute - updates value and calls handle" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
     // Create and append an attribute
-    const attr = try allocator.create(AttrWithBase);
+    const attr = try allocator.create(Attr);
     defer {
         attr.deinit();
         allocator.destroy(attr);
     }
 
-    attr.* = try AttrWithBase.init(allocator, "class", "foo", null, null);
+    attr.* = try Attr.init(allocator, "class", "foo", null, null);
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
@@ -36,16 +36,16 @@ test "changeAttribute - updates value and calls handle" {
 test "appendAttribute - adds to list and handles changes" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
-    const attr = try allocator.create(AttrWithBase);
+    const attr = try allocator.create(Attr);
     defer {
         attr.deinit();
         allocator.destroy(attr);
     }
 
-    attr.* = try AttrWithBase.init(allocator, "title", "Hello", null, null);
+    attr.* = try Attr.init(allocator, "title", "Hello", null, null);
 
     // Append the attribute
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
@@ -60,16 +60,16 @@ test "appendAttribute - adds to list and handles changes" {
 test "removeAttribute - removes from list and handles changes" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
-    const attr = try allocator.create(AttrWithBase);
+    const attr = try allocator.create(Attr);
     defer {
         attr.deinit();
         allocator.destroy(attr);
     }
 
-    attr.* = try AttrWithBase.init(allocator, "data-test", "value", null, null);
+    attr.* = try Attr.init(allocator, "data-test", "value", null, null);
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Remove the attribute
@@ -85,23 +85,23 @@ test "removeAttribute - removes from list and handles changes" {
 test "replaceAttribute - swaps in list and handles changes" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
-    const old_attr = try allocator.create(AttrWithBase);
+    const old_attr = try allocator.create(Attr);
     defer {
         old_attr.deinit();
         allocator.destroy(old_attr);
     }
 
-    const new_attr = try allocator.create(AttrWithBase);
+    const new_attr = try allocator.create(Attr);
     defer {
         new_attr.deinit();
         allocator.destroy(new_attr);
     }
 
-    old_attr.* = try AttrWithBase.init(allocator, "id", "old-id", null, null);
-    new_attr.* = try AttrWithBase.init(allocator, "id", "new-id", null, null);
+    old_attr.* = try Attr.init(allocator, "id", "old-id", null, null);
+    new_attr.* = try Attr.init(allocator, "id", "new-id", null, null);
 
     try attribute_algorithms.appendAttribute(old_attr, &element);
 
@@ -125,7 +125,7 @@ test "replaceAttribute - swaps in list and handles changes" {
 test "setAttributeValue - creates new attribute if none exists" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
     // Set a new attribute
@@ -146,16 +146,16 @@ test "setAttributeValue - creates new attribute if none exists" {
 test "setAttributeValue - changes existing attribute" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
-    const attr = try allocator.create(AttrWithBase);
+    const attr = try allocator.create(Attr);
     defer {
         attr.deinit();
         allocator.destroy(attr);
     }
 
-    attr.* = try AttrWithBase.init(allocator, "class", "old-class", null, null);
+    attr.* = try Attr.init(allocator, "class", "old-class", null, null);
     try attribute_algorithms.appendAttribute(@ptrCast(attr), @ptrCast(&element));
 
     // Change the attribute value
@@ -171,7 +171,7 @@ test "setAttributeValue - changes existing attribute" {
 test "ID attribute change steps - sets element's unique ID" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
     // Set the id attribute
@@ -191,7 +191,7 @@ test "ID attribute change steps - sets element's unique ID" {
 test "ID attribute change steps - unsets element's unique ID on empty value" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
     // Set the id attribute first
@@ -214,7 +214,7 @@ test "ID attribute change steps - unsets element's unique ID on empty value" {
 test "ID attribute change steps - updates unique ID on change" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "div");
+    var element = try Element.init(allocator, "div");
     defer element.deinit();
 
     // Set initial id
@@ -237,7 +237,7 @@ test "ID attribute change steps - updates unique ID on change" {
 test "namespace attribute handling" {
     const allocator = std.testing.allocator;
 
-    var element = ElementWithBase.init(allocator, "svg");
+    var element = try Element.init(allocator, "svg");
     defer element.deinit();
 
     const ns = "http://www.w3.org/2000/svg";
