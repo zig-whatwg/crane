@@ -3,7 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
 // Type aliases
 const Node = dom.Node;
 
@@ -21,7 +20,7 @@ test "DOMImplementation: createDocumentType with valid name" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const doctype = try impl.createDocumentType("html", "", "");
+    const doctype = try impl.call_createDocumentType("html", "", "");
     defer {
         doctype.deinit();
         allocator.destroy(doctype);
@@ -41,7 +40,7 @@ test "DOMImplementation: createDocumentType with public and system IDs" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const doctype = try impl.createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
+    const doctype = try impl.call_createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
     defer {
         doctype.deinit();
         allocator.destroy(doctype);
@@ -62,7 +61,7 @@ test "DOMImplementation: createDocumentType with empty name (valid)" {
     defer impl.deinit();
 
     // Empty string is a valid doctype name per spec
-    const doctype = try impl.createDocumentType("", "", "");
+    const doctype = try impl.call_createDocumentType("", "", "");
     defer {
         doctype.deinit();
         allocator.destroy(doctype);
@@ -81,7 +80,7 @@ test "DOMImplementation: createDocumentType with space in name (invalid)" {
     defer impl.deinit();
 
     // Space is ASCII whitespace - should throw InvalidCharacterError
-    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html test", "", ""));
+    try testing.expectError(error.InvalidCharacterError, impl.call_createDocumentType("html test", "", ""));
 }
 
 test "DOMImplementation: createDocumentType with null character (invalid)" {
@@ -94,7 +93,7 @@ test "DOMImplementation: createDocumentType with null character (invalid)" {
     defer impl.deinit();
 
     // U+0000 NULL - should throw InvalidCharacterError
-    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html\x00test", "", ""));
+    try testing.expectError(error.InvalidCharacterError, impl.call_createDocumentType("html\x00test", "", ""));
 }
 
 test "DOMImplementation: createDocumentType with > character (invalid)" {
@@ -107,7 +106,7 @@ test "DOMImplementation: createDocumentType with > character (invalid)" {
     defer impl.deinit();
 
     // U+003E (>) - should throw InvalidCharacterError
-    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html>test", "", ""));
+    try testing.expectError(error.InvalidCharacterError, impl.call_createDocumentType("html>test", "", ""));
 }
 
 test "DOMImplementation: createDocumentType with tab character (invalid)" {
@@ -120,7 +119,7 @@ test "DOMImplementation: createDocumentType with tab character (invalid)" {
     defer impl.deinit();
 
     // Tab is ASCII whitespace - should throw InvalidCharacterError
-    try testing.expectError(error.InvalidCharacterError, impl.createDocumentType("html\ttest", "", ""));
+    try testing.expectError(error.InvalidCharacterError, impl.call_createDocumentType("html\ttest", "", ""));
 }
 
 test "DOMImplementation: createHTMLDocument without title" {
@@ -132,7 +131,7 @@ test "DOMImplementation: createHTMLDocument without title" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const html_doc = try impl.createHTMLDocument(null);
+    const html_doc = try impl.call_createHTMLDocument(null);
     defer {
         html_doc.deinit();
         allocator.destroy(html_doc);
@@ -151,7 +150,7 @@ test "DOMImplementation: createHTMLDocument with title" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const html_doc = try impl.createHTMLDocument("Test Page");
+    const html_doc = try impl.call_createHTMLDocument("Test Page");
     defer {
         html_doc.deinit();
         allocator.destroy(html_doc);
@@ -170,7 +169,7 @@ test "DOMImplementation: createHTMLDocument with empty title" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const html_doc = try impl.createHTMLDocument("");
+    const html_doc = try impl.call_createHTMLDocument("");
     defer {
         html_doc.deinit();
         allocator.destroy(html_doc);
@@ -189,7 +188,7 @@ test "DOMImplementation: createDocument without qualified name" {
     defer impl.deinit();
 
     // Empty qualified name - no document element
-    const xml_doc = try impl.createDocument(null, "", null);
+    const xml_doc = try impl.call_createDocument(null, "", null);
     defer {
         xml_doc.deinit();
         allocator.destroy(xml_doc);
@@ -207,7 +206,7 @@ test "DOMImplementation: createDocument with qualified name and namespace" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const xml_doc = try impl.createDocument("http://www.w3.org/1999/xhtml", "html", null);
+    const xml_doc = try impl.call_createDocument("http://www.w3.org/1999/xhtml", "html", null);
     defer {
         xml_doc.deinit();
         allocator.destroy(xml_doc);
@@ -225,9 +224,9 @@ test "DOMImplementation: createDocument with doctype" {
     var impl = try DOMImplementation.init(allocator, &doc);
     defer impl.deinit();
 
-    const doctype = try impl.createDocumentType("html", "", "");
+    const doctype = try impl.call_createDocumentType("html", "", "");
 
-    const xml_doc = try impl.createDocument(null, "html", doctype);
+    const xml_doc = try impl.call_createDocument(null, "html", doctype);
     defer {
         xml_doc.deinit();
         allocator.destroy(xml_doc);

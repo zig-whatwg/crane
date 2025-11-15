@@ -82,7 +82,7 @@ test "Integration: DOMImplementation creates documents with nodes" {
     defer impl.deinit();
 
     // Create doctype via implementation
-    const doctype = try impl.createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
+    const doctype = try impl.call_createDocumentType("html", "-//W3C//DTD HTML 4.01//EN", "http://www.w3.org/TR/html4/strict.dtd");
     defer {
         doctype.deinit();
         allocator.destroy(doctype);
@@ -93,14 +93,14 @@ test "Integration: DOMImplementation creates documents with nodes" {
     try testing.expectEqualStrings("http://www.w3.org/TR/html4/strict.dtd", doctype.systemId);
 
     // Create XML document
-    const xml_doc = try impl.createDocument("http://www.w3.org/1999/xhtml", "html", null);
+    const xml_doc = try impl.call_createDocument("http://www.w3.org/1999/xhtml", "html", null);
     defer {
         xml_doc.deinit();
         allocator.destroy(xml_doc);
     }
 
     // Create HTML document
-    const html_doc = try impl.createHTMLDocument("Test Page");
+    const html_doc = try impl.call_createHTMLDocument("Test Page");
     defer {
         html_doc.deinit();
         allocator.destroy(html_doc);
@@ -295,7 +295,7 @@ test "Integration: DocumentType with DOMImplementation" {
     defer impl.deinit();
 
     // Create various doctypes
-    const html5_doctype = try impl.createDocumentType("html", "", "");
+    const html5_doctype = try impl.call_createDocumentType("html", "", "");
     defer {
         html5_doctype.deinit();
         allocator.destroy(html5_doctype);
@@ -304,7 +304,7 @@ test "Integration: DocumentType with DOMImplementation" {
     try testing.expectEqualStrings("", html5_doctype.publicId);
     try testing.expectEqualStrings("", html5_doctype.systemId);
 
-    const html4_doctype = try impl.createDocumentType("HTML", "-//W3C//DTD HTML 4.01 Transitional//EN", "http://www.w3.org/TR/html4/loose.dtd");
+    const html4_doctype = try impl.call_createDocumentType("HTML", "-//W3C//DTD HTML 4.01 Transitional//EN", "http://www.w3.org/TR/html4/loose.dtd");
     defer {
         html4_doctype.deinit();
         allocator.destroy(html4_doctype);
