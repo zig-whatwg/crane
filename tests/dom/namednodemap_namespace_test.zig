@@ -23,7 +23,7 @@ test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name"
     attr.owner_element = element;
 
     // Get NamedNodeMap
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Get attribute by namespace and local name
     const found = map.call_getNamedItemNS("http://www.w3.org/1999/xhtml", "href");
@@ -46,7 +46,7 @@ test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Try to get attribute with wrong namespace
     const found = map.call_getNamedItemNS("http://www.w3.org/2000/svg", "href");
@@ -67,7 +67,7 @@ test "NamedNodeMap.getNamedItemNS - handles null namespace" {
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Get attribute by null namespace and local name
     const found = map.call_getNamedItemNS(null, "id");
@@ -94,7 +94,7 @@ test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different n
     try element.attributes.append(attr2);
     attr2.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Get XHTML href
     const found1 = map.call_getNamedItemNS("http://www.w3.org/1999/xhtml", "href");
@@ -121,7 +121,7 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Remove by qualified name "xlink:href"
     const removed = try map.call_removeNamedItem("xlink:href");
@@ -146,7 +146,7 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Remove by local name "id"
     const removed = try map.call_removeNamedItem("id");
@@ -175,7 +175,7 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Try to remove by wrong qualified name
     const removed = try map.call_removeNamedItem("svg:href");
@@ -203,7 +203,7 @@ test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     try element.attributes.append(attr);
     attr.owner_element = element;
 
-    const map = element.get_attributes();
+    const map = try element.get_attributes();
 
     // Try to remove by local name only (should fail)
     const removed1 = try map.call_removeNamedItem("href");

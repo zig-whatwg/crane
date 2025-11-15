@@ -277,8 +277,8 @@ test "NodeIterator - attributes" {
     defer iterator.deinit();
 
     // Check attributes
-    try std.testing.expect(iterator.get_root() == &root);
-    try std.testing.expect(iterator.get_referenceNode() == &root);
+    try std.testing.expect(iterator.get_root() == @as(*Node, @ptrCast(&root)));
+    try std.testing.expect(iterator.get_referenceNode() == @as(*Node, @ptrCast(&root)));
     try std.testing.expect(iterator.get_pointerBeforeReferenceNode() == true);
     try std.testing.expect(iterator.get_whatToShow() == NodeFilter.SHOW_ELEMENT);
     try std.testing.expect(iterator.get_filter() == filter);

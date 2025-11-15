@@ -90,14 +90,14 @@ test "mutation - appendChild: basic insertion" {
     const result = try mutation.append(@ptrCast(&child), @ptrCast(&parent));
 
     // Should return the child
-    try testing.expect(result == &child);
+    try testing.expect(result == @as(*Node, @ptrCast(&child)));
 
     // Child should be in parent's children
     try testing.expectEqual(@as(usize, 1), parent.child_nodes.toSlice().len);
-    try testing.expect(parent.child_nodes.toSlice()[0] == &child);
+    try testing.expect(parent.child_nodes.toSlice()[0] == @as(*Node, @ptrCast(&child)));
 
     // Child's parent should be set
-    try testing.expect(child.parent_node == &parent);
+    try testing.expect(child.parent_node == @as(*Node, @ptrCast(&parent)));
 }
 
 test "mutation - appendChild: multiple children" {
@@ -121,7 +121,7 @@ test "mutation - appendChild: multiple children" {
 
     // Should have 3 children in order
     try testing.expectEqual(@as(usize, 3), parent.child_nodes.toSlice().len);
-    try testing.expect(parent.child_nodes.toSlice()[0] == &child1);
+    try testing.expect(parent.child_nodes.toSlice()[0] == @as(*Node, @ptrCast(&child))1);
     try testing.expect(parent.child_nodes.toSlice()[1] == &child2);
     try testing.expect(parent.child_nodes.toSlice()[2] == &child3);
 }
@@ -192,7 +192,7 @@ test "mutation - removeChild: remove from middle" {
 
     // Should have child1 and child3
     try testing.expectEqual(@as(usize, 2), parent.child_nodes.toSlice().len);
-    try testing.expect(parent.child_nodes.toSlice()[0] == &child1);
+    try testing.expect(parent.child_nodes.toSlice()[0] == @as(*Node, @ptrCast(&child))1);
     try testing.expect(parent.child_nodes.toSlice()[1] == &child3);
 }
 
@@ -222,7 +222,7 @@ test "mutation - replaceChild: basic replacement" {
     try testing.expect(old_child.parent_node == null);
 
     // New child should be attached
-    try testing.expect(new_child.parent_node == &parent);
+    try testing.expect(new_child.parent_node == @as(*Node, @ptrCast(&parent)));
 }
 
 test "mutation - adopt: change document" {

@@ -35,7 +35,7 @@ test "TreeWalker - parentNode moves to filtered parent" {
     // Move to parent
     const parent = try walker.parentNode();
     try std.testing.expect(parent == @as(*Node, @ptrCast(&child)));
-    try std.testing.expect(walker.get_currentNode() == &child);
+    try std.testing.expect(walker.get_currentNode() == @as(*Node, @ptrCast(&child)));
 }
 
 test "TreeWalker - firstChild moves to first filtered child" {
