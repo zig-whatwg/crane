@@ -128,7 +128,7 @@ pub fn generateAllFiles(
             const module_defs = if (idx == 0) file_ir.module_definitions else null;
             // Include post-class definitions only for the last class in the file
             const post_class_defs = if (idx == file_ir.classes.len - 1) file_ir.post_class_definitions else null;
-            const class_code = try generator.generateCode(allocator, enhanced, module_defs, post_class_defs);
+            const class_code = try generator.generateCode(allocator, enhanced, module_defs, post_class_defs, &registry);
             defer allocator.free(class_code);
 
             try writer.writeAll(class_code);

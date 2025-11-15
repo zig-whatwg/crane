@@ -12,6 +12,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const infra = @import("infra");
 const ir = @import("ir.zig");
+const optimizer = @import("optimizer.zig");
 
 /// Generate Zig code from enhanced class IR
 /// If module_definitions is provided, they will be included after imports
@@ -21,6 +22,7 @@ pub fn generateCode(
     enhanced: ir.EnhancedClassIR,
     module_definitions: ?[]const u8,
     post_class_definitions: ?[]const u8,
+    registry: *const optimizer.ClassRegistry,
 ) ![]const u8 {
     var output = infra.List(u8).init(allocator);
     errdefer output.deinit();
@@ -89,7 +91,7 @@ pub fn generateCode(
     try writer.writeAll("\n");
 
     // Class definition
-    try writeClass(allocator, writer, enhanced);
+    try writeClass(allocator, writer, enhanced, registry);
 
     // Post-class definitions (helper types defined after the class)
     if (post_class_definitions) |post_defs| {
@@ -296,7 +298,7 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
 }
 
 /// Write class definition
-fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR) !void {
+fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
     const class = enhanced.class;
 
     // Class doc comment
@@ -391,7 +393,7 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     }
 
     // Type Conversion Helpers (Downcast Methods)
-    try writeDowncastHelpers(allocator, writer, enhanced);
+    try writeDowncastHelpers(allocator, writer, enhanced, registry);
 
     try writer.writeAll("};\n");
 }
@@ -446,7 +448,8 @@ fn detectDiscriminatorField(class: ir.ClassDef, enhanced: ir.EnhancedClassIR) ?[
 }
 
 /// Build inheritance information for generating downcast helpers
-fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR) !?InheritanceInfo {
+fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !?InheritanceInfo {
+    _ = registry; // TODO: Use registry to build dynamic inheritance tree
     // Detect discriminator field
     const discriminator = detectDiscriminatorField(class, enhanced) orelse return null;
 
@@ -584,11 +587,11 @@ fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.E
 }
 
 /// Generate type conversion helper methods for safe downcasting
-fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR) !void {
+fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
     const class = enhanced.class;
 
     // Build inheritance information
-    const inheritance_info = try buildInheritanceInfo(allocator, class, enhanced) orelse return;
+    const inheritance_info = try buildInheritanceInfo(allocator, class, enhanced, registry) orelse return;
     defer {
         for (inheritance_info.children) |child| {
             allocator.free(child.discriminator_values);

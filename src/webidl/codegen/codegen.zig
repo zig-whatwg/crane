@@ -476,7 +476,7 @@ pub fn generateAllClasses(
             // All classes get module definitions (helper functions need to be accessible)
             // Post-class definitions only for the last class
             const post_class_defs = if (idx == file_ir.classes.len - 1) file_ir.post_class_definitions else null;
-            const class_code = try generator.generateCode(allocator, enhanced, file_ir.module_definitions, post_class_defs);
+            const class_code = try generator.generateCode(allocator, enhanced, file_ir.module_definitions, post_class_defs, &ast_registry);
             defer allocator.free(class_code);
 
             try writer.writeAll(class_code);
