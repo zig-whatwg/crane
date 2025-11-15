@@ -165,36 +165,40 @@ pub fn registerMovingStepsCallback(callback: MovingStepsCallback) !void {
 
 /// Run the insertion steps for a node
 /// Called during the insert algorithm for each shadow-including descendant
-fn runInsertionSteps(node: *Node) void {
+fn runInsertionSteps(node: anytype) void {
+    const node_ptr: *Node = @ptrCast(node);
     if (insertion_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
-            callback(node);
+            callback(node_ptr);
         }
     }
 }
 
 /// Run the removing steps for a node
 /// Called during the remove algorithm
-fn runRemovingSteps(node: *Node, old_parent: ?*Node) void {
+fn runRemovingSteps(node: anytype, old_parent: anytype) void {
+    const node_ptr: *Node = @ptrCast(node);
+    const old_parent_ptr: ?*Node = if (old_parent) |p| @as(*Node, @ptrCast(p)) else null;
     if (removing_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
-            callback(node, old_parent);
+            callback(node_ptr, old_parent_ptr);
         }
     }
 }
 
 /// Run the post-connection steps for a node
 /// Called after a batch of insertions complete
-fn runPostConnectionSteps(node: *Node) void {
+fn runPostConnectionSteps(node: anytype) void {
+    const node_ptr: *Node = @ptrCast(node);
     if (post_connection_steps_callbacks) |*callbacks| {
         for (callbacks.items()) |callback| {
-            callback(node);
+            callback(node_ptr);
         }
     }
 }
 
 /// Recursively run insertion steps for a node and all its descendants
-fn runInsertionStepsRecursive(node: *Node) void {
+fn runInsertionStepsRecursive(node: anytype) void {
     runInsertionSteps(node);
     for (node.child_nodes.items()) |child| {
         runInsertionStepsRecursive(child);
@@ -202,7 +206,7 @@ fn runInsertionStepsRecursive(node: *Node) void {
 }
 
 /// Recursively run post-connection steps for a node and all its descendants
-fn runPostConnectionStepsRecursive(node: *Node) void {
+fn runPostConnectionStepsRecursive(node: anytype) void {
     runPostConnectionSteps(node);
     for (node.child_nodes.items()) |child| {
         runPostConnectionStepsRecursive(child);
@@ -210,7 +214,7 @@ fn runPostConnectionStepsRecursive(node: *Node) void {
 }
 
 /// Recursively run removing steps for a node and all its descendants
-fn runRemovingStepsRecursive(node: *Node, old_parent: *Node) void {
+fn runRemovingStepsRecursive(node: anytype, old_parent: anytype) void {
     runRemovingSteps(node, old_parent);
     for (node.child_nodes.items()) |child| {
         runRemovingStepsRecursive(child, node);
@@ -219,9 +223,9 @@ fn runRemovingStepsRecursive(node: *Node, old_parent: *Node) void {
 
 /// Create transient registered observers for a removed node
 /// Spec: https://dom.spec.whatwg.org/#concept-node-remove step 15
-fn createTransientObserversForRemovedNode(node: *Node, parent: *Node) !void {
+fn createTransientObserversForRemovedNode(node: anytype, parent: anytype) !void {
     // For each inclusive ancestor inclusiveAncestor of parent
-    var current_ancestor: ?*Node = parent;
+    var current_ancestor: ?*Node = @ptrCast(parent);
     while (current_ancestor) |ancestor| {
         // For each registered observer obs in inclusiveAncestor's registered observer list
         for (0..ancestor.registered_observers.len) |i| {
@@ -240,7 +244,7 @@ fn createTransientObserversForRemovedNode(node: *Node, parent: *Node) !void {
 }
 
 /// Helper: Create transient observer for a node and all its descendants
-fn createTransientObserverForNodeAndDescendants(node: *Node, source: RegisteredObserver) !void {
+fn createTransientObserverForNodeAndDescendants(node: anytype, source: RegisteredObserver) !void {
     // Add transient observer to this node
     try node.registered_observers.append(.{
         .observer = source.observer,
@@ -251,8 +255,7 @@ fn createTransientObserverForNodeAndDescendants(node: *Node, source: RegisteredO
     });
 
     // Recursively add to all descendants
-    for (0..node.child_nodes.len) |i| {
-        const child = node.child_nodes.get(i) orelse continue;
+    for (node.child_nodes.items()) |child| {
         try createTransientObserverForNodeAndDescendants(child, source);
     }
 }
@@ -311,10 +314,12 @@ fn isCharacterData(node: anytype) bool {
 }
 
 /// Get child index in parent
-fn getChildIndex(child: *Node) ?usize {
+fn getChildIndex(child: anytype) ?usize {
     const parent = child.parent_node orelse return null;
+    // Cast child to *Node for comparison with child_nodes array
+    const child_node: *Node = @ptrCast(child);
     for (parent.child_nodes.items(), 0..) |node, i| {
-        if (node == child) return i;
+        if (node == child_node) return i;
     }
     return null;
 }
@@ -861,8 +866,8 @@ pub fn replace(
 ///
 /// This algorithm removes all children and inserts node (if non-null)
 pub fn replaceAll(
-    node: ?*Node,
-    parent: *Node,
+    node: anytype,
+    parent: anytype,
 ) DOMException!void {
     const allocator = parent.allocator;
 
@@ -890,7 +895,8 @@ pub fn replaceAll(
             added_nodes = n.child_nodes.items();
             added_count = added_nodes.len;
         } else {
-            added_nodes_buf[0] = n;
+            const node_ptr: *Node = @ptrCast(n);
+            added_nodes_buf[0] = node_ptr;
             added_nodes = added_nodes_buf[0..1];
             added_count = 1;
         }
@@ -921,7 +927,7 @@ pub fn replaceAll(
         }
         try mutation_observer.queueTreeMutationRecord(
             allocator,
-            parent,
+            @ptrCast(parent),
             added_list,
             removed_list,
             null,
@@ -1308,7 +1314,8 @@ fn isHostIncludingInclusiveAncestor(node: anytype, other: anytype) bool {
 
 /// Helper: Run live range pre-remove steps
 /// Spec: https://dom.spec.whatwg.org/#live-range-pre-remove-steps
-fn runLiveRangePreRemoveSteps(node: *Node) void {
+fn runLiveRangePreRemoveSteps(node: anytype) void {
+    const node_ptr: *Node = @ptrCast(node);
     const parent = node.parent_node orelse return;
     const index = getChildIndex(node) orelse return;
 
@@ -1320,14 +1327,14 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
         for (doc.ranges.toSlice()) |range| {
             // Step 4: For each live range whose start node is an inclusive descendant of node,
             // set its start to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.start_container, node)) {
+            if (tree_helpers.isInclusiveDescendant(range.start_container, node_ptr)) {
                 range.start_container = parent;
                 range.start_offset = @intCast(index);
             }
 
             // Step 5: For each live range whose end node is an inclusive descendant of node,
             // set its end to (parent, index)
-            if (tree_helpers.isInclusiveDescendant(range.end_container, node)) {
+            if (tree_helpers.isInclusiveDescendant(range.end_container, node_ptr)) {
                 range.end_container = parent;
                 range.end_offset = @intCast(index);
             }
@@ -1349,7 +1356,7 @@ fn runLiveRangePreRemoveSteps(node: *Node) void {
 
 /// Helper: Run NodeIterator pre-remove steps for all iterators
 /// Spec: https://dom.spec.whatwg.org/#nodeiterator-pre-removing-steps
-fn runNodeIteratorPreRemoveSteps(node: *Node) void {
+fn runNodeIteratorPreRemoveSteps(node: anytype) void {
     // Get node's document
     const doc_node = node.owner_document orelse return;
     const doc: *Document = @ptrCast(@alignCast(doc_node));
@@ -1366,41 +1373,43 @@ fn runNodeIteratorPreRemoveSteps(node: *Node) void {
 }
 
 /// Helper: Update ranges when inserting before child
-fn updateRangesForInsertion(doc: *Document, parent: *Node, child_index: usize) void {
+fn updateRangesForInsertion(doc: anytype, parent: anytype, child_index: usize) void {
     updateRangesForInsertionWithCount(doc, parent, child_index, 1);
 }
 
 /// Helper: Update ranges when inserting multiple nodes before child
 /// DOM spec: For each live range whose start/end node is parent and offset > child_index,
 /// increase offset by count
-fn updateRangesForInsertionWithCount(doc: *Document, parent: *Node, child_index: usize, count: usize) void {
+fn updateRangesForInsertionWithCount(doc: anytype, parent: anytype, child_index: usize, count: usize) void {
+    const parent_ptr: *Node = @ptrCast(parent);
     doc.ranges_mutex.lock();
     defer doc.ranges_mutex.unlock();
 
     for (doc.ranges.toSliceMut()) |range| {
         // For each live range whose start node is parent and start offset is greater than child's index,
         // increase its start offset by count
-        if (range.start_container == parent and range.start_offset > child_index) {
+        if (range.start_container == parent_ptr and range.start_offset > child_index) {
             range.start_offset += @intCast(count);
         }
 
         // For each live range whose end node is parent and end offset is greater than child's index,
         // increase its end offset by count
-        if (range.end_container == parent and range.end_offset > child_index) {
+        if (range.end_container == parent_ptr and range.end_offset > child_index) {
             range.end_offset += @intCast(count);
         }
     }
 }
 
 /// Helper: Remove node from parent's children list (without updating parent pointer)
-fn removeFromChildrenList(node: *Node, parent: *Node) void {
+fn removeFromChildrenList(node: anytype, parent: anytype) void {
+    const node_ptr: *Node = @ptrCast(node);
     // Update sibling pointers
     if (node.previous_sibling) |prev| {
         prev.next_sibling = node.next_sibling;
     } else {
         // node was first child
         const first = parent.child_nodes.items()[0];
-        if (first == node) {
+        if (first == node_ptr) {
             if (node.next_sibling) |next| {
                 parent.child_nodes.items()[0] = next;
             } else {
@@ -1426,7 +1435,7 @@ fn removeFromChildrenList(node: *Node, parent: *Node) void {
 }
 
 /// Helper: Insert node into parent's children list (updates parent pointer)
-fn insertIntoChildrenList(node: *Node, parent: *Node, child: ?*Node) void {
+fn insertIntoChildrenList(node: anytype, parent: anytype, child: anytype) void {
     if (child) |c| {
         // Insert before child
         const child_idx = getChildIndex(c) orelse {

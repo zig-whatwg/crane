@@ -25,19 +25,19 @@ pub const ShadowRoot = @import("shadow_root").ShadowRoot;
 // tree navigation patterns.
 
 /// Get the parent node of the given node
-pub fn getParentNode(node: *const Node) ?*Node {
+pub fn getParentNode(node: anytype) ?*Node {
     return node.parent_node;
 }
 
 /// Get the first child of the given node
 /// O(1) - Direct access to first element of child_nodes list
-pub fn getFirstChild(node: *const Node) ?*Node {
+pub fn getFirstChild(node: anytype) ?*Node {
     return node.child_nodes.get(0);
 }
 
 /// Get the last child of the given node
 /// O(1) - Direct access to last element of child_nodes list
-pub fn getLastChild(node: *const Node) ?*Node {
+pub fn getLastChild(node: anytype) ?*Node {
     const len = node.child_nodes.size();
     return if (len > 0)
         node.child_nodes.get(len - 1)
@@ -51,7 +51,7 @@ pub fn getLastChild(node: *const Node) ?*Node {
 /// Performance note: This is slower than dom2's O(1) pointer access, but
 /// acceptable for typical use cases. Can optimize later if needed by adding
 /// sibling pointers alongside child_nodes list.
-pub fn getNextSibling(node: *const Node) ?*Node {
+pub fn getNextSibling(node: anytype) ?*Node {
     const parent = node.parent_node orelse return null;
 
     const len = parent.child_nodes.size();
@@ -71,7 +71,7 @@ pub fn getNextSibling(node: *const Node) ?*Node {
 
 /// Get the previous sibling of the given node
 /// O(n) - Must search parent's child_nodes list to find current node's position
-pub fn getPreviousSibling(node: *const Node) ?*Node {
+pub fn getPreviousSibling(node: anytype) ?*Node {
     const parent = node.parent_node orelse return null;
 
     const len = parent.child_nodes.size();
@@ -91,21 +91,21 @@ pub fn getPreviousSibling(node: *const Node) ?*Node {
 
 /// Get the number of children of the given node
 /// O(1) - Direct access to list length
-pub fn getChildCount(node: *const Node) usize {
+pub fn getChildCount(node: anytype) usize {
     return node.child_nodes.size();
 }
 
 /// Get child at specific index
 /// O(1) - Direct array access
 /// Returns null if index out of bounds
-pub fn getChildAt(node: *const Node, index: usize) ?*Node {
+pub fn getChildAt(node: anytype, index: usize) ?*Node {
     return node.child_nodes.get(index);
 }
 
 /// Find the index of a child node
 /// O(n) - Linear search through children
 /// Returns null if child not found
-pub fn getChildIndex(parent: *const Node, child: *const Node) ?usize {
+pub fn getChildIndex(parent: anytype, child: anytype) ?usize {
     var i: usize = 0;
     while (i < parent.child_nodes.len) : (i += 1) {
         if (parent.child_nodes.get(i) == child) {
@@ -123,7 +123,7 @@ pub fn getChildIndex(parent: *const Node, child: *const Node) ?usize {
 /// Check if `other` is an inclusive descendant of `node`
 /// Per WHATWG DOM: An object A is an inclusive descendant of an object B,
 /// if A is a descendant of B or A is B.
-pub fn isInclusiveDescendant(node: *const Node, other: *const Node) bool {
+pub fn isInclusiveDescendant(node: anytype, other: anytype) bool {
     if (node == other) return true;
     return isDescendant(node, other);
 }
@@ -131,7 +131,7 @@ pub fn isInclusiveDescendant(node: *const Node, other: *const Node) bool {
 /// Check if `other` is a descendant of `node`
 /// Per WHATWG DOM: An object A is a descendant of an object B, if A's
 /// parent is B or A's parent is a descendant of B.
-pub fn isDescendant(node: *const Node, other: *const Node) bool {
+pub fn isDescendant(node: anytype, other: anytype) bool {
     var current = other.parent_node;
     while (current) |parent| {
         if (parent == node) return true;
@@ -143,7 +143,7 @@ pub fn isDescendant(node: *const Node, other: *const Node) bool {
 /// Check if `other` is an inclusive ancestor of `node`
 /// Per WHATWG DOM: An object A is an inclusive ancestor of an object B,
 /// if A is an ancestor of B or A is B.
-pub fn isInclusiveAncestor(node: *const Node, other: *const Node) bool {
+pub fn isInclusiveAncestor(node: anytype, other: anytype) bool {
     if (node == other) return true;
     return isAncestor(node, other);
 }
@@ -151,7 +151,7 @@ pub fn isInclusiveAncestor(node: *const Node, other: *const Node) bool {
 /// Check if `other` is an ancestor of `node`
 /// Per WHATWG DOM: An object A is an ancestor of an object B, if B is a
 /// descendant of A.
-pub fn isAncestor(node: *const Node, other: *const Node) bool {
+pub fn isAncestor(node: anytype, other: anytype) bool {
     return isDescendant(other, node);
 }
 
@@ -159,7 +159,7 @@ pub fn isAncestor(node: *const Node, other: *const Node) bool {
 /// Returns a list of all ancestors including the node itself, from node up to root.
 /// The list is ordered from the node to the root (node is first, root is last).
 /// Caller owns the returned list and must call deinit().
-pub fn getInclusiveAncestors(allocator: Allocator, node: *const Node) !infra.List(*Node) {
+pub fn getInclusiveAncestors(allocator: Allocator, node: anytype) !infra.List(*Node) {
     var ancestors = infra.List(*Node).init(allocator);
     errdefer ancestors.deinit();
 
@@ -177,31 +177,31 @@ pub fn getInclusiveAncestors(allocator: Allocator, node: *const Node) !infra.Lis
 }
 
 /// Check if two nodes are siblings (share the same parent)
-pub fn areSiblings(a: *const Node, b: *const Node) bool {
+pub fn areSiblings(a: anytype, b: anytype) bool {
     if (a.parent_node == null or b.parent_node == null) return false;
     return a.parent_node == b.parent_node;
 }
 
 /// Check if node has any children
 /// O(1) - Check list length
-pub fn hasChildren(node: *const Node) bool {
+pub fn hasChildren(node: anytype) bool {
     return node.child_nodes.len > 0;
 }
 
 /// Check if node is the root (has no parent)
-pub fn isRoot(node: *const Node) bool {
+pub fn isRoot(node: anytype) bool {
     return node.parent_node == null;
 }
 
 /// Check if node is a leaf (has no children)
-pub fn isLeaf(node: *const Node) bool {
+pub fn isLeaf(node: anytype) bool {
     return node.child_nodes.len == 0;
 }
 
 /// Check if node A is following node B (comes after B in tree order)
 /// Per WHATWG DOM: An object A is following an object B if A and B are in
 /// the same tree and A comes after B in tree order (preorder depth-first).
-pub fn isFollowing(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isFollowing(nodeA: anytype, nodeB: anytype) bool {
     // Use tree order comparison
     return compareTreeOrder(nodeA, nodeB) == .after;
 }
@@ -209,13 +209,13 @@ pub fn isFollowing(nodeA: *const Node, nodeB: *const Node) bool {
 /// Check if node A is preceding node B (comes before B in tree order)
 /// Per WHATWG DOM: An object A is preceding an object B if A and B are in
 /// the same tree and A comes before B in tree order.
-pub fn isPreceding(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isPreceding(nodeA: anytype, nodeB: anytype) bool {
     return compareTreeOrder(nodeA, nodeB) == .before;
 }
 
 /// Compare two nodes in tree order
 /// Returns: .before if nodeA comes before nodeB, .after if nodeA comes after nodeB, .equal if same node
-pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, equal, after } {
+pub fn compareTreeOrder(nodeA: anytype, nodeB: anytype) enum { before, equal, after } {
     if (nodeA == nodeB) return .equal;
 
     // Find common ancestor and determine relative positions
@@ -305,7 +305,7 @@ pub fn compareTreeOrder(nodeA: *const Node, nodeB: *const Node) enum { before, e
 
 /// Get the next node in pre-order traversal
 /// Pre-order: Visit node, then children left-to-right
-pub fn getNextInPreOrder(node: *const Node) ?*Node {
+pub fn getNextInPreOrder(node: anytype) ?*Node {
     // If node has children, next is first child
     if (getFirstChild(node)) |first_child| {
         return first_child;
@@ -324,7 +324,7 @@ pub fn getNextInPreOrder(node: *const Node) ?*Node {
 }
 
 /// Get the previous node in pre-order traversal
-pub fn getPreviousInPreOrder(node: *const Node) ?*Node {
+pub fn getPreviousInPreOrder(node: anytype) ?*Node {
     // If has previous sibling, go to rightmost descendant of that sibling
     if (getPreviousSibling(node)) |prev_sibling| {
         return getRightmostDescendant(prev_sibling);
@@ -350,7 +350,7 @@ fn getRightmostDescendant(node: *const Node) *Node {
 /// Get the descendant text content of a node
 /// Concatenates all Text node descendants in tree order
 /// Caller owns returned memory
-pub fn getDescendantTextContent(node: *const Node, allocator: Allocator) ![]const u8 {
+pub fn getDescendantTextContent(node: anytype, allocator: Allocator) ![]const u8 {
     var text_list = infra.List(u8).init(allocator);
     errdefer text_list.deinit();
 
@@ -381,7 +381,7 @@ fn collectTextContent(node: *const Node, list: *infra.List(u8)) !void {
 
 /// Get the depth of a node (distance from root)
 /// Root has depth 0
-pub fn getDepth(node: *const Node) usize {
+pub fn getDepth(node: anytype) usize {
     var depth: usize = 0;
     var current = node.parent_node;
     while (current) |parent| {
@@ -393,7 +393,7 @@ pub fn getDepth(node: *const Node) usize {
 
 /// Get the height of a tree (maximum depth of any descendant)
 /// Leaf nodes have height 0
-pub fn getHeight(node: *const Node) usize {
+pub fn getHeight(node: anytype) usize {
     var max_height: usize = 0;
 
     var i: usize = 0;
@@ -409,7 +409,7 @@ pub fn getHeight(node: *const Node) usize {
 }
 
 /// Count total number of descendants (not including self)
-pub fn countDescendants(node: *const Node) usize {
+pub fn countDescendants(node: anytype) usize {
     var count: usize = 0;
 
     var i: usize = 0;
@@ -428,7 +428,7 @@ pub fn countDescendants(node: *const Node) usize {
 
 /// Find the lowest common ancestor of two nodes
 /// Returns null if nodes are in different trees
-pub fn findCommonAncestor(a: *const Node, b: *const Node) ?*Node {
+pub fn findCommonAncestor(a: anytype, b: anytype) ?*Node {
     // Collect all ancestors of a
     var a_ancestors = infra.List(*const Node).init(std.heap.page_allocator);
     defer a_ancestors.deinit();
@@ -492,7 +492,7 @@ pub fn findCommonAncestor(a: *const Node, b: *const Node) ?*Node {
 /// Get the next node in tree order, constrained within a root
 /// Returns null if no next node exists within root
 /// Used by NodeIterator for forward traversal
-pub fn getNextNodeInTree(node: *const Node, root: *const Node) ?*Node {
+pub fn getNextNodeInTree(node: anytype, root: anytype) ?*Node {
     // If node has children, return first child
     if (getFirstChild(node)) |child| {
         return child;
@@ -519,7 +519,7 @@ pub fn getNextNodeInTree(node: *const Node, root: *const Node) ?*Node {
 /// Get the previous node in tree order, constrained within a root
 /// Returns null if no previous node exists within root
 /// Used by NodeIterator for backward traversal
-pub fn getPreviousNodeInTree(node: *const Node, root: *const Node) ?*Node {
+pub fn getPreviousNodeInTree(node: anytype, root: anytype) ?*Node {
     // Don't go before root
     if (node == root) return null;
 
@@ -536,7 +536,7 @@ pub fn getPreviousNodeInTree(node: *const Node, root: *const Node) ?*Node {
 
 /// Get the last inclusive descendant of a node (the node that appears last in tree order)
 /// This is the node itself if it has no children, otherwise the last descendant of its last child
-pub fn getLastInclusiveDescendant(node: *const Node) *Node {
+pub fn getLastInclusiveDescendant(node: anytype) *Node {
     var current: *Node = @constCast(node);
     while (getLastChild(current)) |last_child| {
         current = last_child;
@@ -547,7 +547,7 @@ pub fn getLastInclusiveDescendant(node: *const Node) *Node {
 /// Get the next node after to_be_removed that is an inclusive descendant of root
 /// but NOT an inclusive descendant of to_be_removed
 /// Used by NodeIterator.preRemoveSteps
-pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*Node {
+pub fn getNextNodeNotInSubtree(to_be_removed: anytype, root: anytype) ?*Node {
     // Start from the node after to_be_removed in tree order
     var current: ?*const Node = to_be_removed;
 
@@ -596,7 +596,7 @@ pub fn getNextNodeNotInSubtree(to_be_removed: *const Node, root: *const Node) ?*
 /// 1. Visit node
 /// 2. Visit first child and its descendants
 /// 3. Visit next sibling and its descendants
-pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+pub fn getInclusiveDescendantsInTreeOrder(allocator: Allocator, root: anytype) !infra.List(*Node) {
     var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
@@ -623,7 +623,7 @@ fn collectDescendantsInTreeOrder(result: *infra.List(*Node), node: *const Node) 
 }
 
 /// Get all descendants (not including root) in tree order
-pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+pub fn getDescendantsInTreeOrder(allocator: Allocator, root: anytype) !infra.List(*Node) {
     var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
@@ -648,7 +648,7 @@ pub fn getDescendantsInTreeOrder(allocator: Allocator, root: *const Node) !infra
 /// if the object's root is a shadow root; otherwise its root.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-root
-pub fn getShadowIncludingRoot(node: *const Node) *Node {
+pub fn getShadowIncludingRoot(node: anytype) *Node {
     // Get the regular root
     var current = node;
     while (current.parent_node) |parent| {
@@ -678,7 +678,7 @@ pub fn getShadowIncludingRoot(node: *const Node) *Node {
 /// - A's root is a shadow root AND A's root's host is a shadow-including inclusive descendant of B
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-descendant
-pub fn isShadowIncludingDescendant(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isShadowIncludingDescendant(nodeA: anytype, nodeB: anytype) bool {
     // First check: Is A a descendant of B?
     if (isDescendant(nodeB, nodeA)) {
         return true;
@@ -711,7 +711,7 @@ pub fn isShadowIncludingDescendant(nodeA: *const Node, nodeB: *const Node) bool 
 /// A shadow-including inclusive descendant is an object or one of its shadow-including descendants.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-descendant
-pub fn isShadowIncludingInclusiveDescendant(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isShadowIncludingInclusiveDescendant(nodeA: anytype, nodeB: anytype) bool {
     if (nodeA == nodeB) return true;
     return isShadowIncludingDescendant(nodeA, nodeB);
 }
@@ -723,7 +723,7 @@ pub fn isShadowIncludingInclusiveDescendant(nodeA: *const Node, nodeB: *const No
 /// if and only if B is a shadow-including descendant of A.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-ancestor
-pub fn isShadowIncludingAncestor(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isShadowIncludingAncestor(nodeA: anytype, nodeB: anytype) bool {
     return isShadowIncludingDescendant(nodeB, nodeA);
 }
 
@@ -733,7 +733,7 @@ pub fn isShadowIncludingAncestor(nodeA: *const Node, nodeB: *const Node) bool {
 /// A shadow-including inclusive ancestor is an object or one of its shadow-including ancestors.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-inclusive-ancestor
-pub fn isShadowIncludingInclusiveAncestor(nodeA: *const Node, nodeB: *const Node) bool {
+pub fn isShadowIncludingInclusiveAncestor(nodeA: anytype, nodeB: anytype) bool {
     if (nodeA == nodeB) return true;
     return isShadowIncludingAncestor(nodeA, nodeB);
 }
@@ -748,7 +748,7 @@ pub fn isShadowIncludingInclusiveAncestor(nodeA: *const Node, nodeB: *const Node
 /// Returns a list that the caller must deinit.
 ///
 /// Spec: https://dom.spec.whatwg.org/#concept-shadow-including-tree-order
-pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+pub fn getShadowIncludingInclusiveDescendants(allocator: Allocator, root: anytype) !infra.List(*Node) {
     var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
@@ -794,7 +794,7 @@ fn collectShadowIncludingDescendants(result: *infra.List(*Node), node: *const No
 }
 
 /// Get all shadow-including descendants (not including root) in shadow-including tree order
-pub fn getShadowIncludingDescendants(allocator: Allocator, root: *const Node) !infra.List(*Node) {
+pub fn getShadowIncludingDescendants(allocator: Allocator, root: anytype) !infra.List(*Node) {
     var result = infra.List(*Node).init(allocator);
     errdefer result.deinit();
 
