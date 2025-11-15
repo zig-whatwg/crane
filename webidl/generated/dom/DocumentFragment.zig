@@ -1789,7 +1789,7 @@ pub const DocumentFragment = struct {
 
         var i: usize = 0;
         while (i < self_parent.registered_observers.toSlice().len) {
-            if (self_parent.registered_observers.toSlice()[i].observer == observer) {
+            if (self_parent.registered_observers.toSlice()[i].observer == @as(*const anyopaque, @ptrCast(observer))) {
                 _ = try self_parent.registered_observers.remove(i);
                 // Don't increment i, we just shifted everything down
             } else {

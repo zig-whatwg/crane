@@ -579,7 +579,7 @@ pub const ReadableByteStreamController = struct {
     /// Shift (remove) the first pending pull-into descriptor
     /// 
     /// Spec: § 4.10.11 "ReadableByteStreamControllerShiftPendingPullInto"
-    fn shiftPendingPullInto(self: *ReadableByteStreamController) *PullIntoDescriptor {
+    fn shiftPendingPullInto(self: *ReadableByteStreamController) !*PullIntoDescriptor {
 
         // Step 1: Assert: controller.[[byobRequest]] is null
         // Step 2: Return shift from list

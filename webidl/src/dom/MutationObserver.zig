@@ -140,7 +140,7 @@ pub const MutationObserver = webidl.interface(struct {
         // if registered's observer is this:
         const registered_observers = target.getRegisteredObservers();
         for (registered_observers.toSliceMut()) |*registered| {
-            if (registered.observer == self) {
+            if (registered.observer == @as(*anyopaque, @ptrCast(self))) {
                 // Step 7.1: For each node of this's node list, remove all
                 // transient registered observers whose source is registered
                 // from node's registered observer list.
