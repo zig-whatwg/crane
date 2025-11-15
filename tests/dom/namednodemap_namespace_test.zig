@@ -16,10 +16,7 @@ test "NamedNodeMap.getNamedItemNS - finds attribute by namespace and local name"
     const element = try doc.call_createElement("div");
 
     // Create an attribute with namespace
-    var attr = try dom.Attr.init(allocator, "href", "http://www.w3.org/1999/xhtml");
-    attr.local_name = "href";
-    attr.namespace_uri = "http://www.w3.org/1999/xhtml";
-    attr.value = "http://example.com";
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xhtml", null, "href", "http://example.com");
 
     // Add to element
     try element.attributes.append(attr);
@@ -44,10 +41,7 @@ test "NamedNodeMap.getNamedItemNS - returns null for non-existent attribute" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute with namespace
-    var attr = try dom.Attr.init(allocator, "href", "http://www.w3.org/1999/xhtml");
-    attr.local_name = "href";
-    attr.namespace_uri = "http://www.w3.org/1999/xhtml";
-    attr.value = "http://example.com";
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xhtml", null, "href", "http://example.com");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -68,10 +62,7 @@ test "NamedNodeMap.getNamedItemNS - handles null namespace" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute without namespace
-    var attr = try dom.Attr.init(allocator, "id", null);
-    attr.local_name = "id";
-    attr.namespace_uri = null;
-    attr.value = "test";
+    var attr = try dom.Attr.init(allocator, null, null, "id", "test-id");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
