@@ -1748,30 +1748,6 @@ pub const Node = struct {
     // With flattened inheritance, we need runtime type checking to safely
     // downcast from Node to more specific types.
 
-    /// Safe downcast to CharacterData (returns null if not a CharacterData)
-    pub fn asCharacterData(self: *Node) ?*CharacterData {
-        return switch (self.node_type) {
-            TEXT_NODE,
-            COMMENT_NODE,
-            CDATA_SECTION_NODE,
-            PROCESSING_INSTRUCTION_NODE,
-             => @ptrCast(@alignCast(self)),
-            else => null,
-        };
-    }
-
-    /// Safe const downcast to CharacterData
-    pub fn asCharacterDataConst(self: *const Node) ?*const CharacterData {
-        return switch (self.node_type) {
-            TEXT_NODE,
-            COMMENT_NODE,
-            CDATA_SECTION_NODE,
-            PROCESSING_INSTRUCTION_NODE,
-             => @ptrCast(@alignCast(self)),
-            else => null,
-        };
-    }
-
     /// Safe downcast to Element (returns null if not a Element)
     pub fn asElement(self: *Node) ?*Element {
         return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;

@@ -467,6 +467,115 @@ fn findDirectChildren(allocator: Allocator, class_name: []const u8, registry: *c
     return try children.toOwnedSlice();
 }
 
+/// Try to match a constant name to a child class name
+/// Examples: TEXT_NODE -> Text, ELEMENT_NODE -> Element, TEXT_TYPE -> Text
+fn matchConstantToChildName(constant_name: []const u8, child_name: []const u8) bool {
+    // Common patterns:
+    // 1. CHILDNAME_NODE (e.g., TEXT_NODE -> Text)
+    // 2. CHILDNAME_TYPE (e.g., TEXT_TYPE -> Text)
+    // 3. KIND_CHILDNAME (e.g., KIND_TEXT -> Text)
+
+    // Convert child_name to UPPERCASE (simple)
+    var upper_child_buf: [128]u8 = undefined;
+    if (child_name.len > 64) return false; // Conservative limit
+
+    const upper_child = std.ascii.upperString(&upper_child_buf, child_name);
+
+    // Build UPPER_CASE version with underscores for CamelCase
+    // e.g., "DocumentType" -> "DOCUMENT_TYPE"
+    var upper_child_underscore_buf: [128]u8 = undefined;
+    const upper_child_underscore = blk: {
+        var write_pos: usize = 0;
+        for (child_name, 0..) |c, i| {
+            // Insert underscore before uppercase letters (except first)
+            if (i > 0 and std.ascii.isUpper(c) and !std.ascii.isUpper(child_name[i - 1])) {
+                upper_child_underscore_buf[write_pos] = '_';
+                write_pos += 1;
+            }
+            upper_child_underscore_buf[write_pos] = std.ascii.toUpper(c);
+            write_pos += 1;
+        }
+        break :blk upper_child_underscore_buf[0..write_pos];
+    };
+
+    // Pattern 1a: CHILDNAME_NODE (exact match, e.g., TEXT_NODE -> Text)
+    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
+        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
+        if (std.mem.eql(u8, prefix, upper_child)) {
+            return true;
+        }
+    }
+
+    // Pattern 1a': Abbreviated form (constant prefix is abbreviated child name)
+    // e.g., ATTRIBUTE_NODE -> Attr (prefix="ATTRIBUTE" starts with "ATTR")
+    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
+        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
+        // Constant prefix must exactly match child, or
+        // child must be 3+ chars and be the start of the prefix
+        if (upper_child.len >= 3 and prefix.len > upper_child.len) {
+            // The constant prefix must START with the child name
+            // e.g., "ATTRIBUTE" starts with "ATTR" ✓
+            // BUT "DOCUMENT_TYPE" does NOT start with "DOCUMENT" (it equals, then has more)
+            // Actually that DOES start with "DOCUMENT"... the issue is we need exact or abbreviated
+            // Let me be more precise: child name abbreviates the prefix
+            // ATTR abbreviates ATTRIBUTE (ATTR is start of ATTRIBUTE) ✓
+            // DOCUMENT does NOT abbreviate DOCUMENT_TYPE (can't have underscore in between)
+
+            // Only match if there's no underscore in the prefix after the child length
+            const after_child = prefix[upper_child.len..];
+            if (std.mem.startsWith(u8, prefix, upper_child) and
+                after_child.len > 0 and after_child[0] != '_')
+            {
+                return true;
+            }
+        }
+    }
+
+    // Pattern 1b: CHILD_NAME_NODE (with underscores, e.g., DOCUMENT_TYPE_NODE -> DocumentType)
+    if (std.mem.endsWith(u8, constant_name, "_NODE")) {
+        const prefix = constant_name[0 .. constant_name.len - "_NODE".len];
+        if (std.mem.eql(u8, prefix, upper_child_underscore)) {
+            return true;
+        }
+    }
+
+    // Pattern 2: CHILDNAME_TYPE or CHILD_NAME_TYPE
+    if (std.mem.endsWith(u8, constant_name, "_TYPE")) {
+        const prefix = constant_name[0 .. constant_name.len - "_TYPE".len];
+        if (std.mem.eql(u8, prefix, upper_child) or std.mem.eql(u8, prefix, upper_child_underscore)) {
+            return true;
+        }
+    }
+
+    // Pattern 3: KIND_CHILDNAME or KIND_CHILD_NAME
+    if (std.mem.startsWith(u8, constant_name, "KIND_")) {
+        const suffix = constant_name["KIND_".len..];
+        if (std.mem.eql(u8, suffix, upper_child) or std.mem.eql(u8, suffix, upper_child_underscore)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// Find all constants that map to a specific child class
+fn findConstantsForChild(
+    allocator: Allocator,
+    child_name: []const u8,
+    parent_class: ir.ClassDef,
+) ![][]const u8 {
+    var matching_constants = infra.List([]const u8).init(allocator);
+
+    // Check all constants in the parent class
+    for (parent_class.own_constants) |constant| {
+        if (matchConstantToChildName(constant.name, child_name)) {
+            try matching_constants.append(constant.name);
+        }
+    }
+
+    return try matching_constants.toOwnedSlice();
+}
+
 /// Build inheritance information for generating downcast helpers
 fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !?InheritanceInfo {
     // Detect discriminator field
@@ -482,88 +591,35 @@ fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.E
     // If no children, no downcast helpers needed
     if (child_names.len == 0) return null;
 
-    // Build children info dynamically
+    // Build children info dynamically by auto-detecting constant-to-type mappings
     var children_list = infra.List(InheritanceInfo.ChildTypeInfo).init(allocator);
 
-    // For each child, try to determine which discriminator values map to it
-    // For now, use hardcoded mappings but validate against actual children
-    if (std.mem.eql(u8, class.name, "Node")) {
-        // Hardcoded Node->child mappings (TODO: make dynamic)
-        const node_mappings = [_]struct { name: []const u8, values: []const []const u8 }{
-            .{ .name = "CharacterData", .values = &[_][]const u8{ "TEXT_NODE", "COMMENT_NODE", "CDATA_SECTION_NODE", "PROCESSING_INSTRUCTION_NODE" } },
-            .{ .name = "Element", .values = &[_][]const u8{"ELEMENT_NODE"} },
-            .{ .name = "Document", .values = &[_][]const u8{"DOCUMENT_NODE"} },
-            .{ .name = "DocumentFragment", .values = &[_][]const u8{"DOCUMENT_FRAGMENT_NODE"} },
-            .{ .name = "Text", .values = &[_][]const u8{"TEXT_NODE"} },
-            .{ .name = "Attr", .values = &[_][]const u8{"ATTRIBUTE_NODE"} },
-        };
+    // For each child, auto-detect which constants map to it
+    for (child_names) |child_name| {
+        // Find all constants that match this child's name
+        const constants = try findConstantsForChild(allocator, child_name, class);
+        defer allocator.free(constants);
 
-        // Only include children that actually exist in the registry
-        for (node_mappings) |mapping| {
-            const child_exists = blk: {
-                for (child_names) |name| {
-                    if (std.mem.eql(u8, name, mapping.name)) break :blk true;
-                }
-                break :blk false;
-            };
-
-            if (child_exists) {
-                var values = infra.List([]const u8).init(allocator);
-                for (mapping.values) |v| {
-                    try values.append(v);
-                }
-                try children_list.append(.{
-                    .class_name = mapping.name,
-                    .discriminator_values = try values.toOwnedSlice(),
-                });
+        // Only include children that have at least one matching constant
+        if (constants.len > 0) {
+            var values = infra.List([]const u8).init(allocator);
+            for (constants) |constant_name| {
+                try values.append(constant_name);
             }
+            try children_list.append(.{
+                .class_name = try allocator.dupe(u8, child_name), // Duplicate so it survives defer cleanup
+                .discriminator_values = try values.toOwnedSlice(),
+            });
         }
-
-        return InheritanceInfo{
-            .discriminator_field = discriminator,
-            .children = try children_list.toOwnedSlice(),
-        };
     }
 
-    if (std.mem.eql(u8, class.name, "CharacterData")) {
-        // Hardcoded CharacterData->child mappings (TODO: make dynamic)
-        const char_data_mappings = [_]struct { name: []const u8, values: []const []const u8 }{
-            .{ .name = "Text", .values = &[_][]const u8{"TEXT_NODE"} },
-            .{ .name = "Comment", .values = &[_][]const u8{"COMMENT_NODE"} },
-            .{ .name = "ProcessingInstruction", .values = &[_][]const u8{"PROCESSING_INSTRUCTION_NODE"} },
-            .{ .name = "CDATASection", .values = &[_][]const u8{"CDATA_SECTION_NODE"} },
-        };
+    // If no children with constants found, no downcast helpers needed
+    if (children_list.len == 0) return null;
 
-        // Only include children that actually exist in the registry
-        for (char_data_mappings) |mapping| {
-            const child_exists = blk: {
-                for (child_names) |name| {
-                    if (std.mem.eql(u8, name, mapping.name)) break :blk true;
-                }
-                break :blk false;
-            };
-
-            if (child_exists) {
-                var values = infra.List([]const u8).init(allocator);
-                for (mapping.values) |v| {
-                    try values.append(v);
-                }
-                try children_list.append(.{
-                    .class_name = mapping.name,
-                    .discriminator_values = try values.toOwnedSlice(),
-                });
-            }
-        }
-
-        return InheritanceInfo{
-            .discriminator_field = discriminator,
-            .children = try children_list.toOwnedSlice(),
-        };
-    }
-
-    // For other classes with children but no known mappings, skip for now
-    // TODO: Auto-detect constant->type mappings (task 3)
-    return null;
+    return InheritanceInfo{
+        .discriminator_field = discriminator,
+        .children = try children_list.toOwnedSlice(),
+    };
 }
 
 /// Generate type conversion helper methods for safe downcasting
@@ -574,6 +630,7 @@ fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.Enha
     const inheritance_info = try buildInheritanceInfo(allocator, class, enhanced, registry) orelse return;
     defer {
         for (inheritance_info.children) |child| {
+            allocator.free(child.class_name); // Free duplicated class name
             allocator.free(child.discriminator_values);
         }
         allocator.free(inheritance_info.children);

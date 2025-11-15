@@ -2231,23 +2231,6 @@ pub const CharacterData = struct {
     
     }
 
-
-    // ========================================================================
-    // Type Conversion Helpers (Safe Downcasting)
-    // ========================================================================
-    // With flattened inheritance, we need runtime type checking to safely
-    // downcast from CharacterData to more specific types.
-
-    /// Safe downcast to Text (returns null if not a Text)
-    pub fn asText(self: *CharacterData) ?*Text {
-        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to Text
-    pub fn asTextConst(self: *const CharacterData) ?*const Text {
-        return if (self.node_type == TEXT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
 };
 
 
