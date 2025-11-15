@@ -149,13 +149,13 @@ test "Element.insertAdjacentText - multiple insertions accumulate" {
 
     // Check order: "Before First", "First", "Last"
     const first = element.child_nodes.get(0).?.as(dom.Text) orelse unreachable;
-    try std.testing.expectEqualStrings("Before First", try first.get_data());
+    try std.testing.expectEqualStrings("Before First", first.get_data());
 
     const second = element.child_nodes.get(1).?.as(dom.Text) orelse unreachable;
-    try std.testing.expectEqualStrings("First", try second.get_data());
+    try std.testing.expectEqualStrings("First", second.get_data());
 
     const third = element.child_nodes.get(2).?.as(dom.Text) orelse unreachable;
-    try std.testing.expectEqualStrings("Last", try third.get_data());
+    try std.testing.expectEqualStrings("Last", third.get_data());
 }
 
 test "Element.insertAdjacentText - special characters preserved" {

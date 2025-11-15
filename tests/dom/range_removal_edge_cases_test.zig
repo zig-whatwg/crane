@@ -66,11 +66,11 @@ test "Range removal - start in removed, end in kept" {
     // Create range: [b.firstChild, 2] to [c.firstChild, 3]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(b_text, 2);
-    try range.call_setEnd(c_text, 3);
+    try range.call_setStart(@ptrCast(b_text), 2);
+    try range.call_setEnd(@ptrCast(c_text), 3);
 
     // Register range with document
     try doc_ptr.ranges.append(range);
@@ -141,11 +141,11 @@ test "Range removal - fully contained in removed subtree" {
     // Create range: [child1.firstChild, 2] to [child2.firstChild, 3]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(child1_text, 2);
-    try range.call_setEnd(child2_text, 3);
+    try range.call_setStart(@ptrCast(child1_text), 2);
+    try range.call_setEnd(@ptrCast(child2_text), 3);
 
     // Register range with document
     try doc_ptr.ranges.append(range);
@@ -214,25 +214,25 @@ test "Range removal - multiple overlapping ranges" {
 
     const range2 = try allocator.create(dom.Range);
     defer allocator.destroy(range2);
-    range2.* = try dom.Range.init(allocator, doc_ptr);
+    range2.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range2.deinit();
 
     const range3 = try allocator.create(dom.Range);
     defer allocator.destroy(range3);
-    range3.* = try dom.Range.init(allocator, doc_ptr);
+    range3.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range3.deinit();
 
     // Range1: [before, 5] to [removed.child, 2]
-    try range1.call_setStart(before, 5);
-    try range1.call_setEnd(removed_child, 2);
+    try range1.call_setStart(@ptrCast(before), 5);
+    try range1.call_setEnd(@ptrCast(removed_child), 2);
 
     // Range2: [removed.child, 0] to [after, 3]
-    try range2.call_setStart(removed_child, 0);
-    try range2.call_setEnd(after, 3);
+    try range2.call_setStart(@ptrCast(removed_child), 0);
+    try range2.call_setEnd(@ptrCast(after), 3);
 
     // Range3: [removed, 0] to [removed, 1]
-    try range3.call_setStart(removed, 0);
-    try range3.call_setEnd(removed, 1);
+    try range3.call_setStart(@ptrCast(removed), 0);
+    try range3.call_setEnd(@ptrCast(removed), 1);
 
     // Register all ranges
     try doc_ptr.ranges.append(range1);
@@ -305,13 +305,13 @@ test "Range removal - offset adjustment in parent" {
     defer range.deinit();
 
     try range.call_setStart(@ptrCast(parent), 2);
-    try range.call_setEnd(parent, 3);
+    try range.call_setEnd(@ptrCast(parent), 3);
 
     // Register range
     try doc_ptr.ranges.append(range);
 
     // Remove node b (at index 1)
-    try dom.mutation.remove(b, false);
+    try dom.mutation.remove(@ptrCast(b), false);
 
     // After removal:
     // - start offset 2 > removed index 1, so decrease by 1 → 1
