@@ -188,8 +188,8 @@ test "importNode: element with attributes" {
         source_elem.deinit();
         allocator.destroy(source_elem);
     }
-    try source_elem.setAttribute("id", "test");
-    try source_elem.setAttribute("class", "container");
+    try source_elem.call_setAttribute("id", "test");
+    try source_elem.call_setAttribute("class", "container");
 
     // Create target document
     var target_doc = try Document.init(allocator);

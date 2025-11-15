@@ -94,7 +94,7 @@ test "Node.isConnected - element removed from document is not connected" {
     try std.testing.expect(elem_node.get_isConnected());
 
     // Remove from document
-    _ = doc_node.removeChild(elem_node) catch unreachable;
+    _ = doc_node.call_removeChild(elem_node) catch unreachable;
     try std.testing.expect(!elem_node.get_isConnected());
 }
 

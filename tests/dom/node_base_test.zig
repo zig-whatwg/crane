@@ -213,13 +213,13 @@ test "NodeBase - contains check across type hierarchy" {
     child_node.parent_node = parent_node;
 
     // Parent contains child (across type boundary)
-    try testing.expect(parent_node.contains(child_node));
+    try testing.expect(parent_node.call_contains(child_node));
 
     // Child doesn't contain parent
-    try testing.expect(!child_node.contains(parent_node));
+    try testing.expect(!child_node.call_contains(parent_node));
 
     // Node contains itself
-    try testing.expect(parent_node.contains(parent_node));
+    try testing.expect(parent_node.call_contains(parent_node));
 }
 
 test "NodeBase - memory layout validation" {

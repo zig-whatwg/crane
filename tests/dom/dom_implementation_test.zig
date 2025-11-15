@@ -246,7 +246,7 @@ test "DOMImplementation: hasFeature always returns true" {
     defer impl.deinit();
 
     // hasFeature is legacy and always returns true
-    try testing.expect(impl.hasFeature());
+    try testing.expect(DOMImplementation.call_hasFeature());
 }
 
 test "DOMImplementation: Document.implementation getter" {
@@ -256,11 +256,11 @@ test "DOMImplementation: Document.implementation getter" {
     defer doc.deinit();
 
     // Get implementation from document
-    const impl1 = try doc.implementation();
+    const impl1 = try doc.get_implementation();
     defer impl1.deinit();
 
     // Should be [SameObject] - same instance every time
-    const impl2 = try doc.implementation();
+    const impl2 = try doc.get_implementation();
     defer impl2.deinit();
 
     // Both should reference the same document
