@@ -18,6 +18,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const root = @import("root.zig");
+const ExtendedAttribute = root.ExtendedAttribute;
 
 /// Visibility modifier for declarations
 pub const Visibility = enum {
@@ -286,6 +288,10 @@ pub const ClassDef = struct {
     /// Mixin names
     mixins: [][]const u8,
 
+    /// WebIDL extended attributes
+    /// Examples: [Exposed=*], [Transferable], [Global=Window]
+    extended_attrs: []ExtendedAttribute,
+
     /// Fields directly defined in this class
     own_fields: []Field,
 
@@ -326,6 +332,9 @@ pub const ClassDef = struct {
             allocator.free(mixin);
         }
         allocator.free(self.mixins);
+
+        // Extended attributes are compile-time string literals - no cleanup needed
+        allocator.free(self.extended_attrs);
 
         for (self.own_fields) |*field| {
             field.deinit(allocator);
