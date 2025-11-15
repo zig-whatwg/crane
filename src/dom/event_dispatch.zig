@@ -55,7 +55,7 @@ pub fn appendToEventPath(
         // ShadowRoot is a DocumentFragment - need to check if it's specifically a ShadowRoot
         // For now, assume DOCUMENT_FRAGMENT_NODE with shadow root properties
         const shadow_root: *const ShadowRoot = @ptrCast(@alignCast(node));
-        if (shadow_root.mode == ShadowRootMode.closed) {
+        if (shadow_root.getMode() == ShadowRootMode.closed) {
             root_of_closed_tree = true;
         }
     }
@@ -401,7 +401,7 @@ fn retarget(a: ?*EventTarget, b: *EventTarget) ?*EventTarget {
         }
 
         // Step 2: Set A to A's root's host
-        const host_element = a_shadow_root.host_element;
+        const host_element = a_shadow_root.get_host();
         current_a = @ptrCast(&host_element.base);
     }
 
@@ -425,7 +425,7 @@ fn isShadowIncludingInclusiveAncestor(ancestor: *Node, node: *Node) bool {
     if (node_root.node_type == Node.DOCUMENT_FRAGMENT_NODE) {
         // Get shadow root's host
         const shadow: *ShadowRoot = @ptrCast(@alignCast(node_root));
-        const host_element = shadow.host_element;
+        const host_element = shadow.get_host();
         const host_node: *Node = @ptrCast(@alignCast(&host_element.base));
 
         // Recursively check if ancestor is shadow-including inclusive ancestor of host
@@ -459,7 +459,7 @@ fn getTheParent(target: *EventTarget, event: *Event) ?*EventTarget {
 
             // If composed is true, return the host
             const shadow: *ShadowRoot = @ptrCast(@alignCast(node));
-            const host_element = shadow.host_element;
+            const host_element = shadow.get_host();
             return @ptrCast(@alignCast(&host_element.base));
         }
 

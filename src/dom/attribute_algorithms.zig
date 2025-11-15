@@ -105,21 +105,12 @@ fn runAttributeChangeSteps(
 
     // Step 1: If localName is "id", namespace is null,
     // and value is null or the empty string, then unset element's ID
-    if (std.mem.eql(u8, local_name, "id") and namespace == null) {
-        if (new_value == null or new_value.?.len == 0) {
-            element.unique_id = null;
-        }
-        // Step 2: Otherwise, if localName is "id", namespace is null,
-        // then set element's ID to value
-        else {
-            // Store the ID value (needs to be heap-allocated for lifetime)
-            const allocator = element.allocator;
-            if (element.unique_id) |old_id| {
-                allocator.free(old_id);
-            }
-            element.unique_id = try allocator.dupe(u8, new_value.?);
-        }
-    }
+    // Step 2: Otherwise, if localName is "id", namespace is null,
+    // then set element's ID to value
+    //
+    // NOTE: ID is stored in attributes, not cached separately in Element.
+    // The element's ID is accessed via the "id" attribute.
+    // This step is handled automatically by the attribute storage system.
 
     // TODO(DOM): Other specs may define additional attribute change steps
     // For example:
@@ -127,7 +118,12 @@ fn runAttributeChangeSteps(
     // - slot attribute: Signal slot change
     // - HTML-specific attributes: Update element state
 
-    _ = old_value; // May be used by other attribute change steps
+    // Suppress unused parameter warnings
+    _ = element;
+    _ = local_name;
+    _ = old_value;
+    _ = new_value;
+    _ = namespace;
 }
 
 /// Change an attribute to a value
@@ -140,7 +136,7 @@ pub fn changeAttribute(
     const old_value = attribute.value;
 
     // Step 2: Set attribute's value to value
-    try attribute.setValue(value);
+    try attribute.set_value(value);
 
     // Step 3: Handle attribute changes for attribute
     // with attribute's element, oldValue, and value
@@ -182,10 +178,18 @@ pub fn removeAttribute(
     const old_value = attribute.value;
 
     // Step 2: Remove attribute from element's attribute list
+    // Compare by namespace and local name since List stores values not pointers
     var found_index: ?usize = null;
     for (0..element.attributes.size()) |i| {
         if (element.attributes.get(i)) |attr| {
-            if (attr == attribute) {
+            const ns_match = if (attr.namespace_uri == null and attribute.namespace_uri == null)
+                true
+            else if (attr.namespace_uri != null and attribute.namespace_uri != null)
+                std.mem.eql(u8, attr.namespace_uri.?, attribute.namespace_uri.?)
+            else
+                false;
+
+            if (ns_match and std.mem.eql(u8, attr.local_name, attribute.local_name)) {
                 found_index = i;
                 break;
             }
@@ -193,7 +197,7 @@ pub fn removeAttribute(
     }
 
     if (found_index) |index| {
-        _ = element.attributes.remove(index);
+        _ = try element.attributes.remove(index);
     }
 
     // Step 3: Set attribute's element to null
@@ -214,10 +218,18 @@ pub fn replaceAttribute(
     const element: *Element = @ptrCast(@alignCast(old_attribute.owner_element.?));
 
     // Find the index of oldAttribute
+    // Compare by namespace and local name since List stores values not pointers
     var found_index: ?usize = null;
     for (0..element.attributes.size()) |i| {
         if (element.attributes.get(i)) |attr| {
-            if (attr == old_attribute) {
+            const ns_match = if (attr.namespace_uri == null and old_attribute.namespace_uri == null)
+                true
+            else if (attr.namespace_uri != null and old_attribute.namespace_uri != null)
+                std.mem.eql(u8, attr.namespace_uri.?, old_attribute.namespace_uri.?)
+            else
+                false;
+
+            if (ns_match and std.mem.eql(u8, attr.local_name, old_attribute.local_name)) {
                 found_index = i;
                 break;
             }

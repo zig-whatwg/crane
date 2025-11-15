@@ -348,9 +348,8 @@ pub fn findFlattenedSlottables(allocator: Allocator, slot: *anyopaque) !infra.Li
     // Step 4: If slottables is empty, append each slottable child of slot, in tree order, to slottables
     if (slottables.toSlice().len == 0) {
         const slot_node: *Node = @ptrCast(@alignCast(slot));
-        const children = slot_node.get_childNodes();
-
-        for (children.toSlice()) |child| {
+        // Access child_nodes directly (it's a List), not get_childNodes() (which returns NodeList)
+        for (slot_node.child_nodes.toSlice()) |child| {
             if (slot_helpers.isSlottable(child)) {
                 try slottables.append(child);
             }
