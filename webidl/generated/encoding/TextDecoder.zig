@@ -371,6 +371,28 @@ pub const TextDecoder = struct {
     
     }
 
+    /// Get or allocate UTF-16 buffer for decoding
+    /// 
+    /// Returns a buffer large enough for the specified length,
+    /// reusing the internal buffer if possible, or allocating a new one.
+    fn getOrAllocUtf16Buffer(self: *TextDecoder, min_len: usize) !webidl.DOMString {
+
+        if (self.reusableUtf16Buffer) |buf| {
+            if (buf.len >= min_len) {
+                return buf;
+            }
+            // Buffer too small, free it
+            self.allocator.free(buf);
+            self.reusableUtf16Buffer = null;
+        }
+
+        // Allocate new buffer
+        const new_buf = try self.allocator.alloc(u16, min_len);
+        self.reusableUtf16Buffer = new_buf;
+        return new_buf;
+    
+    }
+
     /// Get the encoding name (WHATWG canonical name)
     /// 
     /// WHATWG Encoding Standard § 5.1.1

@@ -27,3 +27,4 @@ history/
 
 # Temporary files and planning documents
 /tmp/
+*.o
