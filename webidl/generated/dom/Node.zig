@@ -28,8 +28,10 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
 /// Node WebIDL interface
 /// DOM Spec: interface Node : EventTarget
+
 /// Compare two callbacks for equality (from EventTarget)
 pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     if (a == null and b == null) return true;
@@ -58,7 +60,7 @@ pub const Node = struct {
 
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
-    ///
+    /// 
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
@@ -137,6 +139,7 @@ pub const Node = struct {
             .cloning_steps_hook = null,
             .cached_child_nodes = null,
         };
+    
     }
 
     pub fn deinit(self: *Node) void {
@@ -150,6 +153,7 @@ pub const Node = struct {
             list.deinit();
             self.allocator.destroy(list);
         }
+    
     }
 
     /// insertBefore(node, child)
@@ -165,6 +169,7 @@ pub const Node = struct {
             error.OutOfMemory => error.OutOfMemory,
             error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
+    
     }
 
     /// appendChild(node)
@@ -180,6 +185,7 @@ pub const Node = struct {
             error.OutOfMemory => error.OutOfMemory,
             error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
+    
     }
 
     /// replaceChild(node, child)
@@ -195,6 +201,7 @@ pub const Node = struct {
             error.OutOfMemory => error.OutOfMemory,
             error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
+    
     }
 
     /// removeChild(child)
@@ -210,14 +217,16 @@ pub const Node = struct {
             error.OutOfMemory => error.OutOfMemory,
             error.IndexOutOfBounds => error.IndexOutOfBounds,
         };
+    
     }
 
     /// getRootNode(options)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-getrootnode
-    ///
+    /// 
     /// The getRootNode(options) method steps are to return this's shadow-including root
     /// if options["composed"] is true; otherwise this's root.
     pub fn call_getRootNode(self: *Node, options: ?GetRootNodeOptions) *Node {
+
         const tree = @import("dom").tree;
 
         // Check if we need shadow-including root
@@ -256,21 +265,25 @@ pub const Node = struct {
             // Return regular root
             return tree.root(self);
         }
+    
     }
 
     /// contains(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-contains
     pub fn call_contains(self: *const Node, other: ?*const Node) bool {
+
         if (other == null) return false;
         // Check if other is an inclusive descendant of this
         const tree = @import("dom").tree;
         const other_node = other.?;
         return tree.isInclusiveDescendant(other_node, self);
+    
     }
 
     /// compareDocumentPosition(other)
     /// Spec: https://dom.spec.whatwg.org/#dom-node-comparedocumentposition
     pub fn call_compareDocumentPosition(self: *const Node, other: *const Node) u16 {
+
         const tree = @import("dom").tree;
 
         // Step 1: If this is other, then return zero
@@ -317,6 +330,7 @@ pub const Node = struct {
 
         // Step 10: Return DOCUMENT_POSITION_FOLLOWING
         return Node.DOCUMENT_POSITION_FOLLOWING;
+    
     }
 
     /// isEqualNode(otherNode)
@@ -326,6 +340,7 @@ pub const Node = struct {
         // Step 1: Return true if otherNode is non-null and this equals otherNode
         if (other_node == null) return false;
         return Node.nodeEquals(self, other_node.?);
+    
     }
 
     /// Node A equals node B - DOM Spec algorithm
@@ -344,7 +359,7 @@ pub const Node = struct {
         switch (a.node_type) {
             DOCUMENT_TYPE_NODE => {
                 // DocumentType: check name, public ID, and system ID
-                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
+                                const doctype_a: *const DocumentType = @ptrCast(@alignCast(a));
                 const doctype_b: *const DocumentType = @ptrCast(@alignCast(b));
 
                 // Check name
@@ -425,6 +440,7 @@ pub const Node = struct {
         }
 
         return true;
+    
     }
 
     /// Attribute equality check
@@ -448,6 +464,7 @@ pub const Node = struct {
         if (!std.mem.eql(u8, a.value, b.value)) return false;
 
         return true;
+    
     }
 
     /// isSameNode(otherNode)
@@ -457,12 +474,15 @@ pub const Node = struct {
         // Legacy alias of === (pointer equality)
         if (other_node == null) return false;
         return self == other_node.?;
+    
     }
 
     /// hasChildNodes()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-haschildnodes
     pub fn call_hasChildNodes(self: *const Node) bool {
+
         return self.child_nodes.len > 0;
+    
     }
 
     /// cloneNode(deep)
@@ -482,6 +502,7 @@ pub const Node = struct {
 
         // Step 2: Return the result of cloning this node with subtree set to deep
         return try Node.cloneNodeInternal(self, self.owner_document, deep, null, null);
+    
     }
 
     /// Clone a node - DOM Spec algorithm
@@ -580,6 +601,7 @@ pub const Node = struct {
 
         // Step 7: Return copy
         return copy;
+    
     }
 
     /// Clone a single node - DOM Spec algorithm
@@ -589,6 +611,7 @@ pub const Node = struct {
         document: ?*Document,
         fallback_registry: ?*anyopaque,
     ) !*Node {
+
         _ = fallback_registry; // Not used yet - for custom elements
 
         // Step 2-3: Handle different node types
@@ -700,14 +723,15 @@ pub const Node = struct {
                 return copy;
             },
         }
+    
     }
 
     /// normalize()
     /// Spec: https://dom.spec.whatwg.org/#dom-node-normalize
-    ///
+    /// 
     /// Removes empty exclusive Text nodes and concatenates the data of remaining
     /// contiguous exclusive Text nodes into the first of their nodes.
-    ///
+    /// 
     /// The normalize() method steps are to run these steps for each descendant
     /// exclusive Text node `node` of this:
     /// 1. Let length be node's length
@@ -801,6 +825,7 @@ pub const Node = struct {
                 remove_node = next_remove;
             }
         }
+    
     }
 
     /// Helper: Check if a node is an exclusive Text node
@@ -809,6 +834,7 @@ pub const Node = struct {
 
         // Exclusive Text node = TEXT_NODE but not CDATA_SECTION_NODE
         return node.node_type == Node.TEXT_NODE;
+    
     }
 
     /// Helper: Collect all descendant exclusive Text nodes in tree order
@@ -824,6 +850,7 @@ pub const Node = struct {
             const child = node.child_nodes.get(i) orelse continue;
             try collectDescendantExclusiveTextNodes(child, list);
         }
+    
     }
 
     /// Helper: Update ranges during normalize operation
@@ -855,20 +882,26 @@ pub const Node = struct {
         // TODO: Implement range updates once Range tracking is fully integrated
         // For now, this is a placeholder. Range tracking will be added when
         // Phase 5 (Range Operations) is implemented.
-
+    
     }
 
     /// Getters
     pub fn get_nodeType(self: *const Node) u16 {
+
         return self.node_type;
+    
     }
 
     pub fn get_nodeName(self: *const Node) []const u8 {
+
         return self.node_name;
+    
     }
 
     pub fn get_parentNode(self: *const Node) ?*Node {
+
         return self.parent_node;
+    
     }
 
     pub fn get_parentElement(self: *const Node) ?*Element {
@@ -880,6 +913,7 @@ pub const Node = struct {
             return @ptrCast(@alignCast(parent));
         }
         return null;
+    
     }
 
     pub fn get_childNodes(self: *Node) !*@import("node_list").NodeList {
@@ -902,27 +936,35 @@ pub const Node = struct {
 
         self.cached_child_nodes = list;
         return list;
+    
     }
 
     pub fn get_firstChild(self: *const Node) ?*Node {
+
         if (self.child_nodes.len > 0) {
             return self.child_nodes.get(0);
         }
         return null;
+    
     }
 
     pub fn get_lastChild(self: *const Node) ?*Node {
+
         if (self.child_nodes.len > 0) {
             return self.child_nodes.get(self.child_nodes.len - 1);
         }
         return null;
+    
     }
 
     pub fn get_ownerDocument(self: *const Node) ?*Document {
+
         return self.owner_document;
+    
     }
 
     pub fn get_previousSibling(self: *const Node) ?*Node {
+
         const parent = self.parent_node orelse return null;
         for (parent.child_nodes.toSlice(), 0..) |child, i| {
             if (child == self) {
@@ -931,9 +973,11 @@ pub const Node = struct {
             }
         }
         return null;
+    
     }
 
     pub fn get_nextSibling(self: *const Node) ?*Node {
+
         const parent = self.parent_node orelse return null;
         for (parent.child_nodes.toSlice(), 0..) |child, i| {
             if (child == self) {
@@ -942,6 +986,7 @@ pub const Node = struct {
             }
         }
         return null;
+    
     }
 
     pub fn get_isConnected(self: *const Node) bool {
@@ -954,11 +999,12 @@ pub const Node = struct {
         const root_node = tree.root(mutable_self);
         // Check if root is a document (node_type == DOCUMENT_NODE)
         return root_node.node_type == DOCUMENT_NODE;
+    
     }
 
     /// DOM §4.4 - Node.baseURI getter
     /// Returns this's node document's document base URL, serialized.
-    ///
+    /// 
     /// The baseURI getter steps are to return this's node document's
     /// document base URL, serialized.
     pub fn get_baseURI(self: *const Node) []const u8 {
@@ -971,6 +1017,7 @@ pub const Node = struct {
 
         // Return document's base URI
         return doc.base_uri;
+    
     }
 
     pub fn get_nodeValue(self: *const Node) ?[]const u8 {
@@ -997,6 +1044,7 @@ pub const Node = struct {
                 return null;
             },
         }
+    
     }
 
     pub fn set_nodeValue(self: *Node, value: ?[]const u8) !void {
@@ -1027,6 +1075,7 @@ pub const Node = struct {
                 // All other node types do nothing
             },
         }
+    
     }
 
     pub fn get_textContent(self: *const Node) !?[]const u8 {
@@ -1034,6 +1083,7 @@ pub const Node = struct {
         // Spec: https://dom.spec.whatwg.org/#dom-node-textcontent
         // Return the result of running get text content with this
         return Node.getTextContent(self, self.allocator);
+    
     }
 
     pub fn set_textContent(self: *Node, value: ?[]const u8) !void {
@@ -1042,6 +1092,7 @@ pub const Node = struct {
         // If the given value is null, act as if it was the empty string instead
         const str_value = value orelse "";
         try Node.setTextContent(self, str_value);
+    
     }
 
     /// Get text content - DOM Spec algorithm
@@ -1049,6 +1100,7 @@ pub const Node = struct {
     /// For Element and DocumentFragment, the returned string is allocated and must be freed by caller
     /// For other types, returns a reference to existing data (no allocation)
     pub fn getTextContent(node: *const Node, allocator: std.mem.Allocator) !?[]const u8 {
+
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // Return descendant text content (allocated)
@@ -1069,6 +1121,7 @@ pub const Node = struct {
                 return null;
             },
         }
+    
     }
 
     /// Get descendant text content - concatenate all Text node descendants
@@ -1076,12 +1129,14 @@ pub const Node = struct {
     /// Returns the concatenation of data from all Text node descendants in tree order.
     /// Caller owns the returned memory and must free it.
     pub fn getDescendantTextContent(node: *const Node, allocator: std.mem.Allocator) ![]const u8 {
+
         var result = infra.List(u8).init(allocator);
         errdefer result.deinit();
 
         try collectDescendantText(node, &result);
 
         return result.toOwnedSlice();
+    
     }
 
     /// Helper function to recursively collect text from descendants
@@ -1099,11 +1154,13 @@ pub const Node = struct {
                 try collectDescendantText(child, result);
             }
         }
+    
     }
 
     /// Set text content - DOM Spec algorithm
     /// Sets text content based on node type
     pub fn setTextContent(node: *Node, value: []const u8) !void {
+
         switch (node.node_type) {
             Node.DOCUMENT_FRAGMENT_NODE, Node.ELEMENT_NODE => {
                 // String replace all with value within node
@@ -1125,6 +1182,7 @@ pub const Node = struct {
                 // Document, DocumentType, etc: do nothing
             },
         }
+    
     }
 
     /// String replace all - DOM Spec algorithm
@@ -1149,6 +1207,7 @@ pub const Node = struct {
         // Step 3: Replace all with node within parent
         const mutation = @import("dom").mutation;
         try mutation.replaceAll(node_opt, parent);
+    
     }
 
     /// lookupPrefix(namespace)
@@ -1184,6 +1243,7 @@ pub const Node = struct {
                 return parent_node.locateNamespacePrefix(namespace);
             },
         }
+    
     }
 
     /// lookupNamespaceURI(prefix)
@@ -1195,6 +1255,7 @@ pub const Node = struct {
 
         // Spec step 2: Return result of locating a namespace
         return self.locateNamespace(prefix);
+    
     }
 
     /// isDefaultNamespace(namespace)
@@ -1211,11 +1272,13 @@ pub const Node = struct {
         if (default_namespace == null and namespace == null) return true;
         if (default_namespace == null or namespace == null) return false;
         return std.mem.eql(u8, default_namespace.?, namespace.?);
+    
     }
 
     /// Locate a namespace prefix for element (internal algorithm)
     /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace-prefix
     fn locateNamespacePrefix(self: *const Node, namespace: []const u8) ?[]const u8 {
+
         if (self.node_type != ELEMENT_NODE) return null;
 
         const elem: *const Element = @ptrCast(@alignCast(self));
@@ -1245,11 +1308,13 @@ pub const Node = struct {
 
         // Step 4: Return null
         return null;
+    
     }
 
     /// Locate a namespace for node (internal algorithm)
     /// Spec: https://dom.spec.whatwg.org/#locate-a-namespace
     fn locateNamespace(self: *const Node, prefix: ?[]const u8) ?[]const u8 {
+
         switch (self.node_type) {
             ELEMENT_NODE => {
                 const elem: *const Element = @ptrCast(@alignCast(self));
@@ -1344,33 +1409,40 @@ pub const Node = struct {
                 return parent_node.locateNamespace(prefix);
             },
         }
+    
     }
 
     /// Get the list of registered observers for this node
     pub fn getRegisteredObservers(self: *Node) *infra.List(RegisteredObserver) {
+
         return &self.registered_observers;
+    
     }
 
     /// Add a registered observer to this node's list
     pub fn addRegisteredObserver(self: *Node, registered: RegisteredObserver) !void {
+
         try self.registered_observers.append(registered);
+    
     }
 
     /// Remove all registered observers for a specific MutationObserver
     pub fn removeRegisteredObserver(self: *Node, observer: *const @import("mutation_observer").MutationObserver) void {
+
         var i: usize = 0;
         while (i < self.registered_observers.toSlice().len) {
-            if (self.registered_observers.toSlice()[i].observer == @as(*const anyopaque, @ptrCast(observer))) {
-                _ = self.registered_observers.remove(i);
+            if (self.registered_observers.toSlice()[i].observer == observer) {
+                _ = try self.registered_observers.remove(i);
                 // Don't increment i, we just shifted everything down
             } else {
                 i += 1;
             }
         }
+    
     }
 
     /// Remove all transient registered observers whose source matches the given registered observer
-    ///
+    /// 
     /// Spec: Used during MutationObserver.observe() to clean up old transient observers
     /// when re-observing a node with updated options.
     pub fn removeTransientObservers(self: *Node, source: *const RegisteredObserver) void {
@@ -1386,6 +1458,7 @@ pub const Node = struct {
         // and remove them here.
         _ = self;
         _ = source;
+    
     }
 
     /// Ensure event listener list is allocated
@@ -1402,6 +1475,7 @@ pub const Node = struct {
         list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
+    
     }
 
     /// Get event listener list (read-only access)
@@ -1413,6 +1487,7 @@ pub const Node = struct {
             return list.toSlice();
         }
         return &[_]EventListener{};
+    
     }
 
     /// DOM §2.7 - flatten options
@@ -1420,6 +1495,7 @@ pub const Node = struct {
     /// 1. If options is a boolean, then return options.
     /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
+
         const OptionsType = @TypeOf(options);
 
         // Step 1: If options is a boolean, return it
@@ -1434,11 +1510,13 @@ pub const Node = struct {
 
         // Default: return false
         return false;
+    
     }
 
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
+
         const OptionsType = @TypeOf(options);
 
         // If options is a boolean, only capture is set to that value
@@ -1468,11 +1546,13 @@ pub const Node = struct {
             .once = false,
             .signal = null,
         };
+    
     }
 
     /// DOM §2.7 - default passive value
     /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
+
         _ = event_target;
         // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
         // AND eventTarget is Window or specific node conditions
@@ -1487,6 +1567,7 @@ pub const Node = struct {
         }
         // Step 2: Return false
         return false;
+    
     }
 
     /// DOM §2.7 - add an event listener
@@ -1545,6 +1626,7 @@ pub const Node = struct {
             };
             try signal.addEventListenerRemoval(removal_context);
         }
+    
     }
 
     /// addEventListener(type, callback, options)
@@ -1575,6 +1657,7 @@ pub const Node = struct {
         };
 
         try self.addAnEventListener(listener);
+    
     }
 
     /// DOM §2.7 - remove an event listener
@@ -1605,6 +1688,7 @@ pub const Node = struct {
             }
             i += 1;
         }
+    
     }
 
     /// removeEventListener(type, callback, options)
@@ -1632,6 +1716,7 @@ pub const Node = struct {
         };
 
         self.removeAnEventListener(listener);
+    
     }
 
     /// dispatchEvent(event)
@@ -1658,7 +1743,9 @@ pub const Node = struct {
             // Handle dispatch errors
             return err;
         };
+    
     }
+
 
     // ========================================================================
     // Type Conversion Helper (Safe Downcasting)
@@ -1668,9 +1755,9 @@ pub const Node = struct {
 
     /// Safe downcast to child type T
     /// Returns null if this instance is not of type T
-    ///
+    /// 
     /// Requires: T must declare `pub const node_type_VALUE`
-    ///
+    /// 
     /// Example:
     ///   if (node.as(Element)) |elem| {
     ///       // use elem
@@ -1699,10 +1786,14 @@ pub const Node = struct {
         else
             null;
     }
+
 };
+
 
 /// GetRootNodeOptions dictionary
 /// Spec: https://dom.spec.whatwg.org/#dictdef-getrootnodeoptions
 pub const GetRootNodeOptions = struct {
     composed: bool = false,
 };
+
+

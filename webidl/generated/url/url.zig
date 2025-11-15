@@ -757,7 +757,7 @@ pub const URL = struct {
     /// Returns the result of running the href getter on this
     pub fn call_toJSON(self: *const URL) ![]const u8 {
 
-        return self.href();
+        return self.get_href();
     
     }
 

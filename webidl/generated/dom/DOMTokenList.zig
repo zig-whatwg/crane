@@ -14,6 +14,7 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
+
 /// DOMTokenList represents a set of space-separated tokens.
 /// Commonly used for Element.classList.
 ///
@@ -30,9 +31,10 @@ const webidl = @import("webidl");
 ///   [CEReactions] stringifier attribute DOMString value;
 /// };
 /// ```
+
 /// DOMTokenList represents a set of space-separated tokens.
 /// Commonly used for Element.classList.
-///
+/// 
 /// WebIDL Definition:
 /// ```
 /// interface DOMTokenList {
@@ -73,12 +75,14 @@ pub const DOMTokenList = struct {
     // ========================================================================
 
     pub fn init(allocator: Allocator, element: ?*Element, attribute_name: []const u8) !DOMTokenList {
+
         return .{
             .allocator = allocator,
             .tokens = infra.List([]const u8).init(allocator),
             .element = element,
             .attribute_name = attribute_name,
         };
+    
     }
 
     pub fn deinit(self: *DOMTokenList) void {
@@ -88,32 +92,39 @@ pub const DOMTokenList = struct {
             self.allocator.free(token);
         }
         self.tokens.deinit();
+    
     }
 
     /// DOM §4.7 - DOMTokenList.length
     /// Returns the number of tokens.
     pub fn get_length(self: *const DOMTokenList) u32 {
+
         return @intCast(self.tokens.items().len);
+    
     }
 
     /// DOM §4.7 - DOMTokenList.item(index)
     /// Returns the token at the given index, or null if out of bounds.
     pub fn call_item(self: *const DOMTokenList, index: u32) ?[]const u8 {
+
         if (index >= self.tokens.items().len) {
             return null;
         }
         return self.tokens.items()[index];
+    
     }
 
     /// DOM §4.7 - DOMTokenList.contains(token)
     /// Returns true if token is present; otherwise false.
     pub fn call_contains(self: *const DOMTokenList, token: []const u8) bool {
+
         for (self.tokens.items()) |t| {
             if (std.mem.eql(u8, t, token)) {
                 return true;
             }
         }
         return false;
+    
     }
 
     /// DOM §4.7 - DOMTokenList.add(tokens...)
@@ -139,6 +150,7 @@ pub const DOMTokenList = struct {
 
         // Step 3: Run update steps
         try self.runUpdateSteps();
+    
     }
 
     /// DOM §4.7 - DOMTokenList.remove(tokens...)
@@ -164,6 +176,7 @@ pub const DOMTokenList = struct {
 
         // Step 3: Run update steps
         try self.runUpdateSteps();
+    
     }
 
     /// DOM §4.7 - DOMTokenList.toggle(token, force)
@@ -205,6 +218,7 @@ pub const DOMTokenList = struct {
 
         // Step 5: Return false (force is false, token not in set)
         return false;
+    
     }
 
     /// DOM §4.7 - DOMTokenList.replace(token, newToken)
@@ -231,20 +245,23 @@ pub const DOMTokenList = struct {
         }
 
         // Step 4: Replace token with newToken
-        const new_copy = try self.allocator.dupe(u8, new_token);
-        const old = try self.tokens.replace(found_index, new_copy);
+        const old = self.tokens.items()[found_index];
         self.allocator.free(old);
+        const new_copy = try self.allocator.dupe(u8, new_token);
+        self.tokens.items()[found_index] = new_copy;
 
         // Step 5: Run update steps
         try self.runUpdateSteps();
 
         // Step 6: Return true
         return true;
+    
     }
 
     /// DOM §4.7 - DOMTokenList.value (getter)
     /// Returns the associated set as string (space-separated tokens).
     pub fn get_value(self: *const DOMTokenList) ![]const u8 {
+
         if (self.tokens.items().len == 0) {
             return "";
         }
@@ -269,6 +286,7 @@ pub const DOMTokenList = struct {
         }
 
         return result;
+    
     }
 
     /// DOM §4.7 - DOMTokenList.value (setter)
@@ -285,7 +303,7 @@ pub const DOMTokenList = struct {
             for (self.tokens.items()) |token| {
                 self.allocator.free(token);
             }
-            self.tokens.clear();
+            self.tokens.clearRetainingCapacity();
 
             var iter = std.mem.tokenizeScalar(u8, value, ' ');
             while (iter.next()) |token| {
@@ -293,6 +311,7 @@ pub const DOMTokenList = struct {
                 try self.tokens.append(token_copy);
             }
         }
+    
     }
 
     /// Validate token - DOM Spec validation
@@ -310,6 +329,7 @@ pub const DOMTokenList = struct {
                 return error.InvalidCharacterError;
             }
         }
+    
     }
 
     /// Update steps - DOM Spec algorithm
@@ -330,10 +350,12 @@ pub const DOMTokenList = struct {
             // Set attribute value
             try elem.call_setAttribute(self.attribute_name, serialized);
         }
+    
     }
 
     /// Serialize token set as space-separated string
     fn serializeTokenSet(self: *const DOMTokenList) ![]const u8 {
+
         if (self.tokens.items().len == 0) {
             return "";
         }
@@ -358,5 +380,9 @@ pub const DOMTokenList = struct {
         }
 
         return result;
+    
     }
+
 };
+
+

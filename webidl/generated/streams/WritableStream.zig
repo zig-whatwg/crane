@@ -591,7 +591,7 @@ pub const WritableStream = struct {
 
         // Spec step 6-7: Reject all pending write requests
         while (self.writeRequests.toSlice().len > 0) {
-            const write_request = self.writeRequests.remove(0);
+            const write_request = try self.writeRequests.remove(0);
             write_request.reject(stored_exception);
         }
 

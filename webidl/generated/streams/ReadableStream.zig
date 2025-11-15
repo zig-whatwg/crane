@@ -1127,7 +1127,7 @@ pub const ReadableStream = struct {
                 // Remove the first read request
                 if (reader.readRequests.toSlice().len == 0) return;
 
-                const promise = reader.readRequests.remove(0);
+                const promise = try reader.readRequests.remove(0);
 
                 // Fulfill the promise with the read result
                 if (done) {
@@ -1159,7 +1159,7 @@ pub const ReadableStream = struct {
                 // Remove the first read-into request
                 if (reader.readIntoRequests.toSlice().len == 0) return;
 
-                const request = reader.readIntoRequests.remove(0);
+                const request = try reader.readIntoRequests.remove(0);
 
                 // Execute the appropriate steps based on done flag
                 if (done) {
@@ -1213,7 +1213,7 @@ pub const ReadableStream = struct {
                 // Spec step 6.2: Set reader.[[readRequests]] to an empty list
                 // Spec step 6.3: For each readRequest of readRequests, perform readRequest's close steps
                 while (reader.readRequests.toSlice().len > 0) {
-                    const read_promise = reader.readRequests.remove(0);
+                    const read_promise = try reader.readRequests.remove(0);
                     // Close steps: fulfill with { value: undefined, done: true }
                     read_promise.fulfill(.{
                         .value = null,
@@ -1227,7 +1227,7 @@ pub const ReadableStream = struct {
 
                 // Spec: Respond to all pending readIntoRequests with done=true
                 while (reader.readIntoRequests.toSlice().len > 0) {
-                    const request = reader.readIntoRequests.remove(0);
+                    const request = try reader.readIntoRequests.remove(0);
                     // Close steps should return the view with done=true
                     // For now, execute close steps with empty view
                     request.executeCloseSteps();
@@ -1264,7 +1264,7 @@ pub const ReadableStream = struct {
 
                 // Reject all pending read requests
                 while (reader.readRequests.toSlice().len > 0) {
-                    const promise = reader.readRequests.remove(0);
+                    const promise = try reader.readRequests.remove(0);
                     promise.reject(exception);
                 }
             },
@@ -1274,7 +1274,7 @@ pub const ReadableStream = struct {
 
                 // Spec: Reject all pending readIntoRequests
                 while (reader.readIntoRequests.toSlice().len > 0) {
-                    const request = reader.readIntoRequests.remove(0);
+                    const request = try reader.readIntoRequests.remove(0);
                     request.reject(exception);
                 }
             },
