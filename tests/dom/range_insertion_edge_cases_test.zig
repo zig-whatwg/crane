@@ -45,17 +45,17 @@ test "Range insertion - insert before range shifts offsets" {
     defer a.deinit();
     const a_text = try doc_ptr.call_createTextNode("text");
     defer a_text.deinit();
-    try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
+    _ = try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
     const b_text = try doc_ptr.call_createTextNode("text");
     defer b_text.deinit();
-    try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
+    _ = try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
 
     // Create range: [parent, 1] to [parent, 2]
     const range = try allocator.create(dom.Range);
@@ -116,17 +116,17 @@ test "Range insertion - insert at end boundary shifts end offset" {
     defer a.deinit();
     const a_text = try doc_ptr.call_createTextNode("text");
     defer a_text.deinit();
-    try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
+    _ = try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
     const b_text = try doc_ptr.call_createTextNode("text");
     defer b_text.deinit();
-    try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
+    _ = try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
 
     // Create range: [parent, 0] to [parent, 1]
     const range = try allocator.create(dom.Range);
@@ -195,9 +195,9 @@ test "Range insertion - multiple ranges shifted by single insertion" {
     defer c.deinit();
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range1: [parent, 0] to [parent, 2]
     const range1 = try allocator.create(dom.Range);
@@ -265,7 +265,7 @@ test "Range insertion - collapsed range shifts when inserted before" {
     // Create child
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
 
     // Create collapsed range: [parent, 1] to [parent, 1]
     const range = try allocator.create(dom.Range);

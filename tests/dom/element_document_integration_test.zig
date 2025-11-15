@@ -109,7 +109,7 @@ test "Integration: Element attribute manipulation" {
     try testing.expectEqualStrings("value2", updated.?);
 
     // Remove attribute
-    elem.call_removeAttribute("data-test");
+    try elem.call_removeAttribute("data-test");
     try testing.expect(!elem.call_hasAttribute("data-test"));
     try testing.expect(elem.call_getAttribute("data-test") == null);
 }

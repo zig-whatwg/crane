@@ -56,12 +56,12 @@ test "Range removal - start in removed, end in kept" {
     defer c.deinit();
     const c_text = try doc_ptr.call_createTextNode("text");
     defer c_text.deinit();
-    try dom.mutation.append(@ptrCast(c_text), @ptrCast(c));
+    _ = try dom.mutation.append(@ptrCast(c_text), @ptrCast(c));
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range: [b.firstChild, 2] to [c.firstChild, 3]
     const range = try allocator.create(dom.Range);

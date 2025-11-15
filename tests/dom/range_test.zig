@@ -6,7 +6,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
 // Type aliases
 const Document = dom.Document;
 const Node = dom.Node;
@@ -42,7 +41,7 @@ test "Range: collapsed returns true for same boundary points" {
     try testing.expect(range.get_collapsed());
 
     // Set different end position
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
     try range.call_setEnd(@ptrCast(elem), 0);
 
     // Should not be collapsed anymore (different container)
@@ -60,7 +59,7 @@ test "Range: setStart updates start boundary point" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 5);
 
@@ -77,7 +76,7 @@ test "Range: setEnd updates end boundary point" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setEnd(@ptrCast(elem), 10);
 
@@ -95,8 +94,8 @@ test "Range: collapse to start" {
     defer range.deinit();
 
     // Set different start and end
-    var elem1 = try doc.call_createElement("div");
-    var elem2 = try doc.call_createElement("span");
+    const elem1 = try doc.call_createElement("div");
+    const elem2 = try doc.call_createElement("span");
 
     try range.call_setStart(@ptrCast(elem1), 0);
     try range.call_setEnd(@ptrCast(elem2), 5);
@@ -121,8 +120,8 @@ test "Range: collapse to end" {
     defer range.deinit();
 
     // Set different start and end
-    var elem1 = try doc.call_createElement("div");
-    var elem2 = try doc.call_createElement("span");
+    const elem1 = try doc.call_createElement("div");
+    const elem2 = try doc.call_createElement("span");
 
     try range.call_setStart(@ptrCast(elem1), 0);
     try range.call_setEnd(@ptrCast(elem2), 5);
@@ -146,14 +145,14 @@ test "Range: selectNodeContents sets range to node's children" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     // Add some children
     const text1 = try doc.call_createTextNode("Hello");
-    try elem.call_appendChild(@ptrCast(text1));
+    _ = try elem.call_appendChild(@ptrCast(text1));
 
     const text2 = try doc.call_createTextNode(" World");
-    try elem.call_appendChild(@ptrCast(text2));
+    _ = try elem.call_appendChild(@ptrCast(text2));
 
     // Select node contents
     try range.call_selectNodeContents(@ptrCast(elem));
@@ -173,7 +172,7 @@ test "Range: cloneRange creates independent copy" {
     var range1 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range1.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
     try range1.call_setStart(@ptrCast(elem), 5);
     try range1.call_setEnd(@ptrCast(elem), 10);
 
@@ -219,7 +218,7 @@ test "Range: commonAncestorContainer for same node" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 0);
     try range.call_setEnd(@ptrCast(elem), 5);
@@ -242,8 +241,8 @@ test "Range: commonAncestorContainer finds parent" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
 
     // Range from child1 to child2
     try range.call_setStart(@ptrCast(child1), 0);
@@ -269,7 +268,7 @@ test "Range: compareBoundaryPoints START_TO_START" {
     var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range1.call_setStart(@ptrCast(elem), 0);
     try range1.call_setEnd(@ptrCast(elem), 5);
@@ -294,7 +293,7 @@ test "Range: compareBoundaryPoints END_TO_END" {
     var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range1.call_setStart(@ptrCast(elem), 0);
     try range1.call_setEnd(@ptrCast(elem), 5);
@@ -319,7 +318,7 @@ test "Range: compareBoundaryPoints START_TO_END" {
     var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range1.call_setStart(@ptrCast(elem), 0);
     try range1.call_setEnd(@ptrCast(elem), 8);
@@ -344,7 +343,7 @@ test "Range: compareBoundaryPoints equal points" {
     var range2 = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range2.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range1.call_setStart(@ptrCast(elem), 5);
     try range2.call_setStart(@ptrCast(elem), 5);
@@ -363,7 +362,7 @@ test "Range: isPointInRange returns true for point in range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 2);
     try range.call_setEnd(@ptrCast(elem), 8);
@@ -382,7 +381,7 @@ test "Range: isPointInRange returns false for point outside range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 2);
     try range.call_setEnd(@ptrCast(elem), 8);
@@ -401,7 +400,7 @@ test "Range: comparePoint returns -1 for point before range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 5);
     try range.call_setEnd(@ptrCast(elem), 10);
@@ -420,7 +419,7 @@ test "Range: comparePoint returns 0 for point in range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 5);
     try range.call_setEnd(@ptrCast(elem), 10);
@@ -439,7 +438,7 @@ test "Range: comparePoint returns 1 for point after range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
 
     try range.call_setStart(@ptrCast(elem), 5);
     try range.call_setEnd(@ptrCast(elem), 10);
@@ -464,9 +463,9 @@ test "Range: intersectsNode returns true for intersecting node" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
-    try parent.call_appendChild(@ptrCast(child3));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child3));
 
     // Range covers child1 to child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -492,9 +491,9 @@ test "Range: intersectsNode returns false for non-intersecting node" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
-    try parent.call_appendChild(@ptrCast(child3));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child3));
 
     // Range covers only child1
     try range.call_setStart(@ptrCast(parent), 0);
@@ -524,9 +523,9 @@ test "Range: deleteContents removes contained children" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
-    try parent.call_appendChild(@ptrCast(child3));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child3));
 
     // Range contains child1 and child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -553,8 +552,8 @@ test "Range: insertNode adds node at range start" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
 
     // Range between child1 and child2
     try range.call_setStart(@ptrCast(parent), 1);
@@ -602,8 +601,8 @@ test "Range: surroundContents wraps range content in new parent" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
 
     // Range covers all children
     try range.call_setStart(@ptrCast(parent), 0);
@@ -626,7 +625,7 @@ test "Range: surroundContents throws for invalid newParent type" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
     try range.call_setStart(@ptrCast(elem), 0);
     try range.call_setEnd(@ptrCast(elem), 0);
 
@@ -648,7 +647,7 @@ test "Range: insertNode removes node from old parent" {
 
     // Node starts in parent1
     const node = try doc.call_createElement("span");
-    try parent1.call_appendChild(@ptrCast(node));
+    _ = try parent1.call_appendChild(@ptrCast(node));
 
     try testing.expectEqual(@as(usize, 1), parent1.child_nodes.size());
 
@@ -677,7 +676,7 @@ test "Range: extractContents returns empty fragment for collapsed range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
     try range.call_setStart(@ptrCast(elem), 0);
     try range.call_setEnd(@ptrCast(elem), 0);
 
@@ -706,9 +705,9 @@ test "Range: extractContents moves contained children to fragment" {
     const child2 = try doc.call_createElement("p");
     const child3 = try doc.call_createElement("a");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
-    try parent.call_appendChild(@ptrCast(child3));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child3));
 
     // Range contains child1 and child2
     try range.call_setStart(@ptrCast(parent), 0);
@@ -736,7 +735,7 @@ test "Range: cloneContents returns empty fragment for collapsed range" {
     var range = try Range.init(allocator, @as(*Node, @ptrCast(&doc)));
     defer range.deinit();
 
-    var elem = try doc.call_createElement("div");
+    const elem = try doc.call_createElement("div");
     try range.call_setStart(@ptrCast(elem), 0);
     try range.call_setEnd(@ptrCast(elem), 0);
 
@@ -764,8 +763,8 @@ test "Range: cloneContents copies children without removing them" {
     const child1 = try doc.call_createElement("span");
     const child2 = try doc.call_createElement("p");
 
-    try parent.call_appendChild(@ptrCast(child1));
-    try parent.call_appendChild(@ptrCast(child2));
+    _ = try parent.call_appendChild(@ptrCast(child1));
+    _ = try parent.call_appendChild(@ptrCast(child2));
 
     // Range contains both children
     try range.call_setStart(@ptrCast(parent), 0);
@@ -800,7 +799,7 @@ test "Range: extractContents throws for doctype in range" {
 
     // Note: This test is simplified - full spec compliance would require
     // proper doctype handling in the DOM tree
-    const result = range.call_extractContents();
+    const result = try range.call_extractContents();
     _ = result; // May or may not error depending on doc structure
 }
 
@@ -819,6 +818,6 @@ test "Range: cloneContents throws for doctype in range" {
 
     // Note: This test is simplified - full spec compliance would require
     // proper doctype handling in the DOM tree
-    const result = range.call_cloneContents();
+    const result = try range.call_cloneContents();
     _ = result; // May or may not error depending on doc structure
 }
