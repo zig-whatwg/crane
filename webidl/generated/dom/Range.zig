@@ -167,7 +167,7 @@ pub const Range = struct {
             Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
             Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
                 // CharacterData nodes - get data length
-                const charData = node.asCharacterData() orelse return 0;
+                const charData = node.as(CharacterData) orelse return 0;
                 return charData.get_length();
             },
             else => {
@@ -556,7 +556,7 @@ pub const Range = struct {
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
                 // This is CharacterData - call deleteData to remove the range
-                const charData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
+                const charData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
                 const count = self.end_offset - self.start_offset;
                 try charData.call_deleteData(self.start_offset, count);
             }
@@ -592,8 +592,8 @@ pub const Range = struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
-            const cloneCharData = clone.asCharacterData() orelse return error.InvalidNodeTypeError;
+            const originalCharData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
+            const cloneCharData = clone.as(CharacterData) orelse return error.InvalidNodeTypeError;
 
             // Substring from original start offset to original end offset
             const count = self.end_offset - self.start_offset;
@@ -673,8 +673,8 @@ pub const Range = struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = self.start_container.asCharacterData() orelse return error.InvalidNodeTypeError;
-            const cloneCharData = clone.asCharacterData() orelse return error.InvalidNodeTypeError;
+            const originalCharData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
+            const cloneCharData = clone.as(CharacterData) orelse return error.InvalidNodeTypeError;
 
             // Substring from start offset to end offset
             const originalData = originalCharData.get_data();
