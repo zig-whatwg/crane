@@ -102,7 +102,8 @@ pub const Range = webidl.interface(struct {
             Node.DOCUMENT_TYPE_NODE, Node.ATTRIBUTE_NODE => return 0,
             Node.TEXT_NODE, Node.PROCESSING_INSTRUCTION_NODE, Node.COMMENT_NODE => {
                 // CharacterData nodes - get data length
-                const charData = node.as(CharacterData) orelse return 0;
+                // Safe cast: we've verified node_type above
+                const charData: *CharacterData = @ptrCast(@alignCast(node));
                 return charData.get_length();
             },
             else => {
@@ -474,7 +475,8 @@ pub const Range = webidl.interface(struct {
                 self.start_container.node_type == Node.COMMENT_NODE)
             {
                 // This is CharacterData - call deleteData to remove the range
-                const charData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
+                // Safe cast: we've verified node_type above
+                const charData: *CharacterData = @ptrCast(@alignCast(self.start_container));
                 const count = self.end_offset - self.start_offset;
                 try charData.call_deleteData(self.start_offset, count);
             }
@@ -508,8 +510,8 @@ pub const Range = webidl.interface(struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
-            const cloneCharData = clone.as(CharacterData) orelse return error.InvalidNodeTypeError;
+            const originalCharData: *CharacterData = @ptrCast(@alignCast(self.start_container));
+            const cloneCharData: *CharacterData = @ptrCast(@alignCast(clone));
 
             // Substring from original start offset to original end offset
             const count = self.end_offset - self.start_offset;
@@ -587,8 +589,8 @@ pub const Range = webidl.interface(struct {
             const clone = try self.start_container.call_cloneNode(false); // Shallow clone
 
             // Step 4.2: Set the data of clone to substring
-            const originalCharData = self.start_container.as(CharacterData) orelse return error.InvalidNodeTypeError;
-            const cloneCharData = clone.as(CharacterData) orelse return error.InvalidNodeTypeError;
+            const originalCharData: *CharacterData = @ptrCast(@alignCast(self.start_container));
+            const cloneCharData: *CharacterData = @ptrCast(@alignCast(clone));
 
             // Substring from start offset to end offset
             const originalData = originalCharData.get_data();
