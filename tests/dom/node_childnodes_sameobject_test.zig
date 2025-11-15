@@ -41,8 +41,8 @@ test "Node.childNodes - NodeList is initially populated" {
     defer child2.deinit();
 
     const parent_node = &parent;
-    const child1_node = child1.asNode();
-    const child2_node = child2.asNode();
+    const child1_node = &child1;
+    const child2_node = &child2;
 
     // Add children before getting NodeList
     _ = try parent_node.call_appendChild(child1_node);

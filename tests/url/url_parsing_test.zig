@@ -43,7 +43,7 @@ test "parse - HTTPS URL with all components" {
     defer allocator.free(username);
     try helpers.expectEqualStrings(allocator, "user", username);
 
-    const password = try url.get_password();
+    const password = try url.password();
     defer allocator.free(password);
     try helpers.expectEqualStrings(allocator, "pass", password);
 
@@ -343,7 +343,7 @@ test "parse - URL with username only" {
     const username = url.username();
     try std.testing.expectEqualStrings("user", username);
 
-    const password = url.get_password();
+    const password = url.password();
     try std.testing.expectEqualStrings("", password);
 }
 

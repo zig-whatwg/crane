@@ -308,6 +308,69 @@ pub const TextDecoder = struct {
     
     }
 
+    /// Decode UTF-8 bytes with validation
+    /// 
+    /// WHATWG Encoding Standard § 5.1.4 step 5 (UTF-8 fast path)
+    /// 
+    /// Validates UTF-8 encoding and returns the bytes as-is if valid,
+    /// or replaces invalid sequences with U+FFFD in non-fatal mode.
+    fn decodeUtf8(self: *TextDecoder, bytes: []const u8) ![]const u8 {
+
+        // Validate UTF-8 encoding
+        if (std.unicode.utf8ValidateSlice(bytes)) {
+            // Valid UTF-8 - return a copy
+            return self.allocator.dupe(u8, bytes);
+        }
+
+        // Invalid UTF-8
+        if (self.fatal) {
+            return error.DecodingError;
+        }
+
+        // Non-fatal mode: Replace invalid sequences with U+FFFD (replacement character)
+        // U+FFFD in UTF-8 is: EF BF BD
+        const replacement = "\u{FFFD}";
+
+        // Allocate output buffer (worst case: every byte is invalid = 3x size)
+        var output = std.ArrayList(u8).init(self.allocator);
+        errdefer output.deinit();
+
+        var i: usize = 0;
+        while (i < bytes.len) {
+            // Try to decode one codepoint
+            const cp_len = std.unicode.utf8ByteSequenceLength(bytes[i]) catch {
+                // Invalid start byte - replace with U+FFFD
+                try output.appendSlice(replacement);
+                i += 1;
+                continue;
+            };
+
+            // Check if we have enough bytes
+            if (i + cp_len > bytes.len) {
+                // Truncated sequence - replace with U+FFFD
+                try output.appendSlice(replacement);
+                i += 1;
+                continue;
+            }
+
+            // Validate the sequence
+            const cp = std.unicode.utf8Decode(bytes[i .. i + cp_len]) catch {
+                // Invalid sequence - replace with U+FFFD
+                try output.appendSlice(replacement);
+                i += 1;
+                continue;
+            };
+
+            // Valid codepoint - copy the bytes
+            _ = cp; // Unused
+            try output.appendSlice(bytes[i .. i + cp_len]);
+            i += cp_len;
+        }
+
+        return output.toOwnedSlice();
+    
+    }
+
     /// Get the encoding name (WHATWG canonical name)
     /// 
     /// WHATWG Encoding Standard § 5.1.1
