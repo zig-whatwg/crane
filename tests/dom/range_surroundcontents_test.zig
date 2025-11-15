@@ -30,14 +30,14 @@ test "Range.surroundContents - wraps range content in new parent" {
     try range.call_surroundContents((&span));
 
     // div should contain: "Hello " + span + "" (empty text from split)
-    const firstText = try dom.Text.fromNode(div.child_nodes.item(0).?);
+    const firstText = try dom.Text.fromNode(div.child_nodes.get(0).?);
     try std.testing.expectEqualStrings("Hello ", firstText.get_data());
 
-    const middleSpan = div.child_nodes.item(1).?;
+    const middleSpan = div.child_nodes.get(1).?;
     try std.testing.expectEqual((&span), middleSpan);
 
     // Span should contain "World"
-    const spanText = try dom.Text.fromNode(span.child_nodes.item(0).?);
+    const spanText = try dom.Text.fromNode(span.child_nodes.get(0).?);
     try std.testing.expectEqualStrings("World", spanText.get_data());
 }
 
@@ -67,7 +67,7 @@ test "Range.surroundContents - clears existing newParent children" {
 
     // Span should only contain "Hello", not "Old"
     try std.testing.expectEqual(@as(usize, 1), span.child_nodes.size());
-    const spanText = try dom.Text.fromNode(span.child_nodes.item(0).?);
+    const spanText = try dom.Text.fromNode(span.child_nodes.get(0).?);
     try std.testing.expectEqualStrings("Hello", spanText.get_data());
 }
 

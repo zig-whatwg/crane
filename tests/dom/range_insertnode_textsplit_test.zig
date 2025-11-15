@@ -32,14 +32,14 @@ test "Range.insertNode - splits Text node at start offset" {
     // Text should be split: "Hello" + span + "World"
     try std.testing.expectEqual(@as(usize, 3), div.child_nodes.size());
 
-    const first = div.child_nodes.item(0).?;
+    const first = div.child_nodes.get(0).?;
     const firstText = try dom.Text.fromNode(first);
     try std.testing.expectEqualStrings("Hello", firstText.get_data());
 
-    const second = div.child_nodes.item(1).?;
+    const second = div.child_nodes.get(1).?;
     try std.testing.expectEqual((&span), second);
 
-    const third = div.child_nodes.item(2).?;
+    const third = div.child_nodes.get(2).?;
     const thirdText = try dom.Text.fromNode(third);
     try std.testing.expectEqualStrings("World", thirdText.get_data());
 }
@@ -66,10 +66,10 @@ test "Range.insertNode - splits at start of Text node" {
     // Should be: span + "Hello"
     try std.testing.expectEqual(@as(usize, 2), div.child_nodes.size());
 
-    const first = div.child_nodes.item(0).?;
+    const first = div.child_nodes.get(0).?;
     try std.testing.expectEqual((&span), first);
 
-    const second = div.child_nodes.item(1).?;
+    const second = div.child_nodes.get(1).?;
     const secondText = try dom.Text.fromNode(second);
     try std.testing.expectEqualStrings("Hello", secondText.get_data());
 }
@@ -96,10 +96,10 @@ test "Range.insertNode - splits at end of Text node" {
     // Should be: "Hello" + span
     try std.testing.expectEqual(@as(usize, 2), div.child_nodes.size());
 
-    const first = div.child_nodes.item(0).?;
+    const first = div.child_nodes.get(0).?;
     const firstText = try dom.Text.fromNode(first);
     try std.testing.expectEqualStrings("Hello", firstText.get_data());
 
-    const second = div.child_nodes.item(1).?;
+    const second = div.child_nodes.get(1).?;
     try std.testing.expectEqual((&span), second);
 }

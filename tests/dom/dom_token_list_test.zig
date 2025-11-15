@@ -285,12 +285,12 @@ test "DOMTokenList - item returns token at index" {
     try token_list.add(&tokens);
 
     // Check items by index
-    const item0 = token_list.item(0);
+    const item0 = token_list.get(0);
     try std.testing.expect(item0 != null);
     // Note: items are stored as u16 internally, so we can't directly compare
     // We'll just verify it's not null for now
 
-    const item3 = token_list.item(3);
+    const item3 = token_list.get(3);
     try std.testing.expect(item3 == null);
 }
 

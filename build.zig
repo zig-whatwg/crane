@@ -682,6 +682,8 @@ pub fn build(b: *std.Build) void {
     range_mod.addImport("document_fragment", document_fragment_mod);
     range_mod.addImport("document", document_mod);
     range_mod.addImport("dom", dom_mod);
+    range_mod.addImport("character_data", character_data_mod);
+    range_mod.addImport("text", text_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{

@@ -26,7 +26,7 @@ test "Element.insertAdjacentText - beforebegin inserts before element" {
     try std.testing.expectEqual(@as(usize, 2), parent.child_nodes.size());
 
     // First child should be the text node
-    const first = parent.child_nodes.item(0).?;
+    const first = parent.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, first.node_type);
 
     // Check text content
@@ -34,7 +34,7 @@ test "Element.insertAdjacentText - beforebegin inserts before element" {
     try std.testing.expectEqualStrings("Hello ", text.get_data());
 
     // Second child should be the span
-    const second = parent.child_nodes.item(1).?;
+    const second = parent.child_nodes.get(1).?;
     try std.testing.expectEqual((&child), second);
 }
 
@@ -55,7 +55,7 @@ test "Element.insertAdjacentText - afterbegin inserts as first child" {
     try std.testing.expectEqual(@as(usize, 2), element.child_nodes.size());
 
     // First child should be the text node
-    const first = element.child_nodes.item(0).?;
+    const first = element.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, first.node_type);
 
     const text = try dom.Text.fromNode(first);
@@ -79,7 +79,7 @@ test "Element.insertAdjacentText - beforeend inserts as last child" {
     try std.testing.expectEqual(@as(usize, 2), element.child_nodes.size());
 
     // Last child should be the text node
-    const last = element.child_nodes.item(1).?;
+    const last = element.child_nodes.get(1).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, last.node_type);
 
     const text = try dom.Text.fromNode(last);
@@ -103,7 +103,7 @@ test "Element.insertAdjacentText - afterend inserts after element" {
     try std.testing.expectEqual(@as(usize, 2), parent.child_nodes.size());
 
     // Second child should be the text node
-    const second = parent.child_nodes.item(1).?;
+    const second = parent.child_nodes.get(1).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, second.node_type);
 
     const text = try dom.Text.fromNode(second);
@@ -124,7 +124,7 @@ test "Element.insertAdjacentText - empty string creates empty text node" {
     // Element should have 1 child: empty text node
     try std.testing.expectEqual(@as(usize, 1), element.child_nodes.size());
 
-    const first = element.child_nodes.item(0).?;
+    const first = element.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, first.node_type);
 
     const text = try dom.Text.fromNode(first);
@@ -148,13 +148,13 @@ test "Element.insertAdjacentText - multiple insertions accumulate" {
     try std.testing.expectEqual(@as(usize, 3), element.child_nodes.size());
 
     // Check order: "Before First", "First", "Last"
-    const first = try dom.Text.fromNode(element.child_nodes.item(0).?);
+    const first = try dom.Text.fromNode(element.child_nodes.get(0).?);
     try std.testing.expectEqualStrings("Before First", first.get_data());
 
-    const second = try dom.Text.fromNode(element.child_nodes.item(1).?);
+    const second = try dom.Text.fromNode(element.child_nodes.get(1).?);
     try std.testing.expectEqualStrings("First", second.get_data());
 
-    const third = try dom.Text.fromNode(element.child_nodes.item(2).?);
+    const third = try dom.Text.fromNode(element.child_nodes.get(2).?);
     try std.testing.expectEqualStrings("Last", third.get_data());
 }
 
@@ -169,7 +169,7 @@ test "Element.insertAdjacentText - special characters preserved" {
     // Insert text with special characters
     try element.call_insertAdjacentText("afterbegin", "<>&\"'");
 
-    const first = element.child_nodes.item(0).?;
+    const first = element.child_nodes.get(0).?;
     const text = try dom.Text.fromNode(first);
 
     // Special characters should be preserved as-is (not escaped)
@@ -187,7 +187,7 @@ test "Element.insertAdjacentText - unicode characters preserved" {
     // Insert unicode text
     try element.call_insertAdjacentText("afterbegin", "Hello 世界 🌍");
 
-    const first = element.child_nodes.item(0).?;
+    const first = element.child_nodes.get(0).?;
     const text = try dom.Text.fromNode(first);
 
     try std.testing.expectEqualStrings("Hello 世界 🌍", text.get_data());

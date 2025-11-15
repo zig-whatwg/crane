@@ -150,11 +150,11 @@ test "Range.deleteContents - deletes contained element nodes" {
     try std.testing.expectEqual(@as(usize, 2), div.child_nodes.size());
 
     // First child should be span1
-    const firstChild = div.child_nodes.item(0).?;
+    const firstChild = div.child_nodes.get(0).?;
     try std.testing.expectEqual((&span1), firstChild);
 
     // Second child should be span3
-    const secondChild = div.child_nodes.item(1).?;
+    const secondChild = div.child_nodes.get(1).?;
     try std.testing.expectEqual((&span3), secondChild);
 }
 

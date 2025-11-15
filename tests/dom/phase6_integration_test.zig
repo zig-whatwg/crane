@@ -270,7 +270,7 @@ test "Integration: NodeList with multiple elements" {
     try testing.expectEqual(@as(usize, 3), node_list.length);
 
     // Test item access
-    const item = node_list.item(1);
+    const item = node_list.get(1);
     try testing.expect(item != null);
     if (item) |node| {
         try testing.expectEqualStrings("span", node.local_name);
@@ -461,10 +461,10 @@ test "Integration: NamedNodeMap wraps Element attributes" {
     try testing.expectEqual(@as(usize, 3), map.length);
 
     // Test item() access
-    const first = map.item(0);
+    const first = map.get(0);
     try testing.expect(first != null);
 
-    const out_of_bounds = map.item(10);
+    const out_of_bounds = map.get(10);
     try testing.expect(out_of_bounds == null);
 
     // Test getNamedItem()

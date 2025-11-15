@@ -15,7 +15,7 @@ test "Node.isConnected - document is connected" {
     defer doc.deinit();
 
     const doc_node: *Node = @ptrCast(&doc);
-    try std.testing.expect(doc_node.isConnected());
+    try std.testing.expect(doc_node.get_isConnected());
 }
 
 test "Node.isConnected - element in document is connected" {
@@ -31,13 +31,13 @@ test "Node.isConnected - element in document is connected" {
     const elem_node: *Node = @ptrCast(&elem);
 
     // Before appending, element is not connected
-    try std.testing.expect(!elem_node.isConnected());
+    try std.testing.expect(!elem_node.get_isConnected());
 
     // Append to document
     _ = try doc_node.call_appendChild(elem_node);
 
     // Now element is connected
-    try std.testing.expect(elem_node.isConnected());
+    try std.testing.expect(elem_node.get_isConnected());
 }
 
 test "Node.isConnected - detached element is not connected" {
@@ -47,7 +47,7 @@ test "Node.isConnected - detached element is not connected" {
     defer elem.deinit();
 
     const elem_node: *Node = @ptrCast(&elem);
-    try std.testing.expect(!elem_node.isConnected());
+    try std.testing.expect(!elem_node.get_isConnected());
 }
 
 test "Node.isConnected - nested elements in document are connected" {
@@ -73,8 +73,8 @@ test "Node.isConnected - nested elements in document are connected" {
     _ = try parent_node.call_appendChild(child_node);
 
     // Both are connected
-    try std.testing.expect(parent_node.isConnected());
-    try std.testing.expect(child_node.isConnected());
+    try std.testing.expect(parent_node.get_isConnected());
+    try std.testing.expect(child_node.get_isConnected());
 }
 
 test "Node.isConnected - element removed from document is not connected" {
@@ -91,11 +91,11 @@ test "Node.isConnected - element removed from document is not connected" {
 
     // Append to document
     _ = try doc_node.call_appendChild(elem_node);
-    try std.testing.expect(elem_node.isConnected());
+    try std.testing.expect(elem_node.get_isConnected());
 
     // Remove from document
     _ = doc_node.removeChild(elem_node) catch unreachable;
-    try std.testing.expect(!elem_node.isConnected());
+    try std.testing.expect(!elem_node.get_isConnected());
 }
 
 test "Node.isConnected - orphaned subtree is not connected" {
@@ -114,6 +114,6 @@ test "Node.isConnected - orphaned subtree is not connected" {
     _ = try parent_node.call_appendChild(child_node);
 
     // Neither is connected (no document root)
-    try std.testing.expect(!parent_node.isConnected());
-    try std.testing.expect(!child_node.isConnected());
+    try std.testing.expect(!parent_node.get_isConnected());
+    try std.testing.expect(!child_node.get_isConnected());
 }

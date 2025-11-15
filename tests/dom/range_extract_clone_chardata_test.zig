@@ -36,7 +36,7 @@ test "Range.extractContents - extracts substring from Text node" {
 
     // Fragment should contain cloned text with "World"
     try std.testing.expectEqual(@as(usize, 1), fragment.child_nodes.size());
-    const extractedNode = fragment.child_nodes.item(0).?;
+    const extractedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, extractedNode.node_type);
 
     const extractedText = try dom.Text.fromNode(extractedNode);
@@ -70,7 +70,7 @@ test "Range.extractContents - handles entire Text node" {
     }
 
     // Fragment should contain "Hello"
-    const extractedNode = fragment.child_nodes.item(0).?;
+    const extractedNode = fragment.child_nodes.get(0).?;
     const extractedText = try dom.Text.fromNode(extractedNode);
     try std.testing.expectEqualStrings("Hello", extractedText.get_data());
 
@@ -102,7 +102,7 @@ test "Range.extractContents - handles Comment node" {
     }
 
     // Fragment should contain comment with "is a"
-    const extractedNode = fragment.child_nodes.item(0).?;
+    const extractedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.COMMENT_NODE, extractedNode.node_type);
 
     const extractedComment = try dom.Comment.fromNode(extractedNode);
@@ -139,7 +139,7 @@ test "Range.cloneContents - clones substring from Text node" {
 
     // Fragment should contain cloned text with "World"
     try std.testing.expectEqual(@as(usize, 1), fragment.child_nodes.size());
-    const clonedNode = fragment.child_nodes.item(0).?;
+    const clonedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, clonedNode.node_type);
 
     const clonedText = try dom.Text.fromNode(clonedNode);
@@ -173,7 +173,7 @@ test "Range.cloneContents - handles entire Text node" {
     }
 
     // Fragment should contain "Hello"
-    const clonedNode = fragment.child_nodes.item(0).?;
+    const clonedNode = fragment.child_nodes.get(0).?;
     const clonedText = try dom.Text.fromNode(clonedNode);
     try std.testing.expectEqualStrings("Hello", clonedText.get_data());
 
@@ -205,7 +205,7 @@ test "Range.cloneContents - handles Comment node" {
     }
 
     // Fragment should contain comment with "is a"
-    const clonedNode = fragment.child_nodes.item(0).?;
+    const clonedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.COMMENT_NODE, clonedNode.node_type);
 
     const clonedComment = try dom.Comment.fromNode(clonedNode);
@@ -251,8 +251,8 @@ test "Range.extractContents vs cloneContents - different behavior" {
     }
 
     // Both fragments should contain "World"
-    const extracted = try dom.Text.fromNode(fragment1.child_nodes.item(0).?);
-    const cloned = try dom.Text.fromNode(fragment2.child_nodes.item(0).?);
+    const extracted = try dom.Text.fromNode(fragment1.child_nodes.get(0).?);
+    const cloned = try dom.Text.fromNode(fragment2.child_nodes.get(0).?);
     try std.testing.expectEqualStrings("World", extracted.get_data());
     try std.testing.expectEqualStrings("World", cloned.get_data());
 
