@@ -45,8 +45,8 @@ test "Node.childNodes - NodeList is initially populated" {
     const child2_node = child2.asNode();
 
     // Add children before getting NodeList
-    _ = try parent_node.appendChild(child1_node);
-    _ = try parent_node.appendChild(child2_node);
+    _ = try parent_node.call_appendChild(child1_node);
+    _ = try parent_node.call_appendChild(child2_node);
 
     // Get childNodes
     const list = try parent_node.get_childNodes();
@@ -84,7 +84,7 @@ test "Node.childNodes - NodeList uses item() method" {
     const parent_node = &parent;
     const child_node = &child;
 
-    _ = try parent_node.appendChild(child_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     const list = try parent_node.get_childNodes();
 

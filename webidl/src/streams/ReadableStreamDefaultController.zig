@@ -247,7 +247,7 @@ pub const ReadableStreamDefaultController = webidl.interface(struct {
                     .none => {},
                     .default => |reader| {
                         while (reader.readRequests.toSlice().len > 0) {
-                            const promise = reader.readRequests.orderedRemove(0);
+                            const promise = reader.readRequests.remove(0);
                             promise.fulfill(.{
                                 .value = null,
                                 .done = true,

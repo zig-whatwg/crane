@@ -36,7 +36,7 @@ test "Node.getRootNode - element in document" {
     const elem_node = &elem;
 
     // Append element to document
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
 
     const root_node = elem_node.call_getRootNode(null);
 
@@ -74,8 +74,8 @@ test "Node.getRootNode - nested elements" {
     const child_node = &child;
 
     // Build tree: doc -> parent -> child
-    _ = try doc_node.appendChild(parent_node);
-    _ = try parent_node.appendChild(child_node);
+    _ = try doc_node.call_appendChild(parent_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     const root_node = child_node.call_getRootNode(null);
 
@@ -96,7 +96,7 @@ test "Node.getRootNode - orphaned subtree" {
     const child_node = &child;
 
     // Build orphaned subtree: parent -> child
-    _ = try parent_node.appendChild(child_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     const root_node = child_node.call_getRootNode(null);
 
@@ -116,7 +116,7 @@ test "Node.getRootNode - options.composed false" {
     const doc_node = &doc;
     const elem_node = &elem;
 
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
 
     const root_node = elem_node.call_getRootNode(GetRootNodeOptions{ .composed = false });
 
@@ -136,7 +136,7 @@ test "Node.getRootNode - options.composed true (shadow root not yet implemented)
     const doc_node = &doc;
     const elem_node = &elem;
 
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
 
     const root_node = elem_node.call_getRootNode(GetRootNodeOptions{ .composed = true });
 

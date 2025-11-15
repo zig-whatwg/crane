@@ -276,7 +276,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
             // Dequeue a chunk from the byte queue
             if (self.byteQueue.toSlice().len > 0) {
-                const entry = self.byteQueue.orderedRemove(0);
+                const entry = self.byteQueue.remove(0);
 
                 // Update queue total size
                 self.queueTotalSize -= @as(f64, @floatFromInt(entry.byteLength));
@@ -535,7 +535,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
 
             // Update queue entry or remove it
             if (head_of_queue.byteLength == bytes_to_copy) {
-                const removed = self.byteQueue.orderedRemove(0);
+                const removed = self.byteQueue.remove(0);
                 removed.buffer.deinit(self.allocator);
                 self.allocator.destroy(removed.buffer);
             } else {
@@ -558,7 +558,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     fn shiftPendingPullInto(self: *ReadableByteStreamController) *PullIntoDescriptor {
         // Step 1: Assert: controller.[[byobRequest]] is null
         // Step 2: Return shift from list
-        return self.pendingPullIntos.orderedRemove(0);
+        return self.pendingPullIntos.remove(0);
     }
 
     /// Convert pull-into descriptor to typed array view
@@ -1333,7 +1333,7 @@ pub const ReadableByteStreamController = webidl.interface(struct {
     fn fillReadRequestFromQueue(self: *ReadableByteStreamController) !void {
         // Step 2: Remove first queue entry
         const entry = self.byteQueue.toSlice()[0];
-        _ = self.byteQueue.orderedRemove(0);
+        _ = self.byteQueue.remove(0);
 
         // Step 4: Update queue size
         self.queueTotalSize -= @as(f64, @floatFromInt(entry.byteLength));

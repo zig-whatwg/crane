@@ -24,7 +24,7 @@ test "Node.parentElement - element parent returns element" {
     const child_node = &child;
 
     // Append child to parent
-    _ = try parent_node.appendChild(child_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     const parent_element = child_node.get_parentElement();
 
@@ -46,7 +46,7 @@ test "Node.parentElement - document parent returns null" {
     const elem_node = &elem;
 
     // Append element to document
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
 
     const parent_element = elem_node.get_parentElement();
 
@@ -81,7 +81,7 @@ test "Node.parentElement - text node with element parent" {
     const text_as_node = &text_node;
 
     // Append text to element
-    _ = try parent_node.appendChild(text_as_node);
+    _ = try parent_node.call_appendChild(text_as_node);
 
     const parent_element = text_as_node.get_parentElement();
 
@@ -107,8 +107,8 @@ test "Node.parentElement - nested elements" {
     const child_node = &child;
 
     // Build tree: grandparent -> parent -> child
-    _ = try grandparent_node.appendChild(parent_node);
-    _ = try parent_node.appendChild(child_node);
+    _ = try grandparent_node.call_appendChild(parent_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     const child_parent_element = child_node.get_parentElement();
     const parent_parent_element = parent_node.get_parentElement();

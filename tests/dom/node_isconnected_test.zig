@@ -36,7 +36,7 @@ test "Node.isConnected - element in document is connected" {
     try std.testing.expect(!elem_node.isConnected());
 
     // Append to document
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
 
     // Now element is connected
     try std.testing.expect(elem_node.isConnected());
@@ -69,10 +69,10 @@ test "Node.isConnected - nested elements in document are connected" {
     const child_node = &child;
 
     // Append parent to document
-    _ = try doc_node.appendChild(parent_node);
+    _ = try doc_node.call_appendChild(parent_node);
 
     // Append child to parent
-    _ = try parent_node.appendChild(child_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     // Both are connected
     try std.testing.expect(parent_node.isConnected());
@@ -92,7 +92,7 @@ test "Node.isConnected - element removed from document is not connected" {
     const elem_node = &elem;
 
     // Append to document
-    _ = try doc_node.appendChild(elem_node);
+    _ = try doc_node.call_appendChild(elem_node);
     try std.testing.expect(elem_node.isConnected());
 
     // Remove from document
@@ -113,7 +113,7 @@ test "Node.isConnected - orphaned subtree is not connected" {
     const child_node = &child;
 
     // Create orphaned subtree
-    _ = try parent_node.appendChild(child_node);
+    _ = try parent_node.call_appendChild(child_node);
 
     // Neither is connected (no document root)
     try std.testing.expect(!parent_node.isConnected());

@@ -154,7 +154,7 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
 
     const shadow_node = &shadow;
     const shadow_child_node = &shadow_child;
-    _ = try shadow_node.appendChild(shadow_child_node);
+    _ = try shadow_node.call_appendChild(shadow_child_node);
 
     const host_node = &host;
 
