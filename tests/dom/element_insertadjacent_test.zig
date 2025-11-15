@@ -69,10 +69,10 @@ test "Element - insertAdjacentElement beforebegin" {
 
     // Parent should now have 3 children: [new_elem, child1, child2]
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 3), parent_node.child_nodes.items.len);
-    try expect(parent_node.child_nodes.items[0] == @as(*Node, @ptrCast(new_elem)));
-    try expect(parent_node.child_nodes.items[1] == @as(*Node, @ptrCast(tree.child1)));
-    try expect(parent_node.child_nodes.items[2] == @as(*Node, @ptrCast(tree.child2)));
+    try expectEqual(@as(usize, 3), parent_node.child_nodes.data.len);
+    try expect(parent_node.child_nodes.data[0] == @as(*Node, @ptrCast(new_elem)));
+    try expect(parent_node.child_nodes.data[1] == @as(*Node, @ptrCast(tree.child1)));
+    try expect(parent_node.child_nodes.data[2] == @as(*Node, @ptrCast(tree.child2)));
 }
 
 test "Element - insertAdjacentElement afterbegin" {
@@ -94,10 +94,10 @@ test "Element - insertAdjacentElement afterbegin" {
 
     // Parent should now have 3 children: [new_elem, child1, child2]
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 3), parent_node.child_nodes.items.len);
-    try expect(parent_node.child_nodes.items[0] == @as(*Node, @ptrCast(new_elem)));
-    try expect(parent_node.child_nodes.items[1] == @as(*Node, @ptrCast(tree.child1)));
-    try expect(parent_node.child_nodes.items[2] == @as(*Node, @ptrCast(tree.child2)));
+    try expectEqual(@as(usize, 3), parent_node.child_nodes.data.len);
+    try expect(parent_node.child_nodes.data[0] == @as(*Node, @ptrCast(new_elem)));
+    try expect(parent_node.child_nodes.data[1] == @as(*Node, @ptrCast(tree.child1)));
+    try expect(parent_node.child_nodes.data[2] == @as(*Node, @ptrCast(tree.child2)));
 }
 
 test "Element - insertAdjacentElement beforeend" {
@@ -119,10 +119,10 @@ test "Element - insertAdjacentElement beforeend" {
 
     // Parent should now have 3 children: [child1, child2, new_elem]
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 3), parent_node.child_nodes.items.len);
-    try expect(parent_node.child_nodes.items[0] == @as(*Node, @ptrCast(tree.child1)));
-    try expect(parent_node.child_nodes.items[1] == @as(*Node, @ptrCast(tree.child2)));
-    try expect(parent_node.child_nodes.items[2] == @as(*Node, @ptrCast(new_elem)));
+    try expectEqual(@as(usize, 3), parent_node.child_nodes.data.len);
+    try expect(parent_node.child_nodes.data[0] == @as(*Node, @ptrCast(tree.child1)));
+    try expect(parent_node.child_nodes.data[1] == @as(*Node, @ptrCast(tree.child2)));
+    try expect(parent_node.child_nodes.data[2] == @as(*Node, @ptrCast(new_elem)));
 }
 
 test "Element - insertAdjacentElement afterend" {
@@ -144,10 +144,10 @@ test "Element - insertAdjacentElement afterend" {
 
     // Parent should now have 3 children: [child1, new_elem, child2]
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 3), parent_node.child_nodes.items.len);
-    try expect(parent_node.child_nodes.items[0] == @as(*Node, @ptrCast(tree.child1)));
-    try expect(parent_node.child_nodes.items[1] == @as(*Node, @ptrCast(new_elem)));
-    try expect(parent_node.child_nodes.items[2] == @as(*Node, @ptrCast(tree.child2)));
+    try expectEqual(@as(usize, 3), parent_node.child_nodes.data.len);
+    try expect(parent_node.child_nodes.data[0] == @as(*Node, @ptrCast(tree.child1)));
+    try expect(parent_node.child_nodes.data[1] == @as(*Node, @ptrCast(new_elem)));
+    try expect(parent_node.child_nodes.data[2] == @as(*Node, @ptrCast(tree.child2)));
 }
 
 test "Element - insertAdjacentElement beforebegin on root returns null" {
@@ -240,7 +240,7 @@ test "Element - insertAdjacentElement case insensitive" {
 
     // Should have inserted 2 elements (afterbegin and beforeend)
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 4), parent_node.child_nodes.items.len);
+    try expectEqual(@as(usize, 4), parent_node.child_nodes.data.len);
 }
 
 test "Element - insertAdjacentText creates Text node" {
@@ -254,15 +254,15 @@ test "Element - insertAdjacentText creates Text node" {
 
     // Parent should now have 4 children: [text, child1, child2, text]
     const parent_node = @as(*Node, @ptrCast(tree.parent));
-    try expectEqual(@as(usize, 4), parent_node.child_nodes.items.len);
+    try expectEqual(@as(usize, 4), parent_node.child_nodes.data.len);
 
     // First and last should be Text nodes
-    try expectEqual(Node.TEXT_NODE, parent_node.child_nodes.items[0].node_type);
-    try expectEqual(Node.TEXT_NODE, parent_node.child_nodes.items[3].node_type);
+    try expectEqual(Node.TEXT_NODE, parent_node.child_nodes.data[0].node_type);
+    try expectEqual(Node.TEXT_NODE, parent_node.child_nodes.data[3].node_type);
 
     // Middle should be the original children
-    try expect(parent_node.child_nodes.items[1] == @as(*Node, @ptrCast(tree.child1)));
-    try expect(parent_node.child_nodes.items[2] == @as(*Node, @ptrCast(tree.child2)));
+    try expect(parent_node.child_nodes.data[1] == @as(*Node, @ptrCast(tree.child1)));
+    try expect(parent_node.child_nodes.data[2] == @as(*Node, @ptrCast(tree.child2)));
 }
 
 test "Element - insertAdjacentText returns nothing" {
@@ -278,5 +278,5 @@ test "Element - insertAdjacentText returns nothing" {
 
     // Should have inserted one text node
     const node = @as(*Node, @ptrCast(elem));
-    try expectEqual(@as(usize, 1), node.child_nodes.items.len);
+    try expectEqual(@as(usize, 1), node.child_nodes.data.len);
 }

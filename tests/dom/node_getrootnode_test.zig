@@ -16,7 +16,7 @@ test "Node.getRootNode - document root" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    const doc_node = &doc;
+    const doc_node: *Node = @ptrCast(&doc);
     const root_node = doc_node.call_getRootNode(null);
 
     // Document is its own root
@@ -32,8 +32,8 @@ test "Node.getRootNode - element in document" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = &doc;
-    const elem_node = &elem;
+    const doc_node: *Node = @ptrCast(&doc);
+    const elem_node: *Node = @ptrCast(&elem);
 
     // Append element to document
     _ = try doc_node.call_appendChild(elem_node);
@@ -50,7 +50,7 @@ test "Node.getRootNode - detached element" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = &elem;
+    const elem_node: *Node = @ptrCast(&elem);
     const root_node = elem_node.call_getRootNode(null);
 
     // Detached element is its own root
@@ -69,9 +69,9 @@ test "Node.getRootNode - nested elements" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const doc_node = &doc;
-    const parent_node = &parent;
-    const child_node = &child;
+    const doc_node: *Node = @ptrCast(&doc);
+    const parent_node: *Node = @ptrCast(&parent);
+    const child_node: *Node = @ptrCast(&child);
 
     // Build tree: doc -> parent -> child
     _ = try doc_node.call_appendChild(parent_node);
@@ -92,8 +92,8 @@ test "Node.getRootNode - orphaned subtree" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const parent_node = &parent;
-    const child_node = &child;
+    const parent_node: *Node = @ptrCast(&parent);
+    const child_node: *Node = @ptrCast(&child);
 
     // Build orphaned subtree: parent -> child
     _ = try parent_node.call_appendChild(child_node);
@@ -113,8 +113,8 @@ test "Node.getRootNode - options.composed false" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = &doc;
-    const elem_node = &elem;
+    const doc_node: *Node = @ptrCast(&doc);
+    const elem_node: *Node = @ptrCast(&elem);
 
     _ = try doc_node.call_appendChild(elem_node);
 
@@ -133,8 +133,8 @@ test "Node.getRootNode - options.composed true (shadow root not yet implemented)
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = &doc;
-    const elem_node = &elem;
+    const doc_node: *Node = @ptrCast(&doc);
+    const elem_node: *Node = @ptrCast(&elem);
 
     _ = try doc_node.call_appendChild(elem_node);
 

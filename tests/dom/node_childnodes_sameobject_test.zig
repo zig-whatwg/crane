@@ -5,7 +5,6 @@ const webidl = @import("webidl");
 
 const NodeList = @import("node_list").NodeList;
 
-
 // Type aliases
 const Element = dom.Element;
 const Node = dom.Node;
@@ -16,7 +15,7 @@ test "Node.childNodes - [SameObject] returns same NodeList" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = &elem;
+    const elem_node: *Node = @ptrCast(&elem);
 
     // Get childNodes first time
     const list1 = try elem_node.get_childNodes();
@@ -40,9 +39,9 @@ test "Node.childNodes - NodeList is initially populated" {
     var child2 = try Element.init(allocator, "p");
     defer child2.deinit();
 
-    const parent_node = &parent;
-    const child1_node = &child1;
-    const child2_node = &child2;
+    const parent_node: *Node = @ptrCast(&parent);
+    const child1_node: *Node = @ptrCast(&child1);
+    const child2_node: *Node = @ptrCast(&child2);
 
     // Add children before getting NodeList
     _ = try parent_node.call_appendChild(child1_node);
@@ -63,7 +62,7 @@ test "Node.childNodes - empty node has empty NodeList" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = &elem;
+    const elem_node: *Node = @ptrCast(&elem);
 
     // Get childNodes for empty node
     const list = try elem_node.get_childNodes();
@@ -81,8 +80,8 @@ test "Node.childNodes - NodeList uses item() method" {
     var child = try Element.init(allocator, "li");
     defer child.deinit();
 
-    const parent_node = &parent;
-    const child_node = &child;
+    const parent_node: *Node = @ptrCast(&parent);
+    const child_node: *Node = @ptrCast(&child);
 
     _ = try parent_node.call_appendChild(child_node);
 

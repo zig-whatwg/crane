@@ -2,9 +2,7 @@
 //! Spec: https://dom.spec.whatwg.org/#mutation-observers
 
 const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
-
-/// Forward declaration - resolved when all modules are loaded
-const MutationObserver = opaque {};
+const MutationObserver = @import("mutation_observer").MutationObserver;
 
 /// DOM §7.1 - RegisteredObserver
 ///

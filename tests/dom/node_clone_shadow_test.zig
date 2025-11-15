@@ -28,7 +28,7 @@ test "Node.cloneNode - element with clonable shadow root is cloned" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = &host;
+    const host_node: *Node = @ptrCast(&host);
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -77,7 +77,7 @@ test "Node.cloneNode - element with non-clonable shadow root is not cloned" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = &host;
+    const host_node: *Node = @ptrCast(&host);
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -109,7 +109,7 @@ test "Node.cloneNode - shadow root declarative flag is preserved" {
     );
     host.shadow_root = &shadow;
 
-    const host_node = &host;
+    const host_node: *Node = @ptrCast(&host);
 
     // Clone the host element
     const cloned_node = try host_node.call_cloneNode(false);
@@ -152,11 +152,11 @@ test "Node.cloneNode - shadow root children are cloned with subtree=true" {
     var shadow_child = try Element.init(allocator, "span");
     defer shadow_child.deinit();
 
-    const shadow_node = &shadow;
+    const shadow_node: *Node = @ptrCast(&shadow);
     const shadow_child_node = &shadow_child;
     _ = try shadow_node.call_appendChild(shadow_child_node);
 
-    const host_node = &host;
+    const host_node: *Node = @ptrCast(&host);
 
     // Clone the host element with subtree=true
     const cloned_node = try host_node.call_cloneNode(true);

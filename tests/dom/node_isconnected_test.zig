@@ -3,8 +3,6 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-
-
 // Type aliases
 const Document = dom.Document;
 const Element = dom.Element;
@@ -16,7 +14,7 @@ test "Node.isConnected - document is connected" {
     var doc = try Document.init(allocator);
     defer doc.deinit();
 
-    const doc_node = &doc;
+    const doc_node: *Node = @ptrCast(&doc);
     try std.testing.expect(doc_node.isConnected());
 }
 
@@ -29,8 +27,8 @@ test "Node.isConnected - element in document is connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = &doc;
-    const elem_node = &elem;
+    const doc_node: *Node = @ptrCast(&doc);
+    const elem_node: *Node = @ptrCast(&elem);
 
     // Before appending, element is not connected
     try std.testing.expect(!elem_node.isConnected());
@@ -48,7 +46,7 @@ test "Node.isConnected - detached element is not connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const elem_node = &elem;
+    const elem_node: *Node = @ptrCast(&elem);
     try std.testing.expect(!elem_node.isConnected());
 }
 
@@ -64,9 +62,9 @@ test "Node.isConnected - nested elements in document are connected" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const doc_node = &doc;
-    const parent_node = &parent;
-    const child_node = &child;
+    const doc_node: *Node = @ptrCast(&doc);
+    const parent_node: *Node = @ptrCast(&parent);
+    const child_node: *Node = @ptrCast(&child);
 
     // Append parent to document
     _ = try doc_node.call_appendChild(parent_node);
@@ -88,8 +86,8 @@ test "Node.isConnected - element removed from document is not connected" {
     var elem = try Element.init(allocator, "div");
     defer elem.deinit();
 
-    const doc_node = &doc;
-    const elem_node = &elem;
+    const doc_node: *Node = @ptrCast(&doc);
+    const elem_node: *Node = @ptrCast(&elem);
 
     // Append to document
     _ = try doc_node.call_appendChild(elem_node);
@@ -109,8 +107,8 @@ test "Node.isConnected - orphaned subtree is not connected" {
     var child = try Element.init(allocator, "span");
     defer child.deinit();
 
-    const parent_node = &parent;
-    const child_node = &child;
+    const parent_node: *Node = @ptrCast(&parent);
+    const child_node: *Node = @ptrCast(&child);
 
     // Create orphaned subtree
     _ = try parent_node.call_appendChild(child_node);

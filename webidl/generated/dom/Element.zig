@@ -1106,7 +1106,7 @@ pub const Element = struct {
             const parent = element.parent_node orelse return null;
 
             // Return the result of pre-inserting node into element's parent before element's next sibling
-            const next_sibling = dom.tree_helpers.getNextSibling(element);
+            const next_sibling = dom.tree_helpers.getNextSibling(@ptrCast(element));
             return try mutation.preInsert(node, parent, next_sibling);
         } else {
             // Otherwise: Throw a "SyntaxError" DOMException

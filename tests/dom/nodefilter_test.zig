@@ -100,7 +100,7 @@ test "NodeFilter: filterNode skips non-matching types" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_TEXT only (element should be skipped)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_TEXT, null, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
@@ -113,7 +113,7 @@ test "NodeFilter: filterNode accepts matching types with no callback" {
     const elem = try doc.call_createElement("div");
 
     // Filter with SHOW_ELEMENT and no callback (should accept)
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, null, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -133,7 +133,7 @@ test "NodeFilter: filterNode calls callback for matching types" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, rejectFilter, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_REJECT, result);
 }
 
@@ -153,7 +153,7 @@ test "NodeFilter: filterNode callback can accept nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, acceptFilter, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_ACCEPT, result);
 }
 
@@ -173,7 +173,7 @@ test "NodeFilter: filterNode callback can skip nodes" {
     }.filter;
 
     // Filter with callback
-    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, elem);
+    const result = NodeFilter.filterNode(NodeFilter.SHOW_ELEMENT, skipFilter, @ptrCast(elem));
     try testing.expectEqual(NodeFilter.FILTER_SKIP, result);
 }
 
