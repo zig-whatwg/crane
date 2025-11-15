@@ -189,9 +189,9 @@ test "NodeFilter: filterNode with SHOW_ALL and no callback accepts all" {
     const comment = try doc.call_createComment("comment");
 
     // All should be accepted with SHOW_ALL
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, elem));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, text));
-    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, comment));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, @ptrCast(elem)));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, @ptrCast(text)));
+    try testing.expectEqual(NodeFilter.FILTER_ACCEPT, NodeFilter.filterNode(NodeFilter.SHOW_ALL, null, @ptrCast(comment)));
 }
 
 test "NodeFilter: filterNode respects callback even with SHOW_ALL" {

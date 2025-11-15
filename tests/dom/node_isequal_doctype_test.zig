@@ -17,7 +17,7 @@ test "Node.isEqualNode - DocumentType with same properties" {
     defer doctype_b.deinit();
 
     // DocumentTypes with same name, public ID, system ID are equal
-    try std.testing.expect(doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }
 
 test "Node.isEqualNode - DocumentType with different name" {
@@ -30,7 +30,7 @@ test "Node.isEqualNode - DocumentType with different name" {
     defer doctype_b.deinit();
 
     // DocumentTypes with different names are not equal
-    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }
 
 test "Node.isEqualNode - DocumentType with different public ID" {
@@ -43,7 +43,7 @@ test "Node.isEqualNode - DocumentType with different public ID" {
     defer doctype_b.deinit();
 
     // DocumentTypes with different public IDs are not equal
-    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }
 
 test "Node.isEqualNode - DocumentType with different system ID" {
@@ -56,7 +56,7 @@ test "Node.isEqualNode - DocumentType with different system ID" {
     defer doctype_b.deinit();
 
     // DocumentTypes with different system IDs are not equal
-    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }
 
 test "Node.isEqualNode - DocumentType with all properties different" {
@@ -69,7 +69,7 @@ test "Node.isEqualNode - DocumentType with all properties different" {
     defer doctype_b.deinit();
 
     // DocumentTypes with all properties different are not equal
-    try std.testing.expect(!doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(!doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }
 
 test "Node.isEqualNode - DocumentType with all properties matching" {
@@ -92,5 +92,5 @@ test "Node.isEqualNode - DocumentType with all properties matching" {
     defer doctype_b.deinit();
 
     // DocumentTypes with all properties matching are equal
-    try std.testing.expect(doctype_a.call_isEqualNode(&doctype_b));
+    try std.testing.expect(doctype_a.call_isEqualNode(@ptrCast(&doctype_b)));
 }

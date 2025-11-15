@@ -93,8 +93,8 @@ test "mutation - appendChild: basic insertion" {
     try testing.expect(result == &child);
 
     // Child should be in parent's children
-    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
-    try testing.expect(parent.child_nodes.items[0] == &child);
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.toSlice().len);
+    try testing.expect(parent.child_nodes.toSlice()[0] == &child);
 
     // Child's parent should be set
     try testing.expect(child.parent_node == &parent);
@@ -120,10 +120,10 @@ test "mutation - appendChild: multiple children" {
     _ = try mutation.append(@ptrCast(&child3), @ptrCast(&parent));
 
     // Should have 3 children in order
-    try testing.expectEqual(@as(usize, 3), parent.child_nodes.items.len);
-    try testing.expect(parent.child_nodes.items[0] == &child1);
-    try testing.expect(parent.child_nodes.items[1] == &child2);
-    try testing.expect(parent.child_nodes.items[2] == &child3);
+    try testing.expectEqual(@as(usize, 3), parent.child_nodes.toSlice().len);
+    try testing.expect(parent.child_nodes.toSlice()[0] == &child1);
+    try testing.expect(parent.child_nodes.toSlice()[1] == &child2);
+    try testing.expect(parent.child_nodes.toSlice()[2] == &child3);
 }
 
 test "mutation - insertBefore: insert at beginning" {
@@ -142,9 +142,9 @@ test "mutation - insertBefore: insert at beginning" {
     _ = try mutation.preInsert(@ptrCast(&new_child), @ptrCast(&parent), @ptrCast(&existing));
 
     // new_child should be first
-    try testing.expectEqual(@as(usize, 2), parent.child_nodes.items.len);
-    try testing.expect(parent.child_nodes.items[0] == &new_child);
-    try testing.expect(parent.child_nodes.items[1] == &existing);
+    try testing.expectEqual(@as(usize, 2), parent.child_nodes.toSlice().len);
+    try testing.expect(parent.child_nodes.toSlice()[0] == &new_child);
+    try testing.expect(parent.child_nodes.toSlice()[1] == &existing);
 }
 
 test "mutation - removeChild: basic removal" {
@@ -157,7 +157,7 @@ test "mutation - removeChild: basic removal" {
     defer child.deinit();
 
     _ = try mutation.append(@ptrCast(&child), @ptrCast(&parent));
-    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.toSlice().len);
 
     const removed = try mutation.preRemove(@ptrCast(&child), @ptrCast(&parent));
 
@@ -165,7 +165,7 @@ test "mutation - removeChild: basic removal" {
     try testing.expect(removed == &child);
 
     // Parent should be empty
-    try testing.expectEqual(@as(usize, 0), parent.child_nodes.items.len);
+    try testing.expectEqual(@as(usize, 0), parent.child_nodes.toSlice().len);
 
     // Child's parent should be null
     try testing.expect(child.parent_node == null);
@@ -188,12 +188,12 @@ test "mutation - removeChild: remove from middle" {
     _ = try mutation.append(@ptrCast(&child2), @ptrCast(&parent));
     _ = try mutation.append(@ptrCast(&child3), @ptrCast(&parent));
 
-    _ = try mutation.preRemove(&child2, @ptrCast(&parent));
+    _ = try mutation.preRemove(@ptrCast(&child2), @ptrCast(&parent));
 
     // Should have child1 and child3
-    try testing.expectEqual(@as(usize, 2), parent.child_nodes.items.len);
-    try testing.expect(parent.child_nodes.items[0] == &child1);
-    try testing.expect(parent.child_nodes.items[1] == &child3);
+    try testing.expectEqual(@as(usize, 2), parent.child_nodes.toSlice().len);
+    try testing.expect(parent.child_nodes.toSlice()[0] == &child1);
+    try testing.expect(parent.child_nodes.toSlice()[1] == &child3);
 }
 
 test "mutation - replaceChild: basic replacement" {
@@ -215,8 +215,8 @@ test "mutation - replaceChild: basic replacement" {
     try testing.expect(removed == &old_child);
 
     // Parent should have new child
-    try testing.expectEqual(@as(usize, 1), parent.child_nodes.items.len);
-    try testing.expect(parent.child_nodes.items[0] == &new_child);
+    try testing.expectEqual(@as(usize, 1), parent.child_nodes.toSlice().len);
+    try testing.expect(parent.child_nodes.toSlice()[0] == &new_child);
 
     // Old child should be detached
     try testing.expect(old_child.parent_node == null);
