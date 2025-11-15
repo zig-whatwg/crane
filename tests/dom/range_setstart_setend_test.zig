@@ -167,9 +167,9 @@ test "Range.setStart - adjusts end when start is after end" {
     try range.call_setStart(@ptrCast(div), 2);
 
     // End should be adjusted to match start
-    try std.testing.expectEqual((&div), range.start_container);
+    try std.testing.expectEqual(@as(*dom.Node, @ptrCast(div)), range.start_container);
     try std.testing.expectEqual(@as(u32, 2), range.start_offset);
-    try std.testing.expectEqual((&div), range.end_container);
+    try std.testing.expectEqual(@as(*dom.Node, @ptrCast(div)), range.end_container);
     try std.testing.expectEqual(@as(u32, 2), range.end_offset);
 }
 
@@ -197,9 +197,9 @@ test "Range.setEnd - adjusts start when end is before start" {
     try range.call_setEnd(@ptrCast(div), 0);
 
     // Start should be adjusted to match end
-    try std.testing.expectEqual((&div), range.start_container);
+    try std.testing.expectEqual(@as(*dom.Node, @ptrCast(div)), range.start_container);
     try std.testing.expectEqual(@as(u32, 0), range.start_offset);
-    try std.testing.expectEqual((&div), range.end_container);
+    try std.testing.expectEqual(@as(*dom.Node, @ptrCast(div)), range.end_container);
     try std.testing.expectEqual(@as(u32, 0), range.end_offset);
 }
 
