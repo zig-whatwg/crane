@@ -39,7 +39,7 @@ test "Range.extractContents - extracts substring from Text node" {
     const extractedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, extractedNode.node_type);
 
-    const extractedText = try extractedNode.as(dom.Text) orelse unreachable;
+    const extractedText = extractedNode.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("World", extractedText.get_data());
 
     // Original text should now be "Hello " (extracted part removed)
@@ -71,7 +71,7 @@ test "Range.extractContents - handles entire Text node" {
 
     // Fragment should contain "Hello"
     const extractedNode = fragment.child_nodes.get(0).?;
-    const extractedText = try extractedNode.as(dom.Text) orelse unreachable;
+    const extractedText = extractedNode.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello", extractedText.get_data());
 
     // Original text should be empty
@@ -142,7 +142,7 @@ test "Range.cloneContents - clones substring from Text node" {
     const clonedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.TEXT_NODE, clonedNode.node_type);
 
-    const clonedText = try clonedNode.as(dom.Text) orelse unreachable;
+    const clonedText = clonedNode.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("World", clonedText.get_data());
 
     // Original text should remain unchanged
@@ -174,7 +174,7 @@ test "Range.cloneContents - handles entire Text node" {
 
     // Fragment should contain "Hello"
     const clonedNode = fragment.child_nodes.get(0).?;
-    const clonedText = try clonedNode.as(dom.Text) orelse unreachable;
+    const clonedText = clonedNode.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello", clonedText.get_data());
 
     // Original text should remain unchanged

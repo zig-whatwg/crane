@@ -33,14 +33,14 @@ test "Range.insertNode - splits Text node at start offset" {
     try std.testing.expectEqual(@as(usize, 3), div.child_nodes.size());
 
     const first = div.child_nodes.get(0).?;
-    const firstText = try first.as(dom.Text) orelse unreachable;
+    const firstText = first.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello", firstText.get_data());
 
     const second = div.child_nodes.get(1).?;
     try std.testing.expectEqual((&span), second);
 
     const third = div.child_nodes.get(2).?;
-    const thirdText = try third.as(dom.Text) orelse unreachable;
+    const thirdText = third.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("World", thirdText.get_data());
 }
 
@@ -70,7 +70,7 @@ test "Range.insertNode - splits at start of Text node" {
     try std.testing.expectEqual((&span), first);
 
     const second = div.child_nodes.get(1).?;
-    const secondText = try second.as(dom.Text) orelse unreachable;
+    const secondText = second.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello", secondText.get_data());
 }
 
@@ -97,7 +97,7 @@ test "Range.insertNode - splits at end of Text node" {
     try std.testing.expectEqual(@as(usize, 2), div.child_nodes.size());
 
     const first = div.child_nodes.get(0).?;
-    const firstText = try first.as(dom.Text) orelse unreachable;
+    const firstText = first.as(dom.Text) orelse unreachable;
     try std.testing.expectEqualStrings("Hello", firstText.get_data());
 
     const second = div.child_nodes.get(1).?;

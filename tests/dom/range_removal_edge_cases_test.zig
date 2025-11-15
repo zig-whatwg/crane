@@ -44,24 +44,24 @@ test "Range removal - start in removed, end in kept" {
     defer a.deinit();
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer a_text.deinit();
-    try dom.mutation.append(a_text, a);
+    try dom.mutation.append(@ptrCast(a_text), @ptrCast(a);
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
     const b_text = try dom.NodeBase.createText(allocator, "remove", doc_ptr);
     defer b_text.deinit();
-    try dom.mutation.append(b_text, b);
+    try dom.mutation.append(@ptrCast(b_text), @ptrCast(b);
 
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
     const c_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer c_text.deinit();
-    try dom.mutation.append(c_text, c);
+    try dom.mutation.append(@ptrCast(c_text), @ptrCast(c);
 
     // Build tree
-    try dom.mutation.append(a, parent);
-    try dom.mutation.append(b, parent);
-    try dom.mutation.append(c, parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
 
     // Create range: [b.firstChild, 2] to [c.firstChild, 3]
     const range = try allocator.create(dom.Range);
@@ -136,7 +136,7 @@ test "Range removal - fully contained in removed subtree" {
     // Build tree
     try dom.mutation.append(child1, removed);
     try dom.mutation.append(child2, removed);
-    try dom.mutation.append(removed, parent);
+    try dom.mutation.append(removed, @ptrCast(parent));
 
     // Create range: [child1.firstChild, 2] to [child2.firstChild, 3]
     const range = try allocator.create(dom.Range);
@@ -202,9 +202,9 @@ test "Range removal - multiple overlapping ranges" {
     defer after.deinit();
 
     // Build tree
-    try dom.mutation.append(before, parent);
-    try dom.mutation.append(removed, parent);
-    try dom.mutation.append(after, parent);
+    try dom.mutation.append(before, @ptrCast(parent));
+    try dom.mutation.append(removed, @ptrCast(parent));
+    try dom.mutation.append(after, @ptrCast(parent));
 
     // Create three ranges
     const range1 = try allocator.create(dom.Range);
@@ -295,9 +295,9 @@ test "Range removal - offset adjustment in parent" {
     defer c.deinit();
 
     // Build tree
-    try dom.mutation.append(a, parent);
-    try dom.mutation.append(b, parent);
-    try dom.mutation.append(c, parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
 
     // Create range: [parent, 2] to [parent, 3]
     const range = try allocator.create(dom.Range);

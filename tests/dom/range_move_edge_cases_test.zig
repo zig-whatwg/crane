@@ -44,7 +44,7 @@ test "Range move - moving node before range shifts offsets" {
     defer parent1.deinit();
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    try dom.mutation.append(a, parent1);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
 
     // Create parent2 and children
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -53,8 +53,8 @@ test "Range move - moving node before range shifts offsets" {
     defer b.deinit();
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
-    try dom.mutation.append(b, parent2);
-    try dom.mutation.append(c, parent2);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent2);
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent2);
 
     // Create range: [parent2, 0] to [parent2, 2]
     const range = try allocator.create(dom.Range);
@@ -113,9 +113,9 @@ test "Range move - range in old parent adjusts when node moves away" {
     defer b.deinit();
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
-    try dom.mutation.append(a, parent1);
-    try dom.mutation.append(b, parent1);
-    try dom.mutation.append(c, parent1);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent1);
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent1);
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -178,7 +178,7 @@ test "Range move - boundaries in moved subtree remain valid" {
     const text = try dom.NodeBase.createText(allocator, "content", doc_ptr);
     defer text.deinit();
     try dom.mutation.append(text, a);
-    try dom.mutation.append(a, parent1);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -244,9 +244,9 @@ test "Range move - multiple ranges shift when node moves within parent" {
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
 
-    try dom.mutation.append(a, parent);
-    try dom.mutation.append(b, parent);
-    try dom.mutation.append(c, parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
 
     // Create range1: [parent, 0] to [parent, 2]
     const range1 = try allocator.create(dom.Range);
@@ -313,8 +313,8 @@ test "Range move - collapsed range at source adjusts when node after it moves" {
     defer a.deinit();
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
-    try dom.mutation.append(a, parent1);
-    try dom.mutation.append(b, parent1);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent1);
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
