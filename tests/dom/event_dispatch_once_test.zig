@@ -3,14 +3,13 @@
 
 const std = @import("std");
 const dom = @import("dom");
-const dom_types = @import("dom_types");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
 const event_dispatch = @import("event_dispatch");
 
-const EventTarget = dom_types.EventTarget;
-const Event = dom_types.Event;
+const EventTarget = dom.EventTarget;
+const Event = dom.Event;
 const AddEventListenerOptions = EventTarget.AddEventListenerOptions;
 
 // Test state for callback tracking

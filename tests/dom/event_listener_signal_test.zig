@@ -3,16 +3,15 @@
 
 const std = @import("std");
 const dom = @import("dom");
-const dom_types = @import("dom_types");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
 const event_dispatch = @import("event_dispatch");
 
-const EventTarget = dom_types.EventTarget;
-const Event = dom_types.Event;
-const AbortSignal = dom_types.AbortSignal;
-const AbortController = dom_types.AbortController;
+const EventTarget = dom.EventTarget;
+const Event = dom.Event;
+const AbortSignal = dom.AbortSignal;
+const AbortController = dom.AbortController;
 const AddEventListenerOptions = EventTarget.AddEventListenerOptions;
 
 test "addEventListener with aborted signal does not add listener" {

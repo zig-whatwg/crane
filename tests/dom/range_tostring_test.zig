@@ -17,7 +17,7 @@ test "Range.toString - collapsed range returns empty string" {
     const div = try doc.call_createElement("div");
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Collapsed range
@@ -41,7 +41,7 @@ test "Range.toString - single Text node substring" {
     _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select "World" (offset 6 to 11)
@@ -65,7 +65,7 @@ test "Range.toString - entire Text node" {
     _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select entire text node
@@ -97,7 +97,7 @@ test "Range.toString - multiple Text nodes" {
     _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text3)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select from start of div to end of div (all content)
@@ -127,7 +127,7 @@ test "Range.toString - partial Text node at start" {
     _ = try span.call_appendChild(@as(*dom.Node, @ptrCast(text2)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select from "lo" in "Hello" to end of "World"
@@ -157,7 +157,7 @@ test "Range.toString - partial Text node at end" {
     _ = try span.call_appendChild(@as(*dom.Node, @ptrCast(text2)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select from start of "Hello" to "Wor" in "World"
@@ -185,7 +185,7 @@ test "Range.toString - no Text nodes" {
     _ = try div.call_appendChild(@ptrCast(span2));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select the entire div (no text content)
@@ -214,16 +214,16 @@ test "Range.toString - nested elements with text" {
     const textD = try doc.call_createTextNode("D");
     const textE = try doc.call_createTextNode("E");
 
-    _ = try div.call_appendChild((&textA).base);
+    _ = try div.call_appendChild(@ptrCast(textA));
     _ = try div.call_appendChild(@ptrCast(span));
-    _ = try span.call_appendChild((&textB).base);
+    _ = try span.call_appendChild(@ptrCast(textB));
     _ = try span.call_appendChild(@ptrCast(em));
-    _ = try em.call_appendChild((&textC).base);
-    _ = try span.call_appendChild((&textD).base);
-    _ = try div.call_appendChild((&textE).base);
+    _ = try em.call_appendChild(@ptrCast(textC));
+    _ = try span.call_appendChild(@ptrCast(textD));
+    _ = try div.call_appendChild(@ptrCast(textE));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select entire div content
@@ -247,7 +247,7 @@ test "Range.toString - empty Text node" {
     _ = try div.call_appendChild(@as(*dom.Node, @ptrCast(text)));
     _ = try doc.call_appendChild(@ptrCast(div));
 
-    var range = try dom.Range.init(allocator, @ptrCast(doc));
+    var range = try dom.Range.init(allocator, @ptrCast(&doc));
     defer range.deinit();
 
     // Select the empty text node

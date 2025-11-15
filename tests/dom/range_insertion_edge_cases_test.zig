@@ -37,17 +37,17 @@ test "Range insertion - insert before range shifts offsets" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
+    const parent = try doc_ptr.call_createElement("parent");
     defer parent.deinit(allocator);
 
     // Create children
-    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
+    const a = try doc_ptr.call_createElement("a");
     defer a.deinit(allocator);
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer a_text.deinit(allocator);
     try dom.mutation.append(a_text, a);
 
-    const b = try dom.doc.createElement(allocator, "b", doc_ptr);
+    const b = try doc_ptr.call_createElement("b");
     defer b.deinit(allocator);
     const b_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer b_text.deinit(allocator);
@@ -76,7 +76,7 @@ test "Range insertion - insert before range shifts offsets" {
     try testing.expectEqual(@as(u32, 2), range.get_endOffset());
 
     // Insert new node before position 0 (before <a>)
-    const new_node = try dom.doc.createElement(allocator, "new", doc_ptr);
+    const new_node = try doc_ptr.call_createElement("new");
     defer new_node.deinit(allocator);
     try dom.mutation.preInsert(new_node, parent, a);
 
@@ -108,17 +108,17 @@ test "Range insertion - insert at end boundary shifts end offset" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
+    const parent = try doc_ptr.call_createElement("parent");
     defer parent.deinit(allocator);
 
     // Create children
-    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
+    const a = try doc_ptr.call_createElement("a");
     defer a.deinit(allocator);
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer a_text.deinit(allocator);
     try dom.mutation.append(a_text, a);
 
-    const b = try dom.doc.createElement(allocator, "b", doc_ptr);
+    const b = try doc_ptr.call_createElement("b");
     defer b.deinit(allocator);
     const b_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer b_text.deinit(allocator);
@@ -147,7 +147,7 @@ test "Range insertion - insert at end boundary shifts end offset" {
     try testing.expectEqual(@as(u32, 1), range.get_endOffset());
 
     // Insert new node at position 1 (between <a> and <b>)
-    const new_node = try dom.doc.createElement(allocator, "new", doc_ptr);
+    const new_node = try doc_ptr.call_createElement("new");
     defer new_node.deinit(allocator);
     try dom.mutation.preInsert(new_node, parent, b);
 
@@ -183,15 +183,15 @@ test "Range insertion - multiple ranges shifted by single insertion" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
+    const parent = try doc_ptr.call_createElement("parent");
     defer parent.deinit(allocator);
 
     // Create children
-    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
+    const a = try doc_ptr.call_createElement("a");
     defer a.deinit(allocator);
-    const b = try dom.doc.createElement(allocator, "b", doc_ptr);
+    const b = try doc_ptr.call_createElement("b");
     defer b.deinit(allocator);
-    const c = try dom.doc.createElement(allocator, "c", doc_ptr);
+    const c = try doc_ptr.call_createElement("c");
     defer c.deinit(allocator);
 
     // Build tree
@@ -226,7 +226,7 @@ test "Range insertion - multiple ranges shifted by single insertion" {
     try testing.expectEqual(@as(u32, 3), range2.get_endOffset());
 
     // Insert new node at position 1 (between <a> and <b>)
-    const new_node = try dom.doc.createElement(allocator, "new", doc_ptr);
+    const new_node = try doc_ptr.call_createElement("new");
     defer new_node.deinit(allocator);
     try dom.mutation.preInsert(new_node, parent, b);
 
@@ -259,11 +259,11 @@ test "Range insertion - collapsed range shifts when inserted before" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
+    const parent = try doc_ptr.call_createElement("parent");
     defer parent.deinit(allocator);
 
     // Create child
-    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
+    const a = try doc_ptr.call_createElement("a");
     defer a.deinit(allocator);
     try dom.mutation.append(a, parent);
 
@@ -283,7 +283,7 @@ test "Range insertion - collapsed range shifts when inserted before" {
     try testing.expect(range.call_collapsed());
 
     // Insert new node at position 0 (before <a>)
-    const new_node = try dom.doc.createElement(allocator, "new", doc_ptr);
+    const new_node = try doc_ptr.call_createElement("new");
     defer new_node.deinit(allocator);
     try dom.mutation.preInsert(new_node, parent, a);
 

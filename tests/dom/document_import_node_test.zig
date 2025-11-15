@@ -6,11 +6,11 @@ const dom = @import("dom");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const Document = Document;
-const Element = Element;
-const Text = Text;
-const Comment = Comment;
-const Node = Node;
+const Document = dom.Document;
+const Element = dom.Element;
+const Text = dom.Text;
+const Comment = dom.Comment;
+const Node = dom.Node;
 
 test "importNode: shallow copy of element" {
     const allocator = std.testing.allocator;
@@ -63,11 +63,11 @@ test "importNode: deep copy of element with children" {
 
     const source_p = try source_doc.call_createElement("p");
     const source_text = try source_doc.call_createTextNode("Hello");
-    
+
     // Build tree
     try source_p.child_nodes.append(@ptrCast(source_text));
     source_text.parent_node = @ptrCast(source_p);
-    
+
     try source_div.child_nodes.append(@ptrCast(source_p));
     source_p.parent_node = @ptrCast(source_div);
 
@@ -100,11 +100,11 @@ test "importNode: deep copy of element with children" {
 
     // Verify structure
     try std.testing.expectEqual(@as(usize, 1), imported_node.child_nodes.size());
-    
+
     const imported_p = imported_node.child_nodes.get(0).?;
     try std.testing.expectEqual(Node.ELEMENT_NODE, imported_p.node_type);
     try std.testing.expectEqual(@as(usize, 1), imported_p.child_nodes.size());
-    
+
     const imported_text = imported_p.child_nodes.get(0).?;
     try std.testing.expectEqual(Node.TEXT_NODE, imported_text.node_type);
     const text_node: *Text = @ptrCast(imported_text);
@@ -206,11 +206,11 @@ test "importNode: element with attributes" {
     // Verify attributes were cloned
     const imported_elem: *Element = @ptrCast(imported_node);
     try std.testing.expectEqual(@as(usize, 2), imported_elem.attributes.items.len);
-    
+
     const id = imported_elem.getAttribute("id");
     try std.testing.expect(id != null);
     try std.testing.expectEqualStrings("test", id.?);
-    
+
     const class = imported_elem.getAttribute("class");
     try std.testing.expect(class != null);
     try std.testing.expectEqualStrings("container", class.?);

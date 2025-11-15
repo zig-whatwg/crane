@@ -9,8 +9,8 @@ const webidl = @import("webidl");
 const DOMTokenList = dom.DOMTokenList;
 const NamedNodeMap = dom.NamedNodeMap;
 
-const Element = Element;
-const Document = Document;
+const Element = dom.Element;
+const Document = dom.Document;
 
 test "Element.attributes returns same NamedNodeMap instance ([SameObject])" {
     const allocator = std.testing.allocator;

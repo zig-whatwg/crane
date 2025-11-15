@@ -3,18 +3,17 @@
 
 const std = @import("std");
 const dom = @import("dom");
-const dom_types = @import("dom_types");
 const infra = @import("infra");
 const webidl = @import("webidl");
 // Type aliases
 const MutationRecord = dom.MutationRecord;
 
-const MutationObserver = dom_types.MutationObserver;
+const MutationObserver = dom.MutationObserver;
 const Node = Node;
 const Element = Element;
 const Document = Document;
 
-fn testCallback(_: []const dom_types.MutationRecord, _: *MutationObserver) void {
+fn testCallback(_: []const dom.MutationRecord, _: *MutationObserver) void {
     // Empty callback for testing
 }
 
