@@ -145,7 +145,7 @@ pub const Element = webidl.interface(struct {
         try self.attributes.append(attribute);
 
         // Get pointer to the appended attribute
-        const appended_attr = &self.attributes.toSlice()[self.attributes.len - 1];
+        const appended_attr = &self.attributes.toSliceMut()[self.attributes.len - 1];
 
         // Step 2: Set attribute's element
         appended_attr.owner_element = self;
