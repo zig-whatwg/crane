@@ -44,7 +44,7 @@ test "Range move - moving node before range shifts offsets" {
     defer parent1.deinit();
     const a = try doc_ptr.call_createElement("a");
     defer a.deinit();
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent1));
 
     // Create parent2 and children
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -53,17 +53,17 @@ test "Range move - moving node before range shifts offsets" {
     defer b.deinit();
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent2);
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent2);
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent2));
+    _ = try dom.mutation.append(@ptrCast(c), @ptrCast(parent2));
 
     // Create range: [parent2, 0] to [parent2, 2]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(parent2, 0);
-    try range.call_setEnd(parent2, 2);
+    try range.call_setStart(@ptrCast(parent2), 0);
+    try range.call_setEnd(@ptrCast(parent2), 2);
     try doc_ptr.ranges.append(range);
 
     // Verify initial state
@@ -113,25 +113,25 @@ test "Range move - range in old parent adjusts when node moves away" {
     defer b.deinit();
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent1);
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent1);
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent1));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent1));
+    _ = try dom.mutation.append(@ptrCast(c), @ptrCast(parent1));
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
     defer parent2.deinit();
     const d = try doc_ptr.call_createElement("d");
     defer d.deinit();
-    try dom.mutation.append(d, parent2);
+    _ = try dom.mutation.append(@ptrCast(d), @ptrCast(parent2));
 
     // Create range: [parent1, 1] to [parent1, 3]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(parent1, 1);
-    try range.call_setEnd(parent1, 3);
+    try range.call_setStart(@ptrCast(parent1), 1);
+    try range.call_setEnd(@ptrCast(parent1), 3);
     try doc_ptr.ranges.append(range);
 
     // Verify initial state
@@ -177,8 +177,8 @@ test "Range move - boundaries in moved subtree remain valid" {
     defer a.deinit();
     const text = try doc_ptr.call_createTextNode("content");
     defer text.deinit();
-    try dom.mutation.append(text, a);
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
+    _ = try dom.mutation.append(@ptrCast(text), @ptrCast(a));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent1));
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -187,11 +187,11 @@ test "Range move - boundaries in moved subtree remain valid" {
     // Create range: [text, 3] to [text, 7]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
 
-    try range.call_setStart(text, 3);
-    try range.call_setEnd(text, 7);
+    try range.call_setStart(@ptrCast(text), 3);
+    try range.call_setEnd(@ptrCast(text), 7);
     try doc_ptr.ranges.append(range);
 
     // Verify initial state
@@ -244,16 +244,16 @@ test "Range move - multiple ranges shift when node moves within parent" {
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
 
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    _ = try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range1: [parent, 0] to [parent, 2]
     const range1 = try allocator.create(dom.Range);
     defer allocator.destroy(range1);
-    range1.* = try dom.Range.init(allocator, doc_ptr);
+    range1.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range1.deinit();
-    try range1.call_setStart(parent, 0);
+    try range1.call_setStart(@ptrCast(parent), 0);
     try range1.call_setEnd(parent, 2);
     try doc_ptr.ranges.append(range1);
 
@@ -313,8 +313,8 @@ test "Range move - collapsed range at source adjusts when node after it moves" {
     defer a.deinit();
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent1);
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent1);
+    _ = try dom.mutation.append(@ptrCast(a), @ptrCast(parent1));
+    _ = try dom.mutation.append(@ptrCast(b), @ptrCast(parent1));
 
     // Create parent2
     const parent2 = try doc_ptr.call_createElement("parent2");
@@ -323,10 +323,10 @@ test "Range move - collapsed range at source adjusts when node after it moves" {
     // Create collapsed range: [parent1, 1] to [parent1, 1]
     const range = try allocator.create(dom.Range);
     defer allocator.destroy(range);
-    range.* = try dom.Range.init(allocator, doc_ptr);
+    range.* = try dom.Range.init(allocator, @ptrCast(doc_ptr));
     defer range.deinit();
-    try range.call_setStart(parent1, 1);
-    try range.call_setEnd(parent1, 1);
+    try range.call_setStart(@ptrCast(parent1), 1);
+    try range.call_setEnd(@ptrCast(parent1), 1);
     try doc_ptr.ranges.append(range);
 
     // Verify initial collapsed state

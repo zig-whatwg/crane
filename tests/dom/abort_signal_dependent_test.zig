@@ -3,11 +3,10 @@
 
 const std = @import("std");
 const dom = @import("dom");
-const dom_types = @import("dom_types");
 const infra = @import("infra");
 const webidl = @import("webidl");
 
-const AbortSignal = dom_types.AbortSignal;
+const AbortSignal = dom.AbortSignal;
 
 test "AbortSignal: dependent signal aborts when source aborts" {
     const allocator = std.testing.allocator;

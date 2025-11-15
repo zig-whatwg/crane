@@ -105,7 +105,7 @@ test "Range.extractContents - handles Comment node" {
     const extractedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.COMMENT_NODE, extractedNode.node_type);
 
-    const extractedComment = try dom.Comment.fromNode(extractedNode);
+    const extractedComment = extractedNode.as(dom.Comment) orelse unreachable;
     try std.testing.expectEqualStrings("is a", extractedComment.get_data());
 
     // Original comment should be "This  comment"
@@ -208,7 +208,7 @@ test "Range.cloneContents - handles Comment node" {
     const clonedNode = fragment.child_nodes.get(0).?;
     try std.testing.expectEqual(dom.Node.COMMENT_NODE, clonedNode.node_type);
 
-    const clonedComment = try dom.Comment.fromNode(clonedNode);
+    const clonedComment = clonedNode.as(dom.Comment) orelse unreachable;
     try std.testing.expectEqualStrings("is a", clonedComment.get_data());
 
     // Original comment should remain unchanged

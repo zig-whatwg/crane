@@ -49,10 +49,10 @@ test "Range tracking - per-document isolation" {
     try range2.registerWithDocument();
 
     // Verify each document tracks its own ranges
-    try testing.expectEqual(@as(usize, 1), doc1_ptr.ranges.items.len);
-    try testing.expectEqual(@as(usize, 1), doc2_ptr.ranges.items.len);
-    try testing.expect(doc1_ptr.ranges.items[0] == range1);
-    try testing.expect(doc2_ptr.ranges.items[0] == range2);
+    try testing.expectEqual(@as(usize, 1), doc1_ptr.ranges.toSlice().len);
+    try testing.expectEqual(@as(usize, 1), doc2_ptr.ranges.toSlice().len);
+    try testing.expect(doc1_ptr.ranges.toSlice()[0] == range1);
+    try testing.expect(doc2_ptr.ranges.toSlice()[0] == range2);
 }
 
 test "Range tracking - auto unregister on deinit" {
@@ -74,7 +74,7 @@ test "Range tracking - auto unregister on deinit" {
         try range.registerWithDocument();
 
         // Verify registered
-        try testing.expectEqual(@as(usize, 1), doc_ptr.ranges.items.len);
+        try testing.expectEqual(@as(usize, 1), doc_ptr.ranges.toSlice().len);
 
         // Deinit should auto-unregister
         range.deinit();
@@ -82,7 +82,7 @@ test "Range tracking - auto unregister on deinit" {
     }
 
     // Verify unregistered
-    try testing.expectEqual(@as(usize, 0), doc_ptr.ranges.items.len);
+    try testing.expectEqual(@as(usize, 0), doc_ptr.ranges.toSlice().len);
 }
 
 test "Range tracking - replaceData updates range offsets" {
