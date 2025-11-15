@@ -172,7 +172,7 @@ pub const Element = webidl.interface(struct {
         // Step 2: Remove from attribute list
         for (self.attributes.toSlice(), 0..) |*attr, i| {
             if (attr == attr_to_remove) {
-                _ = self.attributes.remove(i);
+                _ = try self.attributes.remove(i);
                 break;
             }
         }

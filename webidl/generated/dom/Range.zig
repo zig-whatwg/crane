@@ -762,7 +762,7 @@ pub const Range = struct {
         if (self.start_container.node_type == Node.TEXT_NODE) {
             const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
             const newText = try textNode.call_splitText(self.start_offset);
-            referenceNode = &newText.base.base;
+            referenceNode = @ptrCast(newText);
         }
 
         // Step 8: If node is referenceNode, use its next sibling
@@ -844,7 +844,7 @@ pub const Range = struct {
         try self.call_insertNode(newParent);
 
         // Step 6: Append fragment to newParent
-        _ = try newParent.call_appendChild(&fragment.base);
+        _ = try newParent.call_appendChild(@ptrCast(&fragment));
 
         // Step 7: Select newParent within range
         try self.call_selectNode(newParent);
@@ -1003,7 +1003,7 @@ pub const Range = struct {
             self.start_container.node_type == Node.TEXT_NODE)
         {
             const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
-            const data = textNode.base.get_data();
+            const data = textNode.get_data();
 
             // Return substring from start offset to end offset
             if (self.end_offset >= self.start_offset and self.end_offset <= data.len) {
@@ -1016,7 +1016,7 @@ pub const Range = struct {
         // Step 3: If start node is a Text node, append from start offset to end
         if (self.start_container.node_type == Node.TEXT_NODE) {
             const textNode = self.start_container.as(Text) orelse return error.InvalidNodeTypeError;
-            const data = textNode.base.get_data();
+            const data = textNode.get_data();
             if (self.start_offset <= data.len) {
                 const substring = data[self.start_offset..];
                 try result.appendSlice(substring);
@@ -1032,7 +1032,7 @@ pub const Range = struct {
             self.end_container != self.start_container)
         {
             const textNode = self.end_container.as(Text) orelse return error.InvalidNodeTypeError;
-            const data = textNode.base.get_data();
+            const data = textNode.get_data();
             if (self.end_offset <= data.len) {
                 const substring = data[0..self.end_offset];
                 try result.appendSlice(substring);
@@ -1050,7 +1050,7 @@ pub const Range = struct {
         // If this node is contained and is a Text node, append its data
         if (self.isNodeContained(node) and node.node_type == Node.TEXT_NODE) {
             const textNode = node.as(Text) orelse return error.InvalidNodeTypeError;
-            const data = textNode.base.get_data();
+            const data = textNode.get_data();
             try result.appendSlice(data);
             return;
         }
