@@ -231,7 +231,7 @@ test "Integration: Element with Attr nodes" {
     try elem.attributes.append(attr2);
 
     // Check attribute count
-    try testing.expectEqual(@as(usize, 2), elem.attributes.items.len);
+    try testing.expectEqual(@as(usize, 2), elem.attributes.toSlice().len);
 
     // Access via NamedNodeMap
     var map = NamedNodeMap.init(&elem);

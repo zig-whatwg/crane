@@ -85,15 +85,9 @@ test "NamedNodeMap.getNamedItemNS - distinguishes same local name in different n
     const element = try doc.call_createElement("div");
 
     // Create two attributes with same local name but different namespaces
-    var attr1 = try dom.Attr.init(allocator, "href", "http://www.w3.org/1999/xhtml");
-    attr1.local_name = "href";
-    attr1.namespace_uri = "http://www.w3.org/1999/xhtml";
-    attr1.value = "html-value";
+    var attr1 = try dom.Attr.init(allocator, "http://www.w3.org/1999/xhtml", null, "href", "html-value");
 
-    var attr2 = try dom.Attr.init(allocator, "href", "http://www.w3.org/1999/xlink");
-    attr2.local_name = "href";
-    attr2.namespace_uri = "http://www.w3.org/1999/xlink";
-    attr2.value = "xlink-value";
+    var attr2 = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", null, "href", "xlink-value");
 
     try element.attributes.append(attr1);
     attr1.owner_element = element;
@@ -122,11 +116,7 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute with prefix and namespace
-    var attr = try dom.Attr.init(allocator, "xlink:href", "http://www.w3.org/1999/xlink");
-    attr.prefix = "xlink";
-    attr.local_name = "href";
-    attr.namespace_uri = "http://www.w3.org/1999/xlink";
-    attr.value = "http://example.com";
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -139,7 +129,7 @@ test "NamedNodeMap - removeNamedItem with qualified name (prefix:localName)" {
     try std.testing.expectEqualStrings("xlink:href", try removed.?.get_name());
 
     // Verify element no longer has the attribute
-    try std.testing.expectEqual(@as(usize, 0), element.attributes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
 }
 
 test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
@@ -151,11 +141,7 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute without prefix
-    var attr = try dom.Attr.init(allocator, "id", null);
-    attr.prefix = null;
-    attr.local_name = "id";
-    attr.namespace_uri = null;
-    attr.value = "test";
+    var attr = try dom.Attr.init(allocator, null, null, "id", "test");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -168,7 +154,7 @@ test "NamedNodeMap - removeNamedItem with local name only (no prefix)" {
     try std.testing.expectEqualStrings("id", try removed.?.get_name());
 
     // Verify element no longer has the attribute
-    try std.testing.expectEqual(@as(usize, 0), element.attributes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
 }
 
 test "NamedNodeMap - removeNamedItem returns null for non-existent qualified name" {
@@ -180,11 +166,11 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
     const element = try doc.call_createElement("div");
 
     // Create an attribute with prefix
-    var attr = try dom.Attr.init(allocator, "xlink:href", "http://www.w3.org/1999/xlink");
-    attr.prefix = "xlink";
-    attr.local_name = "href";
-    attr.namespace_uri = "http://www.w3.org/1999/xlink";
-    attr.value = "http://example.com";
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -196,7 +182,7 @@ test "NamedNodeMap - removeNamedItem returns null for non-existent qualified nam
     try std.testing.expect(removed == null);
 
     // Verify element still has the attribute
-    try std.testing.expectEqual(@as(usize, 1), element.attributes.items.len);
+    try std.testing.expectEqual(@as(usize, 1), element.attributes.toSlice().len);
 }
 
 test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
@@ -208,11 +194,11 @@ test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     const element = try doc.call_createElement("div");
 
     // Create an attribute with prefix "xlink:href"
-    var attr = try dom.Attr.init(allocator, "xlink:href", "http://www.w3.org/1999/xlink");
-    attr.prefix = "xlink";
-    attr.local_name = "href";
-    attr.namespace_uri = "http://www.w3.org/1999/xlink";
-    attr.value = "http://example.com";
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
+    var attr = try dom.Attr.init(allocator, "http://www.w3.org/1999/xlink", "xlink", "href", "http://example.com");
 
     try element.attributes.append(attr);
     attr.owner_element = element;
@@ -224,12 +210,12 @@ test "NamedNodeMap - removeNamedItem only matches exact qualified name" {
     try std.testing.expect(removed1 == null);
 
     // Verify attribute still exists
-    try std.testing.expectEqual(@as(usize, 1), element.attributes.items.len);
+    try std.testing.expectEqual(@as(usize, 1), element.attributes.toSlice().len);
 
     // Remove by full qualified name (should succeed)
     const removed2 = try map.call_removeNamedItem("xlink:href");
     try std.testing.expect(removed2 != null);
 
     // Verify element no longer has the attribute
-    try std.testing.expectEqual(@as(usize, 0), element.attributes.items.len);
+    try std.testing.expectEqual(@as(usize, 0), element.attributes.toSlice().len);
 }

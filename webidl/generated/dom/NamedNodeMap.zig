@@ -67,7 +67,7 @@ pub const NamedNodeMap = struct {
     /// Returns the attribute list's size.
     pub fn get_length(self: *const NamedNodeMap) u32 {
 
-        return @intCast(self.element.attributes.items.len);
+        return @intCast(self.element.attributes.toSlice().len);
     
     }
 
@@ -79,10 +79,10 @@ pub const NamedNodeMap = struct {
     /// 2. Otherwise, return this's attribute list[index].
     pub fn call_item(self: *const NamedNodeMap, index: u32) ?*Attr {
 
-        if (index >= self.element.attributes.items.len) {
+        if (index >= self.element.attributes.toSlice().len) {
             return null;
         }
-        return &self.element.attributes.items[index];
+        return &self.element.attributes.toSliceMut()[index];
     
     }
 
@@ -93,7 +93,7 @@ pub const NamedNodeMap = struct {
     pub fn call_getNamedItem(self: *const NamedNodeMap, qualified_name: []const u8) ?*Attr {
 
         // Get an attribute given qualifiedName and element
-        for (self.element.attributes.items) |*attr| {
+        for (self.element.attributes.toSliceMut()) |*attr| {
             if (std.mem.eql(u8, attr.name, qualified_name)) {
                 return attr;
             }
@@ -254,7 +254,7 @@ pub const NamedNodeMap = struct {
         const element = attribute.owner_element orelse return;
 
         // Step 2: Remove attribute from element's attribute list
-        for (element.attributes.items, 0..) |*attr, i| {
+        for (element.attributes.toSliceMut(), 0..) |*attr, i| {
             if (attr == attribute) {
                 _ = element.attributes.orderedRemove(i);
                 break;
@@ -276,9 +276,9 @@ pub const NamedNodeMap = struct {
         const element = old_attribute.owner_element orelse return error.InvalidState;
 
         // Step 2: Replace oldAttribute by newAttribute in element's attribute list
-        for (element.attributes.items, 0..) |*attr, i| {
+        for (element.attributes.toSliceMut(), 0..) |*attr, i| {
             if (attr == old_attribute) {
-                element.attributes.items[i] = new_attribute.*;
+                element.attributes.toSliceMut()[i] = new_attribute.*;
                 break;
             }
         }
@@ -306,7 +306,7 @@ pub const NamedNodeMap = struct {
         element: *Element,
     ) ?*Attr {
 
-        for (element.attributes.items) |*attr| {
+        for (element.attributes.toSlice()) |*attr| {
             // Check namespace match
             const ns_match = if (namespace == null and attr.namespace_uri == null)
                 true
@@ -329,7 +329,7 @@ pub const NamedNodeMap = struct {
 
         // Step 1: Let attr be the result of getting an attribute
         // Get an attribute given qualifiedName and element
-        for (element.attributes.items, 0..) |*attr, i| {
+        for (element.attributes.toSliceMut(), 0..) |*attr, i| {
             // Compare qualified name (prefix:localName or just localName)
             const attr_qualified_name = try attr.get_name();
             defer if (attr.prefix != null) element.allocator.free(attr_qualified_name);

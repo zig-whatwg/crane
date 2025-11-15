@@ -403,7 +403,7 @@ pub const Document = webidl.interface(struct {
                 const copy_elem = try self.call_createElement(elem.tag_name);
 
                 // Clone all attributes
-                for (elem.attributes.items) |attr| {
+                for (elem.attributes.toSlice()) |attr| {
                     const copy_attr = try self.allocator.create(Attr);
                     errdefer self.allocator.destroy(copy_attr);
 
