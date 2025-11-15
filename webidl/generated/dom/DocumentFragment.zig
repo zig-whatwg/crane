@@ -120,6 +120,10 @@ pub const DocumentFragment = struct {
     pub const __webidl__ = .{
         .name = "DocumentFragment",
         .kind = .interface,
+        .parent = "Node",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

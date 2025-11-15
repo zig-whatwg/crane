@@ -83,6 +83,10 @@ pub const WritableStream = struct {
     pub const __webidl__ = .{
         .name = "WritableStream",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

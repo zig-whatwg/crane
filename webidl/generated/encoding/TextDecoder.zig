@@ -135,6 +135,10 @@ pub const TextDecoder = struct {
     pub const __webidl__ = .{
         .name = "TextDecoder",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

@@ -63,6 +63,8 @@ pub const NonDocumentTypeChildNode = struct {
     pub const __webidl__ = .{
         .name = "NonDocumentTypeChildNode",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

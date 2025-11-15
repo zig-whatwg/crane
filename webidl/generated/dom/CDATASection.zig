@@ -129,6 +129,10 @@ pub const CDATASection = struct {
     pub const __webidl__ = .{
         .name = "CDATASection",
         .kind = .interface,
+        .parent = "Text",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

@@ -35,6 +35,10 @@ pub const CountQueuingStrategy = struct {
     pub const __webidl__ = .{
         .name = "CountQueuingStrategy",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

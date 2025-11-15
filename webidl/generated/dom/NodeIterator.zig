@@ -58,6 +58,8 @@ pub const NodeIterator = struct {
     pub const __webidl__ = .{
         .name = "NodeIterator",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

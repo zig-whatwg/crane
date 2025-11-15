@@ -333,7 +333,26 @@ pub const ClassDef = struct {
         }
         allocator.free(self.mixins);
 
-        // Extended attributes are compile-time string literals - no cleanup needed
+        // Free extended attributes
+        for (self.extended_attrs) |*attr| {
+            allocator.free(attr.name);
+            switch (attr.value) {
+                .none, .wildcard, .integer, .decimal => {},
+                .identifier => |s| allocator.free(s),
+                .identifier_list => |list| {
+                    for (list) |s| allocator.free(s);
+                    allocator.free(list);
+                },
+                .string => |s| allocator.free(s),
+                .named_arg_list => |args| {
+                    for (args) |arg| {
+                        allocator.free(arg.name);
+                        allocator.free(arg.value);
+                    }
+                    allocator.free(args);
+                },
+            }
+        }
         allocator.free(self.extended_attrs);
 
         for (self.own_fields) |*field| {

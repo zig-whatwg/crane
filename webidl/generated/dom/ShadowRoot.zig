@@ -175,6 +175,8 @@ pub const ShadowRoot = struct {
     pub const __webidl__ = .{
         .name = "ShadowRoot",
         .kind = .interface,
+        .parent = "DocumentFragment",
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

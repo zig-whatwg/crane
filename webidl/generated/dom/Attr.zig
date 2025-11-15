@@ -126,6 +126,10 @@ pub const Attr = struct {
     pub const __webidl__ = .{
         .name = "Attr",
         .kind = .interface,
+        .parent = "Node",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

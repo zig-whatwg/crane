@@ -53,6 +53,10 @@ pub const CustomEvent = struct {
     pub const __webidl__ = .{
         .name = "CustomEvent",
         .kind = .interface,
+        .parent = "Event",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

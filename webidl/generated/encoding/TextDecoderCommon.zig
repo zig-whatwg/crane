@@ -113,6 +113,8 @@ pub const TextDecoderCommon = struct {
     pub const __webidl__ = .{
         .name = "TextDecoderCommon",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

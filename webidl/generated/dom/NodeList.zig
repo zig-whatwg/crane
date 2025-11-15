@@ -30,6 +30,10 @@ pub const NodeList = struct {
     pub const __webidl__ = .{
         .name = "NodeList",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

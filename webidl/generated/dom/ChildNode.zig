@@ -49,6 +49,8 @@ pub const ChildNode = struct {
     pub const __webidl__ = .{
         .name = "ChildNode",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

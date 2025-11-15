@@ -136,6 +136,10 @@ pub const Text = struct {
     pub const __webidl__ = .{
         .name = "Text",
         .kind = .interface,
+        .parent = "CharacterData",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

@@ -42,6 +42,10 @@ pub const NamedNodeMap = struct {
     pub const __webidl__ = .{
         .name = "NamedNodeMap",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

@@ -30,6 +30,10 @@ pub const CustomElementRegistry = struct {
     pub const __webidl__ = .{
         .name = "CustomElementRegistry",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

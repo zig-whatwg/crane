@@ -155,6 +155,10 @@ pub const Document = struct {
     pub const __webidl__ = .{
         .name = "Document",
         .kind = .interface,
+        .parent = "Node",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

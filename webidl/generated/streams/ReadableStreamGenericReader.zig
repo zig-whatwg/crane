@@ -49,6 +49,8 @@ pub const ReadableStreamGenericReader = struct {
     pub const __webidl__ = .{
         .name = "ReadableStreamGenericReader",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

@@ -37,6 +37,8 @@ pub const DocumentOrShadowRoot = struct {
     pub const __webidl__ = .{
         .name = "DocumentOrShadowRoot",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

@@ -116,6 +116,10 @@ pub const CharacterData = struct {
     pub const __webidl__ = .{
         .name = "CharacterData",
         .kind = .interface,
+        .parent = "Node",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

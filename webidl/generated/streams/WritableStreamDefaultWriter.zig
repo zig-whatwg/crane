@@ -42,6 +42,10 @@ pub const WritableStreamDefaultWriter = struct {
     pub const __webidl__ = .{
         .name = "WritableStreamDefaultWriter",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

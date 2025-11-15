@@ -48,6 +48,10 @@ pub const TransformStream = struct {
     pub const __webidl__ = .{
         .name = "TransformStream",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

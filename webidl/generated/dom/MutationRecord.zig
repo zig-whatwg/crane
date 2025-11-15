@@ -67,6 +67,8 @@ pub const MutationRecord = struct {
     pub const __webidl__ = .{
         .name = "MutationRecord",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

@@ -52,6 +52,10 @@ pub const ReadableStreamBYOBReader = struct {
     pub const __webidl__ = .{
         .name = "ReadableStreamBYOBReader",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

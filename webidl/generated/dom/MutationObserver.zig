@@ -72,6 +72,8 @@ pub const MutationObserver = struct {
     pub const __webidl__ = .{
         .name = "MutationObserver",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

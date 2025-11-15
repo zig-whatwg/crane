@@ -72,6 +72,10 @@ pub const Event = struct {
     pub const __webidl__ = .{
         .name = "Event",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

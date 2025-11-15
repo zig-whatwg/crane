@@ -59,6 +59,8 @@ pub const TreeWalker = struct {
     pub const __webidl__ = .{
         .name = "TreeWalker",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

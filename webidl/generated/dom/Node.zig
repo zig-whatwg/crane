@@ -118,6 +118,10 @@ pub const Node = struct {
     pub const __webidl__ = .{
         .name = "Node",
         .kind = .interface,
+        .parent = "EventTarget",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

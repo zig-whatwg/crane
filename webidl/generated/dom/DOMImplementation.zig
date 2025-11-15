@@ -43,6 +43,10 @@ pub const DOMImplementation = struct {
     pub const __webidl__ = .{
         .name = "DOMImplementation",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

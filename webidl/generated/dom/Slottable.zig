@@ -54,6 +54,8 @@ pub const Slottable = struct {
     pub const __webidl__ = .{
         .name = "Slottable",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

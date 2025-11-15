@@ -35,6 +35,10 @@ pub const ByteLengthQueuingStrategy = struct {
     pub const __webidl__ = .{
         .name = "ByteLengthQueuingStrategy",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

@@ -46,6 +46,10 @@ pub const AbstractRange = struct {
     pub const __webidl__ = .{
         .name = "AbstractRange",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

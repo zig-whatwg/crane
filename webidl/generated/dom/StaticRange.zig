@@ -69,6 +69,10 @@ pub const StaticRange = struct {
     pub const __webidl__ = .{
         .name = "StaticRange",
         .kind = .interface,
+        .parent = "AbstractRange",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

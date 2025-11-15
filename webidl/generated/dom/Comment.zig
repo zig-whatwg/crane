@@ -124,6 +124,10 @@ pub const Comment = struct {
     pub const __webidl__ = .{
         .name = "Comment",
         .kind = .interface,
+        .parent = "CharacterData",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

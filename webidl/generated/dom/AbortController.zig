@@ -29,6 +29,10 @@ pub const AbortController = struct {
     pub const __webidl__ = .{
         .name = "AbortController",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

@@ -68,6 +68,10 @@ pub const DOMTokenList = struct {
     pub const __webidl__ = .{
         .name = "DOMTokenList",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

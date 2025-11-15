@@ -124,6 +124,10 @@ pub const ProcessingInstruction = struct {
     pub const __webidl__ = .{
         .name = "ProcessingInstruction",
         .kind = .interface,
+        .parent = "CharacterData",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

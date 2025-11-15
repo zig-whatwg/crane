@@ -29,6 +29,8 @@ pub const TestMixin = struct {
     pub const __webidl__ = .{
         .name = "TestMixin",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 };
 
@@ -66,6 +68,8 @@ pub const Parent = struct {
     pub const __webidl__ = .{
         .name = "Parent",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 };
 
@@ -103,6 +107,8 @@ pub const Child = struct {
     pub const __webidl__ = .{
         .name = "Child",
         .kind = .interface,
+        .parent = "Parent",
+        .extended_attrs = &.{},
     };
 };
 
@@ -138,6 +144,8 @@ pub const MixinA = struct {
     pub const __webidl__ = .{
         .name = "MixinA",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 };
 
@@ -173,6 +181,8 @@ pub const MixinB = struct {
     pub const __webidl__ = .{
         .name = "MixinB",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 };
 
@@ -211,6 +221,8 @@ pub const ParentMulti = struct {
     pub const __webidl__ = .{
         .name = "ParentMulti",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 };
 
@@ -250,6 +262,8 @@ pub const ChildMulti = struct {
     pub const __webidl__ = .{
         .name = "ChildMulti",
         .kind = .interface,
+        .parent = "ParentMulti",
+        .extended_attrs = &.{},
     };
 };
 
@@ -289,6 +303,8 @@ pub const GrandChild = struct {
     pub const __webidl__ = .{
         .name = "GrandChild",
         .kind = .interface,
+        .parent = "ChildMulti",
+        .extended_attrs = &.{},
     };
 };
 

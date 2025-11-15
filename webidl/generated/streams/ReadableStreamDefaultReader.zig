@@ -85,6 +85,10 @@ pub const ReadableStreamDefaultReader = struct {
     pub const __webidl__ = .{
         .name = "ReadableStreamDefaultReader",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

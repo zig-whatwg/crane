@@ -122,6 +122,10 @@ pub const ReadableStream = struct {
     pub const __webidl__ = .{
         .name = "ReadableStream",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

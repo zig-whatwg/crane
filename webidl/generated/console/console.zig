@@ -181,6 +181,10 @@ pub const console = struct {
     pub const __webidl__ = .{
         .name = "console",
         .kind = .namespace,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

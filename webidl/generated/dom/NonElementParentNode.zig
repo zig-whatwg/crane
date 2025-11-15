@@ -57,6 +57,8 @@ pub const NonElementParentNode = struct {
     pub const __webidl__ = .{
         .name = "NonElementParentNode",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

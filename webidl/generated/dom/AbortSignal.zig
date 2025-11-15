@@ -93,6 +93,10 @@ pub const AbortSignal = struct {
     pub const __webidl__ = .{
         .name = "AbortSignal",
         .kind = .interface,
+        .parent = "EventTarget",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .wildcard },
+        },
     };
 
     // ========================================================================

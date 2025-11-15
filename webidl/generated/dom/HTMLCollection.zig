@@ -77,6 +77,10 @@ pub const HTMLCollection = struct {
     pub const __webidl__ = .{
         .name = "HTMLCollection",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

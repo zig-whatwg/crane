@@ -92,6 +92,8 @@ pub const TextEncoderCommon = struct {
     pub const __webidl__ = .{
         .name = "TextEncoderCommon",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

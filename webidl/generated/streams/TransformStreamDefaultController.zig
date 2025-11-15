@@ -48,6 +48,8 @@ pub const TransformStreamDefaultController = struct {
     pub const __webidl__ = .{
         .name = "TransformStreamDefaultController",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

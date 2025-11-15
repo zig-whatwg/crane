@@ -65,6 +65,8 @@ pub const HTMLSlotElement = struct {
     pub const __webidl__ = .{
         .name = "HTMLSlotElement",
         .kind = .interface,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================

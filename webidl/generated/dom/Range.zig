@@ -85,6 +85,10 @@ pub const Range = struct {
     pub const __webidl__ = .{
         .name = "Range",
         .kind = .interface,
+        .parent = "AbstractRange",
+        .extended_attrs = &.{
+            .{ .name = "Exposed", .value = .{ .identifier = "Window" } },
+        },
     };
 
     // ========================================================================

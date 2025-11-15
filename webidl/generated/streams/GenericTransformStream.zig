@@ -51,6 +51,8 @@ pub const GenericTransformStream = struct {
     pub const __webidl__ = .{
         .name = "GenericTransformStream",
         .kind = .mixin,
+        .parent = null,
+        .extended_attrs = &.{},
     };
 
     // ========================================================================
