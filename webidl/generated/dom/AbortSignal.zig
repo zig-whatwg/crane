@@ -16,7 +16,6 @@ const infra = @import("infra");
 const std = @import("std");
 const webidl = @import("webidl");
 
-
 /// Algorithm function type for abort handlers
 /// Takes the abort reason as parameter
 pub const AbortAlgorithm = *const fn (reason: webidl.Exception) void;
@@ -31,7 +30,6 @@ pub const EventListenerRemovalContext = struct {
 };
 
 /// DOM Spec: interface AbortSignal : EventTarget
-
 /// Compare two callbacks for equality (from EventTarget)
 pub fn callbackEquals(a: ?webidl.JSValue, b: ?webidl.JSValue) bool {
     if (a == null and b == null) return true;
@@ -59,7 +57,7 @@ pub const AbortSignal = struct {
 
     /// DOM §2.7 - Each EventTarget has an associated event listener list
     /// (a list of zero or more event listeners). It is initially the empty list.
-    /// 
+    ///
     /// OPTIMIZATION: Lazy allocation - most EventTargets never have listeners attached.
     /// This saves ~40% memory on typical DOM trees where 90% of nodes have no listeners.
     /// Pattern borrowed from WebKit's NodeRareData and Chromium's NodeRareData.
@@ -100,9 +98,9 @@ pub const AbortSignal = struct {
     // ========================================================================
 
     pub fn init(allocator: std.mem.Allocator) !AbortSignal {
-
         return .{
             .event_listener_list = null, // Inherited from EventTarget
+            .node_type = 0, // Not a DOM node, but required by EventTarget
             .allocator = allocator,
             .aborted = false,
             .reason = null,
@@ -111,37 +109,29 @@ pub const AbortSignal = struct {
             .source_signals = infra.List(*AbortSignal).init(allocator),
             .dependent_signals = infra.List(*AbortSignal).init(allocator),
         };
-    
     }
 
     pub fn deinit(self: *AbortSignal) void {
-
         self.abort_algorithms.deinit();
         self.event_listener_removals.deinit();
         self.source_signals.deinit();
         self.dependent_signals.deinit();
         // NOTE: Parent EventTarget cleanup is handled by codegen
-    
+
     }
 
     pub fn get_aborted(self: *const AbortSignal) bool {
-
         return self.aborted;
-    
     }
 
     pub fn get_reason(self: *const AbortSignal) ?webidl.Exception {
-
         return self.reason;
-    
     }
 
     pub fn call_throwIfAborted(self: *const AbortSignal) !void {
-
         if (self.aborted) {
             return error.Aborted;
         }
-    
     }
 
     /// AbortSignal.any(signals) - static method
@@ -151,12 +141,11 @@ pub const AbortSignal = struct {
 
         // This calls "create a dependent abort signal" algorithm
         return createDependentAbortSignal(allocator, signals);
-    
     }
 
     /// Create a dependent abort signal
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-create-a-dependent-abort-signal
-    /// 
+    ///
     /// Steps:
     /// 1. Let resultSignal be a new object implementing signalInterface using realm
     /// 2. For each signal of signals:
@@ -189,21 +178,17 @@ pub const AbortSignal = struct {
 
         // Step 3: Return resultSignal
         return result_signal;
-    
     }
 
     /// Add an algorithm to be run when signal is aborted
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-add
     pub fn addAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) !void {
-
         try self.abort_algorithms.append(algorithm);
-    
     }
 
     /// Remove an algorithm from abort algorithms
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-remove
     pub fn removeAlgorithm(self: *AbortSignal, algorithm: AbortAlgorithm) void {
-
         var i: usize = 0;
         while (i < self.abort_algorithms.len) {
             if (self.abort_algorithms.get(i) == algorithm) {
@@ -212,12 +197,11 @@ pub const AbortSignal = struct {
             }
             i += 1;
         }
-    
     }
 
     /// Signal abort algorithm
     /// Spec: https://dom.spec.whatwg.org/#abortsignal-signal-abort
-    /// 
+    ///
     /// Steps:
     /// 1. If signal is aborted, then return
     /// 2. Set signal's abort reason to reason if given, otherwise to new "AbortError" DOMException
@@ -228,7 +212,7 @@ pub const AbortSignal = struct {
     /// - Append dependentSignal to dependentSignalsToAbort
     /// 5. Run the abort steps for signal
     /// 6. For each dependentSignal of dependentSignalsToAbort, run the abort steps for dependentSignal
-    /// 
+    ///
     /// TODO: Fire 'abort' event (requires full event loop integration)
     pub fn signalAbort(self: *AbortSignal, opt_reason: ?webidl.Exception) void {
 
@@ -264,16 +248,13 @@ pub const AbortSignal = struct {
         for (dependent_signals_to_abort.items()) |dependent_signal| {
             dependent_signal.runAbortSteps();
         }
-    
     }
 
     /// Add an event listener removal to be performed when signal is aborted
     /// Spec: Step 6 of "add an event listener" - add abort steps to remove the listener
     /// https://dom.spec.whatwg.org/#dom-eventtarget-addeventlistener
     pub fn addEventListenerRemoval(self: *AbortSignal, context: EventListenerRemovalContext) !void {
-
         try self.event_listener_removals.append(context);
-    
     }
 
     /// Run the abort steps for an AbortSignal
@@ -304,7 +285,7 @@ pub const AbortSignal = struct {
 
         // Spec step 3: Fire an event named 'abort' at signal
         // TODO: Implement when event firing infrastructure is available
-    
+
     }
 
     /// Ensure event listener list is allocated
@@ -321,7 +302,6 @@ pub const AbortSignal = struct {
         list.* = infra.List(EventListener).init(self_parent.allocator);
         self_parent.event_listener_list = list;
         return list;
-    
     }
 
     /// Get event listener list (read-only access)
@@ -333,7 +313,6 @@ pub const AbortSignal = struct {
             return list.toSlice();
         }
         return &[_]EventListener{};
-    
     }
 
     /// DOM §2.7 - flatten options
@@ -341,7 +320,6 @@ pub const AbortSignal = struct {
     /// 1. If options is a boolean, then return options.
     /// 2. Return options["capture"].
     fn flattenOptions(options: anytype) bool {
-
         const OptionsType = @TypeOf(options);
 
         // Step 1: If options is a boolean, return it
@@ -356,13 +334,11 @@ pub const AbortSignal = struct {
 
         // Default: return false
         return false;
-    
     }
 
     /// DOM §2.7 - flatten more options
     /// Returns: capture, passive, once, signal
     fn flattenMoreOptions(options: anytype) struct { capture: bool, passive: ?bool, once: bool, signal: ?*AbortSignal } {
-
         const OptionsType = @TypeOf(options);
 
         // If options is a boolean, only capture is set to that value
@@ -392,13 +368,11 @@ pub const AbortSignal = struct {
             .once = false,
             .signal = null,
         };
-    
     }
 
     /// DOM §2.7 - default passive value
     /// The default passive value, given an event type type and an EventTarget eventTarget
     fn defaultPassiveValue(event_type: []const u8, event_target: *EventTarget) bool {
-
         _ = event_target;
         // Step 1: Return true if type is touchstart, touchmove, wheel, or mousewheel
         // AND eventTarget is Window or specific node conditions
@@ -413,7 +387,6 @@ pub const AbortSignal = struct {
         }
         // Step 2: Return false
         return false;
-    
     }
 
     /// DOM §2.7 - add an event listener
@@ -472,7 +445,6 @@ pub const AbortSignal = struct {
             };
             try signal.addEventListenerRemoval(removal_context);
         }
-    
     }
 
     /// addEventListener(type, callback, options)
@@ -503,7 +475,6 @@ pub const AbortSignal = struct {
         };
 
         try self.addAnEventListener(listener);
-    
     }
 
     /// DOM §2.7 - remove an event listener
@@ -534,7 +505,6 @@ pub const AbortSignal = struct {
             }
             i += 1;
         }
-    
     }
 
     /// removeEventListener(type, callback, options)
@@ -562,7 +532,6 @@ pub const AbortSignal = struct {
         };
 
         self.removeAnEventListener(listener);
-    
     }
 
     /// dispatchEvent(event)
@@ -589,9 +558,7 @@ pub const AbortSignal = struct {
             // Handle dispatch errors
             return err;
         };
-    
     }
-
 
     // ========================================================================
     // Type Conversion Helper (Safe Downcasting)
@@ -601,9 +568,9 @@ pub const AbortSignal = struct {
 
     /// Safe downcast to child type T
     /// Returns null if this instance is not of type T
-    /// 
+    ///
     /// Requires: T must declare `pub const node_type_VALUE`
-    /// 
+    ///
     /// Example:
     ///   if (node.as(Element)) |elem| {
     ///       // use elem
@@ -632,7 +599,4 @@ pub const AbortSignal = struct {
         else
             null;
     }
-
 };
-
-
