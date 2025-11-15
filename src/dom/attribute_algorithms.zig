@@ -45,7 +45,7 @@ pub fn handleAttributeChanges(
     // with attribute's local name, attribute's namespace, oldValue, « », « », null, and null
 
     // Note: We need to create empty node lists for added/removed nodes
-    const allocator = element.base.allocator;
+    const allocator = element.allocator;
     const NodeList = @import("node_list").NodeList;
     var empty_added = try NodeList.init(allocator);
     defer empty_added.deinit();
@@ -161,7 +161,7 @@ pub fn appendAttribute(
     attribute.owner_element = element;
 
     // Step 3: Set attribute's node document to element's node document
-    attribute.base.owner_document = element.base.owner_document;
+    attribute.owner_document = element.owner_document;
 
     // Step 4: Handle attribute changes for attribute
     // with element, null, and attribute's value
@@ -232,7 +232,7 @@ pub fn replaceAttribute(
     new_attribute.owner_element = element;
 
     // Step 4: Set newAttribute's node document to element's node document
-    new_attribute.base.owner_document = element.base.owner_document;
+    new_attribute.owner_document = element.owner_document;
 
     // Step 5: Set oldAttribute's element to null
     old_attribute.owner_element = null;
@@ -258,7 +258,7 @@ pub fn setAttributeValue(
     prefix: ?[]const u8,
     namespace: ?[]const u8,
 ) !void {
-    const allocator = element.base.allocator;
+    const allocator = element.allocator;
 
     // Step 1: Let attribute be the result of getting an attribute
     // given namespace, localName, and element

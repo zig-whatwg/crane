@@ -207,6 +207,6 @@ test "Range.deleteContents - Comment node data deletion" {
     try range.call_deleteContents();
 
     // Comment should now be "This comment"
-    const data = comment.base.get_data();
+    const data = comment.get_data();
     try std.testing.expectEqualStrings("This comment", data);
 }
