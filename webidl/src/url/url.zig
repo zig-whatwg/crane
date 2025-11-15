@@ -426,9 +426,9 @@ pub const URL = webidl.interface(struct {
         // Update search params (in case query changed, though unlikely here)
         const query_str = self.url_record.query() orelse "";
         self.query_impl.list.clearRetainingCapacity();
-        const parsed_list = form_urlencoded.parse(self.allocator, query_str) catch return;
-        defer parsed_list.deinit();
-        for (parsed_list.items) |item| {
+        const parsed_list = form_urlencoded.parser.parse(self.allocator, query_str) catch return;
+        defer self.allocator.free(parsed_list);
+        for (parsed_list) |item| {
             try self.query_impl.list.append(.{
                 .name = try self.allocator.dupe(u8, item.name),
                 .value = try self.allocator.dupe(u8, item.value),
@@ -511,9 +511,9 @@ pub const URL = webidl.interface(struct {
         // Update search params
         const query_str = self.url_record.query() orelse "";
         self.query_impl.list.clearRetainingCapacity();
-        const parsed_list = form_urlencoded.parse(self.allocator, query_str) catch return;
-        defer parsed_list.deinit();
-        for (parsed_list.items) |item| {
+        const parsed_list = form_urlencoded.parser.parse(self.allocator, query_str) catch return;
+        defer self.allocator.free(parsed_list);
+        for (parsed_list) |item| {
             try self.query_impl.list.append(.{
                 .name = try self.allocator.dupe(u8, item.name),
                 .value = try self.allocator.dupe(u8, item.value),
