@@ -3,12 +3,13 @@
 
 const std = @import("std");
 const dom = @import("dom");
-const slot_helpers = @import("slot_helpers");
-const Slottable = @import("slottable").Slottable;
 const infra = @import("infra");
 const webidl = @import("webidl");
+// slot_helpers is available through dom module
+const slot_helpers = dom.slot_helpers;
 // Type aliases
 const Element = dom.Element;
+// Note: slot_helpers functions are available as dom.isElement, dom.asElement, etc.
 
 test "slot_helpers - isElement" {
     const allocator = std.testing.allocator;
