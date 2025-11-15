@@ -337,7 +337,8 @@ test "MockRuntime - create and destroy" {
     const runtime = try createMockRuntime(allocator);
     defer destroyMockRuntime(runtime, allocator);
 
-    try std.testing.expect(runtime.vtable != null);
+    // vtable is *const VTable (not optional), so just check it's set
+    try std.testing.expect(@intFromPtr(runtime.vtable) != 0);
 }
 
 test "MockRuntime - toString conversions" {
