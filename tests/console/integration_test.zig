@@ -283,10 +283,9 @@ test "integration - memory stress test" {
         // Timing
         const timer_buf = try std.fmt.allocPrint(allocator, "timer{d}", .{i});
         defer allocator.free(timer_buf);
-        const timer = try infra.string.utf8ToUtf16(allocator, timer_buf);
-        defer allocator.free(timer);
-        console_obj.call_time(timer);
-        console_obj.call_timeEnd(timer);
+        // Console methods now accept UTF-8 directly
+        console_obj.call_time(timer_buf);
+        console_obj.call_timeEnd(timer_buf);
 
         // Counting
         const count_buf = try std.fmt.allocPrint(allocator, "count{d}", .{i});

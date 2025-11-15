@@ -58,30 +58,28 @@ pub fn initURLSearchParamsFromSequence(allocator: std.mem.Allocator, seq_utf8: [
 
 /// Set protocol from UTF-8 string
 pub fn setProtocol(url: *URL, allocator: std.mem.Allocator, protocol_utf8: []const u8) !void {
-    const protocol_usv = try usv(allocator, protocol_utf8);
-    defer allocator.free(protocol_usv);
-    return url.setProtocol(protocol_usv);
+    _ = allocator; // URL setters now accept UTF-8 directly
+    return url.setProtocol(protocol_utf8);
 }
 
 /// Set username from UTF-8 string
 pub fn setUsername(url: *URL, allocator: std.mem.Allocator, username_utf8: []const u8) !void {
-    const username_usv = try usv(allocator, username_utf8);
-    defer allocator.free(username_usv);
-    return url.setUsername(username_usv);
+    _ = allocator; // URL setters now accept UTF-8 directly
+    return url.setUsername(username_utf8);
 }
 
 /// Set password from UTF-8 string
 pub fn setPassword(url: *URL, allocator: std.mem.Allocator, password_utf8: []const u8) !void {
-    const password_usv = try usv(allocator, password_utf8);
-    defer allocator.free(password_usv);
-    return url.setPassword(password_usv);
+    _ = allocator; // URL setters now accept UTF-8 directly
+    // No conversion needed
+    return url.setPassword(password_utf8);
 }
 
 /// Set host from UTF-8 string
 pub fn setHost(url: *URL, allocator: std.mem.Allocator, host_utf8: []const u8) !void {
-    const host_usv = try usv(allocator, host_utf8);
-    defer allocator.free(host_usv);
-    return url.setHost(host_usv);
+    _ = allocator; // URL setters now accept UTF-8 directly
+    // No conversion needed
+    return url.setHost(host_utf8);
 }
 
 /// Set hostname from UTF-8 string
@@ -159,7 +157,7 @@ pub fn getPassword(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
 /// Get host as UTF-8 string
 pub fn getHost(url: *const URL, allocator: std.mem.Allocator) ![]const u8 {
     const host_usv = try url.host();
-    defer allocator.free(host_usv);
+    // No conversion needed
     return toUtf8(allocator, host_usv);
 }
 

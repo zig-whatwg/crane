@@ -43,9 +43,8 @@ test "NamedNodeMap: length returns attribute count" {
         allocator.destroy(elem);
     }
 
-    // Add an attribute directly to element
-    const attr = Attr{ .name = "id", .value = "test" };
-    try elem.attributes.append(attr);
+    // Add an attribute to element
+    try elem.call_setAttribute("id", "test");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -66,8 +65,8 @@ test "NamedNodeMap: item returns attribute at index" {
     }
 
     // Add attributes
-    try elem.attributes.append(Attr{ .name = "id", .value = "test" });
-    try elem.attributes.append(Attr{ .name = "class", .value = "button" });
+    try elem.call_setAttribute("id", "test");
+    try elem.call_setAttribute("class", "button");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -115,9 +114,9 @@ test "NamedNodeMap: getNamedItem finds attribute by name" {
     }
 
     // Add attributes
-    try elem.attributes.append(Attr{ .name = "id", .value = "test-id" });
-    try elem.attributes.append(Attr{ .name = "class", .value = "btn" });
-    try elem.attributes.append(Attr{ .name = "data-value", .value = "123" });
+    try elem.call_setAttribute("id", "test-id");
+    try elem.call_setAttribute("class", "btn");
+    try elem.call_setAttribute("data-value", "123");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -147,7 +146,7 @@ test "NamedNodeMap: getNamedItem returns null for missing attribute" {
         allocator.destroy(elem);
     }
 
-    try elem.attributes.append(Attr{ .name = "id", .value = "test" });
+    try elem.call_setAttribute("id", "test");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -175,7 +174,7 @@ test "NamedNodeMap: is live collection" {
     try testing.expectEqual(@as(u32, 0), map.get_length());
 
     // Add attribute to element
-    try elem.attributes.append(Attr{ .name = "id", .value = "test" });
+    try elem.call_setAttribute("id", "test");
 
     // Map reflects the change (it's live)
     try testing.expectEqual(@as(u32, 1), map.get_length());
@@ -197,10 +196,10 @@ test "NamedNodeMap: multiple attributes in order" {
     }
 
     // Add multiple attributes
-    try elem.attributes.append(Attr{ .name = "type", .value = "text" });
-    try elem.attributes.append(Attr{ .name = "name", .value = "username" });
-    try elem.attributes.append(Attr{ .name = "placeholder", .value = "Enter name" });
-    try elem.attributes.append(Attr{ .name = "required", .value = "" });
+    try elem.call_setAttribute("type", "text");
+    try elem.call_setAttribute("name", "username");
+    try elem.call_setAttribute("placeholder", "Enter name");
+    try elem.call_setAttribute("required", "");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -226,7 +225,7 @@ test "NamedNodeMap: getNamedItem is case-sensitive" {
         allocator.destroy(elem);
     }
 
-    try elem.attributes.append(Attr{ .name = "DataValue", .value = "test" });
+    try elem.call_setAttribute("DataValue", "test");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
@@ -253,7 +252,7 @@ test "NamedNodeMap: empty attribute value" {
         allocator.destroy(elem);
     }
 
-    try elem.attributes.append(Attr{ .name = "disabled", .value = "" });
+    try elem.call_setAttribute("disabled", "");
 
     var map = NamedNodeMap.init(elem);
     defer map.deinit();
