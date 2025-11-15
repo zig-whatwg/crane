@@ -752,13 +752,136 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
 /// Extract extended attributes from: webidl.interface(struct { ... }, &.{ exposed("*"), ... });
 /// Returns the attributes list after the struct closing brace
 fn extractExtendedAttributes(allocator: Allocator, source: []const u8, struct_end: usize) ![]ir.ExtendedAttribute {
-    _ = allocator;
-    _ = source;
-    _ = struct_end;
 
-    // For now, return empty slice
-    // Will parse in next task (whatwg-79zr)
+    // Look for ", &.{" after struct_end
+    const attrs_start_pattern = ", &.{";
+    const attrs_start = std.mem.indexOfPos(u8, source, struct_end, attrs_start_pattern) orelse {
+        // No attributes provided - return empty slice
+        return &.{};
+    };
+
+    const attrs_body_start = attrs_start + attrs_start_pattern.len;
+
+    // Find matching closing brace
+    const attrs_end = std.mem.indexOfScalarPos(u8, source, attrs_body_start, '}') orelse {
+        return error.UnmatchedBrace;
+    };
+
+    const attrs_body = std.mem.trim(u8, source[attrs_body_start..attrs_end], " \t\r\n");
+
+    if (attrs_body.len == 0) {
+        return &.{};
+    }
+
+    var attrs = infra.List(ir.ExtendedAttribute).init(allocator);
+    errdefer attrs.deinit();
+
+    // Parse function calls separated by commas
+    // Examples: exposed("*"), noArgs("Transferable"), global("Window")
+    var pos: usize = 0;
+    while (pos < attrs_body.len) {
+        // Skip whitespace
+        while (pos < attrs_body.len and std.ascii.isWhitespace(attrs_body[pos])) : (pos += 1) {}
+        if (pos >= attrs_body.len) break;
+
+        // Find function name (before '(')
+        const paren_pos = std.mem.indexOfScalarPos(u8, attrs_body, pos, '(') orelse break;
+        const func_name = std.mem.trim(u8, attrs_body[pos..paren_pos], " \t\r\n");
+
+        // Find matching closing paren
+        const close_paren = findMatchingParen(attrs_body, paren_pos) orelse return error.UnmatchedParen;
+        const args_str = attrs_body[paren_pos + 1 .. close_paren];
+
+        // Parse the attribute based on function name
+        const attr = try parseExtendedAttributeCall(func_name, args_str);
+        try attrs.append(attr);
+
+        // Move past this call
+        pos = close_paren + 1;
+
+        // Skip comma if present
+        while (pos < attrs_body.len and (attrs_body[pos] == ',' or std.ascii.isWhitespace(attrs_body[pos]))) : (pos += 1) {}
+    }
+
+    return attrs.toOwnedSlice();
+}
+
+/// Parse a single extended attribute helper call
+fn parseExtendedAttributeCall(func_name: []const u8, args: []const u8) !ir.ExtendedAttribute {
+    const args_trimmed = std.mem.trim(u8, args, " \t\r\n");
+
+    if (std.mem.eql(u8, func_name, "exposed")) {
+        // exposed("*") or exposed("Window")
+        const value = try parseStringLiteral(args_trimmed);
+        if (std.mem.eql(u8, value, "*")) {
+            return .{ .name = "Exposed", .value = .wildcard };
+        } else {
+            return .{ .name = "Exposed", .value = .{ .identifier = value } };
+        }
+    } else if (std.mem.eql(u8, func_name, "exposedList")) {
+        // exposedList(&.{"Window", "Worker"})
+        const list = try parseIdentifierList(args_trimmed);
+        return .{ .name = "Exposed", .value = .{ .identifier_list = list } };
+    } else if (std.mem.eql(u8, func_name, "noArgs")) {
+        // noArgs("Transferable")
+        const attr_name = try parseStringLiteral(args_trimmed);
+        return .{ .name = attr_name, .value = .none };
+    } else if (std.mem.eql(u8, func_name, "global")) {
+        // global("Window")
+        const value = try parseStringLiteral(args_trimmed);
+        return .{ .name = "Global", .value = .{ .identifier = value } };
+    } else if (std.mem.eql(u8, func_name, "globalList")) {
+        // globalList(&.{"Window", "Worker"})
+        const list = try parseIdentifierList(args_trimmed);
+        return .{ .name = "Global", .value = .{ .identifier_list = list } };
+    } else if (std.mem.eql(u8, func_name, "stringAttr")) {
+        // stringAttr("AttrName", "value")
+        var iter = std.mem.tokenizeScalar(u8, args_trimmed, ',');
+        const attr_name = try parseStringLiteral(std.mem.trim(u8, iter.next() orelse return error.InvalidAttribute, " \t\r\n"));
+        const value = try parseStringLiteral(std.mem.trim(u8, iter.next() orelse return error.InvalidAttribute, " \t\r\n"));
+        return .{ .name = attr_name, .value = .{ .string = value } };
+    } else if (std.mem.eql(u8, func_name, "identifierAttr")) {
+        // identifierAttr("AttrName", "identifier")
+        var iter = std.mem.tokenizeScalar(u8, args_trimmed, ',');
+        const attr_name = try parseStringLiteral(std.mem.trim(u8, iter.next() orelse return error.InvalidAttribute, " \t\r\n"));
+        const value = try parseStringLiteral(std.mem.trim(u8, iter.next() orelse return error.InvalidAttribute, " \t\r\n"));
+        return .{ .name = attr_name, .value = .{ .identifier = value } };
+    }
+
+    return error.UnknownExtendedAttributeHelper;
+}
+
+/// Parse string literal: "value" -> value
+fn parseStringLiteral(s: []const u8) ![]const u8 {
+    const trimmed = std.mem.trim(u8, s, " \t\r\n");
+    if (trimmed.len < 2) return error.InvalidStringLiteral;
+    if (trimmed[0] != '"' or trimmed[trimmed.len - 1] != '"') return error.InvalidStringLiteral;
+    return trimmed[1 .. trimmed.len - 1];
+}
+
+/// Parse identifier list: &.{"A", "B"} -> &[_][]const u8{"A", "B"}
+fn parseIdentifierList(s: []const u8) ![]const []const u8 {
+    // This is compile-time constant - just return the string as-is for now
+    // The actual parsing happens at compile time by Zig
+    // For runtime parsing we'd need to properly tokenize
+    // For now, stub implementation
+    _ = s;
     return &.{};
+}
+
+/// Find matching closing parenthesis
+fn findMatchingParen(source: []const u8, open_pos: usize) ?usize {
+    var depth: i32 = 0;
+    var i = open_pos;
+    while (i < source.len) : (i += 1) {
+        if (source[i] == '(') {
+            depth += 1;
+        } else if (source[i] == ')') {
+            depth -= 1;
+            if (depth == 0) return i;
+        }
+    }
+    return null;
 }
 
 /// Extract doc comment from lines immediately preceding the target line.
