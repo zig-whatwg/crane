@@ -44,24 +44,24 @@ test "Range removal - start in removed, end in kept" {
     defer a.deinit();
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer a_text.deinit();
-    try dom.mutation.append(@ptrCast(a_text), @ptrCast(a);
+    try dom.mutation.append(@ptrCast(a_text), @ptrCast(a));
 
     const b = try doc_ptr.call_createElement("b");
     defer b.deinit();
     const b_text = try dom.NodeBase.createText(allocator, "remove", doc_ptr);
     defer b_text.deinit();
-    try dom.mutation.append(@ptrCast(b_text), @ptrCast(b);
+    try dom.mutation.append(@ptrCast(b_text), @ptrCast(b));
 
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
     const c_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer c_text.deinit();
-    try dom.mutation.append(@ptrCast(c_text), @ptrCast(c);
+    try dom.mutation.append(@ptrCast(c_text), @ptrCast(c));
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range: [b.firstChild, 2] to [c.firstChild, 3]
     const range = try allocator.create(dom.Range);
@@ -295,9 +295,9 @@ test "Range removal - offset adjustment in parent" {
     defer c.deinit();
 
     // Build tree
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range: [parent, 2] to [parent, 3]
     const range = try allocator.create(dom.Range);

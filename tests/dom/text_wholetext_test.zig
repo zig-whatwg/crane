@@ -33,9 +33,9 @@ test "Text.wholeText - concatenates contiguous Text nodes" {
     const text2 = try doc.call_createTextNode(" ");
     const text3 = try doc.call_createTextNode("World");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
-    _ = try div.call_appendChild(@ptrCast(text2);
-    _ = try div.call_appendChild(@ptrCast(text3);
+    _ = try div.call_appendChild(@ptrCast(text1));
+    _ = try div.call_appendChild(@ptrCast(text2));
+    _ = try div.call_appendChild(@ptrCast(text3));
 
     const whole = try text2.get_wholeText();
     defer allocator.free(whole);
@@ -54,9 +54,9 @@ test "Text.wholeText - stops at element boundaries" {
     const span = try doc.call_createElement("span");
     const text2 = try doc.call_createTextNode("World");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
+    _ = try div.call_appendChild(@ptrCast(text1));
     _ = try div.call_appendChild(@ptrCast(span));
-    _ = try div.call_appendChild(@ptrCast(text2);
+    _ = try div.call_appendChild(@ptrCast(text2));
 
     const whole1 = try text1.get_wholeText();
     defer allocator.free(whole1);
@@ -78,9 +78,9 @@ test "Text.wholeText - handles empty Text nodes" {
     const text2 = try doc.call_createTextNode("");
     const text3 = try doc.call_createTextNode("World");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
-    _ = try div.call_appendChild(@ptrCast(text2);
-    _ = try div.call_appendChild(@ptrCast(text3);
+    _ = try div.call_appendChild(@ptrCast(text1));
+    _ = try div.call_appendChild(@ptrCast(text2));
+    _ = try div.call_appendChild(@ptrCast(text3));
 
     const whole = try text2.get_wholeText();
     defer allocator.free(whole);
@@ -99,9 +99,9 @@ test "Text.wholeText - works from first node" {
     const text2 = try doc.call_createTextNode("B");
     const text3 = try doc.call_createTextNode("C");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
-    _ = try div.call_appendChild(@ptrCast(text2);
-    _ = try div.call_appendChild(@ptrCast(text3);
+    _ = try div.call_appendChild(@ptrCast(text1));
+    _ = try div.call_appendChild(@ptrCast(text2));
+    _ = try div.call_appendChild(@ptrCast(text3));
 
     const whole = try text1.get_wholeText();
     defer allocator.free(whole);
@@ -120,9 +120,9 @@ test "Text.wholeText - works from last node" {
     const text2 = try doc.call_createTextNode("B");
     const text3 = try doc.call_createTextNode("C");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
-    _ = try div.call_appendChild(@ptrCast(text2);
-    _ = try div.call_appendChild(@ptrCast(text3);
+    _ = try div.call_appendChild(@ptrCast(text1));
+    _ = try div.call_appendChild(@ptrCast(text2));
+    _ = try div.call_appendChild(@ptrCast(text3));
 
     const whole = try text3.get_wholeText();
     defer allocator.free(whole);
@@ -141,9 +141,9 @@ test "Text.wholeText - preserves order" {
     const text2 = try doc.call_createTextNode("Second");
     const text3 = try doc.call_createTextNode("Third");
 
-    _ = try div.call_appendChild(@ptrCast(text1);
-    _ = try div.call_appendChild(@ptrCast(text2);
-    _ = try div.call_appendChild(@ptrCast(text3);
+    _ = try div.call_appendChild(@ptrCast(text1));
+    _ = try div.call_appendChild(@ptrCast(text2));
+    _ = try div.call_appendChild(@ptrCast(text3));
 
     const whole = try text2.get_wholeText();
     defer allocator.free(whole);

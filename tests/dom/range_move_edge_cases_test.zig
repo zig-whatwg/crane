@@ -244,9 +244,9 @@ test "Range move - multiple ranges shift when node moves within parent" {
     const c = try doc_ptr.call_createElement("c");
     defer c.deinit();
 
-    try dom.mutation.append(@ptrCast(a), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(b), @ptrCast(parent);
-    try dom.mutation.append(@ptrCast(c), @ptrCast(parent);
+    try dom.mutation.append(@ptrCast(a), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(b), @ptrCast(parent));
+    try dom.mutation.append(@ptrCast(c), @ptrCast(parent));
 
     // Create range1: [parent, 0] to [parent, 2]
     const range1 = try allocator.create(dom.Range);
