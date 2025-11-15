@@ -166,7 +166,9 @@ pub const wrapInterfaceConst = interfaces.wrapInterfaceConst;
 pub const unwrapInterface = interfaces.unwrapInterface;
 pub const unwrapInterfaceConst = interfaces.unwrapInterfaceConst;
 pub const isInterface = interfaces.isInterface;
-pub const isInterfaceType = interfaces.isInterfaceType;
+// Note: interfaces.isInterfaceType is the runtime version (takes JSValue)
+// helpers.isInterfaceType is the comptime version (takes only type)
+pub const isInterfaceType = helpers.isInterfaceType;
 
 // Re-export type metadata system
 pub const type_metadata = @import("type_metadata.zig");

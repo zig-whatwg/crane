@@ -64,31 +64,34 @@ pub fn isExposedIn(comptime T: type, scope: GlobalScope) bool {
 
     // Iterate through extended attributes looking for [Exposed]
     inline for (metadata.extended_attrs) |attr| {
-        if (!std.mem.eql(u8, attr.name, "Exposed")) {
+        if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
 
-        switch (attr.value) {
-            // [Exposed=*] - exposed in all globals
-            .wildcard => return true,
+        // Check the value type - could be .wildcard, .{ .identifier = ... }, or .{ .identifier_list = ... }
+        const ValueType = @TypeOf(attr.value);
 
-            // [Exposed=Window] - single identifier
-            .identifier => |id| {
-                return std.mem.eql(u8, id, scope.toString());
-            },
-
-            // [Exposed=(Window,Worker)] - list of identifiers
-            .identifier_list => |list| {
-                for (list) |id| {
-                    if (std.mem.eql(u8, id, scope.toString())) {
-                        return true;
-                    }
-                }
-                return false;
-            },
-
-            else => return false,
+        // [Exposed=*] - exposed in all globals (value is enum literal .wildcard)
+        if (ValueType == @TypeOf(.wildcard)) {
+            return true;
         }
+
+        // [Exposed=Window] - single identifier (value is struct with identifier field)
+        if (@hasField(ValueType, "identifier")) {
+            return std.mem.eql(u8, attr.value.identifier, scope.toString());
+        }
+
+        // [Exposed=(Window,Worker)] - list of identifiers (value is struct with identifier_list field)
+        if (@hasField(ValueType, "identifier_list")) {
+            for (attr.value.identifier_list) |id| {
+                if (std.mem.eql(u8, id, scope.toString())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return false;
     }
 
     // No [Exposed] attribute found - default is not exposed
@@ -115,7 +118,7 @@ pub fn isTransferable(comptime T: type) bool {
 
     // Look for [Transferable] attribute
     inline for (metadata.extended_attrs) |attr| {
-        if (std.mem.eql(u8, attr.name, "Transferable")) {
+        if (comptime std.mem.eql(u8, attr.name, "Transferable")) {
             return true;
         }
     }
@@ -140,7 +143,7 @@ pub fn isSerializable(comptime T: type) bool {
 
     // Look for [Serializable] attribute
     inline for (metadata.extended_attrs) |attr| {
-        if (std.mem.eql(u8, attr.name, "Serializable")) {
+        if (comptime std.mem.eql(u8, attr.name, "Serializable")) {
             return true;
         }
     }
@@ -173,26 +176,29 @@ pub fn getGlobalNames(comptime T: type) ?[]const []const u8 {
 
     // Look for [Exposed] attribute
     inline for (metadata.extended_attrs) |attr| {
-        if (!std.mem.eql(u8, attr.name, "Exposed")) {
+        if (comptime !std.mem.eql(u8, attr.name, "Exposed")) {
             continue;
         }
 
-        switch (attr.value) {
-            // [Exposed=*] - return null to indicate "all globals"
-            .wildcard => return null,
+        // Check the value type - could be .wildcard, .{ .identifier = ... }, or .{ .identifier_list = ... }
+        const ValueType = @TypeOf(attr.value);
 
-            // [Exposed=Window] - single identifier
-            .identifier => |id| {
-                return &.{id};
-            },
-
-            // [Exposed=(Window,Worker)] - list of identifiers
-            .identifier_list => |list| {
-                return list;
-            },
-
-            else => return null,
+        // [Exposed=*] - return null to indicate "all globals" (value is enum literal .wildcard)
+        if (ValueType == @TypeOf(.wildcard)) {
+            return null;
         }
+
+        // [Exposed=Window] - single identifier (return as single-element slice)
+        if (@hasField(ValueType, "identifier")) {
+            return &.{attr.value.identifier};
+        }
+
+        // [Exposed=(Window,Worker)] - list of identifiers
+        if (@hasField(ValueType, "identifier_list")) {
+            return attr.value.identifier_list;
+        }
+
+        return null;
     }
 
     // No [Exposed] attribute

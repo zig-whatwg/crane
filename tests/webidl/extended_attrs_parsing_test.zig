@@ -5,8 +5,9 @@
 const std = @import("std");
 const testing = std.testing;
 
-// Import parser (internal codegen module)
-const ir = @import("webidl").codegen.ir;
+// Import codegen types
+const codegen = @import("webidl").codegen;
+const ExtendedAttributeValue = codegen.ExtendedAttributeValue;
 
 // ============================================================================
 // Integration Tests with Generated Code
@@ -26,7 +27,7 @@ test "generated EventTarget has [Exposed=*]" {
     inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
-            try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
+            try testing.expectEqual(ExtendedAttributeValue.wildcard, attr.value);
         }
     }
     try testing.expect(found_exposed);
@@ -40,11 +41,11 @@ test "generated Node has [Exposed=Window]" {
     inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
-            switch (attr.value) {
-                .identifier => |id| {
-                    try testing.expectEqualStrings("Window", id);
-                },
-                else => try testing.expect(false), // Should be identifier
+            // Value is an anonymous struct at comptime, check for identifier field
+            if (@hasField(@TypeOf(attr.value), "identifier")) {
+                try testing.expectEqualStrings("Window", attr.value.identifier);
+            } else {
+                try testing.expect(false); // Should have identifier field
             }
         }
     }
@@ -61,10 +62,10 @@ test "generated ReadableStream has [Exposed=*, Transferable]" {
     inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             found_exposed = true;
-            try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
+            try testing.expectEqual(ExtendedAttributeValue.wildcard, attr.value);
         } else if (std.mem.eql(u8, attr.name, "Transferable")) {
             found_transferable = true;
-            try testing.expectEqual(ir.ExtendedAttributeValue.none, attr.value);
+            try testing.expectEqual(ExtendedAttributeValue.none, attr.value);
         }
     }
 
@@ -79,7 +80,7 @@ test "parser correctly handles .exposed = &.{.global} syntax" {
     inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             // .global should become .wildcard
-            try testing.expectEqual(ir.ExtendedAttributeValue.wildcard, attr.value);
+            try testing.expectEqual(ExtendedAttributeValue.wildcard, attr.value);
             return;
         }
     }
@@ -94,12 +95,11 @@ test "parser correctly handles .exposed = &.{.Window} syntax" {
     inline for (metadata.extended_attrs) |attr| {
         if (std.mem.eql(u8, attr.name, "Exposed")) {
             // .Window should become .{ .identifier = "Window" }
-            switch (attr.value) {
-                .identifier => |id| {
-                    try testing.expectEqualStrings("Window", id);
-                    return;
-                },
-                else => try testing.expect(false),
+            if (@hasField(@TypeOf(attr.value), "identifier")) {
+                try testing.expectEqualStrings("Window", attr.value.identifier);
+                return;
+            } else {
+                try testing.expect(false);
             }
         }
     }
