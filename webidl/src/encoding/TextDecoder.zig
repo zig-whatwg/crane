@@ -424,7 +424,7 @@ pub const TextDecoder = webidl.interface(struct {
         const replacement = "\u{FFFD}";
 
         // Allocate output buffer (worst case: every byte is invalid = 3x size)
-        var output = std.ArrayList(u8).init(self.allocator);
+        var output = infra.List(u8).init(self.allocator);
         errdefer output.deinit();
 
         var i: usize = 0;
