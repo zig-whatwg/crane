@@ -1743,59 +1743,43 @@ pub const Node = struct {
 
 
     // ========================================================================
-    // Type Conversion Helpers (Safe Downcasting)
+    // Type Conversion Helper (Safe Downcasting)
     // ========================================================================
-    // With flattened inheritance, we need runtime type checking to safely
-    // downcast from Node to more specific types.
+    // Generic downcast that works for any child type.
+    // Child types must declare: pub const node_type_VALUE = <discriminator_constant>
 
-    /// Safe downcast to Element (returns null if not a Element)
-    pub fn asElement(self: *Node) ?*Element {
-        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;
+    /// Safe downcast to child type T
+    /// Returns null if this instance is not of type T
+    /// 
+    /// Requires: T must declare `pub const node_type_VALUE`
+    /// 
+    /// Example:
+    ///   if (node.as(Element)) |elem| {
+    ///       // use elem
+    ///   }
+    pub fn as(self: *Node, comptime T: type) ?*T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
     }
 
-    /// Safe const downcast to Element
-    pub fn asElementConst(self: *const Node) ?*const Element {
-        return if (self.node_type == ELEMENT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe downcast to DocumentType (returns null if not a DocumentType)
-    pub fn asDocumentType(self: *Node) ?*DocumentType {
-        return if (self.node_type == DOCUMENT_TYPE_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to DocumentType
-    pub fn asDocumentTypeConst(self: *const Node) ?*const DocumentType {
-        return if (self.node_type == DOCUMENT_TYPE_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe downcast to Document (returns null if not a Document)
-    pub fn asDocument(self: *Node) ?*Document {
-        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to Document
-    pub fn asDocumentConst(self: *const Node) ?*const Document {
-        return if (self.node_type == DOCUMENT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe downcast to DocumentFragment (returns null if not a DocumentFragment)
-    pub fn asDocumentFragment(self: *Node) ?*DocumentFragment {
-        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to DocumentFragment
-    pub fn asDocumentFragmentConst(self: *const Node) ?*const DocumentFragment {
-        return if (self.node_type == DOCUMENT_FRAGMENT_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe downcast to Attr (returns null if not a Attr)
-    pub fn asAttr(self: *Node) ?*Attr {
-        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;
-    }
-
-    /// Safe const downcast to Attr
-    pub fn asAttrConst(self: *const Node) ?*const Attr {
-        return if (self.node_type == ATTRIBUTE_NODE) @ptrCast(@alignCast(self)) else null;
+    /// Safe downcast to child type T (const version)
+    pub fn asConst(self: *const Node, comptime T: type) ?*const T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
     }
 
 };

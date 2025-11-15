@@ -298,6 +298,100 @@ fn writeImports(writer: anytype, imports: []ir.Import, constants: []ir.Constant,
 }
 
 /// Write class definition
+/// Generate discriminator value constant for child types (e.g., node_type_VALUE)
+/// This constant is used by the parent's as() method for type checking
+fn writeDiscriminatorValueConstant(
+    allocator: Allocator,
+    writer: anytype,
+    class: ir.ClassDef,
+    enhanced: ir.EnhancedClassIR,
+    registry: *const optimizer.ClassRegistry,
+) !void {
+    _ = enhanced;
+
+    // Only generate for child classes (not the parent with discriminator)
+    const parent_name = class.parent orelse return;
+
+    // Cast away const - registry.get() requires mutable but we only read
+    const mutable_registry = @constCast(registry);
+    var current_parent_class = mutable_registry.get(parent_name) orelse return;
+    var constants_class_name = parent_name;
+
+    // Walk up parent chain to find a class with constants (the discriminator owner)
+    // e.g., Text -> CharacterData -> Node (Node has constants)
+    var depth: usize = 0;
+    while (depth < 10) : (depth += 1) {
+        if (current_parent_class.own_constants.len > 0) {
+            // Found a class with constants
+            break;
+        }
+
+        // No constants, try grandparent
+        const grandparent_name = current_parent_class.parent orelse return; // No constants in hierarchy
+        constants_class_name = grandparent_name;
+        current_parent_class = mutable_registry.get(grandparent_name) orelse return;
+    }
+
+    // Find which discriminator constant matches this child
+    const discriminator_constant = try findDiscriminatorConstantForChild(
+        allocator,
+        class.name,
+        current_parent_class,
+    ) orelse return;
+    defer allocator.free(discriminator_constant);
+
+    // Determine the root class with the discriminator (walk up the hierarchy)
+    // For DOM, this is always Node, but be generic
+    var root_class_name = constants_class_name;
+    var current = current_parent_class;
+    depth = 0; // Reset depth counter
+    const max_depth = 10; // Prevent infinite loops
+
+    while (depth < max_depth) : (depth += 1) {
+        const grandparent_name = current.parent orelse break;
+        const grandparent = mutable_registry.get(grandparent_name) orelse break;
+
+        // Check if grandparent has the same constant (means it's higher in hierarchy)
+        var found = false;
+        for (grandparent.own_constants) |constant| {
+            if (std.mem.eql(u8, constant.name, discriminator_constant)) {
+                root_class_name = grandparent_name;
+                current = grandparent;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) break;
+    }
+
+    // Generate the constant
+    // For Node children: pub const node_type_VALUE = Node.ELEMENT_NODE;
+    // For CharacterData children: pub const node_type_VALUE = Node.TEXT_NODE;
+    try writer.writeAll("\n    // Discriminator value for parent's as() method\n");
+    try writer.print("    pub const node_type_VALUE = {s}.{s};\n", .{ root_class_name, discriminator_constant });
+}
+
+/// Find the discriminator constant that matches a child class
+/// Walks up the parent chain to find constants if parent doesn't have them
+fn findDiscriminatorConstantForChild(
+    allocator: Allocator,
+    child_name: []const u8,
+    parent_class: *ir.ClassDef,
+) !?[]const u8 {
+    // Check parent's own constants first
+    for (parent_class.own_constants) |constant| {
+        if (matchConstantToChildName(constant.name, child_name)) {
+            return try allocator.dupe(u8, constant.name);
+        }
+    }
+
+    // Parent doesn't have constants - this can happen with intermediate classes
+    // like CharacterData (extends Node but has no node_type constants)
+    // Return null and let caller handle it
+    return null;
+}
+
 fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
     const class = enhanced.class;
 
@@ -363,6 +457,9 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
             try writer.writeAll("    pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;\n");
             try writer.writeAll("    pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;\n");
         }
+
+        // Auto-generate discriminator value constant for child types
+        try writeDiscriminatorValueConstant(allocator, writer, class, enhanced, registry);
     }
 
     // WebIDL Metadata
@@ -622,87 +719,57 @@ fn buildInheritanceInfo(allocator: Allocator, class: ir.ClassDef, enhanced: ir.E
     };
 }
 
-/// Generate type conversion helper methods for safe downcasting
+/// Generate single generic type conversion helper for safe downcasting
 fn writeDowncastHelpers(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassIR, registry: *const optimizer.ClassRegistry) !void {
+    _ = allocator;
     const class = enhanced.class;
 
-    // Build inheritance information
-    const inheritance_info = try buildInheritanceInfo(allocator, class, enhanced, registry) orelse return;
-    defer {
-        for (inheritance_info.children) |child| {
-            allocator.free(child.class_name); // Free duplicated class name
-            allocator.free(child.discriminator_values);
-        }
-        allocator.free(inheritance_info.children);
-    }
+    // Detect discriminator field - if none, no downcast helper needed
+    const discriminator = detectDiscriminatorField(class, enhanced) orelse return;
 
     try writer.writeAll("\n    // ========================================================================\n");
-    try writer.writeAll("    // Type Conversion Helpers (Safe Downcasting)\n");
+    try writer.writeAll("    // Type Conversion Helper (Safe Downcasting)\n");
     try writer.writeAll("    // ========================================================================\n");
-    try writer.writeAll("    // With flattened inheritance, we need runtime type checking to safely\n");
-    try writer.print("    // downcast from {s} to more specific types.\n\n", .{class.name});
+    try writer.writeAll("    // Generic downcast that works for any child type.\n");
+    try writer.print("    // Child types must declare: pub const {s}_VALUE = <discriminator_constant>\n\n", .{discriminator});
 
-    // Generate downcast method for each child type
-    for (inheritance_info.children) |child| {
-        // Check if the child type is imported
-        const is_imported = blk: {
-            for (enhanced.all_imports) |import| {
-                if (import.is_type and std.mem.eql(u8, import.name, child.class_name)) {
-                    break :blk true;
-                }
-            }
-            break :blk false;
-        };
+    // Generate single generic as() method (mutable version)
+    try writer.writeAll("    /// Safe downcast to child type T\n");
+    try writer.writeAll("    /// Returns null if this instance is not of type T\n");
+    try writer.writeAll("    /// \n");
+    try writer.print("    /// Requires: T must declare `pub const {s}_VALUE`\n", .{discriminator});
+    try writer.writeAll("    /// \n");
+    try writer.writeAll("    /// Example:\n");
+    try writer.print("    ///   if (node.as(Element)) |elem| {{\n", .{});
+    try writer.writeAll("    ///       // use elem\n");
+    try writer.writeAll("    ///   }\n");
+    try writer.print("    pub fn as(self: *{s}, comptime T: type) ?*T {{\n", .{class.name});
+    try writer.writeAll("        comptime {\n");
+    try writer.print("            if (!@hasDecl(T, \"{s}_VALUE\")) {{\n", .{discriminator});
+    try writer.print("                @compileError(\"Cannot cast to \" ++ @typeName(T) ++ \": type must declare 'pub const {s}_VALUE'\");\n", .{discriminator});
+    try writer.writeAll("            }\n");
+    try writer.writeAll("        }\n");
+    try writer.print("        return if (self.{s} == T.{s}_VALUE)\n", .{ discriminator, discriminator });
+    try writer.writeAll("            @ptrCast(@alignCast(self))\n");
+    try writer.writeAll("        else\n");
+    try writer.writeAll("            null;\n");
+    try writer.writeAll("    }\n\n");
 
-        // Skip if not imported - we can't generate a helper without the type definition
-        // The import must be added to the source file or optimizer resolution
-        // TODO: Auto-detect and suggest missing imports as compiler hints
-        if (!is_imported) continue;
+    // Generate const version
+    try writer.writeAll("    /// Safe downcast to child type T (const version)\n");
+    try writer.print("    pub fn asConst(self: *const {s}, comptime T: type) ?*const T {{\n", .{class.name});
+    try writer.writeAll("        comptime {\n");
+    try writer.print("            if (!@hasDecl(T, \"{s}_VALUE\")) {{\n", .{discriminator});
+    try writer.print("                @compileError(\"Cannot cast to \" ++ @typeName(T) ++ \": type must declare 'pub const {s}_VALUE'\");\n", .{discriminator});
+    try writer.writeAll("            }\n");
+    try writer.writeAll("        }\n");
+    try writer.print("        return if (self.{s} == T.{s}_VALUE)\n", .{ discriminator, discriminator });
+    try writer.writeAll("            @ptrCast(@alignCast(self))\n");
+    try writer.writeAll("        else\n");
+    try writer.writeAll("            null;\n");
+    try writer.writeAll("    }\n\n");
 
-        const method_name = try std.fmt.allocPrint(allocator, "as{s}", .{child.class_name});
-        defer allocator.free(method_name);
-
-        const method_name_const = try std.fmt.allocPrint(allocator, "as{s}Const", .{child.class_name});
-        defer allocator.free(method_name_const);
-
-        // Mutable version
-        try writer.print("    /// Safe downcast to {s} (returns null if not a {s})\n", .{ child.class_name, child.class_name });
-        try writer.print("    pub fn {s}(self: *{s}) ?*{s} {{\n", .{ method_name, class.name, child.class_name });
-
-        if (child.discriminator_values.len == 1) {
-            // Single value - use simple if
-            try writer.print("        return if (self.{s} == {s}) @ptrCast(@alignCast(self)) else null;\n", .{ inheritance_info.discriminator_field, child.discriminator_values[0] });
-        } else {
-            // Multiple values - use switch
-            try writer.print("        return switch (self.{s}) {{\n", .{inheritance_info.discriminator_field});
-            for (child.discriminator_values) |value| {
-                try writer.print("            {s},\n", .{value});
-            }
-            try writer.writeAll("             => @ptrCast(@alignCast(self)),\n");
-            try writer.writeAll("            else => null,\n");
-            try writer.writeAll("        };\n");
-        }
-        try writer.writeAll("    }\n\n");
-
-        // Const version
-        try writer.print("    /// Safe const downcast to {s}\n", .{child.class_name});
-        try writer.print("    pub fn {s}(self: *const {s}) ?*const {s} {{\n", .{ method_name_const, class.name, child.class_name });
-
-        if (child.discriminator_values.len == 1) {
-            // Single value - use simple if
-            try writer.print("        return if (self.{s} == {s}) @ptrCast(@alignCast(self)) else null;\n", .{ inheritance_info.discriminator_field, child.discriminator_values[0] });
-        } else {
-            // Multiple values - use switch
-            try writer.print("        return switch (self.{s}) {{\n", .{inheritance_info.discriminator_field});
-            for (child.discriminator_values) |value| {
-                try writer.print("            {s},\n", .{value});
-            }
-            try writer.writeAll("             => @ptrCast(@alignCast(self)),\n");
-            try writer.writeAll("            else => null,\n");
-            try writer.writeAll("        };\n");
-        }
-        try writer.writeAll("    }\n\n");
-    }
+    _ = registry; // TODO: Use registry to generate NODE_TYPE constants in children
 }
 
 /// Rewrite self parameter type in method signature for mixin inheritance

@@ -121,6 +121,9 @@ pub const Text = struct {
     pub const DOCUMENT_TYPE_NODE: u16 = Node.DOCUMENT_TYPE_NODE;
     pub const DOCUMENT_FRAGMENT_NODE: u16 = Node.DOCUMENT_FRAGMENT_NODE;
 
+    // Discriminator value for parent's as() method
+    pub const node_type_VALUE = Node.TEXT_NODE;
+
     // ========================================================================
     // WebIDL Metadata
     // ========================================================================
@@ -2440,6 +2443,47 @@ pub const Text = struct {
             return err;
         };
     
+    }
+
+
+    // ========================================================================
+    // Type Conversion Helper (Safe Downcasting)
+    // ========================================================================
+    // Generic downcast that works for any child type.
+    // Child types must declare: pub const node_type_VALUE = <discriminator_constant>
+
+    /// Safe downcast to child type T
+    /// Returns null if this instance is not of type T
+    /// 
+    /// Requires: T must declare `pub const node_type_VALUE`
+    /// 
+    /// Example:
+    ///   if (node.as(Element)) |elem| {
+    ///       // use elem
+    ///   }
+    pub fn as(self: *Text, comptime T: type) ?*T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
+    }
+
+    /// Safe downcast to child type T (const version)
+    pub fn asConst(self: *const Text, comptime T: type) ?*const T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
     }
 
 };

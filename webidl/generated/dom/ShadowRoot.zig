@@ -2324,6 +2324,47 @@ pub const ShadowRoot = struct {
     
     }
 
+
+    // ========================================================================
+    // Type Conversion Helper (Safe Downcasting)
+    // ========================================================================
+    // Generic downcast that works for any child type.
+    // Child types must declare: pub const node_type_VALUE = <discriminator_constant>
+
+    /// Safe downcast to child type T
+    /// Returns null if this instance is not of type T
+    /// 
+    /// Requires: T must declare `pub const node_type_VALUE`
+    /// 
+    /// Example:
+    ///   if (node.as(Element)) |elem| {
+    ///       // use elem
+    ///   }
+    pub fn as(self: *ShadowRoot, comptime T: type) ?*T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
+    }
+
+    /// Safe downcast to child type T (const version)
+    pub fn asConst(self: *const ShadowRoot, comptime T: type) ?*const T {
+        comptime {
+            if (!@hasDecl(T, "node_type_VALUE")) {
+                @compileError("Cannot cast to " ++ @typeName(T) ++ ": type must declare 'pub const node_type_VALUE'");
+            }
+        }
+        return if (self.node_type == T.node_type_VALUE)
+            @ptrCast(@alignCast(self))
+        else
+            null;
+    }
+
 };
 
 
