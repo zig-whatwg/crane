@@ -154,7 +154,7 @@ pub const NamedNodeMap = webidl.interface(struct {
 
         // Step 2: Let oldAttr be the result of getting an attribute
         const old_attr = NamedNodeMap.getAttributeByNamespaceAndLocalName(
-            try attr.get_name()space_uri,
+            attr.namespace_uri,
             attr.local_name,
             element,
         );
@@ -251,10 +251,10 @@ pub const NamedNodeMap = webidl.interface(struct {
     ) ?*Attr {
         for (element.attributes.toSlice()) |*attr| {
             // Check namespace match
-            const ns_match = if (namespace == null and try attr.get_name()space_uri == null)
+            const ns_match = if (namespace == null and attr.namespace_uri == null)
                 true
-            else if (namespace != null and try attr.get_name()space_uri != null)
-                std.mem.eql(u8, namespace.?, try attr.get_name()space_uri.?)
+            else if (namespace != null and attr.namespace_uri != null)
+                std.mem.eql(u8, namespace.?, attr.namespace_uri.?)
             else
                 false;
 
