@@ -62,11 +62,17 @@ pub fn setProtocol(url: *URL, allocator: std.mem.Allocator, protocol_utf8: []con
     return url.set_protocol(protocol_utf8);
 }
 
+/// Alias for setProtocol (snake_case)
+pub const set_protocol = setProtocol;
+
 /// Set username from UTF-8 string
 pub fn setUsername(url: *URL, allocator: std.mem.Allocator, username_utf8: []const u8) !void {
     _ = allocator; // URL setters now accept UTF-8 directly
     return url.set_username(username_utf8);
 }
+
+/// Alias for setUsername (snake_case)
+pub const set_username = setUsername;
 
 /// Set password from UTF-8 string
 pub fn setPassword(url: *URL, allocator: std.mem.Allocator, password_utf8: []const u8) !void {
@@ -75,6 +81,9 @@ pub fn setPassword(url: *URL, allocator: std.mem.Allocator, password_utf8: []con
     return url.set_password(password_utf8);
 }
 
+/// Alias for setPassword (snake_case)
+pub const set_password = setPassword;
+
 /// Set host from UTF-8 string
 pub fn setHost(url: *URL, allocator: std.mem.Allocator, host_utf8: []const u8) !void {
     _ = allocator; // URL setters now accept UTF-8 directly
@@ -82,11 +91,17 @@ pub fn setHost(url: *URL, allocator: std.mem.Allocator, host_utf8: []const u8) !
     return url.set_host(host_utf8);
 }
 
+/// Alias for setHost (snake_case)
+pub const set_host = setHost;
+
 /// Set hostname from UTF-8 string
 pub fn setHostname(url: *URL, allocator: std.mem.Allocator, hostname_utf8: []const u8) !void {
     _ = allocator; // URL setters now take UTF-8 directly
     return url.set_hostname(hostname_utf8);
 }
+
+/// Alias for setHostname (snake_case)
+pub const set_hostname = setHostname;
 
 /// Set port from UTF-8 string
 pub fn setPort(url: *URL, allocator: std.mem.Allocator, port_utf8: []const u8) !void {
@@ -94,11 +109,17 @@ pub fn setPort(url: *URL, allocator: std.mem.Allocator, port_utf8: []const u8) !
     return url.set_port(port_utf8);
 }
 
+/// Alias for setPort (snake_case)
+pub const set_port = setPort;
+
 /// Set pathname from UTF-8 string
 pub fn setPathname(url: *URL, allocator: std.mem.Allocator, pathname_utf8: []const u8) !void {
     _ = allocator; // URL setters now take UTF-8 directly
     return url.set_pathname(pathname_utf8);
 }
+
+/// Alias for setPathname (snake_case)
+pub const set_pathname = setPathname;
 
 /// Set search from UTF-8 string
 pub fn setSearch(url: *URL, allocator: std.mem.Allocator, search_utf8: []const u8) !void {
@@ -106,17 +127,26 @@ pub fn setSearch(url: *URL, allocator: std.mem.Allocator, search_utf8: []const u
     return url.set_search(search_utf8);
 }
 
+/// Alias for setSearch (snake_case)
+pub const set_search = setSearch;
+
 /// Set hash from UTF-8 string
 pub fn setHash(url: *URL, allocator: std.mem.Allocator, hash_utf8: []const u8) !void {
     _ = allocator; // URL setters now take UTF-8 directly
     return url.set_hash(hash_utf8);
 }
 
+/// Alias for setHash (snake_case)
+pub const set_hash = setHash;
+
 /// Set href from UTF-8 string
 pub fn setHref(url: *URL, allocator: std.mem.Allocator, href_utf8: []const u8) !void {
     _ = allocator; // URL setters now take UTF-8 directly
     return url.set_href(href_utf8);
 }
+
+/// Alias for setHref (snake_case)
+pub const set_href = setHref;
 
 // ============================================================================
 // URL Getter Wrappers (UTF-16 → UTF-8 conversion)
