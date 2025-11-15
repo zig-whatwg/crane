@@ -237,7 +237,7 @@ test "Integration: Element with Attr nodes" {
     var map = NamedNodeMap.init(elem);
     try testing.expectEqual(@as(u32, 2), map.get_length());
 
-    const class_attr = map.getNamedItem("class");
+    const class_attr = map.call_getNamedItem("class");
     try testing.expect(class_attr != null);
     if (class_attr) |attr| {
         try testing.expectEqualStrings("container", attr.value);
@@ -408,30 +408,26 @@ test "Integration: Attr namespace handling" {
     const allocator = testing.allocator;
 
     // Create namespaced attribute (xmlns)
-    const xmlns_attr = try Attr.init(allocator, "http://www.w3.org/2000/xmlns/", "xmlns", "xlink", "http://www.w3.org/1999/xlink");
-    defer {
-        xmlns_attr.deinit();
-        allocator.destroy(xmlns_attr);
-    }
+    var xmlns_attr = try Attr.init(allocator, "http://www.w3.org/2000/xmlns/", "xmlns", "xlink", "http://www.w3.org/1999/xlink");
+    defer xmlns_attr.deinit();
 
-    try testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", xmlns_attr.namespace_uri.?);
-    try testing.expectEqualStrings("xmlns", xmlns_attr.prefix.?);
-    try testing.expectEqualStrings("xlink", xmlns_attr.local_name);
+    try testing.expectEqualStrings("http://www.w3.org/2000/xmlns/", xmlns_attr.get_namespaceURI().?);
+    try testing.expectEqualStrings("xmlns", xmlns_attr.get_prefix().?);
+    try testing.expectEqualStrings("xlink", xmlns_attr.get_localName());
     const xmlns_name = try xmlns_attr.get_name();
     defer allocator.free(xmlns_name);
     try testing.expectEqualStrings("xmlns:xlink", xmlns_name);
 
     // Create non-namespaced attribute
-    const simple_attr = try Attr.init(allocator, null, null, "class", "container");
-    defer {
-        simple_attr.deinit();
-        allocator.destroy(simple_attr);
-    }
+    var simple_attr = try Attr.init(allocator, null, null, "class", "container");
+    defer simple_attr.deinit();
 
-    try testing.expect(simple_attr.namespaceURI == null);
-    try testing.expect(simple_attr.prefix == null);
-    try testing.expectEqualStrings("class", simple_attr.localName);
-    try testing.expectEqualStrings("class", simple_attr.name);
+    try testing.expect(simple_attr.get_namespaceURI() == null);
+    try testing.expect(simple_attr.get_prefix() == null);
+    try testing.expectEqualStrings("class", simple_attr.get_localName());
+    const simple_name = try simple_attr.get_name();
+    defer allocator.free(simple_name);
+    try testing.expectEqualStrings("class", simple_name);
 }
 
 test "Integration: NamedNodeMap wraps Element attributes" {
@@ -463,10 +459,10 @@ test "Integration: NamedNodeMap wraps Element attributes" {
     try testing.expectEqual(@as(u32, 3), map.get_length());
 
     // Test item() access
-    const first = map.get(0);
+    const first = map.call_item(0);
     try testing.expect(first != null);
 
-    const out_of_bounds = map.get(10);
+    const out_of_bounds = map.call_item(10);
     try testing.expect(out_of_bounds == null);
 
     // Test getNamedItem()
