@@ -602,6 +602,10 @@ fn parseClassDefinition(
         allocator.free(mixins);
     }
 
+    // Parse extended attributes (from second argument to webidl.interface/namespace/mixin)
+    const extended_attrs = try extractExtendedAttributes(allocator, source, struct_end);
+    errdefer allocator.free(extended_attrs);
+
     // Parse fields
     const fields = try parseFields(allocator, struct_body);
     errdefer {
@@ -648,6 +652,7 @@ fn parseClassDefinition(
         .name = name,
         .parent = parent,
         .mixins = mixins,
+        .extended_attrs = extended_attrs,
         .own_fields = fields,
         .own_methods = methods,
         .own_properties = properties,
@@ -742,6 +747,18 @@ fn extractMixins(allocator: Allocator, struct_body: []const u8) ![][]const u8 {
     }
 
     return mixins.toOwnedSlice();
+}
+
+/// Extract extended attributes from: webidl.interface(struct { ... }, &.{ exposed("*"), ... });
+/// Returns the attributes list after the struct closing brace
+fn extractExtendedAttributes(allocator: Allocator, source: []const u8, struct_end: usize) ![]ir.ExtendedAttribute {
+    _ = allocator;
+    _ = source;
+    _ = struct_end;
+
+    // For now, return empty slice
+    // Will parse in next task (whatwg-79zr)
+    return &.{};
 }
 
 /// Extract doc comment from lines immediately preceding the target line.
