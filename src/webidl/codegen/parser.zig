@@ -758,7 +758,20 @@ fn extractExtendedAttributes(allocator: Allocator, source: []const u8, struct_en
     };
 
     const attrs_body_start = attrs_start + ", .{".len;
-    const attrs_end = std.mem.indexOfScalarPos(u8, source, attrs_body_start, '}') orelse {
+
+    // Find matching closing brace (need to handle nested braces)
+    var brace_depth: usize = 1; // We've already seen the opening .{
+    var pos = attrs_body_start;
+    const attrs_end = while (pos < source.len) : (pos += 1) {
+        if (source[pos] == '{') {
+            brace_depth += 1;
+        } else if (source[pos] == '}') {
+            brace_depth -= 1;
+            if (brace_depth == 0) {
+                break pos;
+            }
+        }
+    } else {
         return error.UnmatchedBrace;
     };
 
@@ -771,20 +784,40 @@ fn extractExtendedAttributes(allocator: Allocator, source: []const u8, struct_en
     errdefer attrs.deinit();
 
     // Parse .exposed field
-    if (std.mem.indexOf(u8, attrs_body, ".exposed")) |exposed_pos| {
-        const eq_pos = std.mem.indexOfPos(u8, attrs_body, exposed_pos, "=") orelse return attrs.toOwnedSlice();
-        const comma_or_end = std.mem.indexOfPos(u8, attrs_body, eq_pos, ",") orelse attrs_body.len;
-        const value_str = std.mem.trim(u8, attrs_body[eq_pos + 1 .. comma_or_end], " \t\r\n");
-
-        if (std.mem.indexOf(u8, value_str, ".global")) |_| {
+    if (std.mem.indexOf(u8, attrs_body, ".exposed")) |_| {
+        if (std.mem.indexOf(u8, attrs_body, ".global")) |_| {
             try attrs.append(.{
                 .name = try allocator.dupe(u8, "Exposed"),
                 .value = .wildcard,
             });
-        } else if (std.mem.indexOf(u8, value_str, ".Window")) |_| {
+        } else if (std.mem.indexOf(u8, attrs_body, ".Window")) |_| {
             try attrs.append(.{
                 .name = try allocator.dupe(u8, "Exposed"),
                 .value = .{ .identifier = try allocator.dupe(u8, "Window") },
+            });
+        }
+    }
+
+    // Parse .transferable = true
+    if (std.mem.indexOf(u8, attrs_body, ".transferable")) |transferable_pos| {
+        // Check if followed by = true
+        const after_field = attrs_body[transferable_pos + ".transferable".len ..];
+        if (std.mem.indexOf(u8, after_field, "true")) |_| {
+            try attrs.append(.{
+                .name = try allocator.dupe(u8, "Transferable"),
+                .value = .none,
+            });
+        }
+    }
+
+    // Parse .serializable = true
+    if (std.mem.indexOf(u8, attrs_body, ".serializable")) |serializable_pos| {
+        // Check if followed by = true
+        const after_field = attrs_body[serializable_pos + ".serializable".len ..];
+        if (std.mem.indexOf(u8, after_field, "true")) |_| {
+            try attrs.append(.{
+                .name = try allocator.dupe(u8, "Serializable"),
+                .value = .none,
             });
         }
     }

@@ -86,6 +86,7 @@ pub const WritableStream = struct {
         .parent = null,
         .extended_attrs = &.{
             .{ .name = "Exposed", .value = .wildcard },
+            .{ .name = "Transferable", .value = .none },
         },
     };
 
