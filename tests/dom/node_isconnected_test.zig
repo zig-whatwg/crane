@@ -13,7 +13,7 @@ const Node = dom.Node;
 test "Node.isConnected - document is connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     const doc_node = doc.asNode();
@@ -23,7 +23,7 @@ test "Node.isConnected - document is connected" {
 test "Node.isConnected - element in document is connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");
@@ -55,7 +55,7 @@ test "Node.isConnected - detached element is not connected" {
 test "Node.isConnected - nested elements in document are connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var parent = try Element.init(allocator, "div");
@@ -82,7 +82,7 @@ test "Node.isConnected - nested elements in document are connected" {
 test "Node.isConnected - element removed from document is not connected" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");

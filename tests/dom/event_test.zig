@@ -35,7 +35,7 @@ test "Event: constructor with EventInit" {
     const allocator = testing.allocator;
 
     // Test bubbling event
-    var event1 = try Event.initWithOptions(allocator, "click", .{
+    var event1 = try Event.init(allocator, "click", .{
         .bubbles = true,
         .cancelable = true,
         .composed = false,
@@ -79,7 +79,7 @@ test "Event: stopImmediatePropagation sets both flags" {
 test "Event: preventDefault on cancelable event" {
     const allocator = testing.allocator;
 
-    var event = try Event.initWithOptions(allocator, "click", .{
+    var event = try Event.init(allocator, "click", .{
         .cancelable = true,
     });
     defer event.deinit();
@@ -166,7 +166,7 @@ test "Event: cancelBubble getter/setter (legacy)" {
 test "Event: returnValue getter/setter (legacy)" {
     const allocator = testing.allocator;
 
-    var event = try Event.initWithOptions(allocator, "click", .{
+    var event = try Event.init(allocator, "click", .{
         .cancelable = true,
     });
     defer event.deinit();
@@ -276,7 +276,7 @@ test "Event dispatch: basic tree traversal" {
     try parent.child_nodes.append(&child);
 
     // Create a bubbling event
-    var event = try Event.initWithOptions(allocator, "click", .{
+    var event = try Event.init(allocator, "click", .{
         .bubbles = true,
         .cancelable = false,
         .composed = false,
@@ -310,7 +310,7 @@ test "Event dispatch: activation behavior flow" {
     defer target.deinit();
 
     // Create a click event (isActivationEvent = true)
-    var event = try Event.initWithOptions(allocator, "click", .{
+    var event = try Event.init(allocator, "click", .{
         .bubbles = true,
         .cancelable = true,
         .composed = false,
@@ -345,7 +345,7 @@ test "Event dispatch: activation behavior with canceled event" {
     defer target.deinit();
 
     // Create a cancelable click event
-    var event = try Event.initWithOptions(allocator, "click", .{
+    var event = try Event.init(allocator, "click", .{
         .bubbles = true,
         .cancelable = true,
         .composed = false,
@@ -384,7 +384,7 @@ test "Event dispatch: non-click event does not trigger activation" {
     defer target.deinit();
 
     // Create a non-click event (should NOT be activation event)
-    var event = try Event.initWithOptions(allocator, "mouseover", .{
+    var event = try Event.init(allocator, "mouseover", .{
         .bubbles = true,
         .cancelable = true,
         .composed = false,

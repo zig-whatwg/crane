@@ -36,7 +36,7 @@ test "Node.parentElement - element parent returns element" {
 test "Node.parentElement - document parent returns null" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "html");

@@ -15,7 +15,7 @@ const Text = dom.Text;
 test "Node.nodeValue - Text node returns data" {
     const allocator = std.testing.allocator;
 
-    var text = try Text.create(allocator, "Hello World");
+    var text = try Text.init(allocator, "Hello World");
     defer text.deinit();
 
     const text_node = text.asNode();
@@ -28,7 +28,7 @@ test "Node.nodeValue - Text node returns data" {
 test "Node.nodeValue - Comment node returns data" {
     const allocator = std.testing.allocator;
 
-    var comment = try Comment.create(allocator, "This is a comment");
+    var comment = try Comment.init(allocator, "This is a comment");
     defer comment.deinit();
 
     const comment_node = comment.asNode();
@@ -66,7 +66,7 @@ test "Node.nodeValue - Attr returns value" {
 test "Node.nodeValue - set Text node value" {
     const allocator = std.testing.allocator;
 
-    var text = try Text.create(allocator, "Original");
+    var text = try Text.init(allocator, "Original");
     defer text.deinit();
 
     const text_node = text.asNode();
@@ -114,7 +114,7 @@ test "Node.nodeValue - set Element value does nothing" {
 test "Node.nodeValue - set null treated as empty string" {
     const allocator = std.testing.allocator;
 
-    var text = try Text.create(allocator, "Original");
+    var text = try Text.init(allocator, "Original");
     defer text.deinit();
 
     const text_node = text.asNode();

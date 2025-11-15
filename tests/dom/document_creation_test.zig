@@ -333,7 +333,7 @@ test "Document: adoptNode with tree of descendants" {
 }
 
 // ============================================================================
-// Document.createElementNS() tests
+// Document.initElementNS() tests
 // ============================================================================
 
 test "Document: createElementNS with namespace sets namespace_uri" {

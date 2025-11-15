@@ -36,23 +36,23 @@ test "Range removal - start in removed, end in kept" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.NodeBase.createElement(allocator, "parent", doc_ptr);
+    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
     defer parent.deinit(allocator);
 
     // Create children
-    const a = try dom.NodeBase.createElement(allocator, "a", doc_ptr);
+    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
     defer a.deinit(allocator);
     const a_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer a_text.deinit(allocator);
     try dom.mutation.append(a_text, a);
 
-    const b = try dom.NodeBase.createElement(allocator, "b", doc_ptr);
+    const b = try dom.doc.createElement(allocator, "b", doc_ptr);
     defer b.deinit(allocator);
     const b_text = try dom.NodeBase.createText(allocator, "remove", doc_ptr);
     defer b_text.deinit(allocator);
     try dom.mutation.append(b_text, b);
 
-    const c = try dom.NodeBase.createElement(allocator, "c", doc_ptr);
+    const c = try dom.doc.createElement(allocator, "c", doc_ptr);
     defer c.deinit(allocator);
     const c_text = try dom.NodeBase.createText(allocator, "text", doc_ptr);
     defer c_text.deinit(allocator);
@@ -114,20 +114,20 @@ test "Range removal - fully contained in removed subtree" {
     defer doc_ptr.deinit();
 
     // Create parent element
-    const parent = try dom.NodeBase.createElement(allocator, "parent", doc_ptr);
+    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
     defer parent.deinit(allocator);
 
     // Create removed subtree
-    const removed = try dom.NodeBase.createElement(allocator, "removed", doc_ptr);
+    const removed = try dom.doc.createElement(allocator, "removed", doc_ptr);
     defer removed.deinit(allocator);
 
-    const child1 = try dom.NodeBase.createElement(allocator, "child1", doc_ptr);
+    const child1 = try dom.doc.createElement(allocator, "child1", doc_ptr);
     defer child1.deinit(allocator);
     const child1_text = try dom.NodeBase.createText(allocator, "start", doc_ptr);
     defer child1_text.deinit(allocator);
     try dom.mutation.append(child1_text, child1);
 
-    const child2 = try dom.NodeBase.createElement(allocator, "child2", doc_ptr);
+    const child2 = try dom.doc.createElement(allocator, "child2", doc_ptr);
     defer child2.deinit(allocator);
     const child2_text = try dom.NodeBase.createText(allocator, "end", doc_ptr);
     defer child2_text.deinit(allocator);
@@ -186,13 +186,13 @@ test "Range removal - multiple overlapping ranges" {
     defer doc_ptr.deinit();
 
     // Create parent and siblings
-    const parent = try dom.NodeBase.createElement(allocator, "parent", doc_ptr);
+    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
     defer parent.deinit(allocator);
 
     const before = try dom.NodeBase.createText(allocator, "before text", doc_ptr);
     defer before.deinit(allocator);
 
-    const removed = try dom.NodeBase.createElement(allocator, "removed", doc_ptr);
+    const removed = try dom.doc.createElement(allocator, "removed", doc_ptr);
     defer removed.deinit(allocator);
     const removed_child = try dom.NodeBase.createText(allocator, "child", doc_ptr);
     defer removed_child.deinit(allocator);
@@ -282,16 +282,16 @@ test "Range removal - offset adjustment in parent" {
     defer doc_ptr.deinit();
 
     // Create parent and children
-    const parent = try dom.NodeBase.createElement(allocator, "parent", doc_ptr);
+    const parent = try dom.doc.createElement(allocator, "parent", doc_ptr);
     defer parent.deinit(allocator);
 
-    const a = try dom.NodeBase.createElement(allocator, "a", doc_ptr);
+    const a = try dom.doc.createElement(allocator, "a", doc_ptr);
     defer a.deinit(allocator);
 
-    const b = try dom.NodeBase.createElement(allocator, "b", doc_ptr);
+    const b = try dom.doc.createElement(allocator, "b", doc_ptr);
     defer b.deinit(allocator);
 
-    const c = try dom.NodeBase.createElement(allocator, "c", doc_ptr);
+    const c = try dom.doc.createElement(allocator, "c", doc_ptr);
     defer c.deinit(allocator);
 
     // Build tree

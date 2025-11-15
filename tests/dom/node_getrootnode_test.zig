@@ -13,7 +13,7 @@ const Node = dom.Node;
 test "Node.getRootNode - document root" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     const doc_node = doc.asNode();
@@ -26,7 +26,7 @@ test "Node.getRootNode - document root" {
 test "Node.getRootNode - element in document" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");
@@ -60,7 +60,7 @@ test "Node.getRootNode - detached element" {
 test "Node.getRootNode - nested elements" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var parent = try Element.init(allocator, "div");
@@ -107,7 +107,7 @@ test "Node.getRootNode - orphaned subtree" {
 test "Node.getRootNode - options.composed false" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");
@@ -127,7 +127,7 @@ test "Node.getRootNode - options.composed false" {
 test "Node.getRootNode - options.composed true (shadow root not yet implemented)" {
     const allocator = std.testing.allocator;
 
-    var doc = try Document.create(allocator);
+    var doc = try Document.init(allocator);
     defer doc.deinit();
 
     var elem = try Element.init(allocator, "div");
