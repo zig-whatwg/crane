@@ -588,6 +588,7 @@ pub fn build(b: *std.Build) void {
     document_mod.addImport("character_data", character_data_mod);
     document_mod.addImport("text", text_mod);
     document_mod.addImport("comment", comment_mod);
+    document_mod.addImport("attr", attr_mod);
     document_mod.addImport("document_fragment", document_fragment_mod);
     document_mod.addImport("range", range_mod);
     document_mod.addImport("node_iterator", node_iterator_mod);
