@@ -245,10 +245,9 @@ pub const DOMTokenList = struct {
         }
 
         // Step 4: Replace token with newToken
-        const old = self.tokens.items()[found_index];
-        self.allocator.free(old);
         const new_copy = try self.allocator.dupe(u8, new_token);
-        self.tokens.items()[found_index] = new_copy;
+        const old = try self.tokens.replace(found_index, new_copy);
+        self.allocator.free(old);
 
         // Step 5: Run update steps
         try self.runUpdateSteps();
@@ -303,7 +302,7 @@ pub const DOMTokenList = struct {
             for (self.tokens.items()) |token| {
                 self.allocator.free(token);
             }
-            self.tokens.clearRetainingCapacity();
+            self.tokens.clear();
 
             var iter = std.mem.tokenizeScalar(u8, value, ' ');
             while (iter.next()) |token| {

@@ -103,6 +103,7 @@ pub const AbortSignal = struct {
 
         return .{
             .event_listener_list = null, // Inherited from EventTarget
+            .node_type = 0, // Not a DOM node, but required by EventTarget
             .allocator = allocator,
             .aborted = false,
             .reason = null,
