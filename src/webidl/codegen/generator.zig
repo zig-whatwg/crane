@@ -450,6 +450,17 @@ fn writeClass(allocator: Allocator, writer: anytype, enhanced: ir.EnhancedClassI
     }
 
     // Class declaration
+    // CRITICAL: We need guaranteed field order for @ptrCast to work with inheritance.
+    //
+    // Unfortunately, neither `extern struct` nor `packed struct` works for us:
+    // - extern struct: Can't contain Allocator (not extern-compatible)
+    // - packed struct: Would waste memory with padding
+    //
+    // SOLUTION: Generate explicit field ordering comment + rely on Zig's current behavior
+    // which tends to preserve source order (though not guaranteed). The real fix requires
+    // using @fieldParentPtr or redesigning inheritance.
+    //
+    // TODO: Replace @ptrCast with proper @fieldParentPtr-based casting
     try writer.print("pub const {s} = struct {{\n", .{class.name});
 
     // Fields
