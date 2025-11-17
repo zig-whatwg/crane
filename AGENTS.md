@@ -2,9 +2,282 @@ We track work in Beads instead of Markdown. Run \`bd quickstart\` to see how.
 
 # Agent Guidelines for WHATWG Specifications Monorepo in Zig
 
-## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
+## Dynamic Skill Loading System
 
-**ALWAYS ask clarifying questions when requirements are ambiguous or unclear.**
+This project uses a **dynamic skill loading system** where the LLM should:
+1. **Analyze the task** to determine which skills are required
+2. **Load only the necessary skills** by reading their SKILL.md files
+3. **Apply the skill knowledge** during task execution
+4. **Unload skills** from working memory when no longer needed
+
+### Available Skills
+
+| Skill | Load When | Description |
+|-------|-----------|-------------|
+| **beads_workflow** | Managing tasks, tracking work, creating issues | Complete bd workflow for task tracking with dependency management |
+| **browser_benchmarking** | Benchmarking implementation performance | Context-aware benchmarking against browser implementations |
+| **commit_workflow** | Committing code, managing git history | Incremental commit strategy - commit after each feature completion |
+| **communication_protocol** | ALWAYS (every interaction) | Ask clarifying questions when requirements are ambiguous |
+| **dependency_mocking** | Required dependency isn't implemented yet | Create temporary mocks for unimplemented specs |
+| **monorepo_navigation** | Working with cross-spec dependencies | Find implementations of other WHATWG specs |
+| **oneshot** | User explicitly requests "oneshot [task]" | Complete uninterrupted execution of entire task/epic with final summary only |
+| **pre_commit_checks** | Before committing code | Automated format/build/test checks before every commit |
+| **webidl_codegen** | Working with WebIDL code generation | WebIDL codegen workflow and naming conventions |
+| **whatwg** | Implementing any WHATWG specification | Complete workflow from WHATWG spec to Zig implementation |
+| **zig** | Writing/refactoring Zig code | Universal Zig best practices, memory management, testing, documentation |
+
+### Skill Loading Protocol
+
+**Before starting any task:**
+
+1. **Identify required skills** based on task type:
+   - User says "oneshot [task]" → Load `oneshot` skill (takes over execution)
+   - WHATWG spec work → Load `whatwg` skill
+   - Code changes → Load `zig` skill
+   - Task tracking → Load `beads_workflow` skill
+   - Git operations → Load `commit_workflow` skill
+   - Cross-spec deps → Load `monorepo_navigation` skill
+   - Missing dependency → Load `dependency_mocking` skill
+   - WebIDL codegen → Load `webidl_codegen` skill
+   - Benchmarking → Load `browser_benchmarking` skill
+   - Ambiguous requirements → `communication_protocol` (always active)
+   - Pre-commit → Load `pre_commit_checks` skill
+
+2. **Load skills** by reading the appropriate SKILL.md file:
+   ```
+   Read: skills/<skill_name>/SKILL.md
+   ```
+   
+   **IMPORTANT**: When loading a skill, the LLM MUST announce it in the chat response:
+   ```
+   🔧 Loading skill: <skill_name>
+   ```
+
+3. **Apply skill knowledge** during task execution
+
+4. **Unload skills** when done:
+   - Keep only relevant skills in working memory
+   - Unload skills that are no longer needed for current task
+   - Communication protocol is ALWAYS active
+   
+   **IMPORTANT**: When unloading a skill, the LLM MUST announce it in the chat response:
+   ```
+   ✓ Unloading skill: <skill_name>
+   ```
+
+### Skill Usage Decision Tree
+
+```
+Task received
+    ↓
+Analyze task type
+    ↓
+┌──────────────────────────────────────┐
+│ Did user say "oneshot [task]"?       │ → YES → Load: oneshot (takes over execution)
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────────────┐
+│ Is this WHATWG spec implementation?  │ → YES → Load: whatwg, zig
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────────────┐
+│ Is this a code writing task?         │ → YES → Load: zig
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────────────┐
+│ Is this task tracking?               │ → YES → Load: beads_workflow
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────────────┐
+│ Is this a git commit?                │ → YES → Load: commit_workflow, pre_commit_checks
+└──────────────────────────────────────┘
+    ↓ NO
+┌──────────────────────────────────────┐
+│ Are requirements unclear?            │ → YES → Use: communication_protocol (already loaded)
+└──────────────────────────────────────┘
+    ↓
+Execute task with loaded skills
+    ↓
+Task complete
+    ↓
+Unload skills no longer needed
+```
+
+### Skill Combinations
+
+Common task scenarios and their skill requirements:
+
+| Task Scenario | Skills to Load |
+|---------------|----------------|
+| **Oneshot execution** | `oneshot` (then loads others as needed: `whatwg`, `zig`, `commit_workflow`, etc.) |
+| **Implement WHATWG spec feature** | `whatwg`, `zig`, `beads_workflow` |
+| **Implement feature with missing dep** | `whatwg`, `zig`, `dependency_mocking`, `beads_workflow` |
+| **Fix WHATWG spec bug** | `whatwg`, `zig`, `beads_workflow` |
+| **Cross-spec work** | `whatwg`, `zig`, `monorepo_navigation` |
+| **WebIDL codegen** | `webidl_codegen`, `zig` |
+| **Commit code** | `commit_workflow`, `pre_commit_checks` |
+| **Create/update issue** | `beads_workflow` |
+| **Clarify requirements** | `communication_protocol` (always active) |
+| **Write tests** | `zig` |
+| **Refactor code** | `zig`, `commit_workflow` |
+| **Benchmark performance** | `browser_benchmarking`, `whatwg` |
+
+### Example Workflow
+
+**Scenario**: User asks to "implement URL parser algorithm"
+
+**LLM Response:**
+
+```
+I'll implement the URL parser algorithm following the WHATWG spec.
+
+🔧 Loading skill: whatwg
+🔧 Loading skill: zig
+🔧 Loading skill: beads_workflow
+
+First, let me create an issue to track this work...
+[Creates issue using beads_workflow]
+
+Loading the URL spec from specs/url.md to understand the parser algorithm...
+[Reads complete spec algorithm using whatwg skill]
+
+Now I'll implement the parser following spec steps exactly...
+[Implements code using whatwg + zig skills]
+
+Writing comprehensive tests...
+[Writes tests using zig skill]
+
+Updating issue progress...
+[Updates issue using beads_workflow]
+
+The implementation is complete. Now let me commit the changes.
+
+✓ Unloading skill: whatwg
+✓ Unloading skill: zig
+🔧 Loading skill: commit_workflow
+🔧 Loading skill: pre_commit_checks
+
+Running pre-commit checks...
+[Executes format, build, test]
+
+Committing changes...
+[Creates commit using commit_workflow]
+
+✓ Unloading skill: commit_workflow
+✓ Unloading skill: pre_commit_checks
+
+Closing the issue...
+[Closes issue using beads_workflow]
+
+✓ Unloading skill: beads_workflow
+
+✅ URL parser algorithm implemented, tested, and committed!
+```
+
+### Example Workflow: Oneshot Execution
+
+**Scenario**: User asks to "oneshot bd-42" (a feature to implement JSON-LD parser)
+
+**LLM Response:**
+
+```
+🔧 Loading skill: oneshot
+🔧 Loading skill: whatwg
+🔧 Loading skill: zig
+🔧 Loading skill: beads_workflow
+
+[Silent execution - no status updates for 15-30 minutes]
+
+# Oneshot Execution Summary: Implement JSON-LD Parser
+
+## Completed Work
+
+✅ **Core Parser**
+- Implemented JSON-LD parse() method following Infra spec primitives
+- Added recursive value parsing
+- Committed in: "feat: implement JSON-LD parse() core parser"
+
+✅ **Type Support**
+- Added support for all JSON-LD types (objects, arrays, strings, numbers, booleans, null)
+- Committed in: "feat: add complete JSON-LD type support"
+
+✅ **Error Handling**
+- Added ParseError with descriptive messages
+- Committed in: "feat: add JSON-LD parse error handling"
+
+✅ **Tests**
+- Added 47 comprehensive test cases
+- All tests use std.testing.allocator for leak detection
+- Committed in: "test: add comprehensive JSON-LD parser tests"
+
+✅ **Documentation**
+- Added module-level docs with spec references
+- Committed in: "docs: document JSON-LD parser API"
+
+## Commits Made
+
+- abc1234: feat: implement JSON-LD parse() core parser
+- def5678: feat: add complete JSON-LD type support
+- ghi9012: feat: add JSON-LD parse error handling
+- jkl3456: test: add comprehensive JSON-LD parser tests
+- mno7890: docs: document JSON-LD parser API
+
+## Incomplete Work
+
+None - all planned work completed.
+
+## Statistics
+
+- **Total features completed**: 5
+- **Total commits**: 5
+- **Tests added**: 47
+- **Files modified**: 3
+- **Lines of code**: +892/-23
+
+## Issue Status
+
+- **Issue**: bd-42
+- **Final status**: closed
+- **Completion**: 100%
+
+✓ Unloading skill: oneshot
+✓ Unloading skill: whatwg
+✓ Unloading skill: zig
+✓ Unloading skill: beads_workflow
+
+✅ JSON-LD parser implemented, tested, and committed!
+```
+
+### Skill Loading Commands
+
+**To load a skill:**
+```
+Read the SKILL.md file for that skill to understand the complete workflow and patterns.
+```
+
+**To reference quick usage:**
+```
+Read the USAGE.md file for quick reference on when to use the skill.
+```
+
+**To unload a skill:**
+```
+Remove skill knowledge from working memory when no longer relevant to current task.
+```
+
+### Important Notes
+
+- **Communication protocol** is ALWAYS active - never needs loading/unloading (no announcement needed)
+- **Load skills lazily** - only when needed
+- **Unload proactively** - free up working memory
+- **Combine skills** when tasks require multiple areas of expertise
+- **Reload if needed** - Can reload a skill if task requirements change
+- **Always announce** - Use `🔧 Loading skill: <name>` and `✓ Unloading skill: <name>` in chat responses
+- **Transparency** - Skill loading/unloading announcements help users understand the LLM's decision-making process
+
+---
+
+## ⚠️ CRITICAL: Ask Clarifying Questions When Unclear
 
 ### Question-Asking Protocol
 
@@ -138,227 +411,22 @@ test "Encoding - UTF-8 decode" {
 
 ---
 
-## Skill Catalog
-
-This project uses **Agent Skills** for specialized knowledge areas. Each skill provides deep expertise for specific tasks.
-
-### How Skills Work
-
-1. **Reference this catalog** to identify which skill(s) you need
-2. **Load the skill** by reading its `skills/<skill-name>/SKILL.md` file into context
-3. **Apply the skill's guidance** to your current task
-4. **Unload the skill** when done (clear from context to save tokens)
-
-### Available Skills
-
-#### 🔧 **WHATWG Spec Implementation** (`whatwg`)
-**Load when:** Implementing any WHATWG specification
-
-**Use for:**
-- Working in `src/url/`, `src/encoding/`, `src/streams/`, `src/infra/`, etc.
-- Reading and implementing WHATWG spec algorithms
-- Mapping spec concepts to Zig implementations
-- Understanding spec state machines and parsers
-
-**Provides:** Complete workflow from WHATWG spec to Zig - spec navigation, context detection, type mapping, implementation patterns, documentation format
-
-**Load:** `skills/whatwg/SKILL.md`
-
----
-
-#### 🦎 **Zig Best Practices** (`zig`)
-**Load when:** Writing any Zig code
-
-**Use for:**
-- Writing or refactoring Zig code (any domain)
-- Memory management and performance
-- Testing and documentation
-- Algorithm implementation
-
-**Provides:** Universal Zig best practices - code quality (naming, errors, memory, types), performance (inline, preallocation, fast paths), testing (coverage, leak detection, TDD), documentation (public APIs)
-
-**Critical philosophy:** Public APIs MUST be documented and tested. Always use `std.testing.allocator` to detect leaks.
-
-**Load:** `skills/zig/SKILL.md`
-
----
-
-#### 💬 **Communication Protocol** (`communication_protocol`)
-**Load when:** Requirements are ambiguous or unclear
-
-**Use for:**
-- Ambiguous requests with multiple interpretations
-- Missing key implementation details
-- Unclear scope or expected behavior
-- Any situation where you're unsure
-
-**Provides:** Protocol for asking clarifying questions - ask ONE question at a time, wait for answer, never assume, keep questions concise
-
-**Critical rule:** When in doubt, ask. It's better to get it right than implement the wrong thing quickly.
-
-**Load:** `skills/communication_protocol/SKILL.md`
-
----
-
-#### 📋 **Task Tracking with Beads** (`beads_workflow`)
-**Load when:** Managing tasks and issues
-
-**Use for:**
-- ALL task tracking (checking what to work on, creating issues, updating status)
-- Tracking work progress
-- Creating dependency relationships (`discovered-from`)
-- Closing completed work
-
-**Provides:** Complete bd (beads) workflow - create, claim, update, close; dependency tracking; auto-sync with git; JSON output
-
-**Core commands:**
-```bash
-bd ready --json                     # Check ready work
-bd create "Title" -t bug -p 1       # Create issue
-bd update bd-N --status in_progress # Claim issue
-bd close bd-N --reason "Done"       # Complete work
-```
-
-**Critical rules:** Use bd for ALL task tracking. Always use `--json` flag. Link discovered work with `discovered-from`. NEVER use markdown TODO lists.
-
-**Load:** `skills/beads_workflow/SKILL.md`
-
----
-
-#### 🗺️ **Monorepo Navigation** (`monorepo_navigation`)
-**Load when:** Working with cross-spec dependencies
-
-**Use for:**
-- Looking for implementations of other WHATWG specs
-- Importing functionality from another spec (Infra, WebIDL, etc.)
-- Checking if a dependency is implemented
-- Understanding monorepo structure (`src/` directory)
-- Spec algorithm references another spec
-
-**Provides:** Monorepo structure, finding implementations (e.g., "Infra" → `src/infra/`), import patterns, implementation status checking, common dependencies
-
-**Quick reference:** Infra → `src/infra/` (used by nearly all specs), WebIDL → `src/webidl/` (type system)
-
-**Load:** `skills/monorepo_navigation/SKILL.md`
-
----
-
-#### 🎭 **Dependency Mocking** (`dependency_mocking`)
-**Load when:** A required dependency isn't implemented yet
-
-**Use for:**
-- Spec algorithm references unimplemented spec
-- `@import("spec-name")` fails (spec not in `src/`)
-- Unblocking development while waiting for dependency
-- Prototyping cross-spec interactions
-
-**Provides:** Mock creation patterns (minimal, stub, pass-through, simplified), clear markers (TEMPORARY MOCK + TODO), documentation template, tracking (bd issues), replacement workflow
-
-**Critical rule:** ALL mocks MUST be clearly marked as temporary with "TEMPORARY MOCK" in documentation, TODO with replacement instructions, and bd issue tracking real implementation.
-
-**Load:** `skills/dependency_mocking/SKILL.md`
-
----
-
-#### 🏗️ **WebIDL Code Generation** (`webidl_codegen`)
-**Load when:** Working with WebIDL code generation or `webidl/src/` files
-
-**Use for:**
-- Running `zig build codegen`
-- Modifying files in `webidl/src/`
-- Adding/updating WebIDL interfaces
-- Writing property getters/setters or spec methods
-
-**MANDATORY naming rules (ALWAYS enforced):**
-- Property getters → `get_` prefix (with underscore): `get_fatal()` NOT `getFatal()`
-- Property setters → `set_` prefix (with underscore): `set_encoding()` NOT `setEncoding()`
-- Spec public methods → `call_` prefix: `call_decode()` NOT `decode()`
-- init/deinit/internal → NO prefix: `init()` NOT `call_init()`
-
-**Pre-commit checklist:** All getters have `get_`, all setters have `set_`, all spec methods have `call_`, init/deinit have NO prefix, run `zig build codegen`
-
-**Load:** `skills/webidl_codegen/SKILL.md`
-
----
-
-#### ✅ **Pre-Commit Checks** (`pre_commit_checks`)
-**Load when:** Preparing to commit code
-
-**Use for:**
-- Ready to commit code
-- Running pre-commit hooks
-- Ensuring code quality before push
-- Handling pre-commit failures
-
-**Provides:** Pre-commit workflow (format → build → test), handling failures, tool integration (VS Code, Vim, Emacs), performance considerations
-
-**Core checks:** ✅ Code formatting (`zig fmt --check`), ✅ Build success (`zig build`), ✅ Test success (`zig build test`)
-
-**Critical rule:** Never commit unformatted, broken, or untested code.
-
-**Load:** `skills/pre_commit_checks/SKILL.md`
-
----
-
-#### 📝 **Commit Workflow** (`commit_workflow`)
-**Load when:** Doing any coding work
-
-**Use for:**
-- ALL coding work (ensures proper git workflow)
-- After completing features, bugfixes, or milestones
-- Writing commit messages
-
-**Core rule:** ALWAYS commit after completing a feature, bugfix, or milestone.
-
-**When to commit:** After each console method, abstract operation, TODO resolved, documentation pass, refactoring, or test suite addition
-
-**Commit format:**
-```
-<type>: <short description>
-
-<optional longer description>
-<optional spec reference>
-```
-
-**Types:** `feat`, `fix`, `refactor`, `docs`, `test`, `perf`, `chore`
-
-**Critical rules:** ❌ NEVER make giant commits. ✅ ALWAYS commit incrementally. ✅ ALWAYS run tests. ✅ ALWAYS format code. ✅ ALWAYS write meaningful messages.
-
-**Load:** `skills/commit_workflow/SKILL.md`
-
----
-
-#### ⚡ **Browser Benchmarking** (`browser_benchmarking`)
-**Load when:** Benchmarking implementation performance
-
-**Use for:**
-- Benchmarking against browser implementations
-- Comparing performance (Chrome, Firefox, Safari)
-- Identifying optimization opportunities
-- Measuring performance regressions
-- Setting performance targets
-
-**Provides:** Context-aware benchmarking (adapts to spec), browser comparison strategies, performance targets (realistic goals), optimization patterns (spec-specific), benchmark tools (Zig Timer, browser DevTools)
-
-**Key principle:** Measure before optimizing. Always benchmark current implementation before optimization.
-
-**Load:** `skills/browser_benchmarking/SKILL.md`
-
----
-
-### Skill Loading Workflow
-
-**Example workflow:**
-
-1. **Identify task:** "Implement URL parser algorithm"
-2. **Check catalog:** Need `whatwg` (spec implementation) and `zig` (Zig code)
-3. **Load skills:** Read `skills/whatwg/SKILL.md` and `skills/zig/SKILL.md`
-4. **Work on task:** Apply patterns from both skills
-5. **Ready to commit:** Load `skills/commit_workflow/SKILL.md`
-6. **Unload skills:** Clear loaded SKILL.md files from context to save tokens
-7. **Next task:** Repeat process
-
-**Remember:** Only keep skills in context while actively using them. Load and unload as needed to conserve tokens.
+## Skill Quick Reference
+
+For detailed skill information, see the **Dynamic Skill Loading System** section above.
+
+**Key skills for common tasks:**
+- **WHATWG spec work** → Load `whatwg` + `zig`
+- **Code writing** → Load `zig`
+- **Task tracking** → Load `beads_workflow`
+- **Cross-spec dependencies** → Load `monorepo_navigation`
+- **Missing dependencies** → Load `dependency_mocking`
+- **WebIDL codegen** → Load `webidl_codegen`
+- **Committing code** → Load `commit_workflow` + `pre_commit_checks`
+- **Benchmarking** → Load `browser_benchmarking`
+- **Unclear requirements** → `communication_protocol` (always active)
+
+**Remember:** Always announce skill loading/unloading with `🔧 Loading skill: <name>` and `✓ Unloading skill: <name>`
 
 ---
 
@@ -438,51 +506,6 @@ defer stream.deinit();
 - **Error cleanup** - use `errdefer` to clean up on error paths
 
 ---
-
-## Available Skills
-
-**Skills are autodiscovered** from the `skills/` directory. Each skill has a `USAGE.md` file that explains when to use it.
-
-### Discovering Skills
-
-**To see all available skills**, scan the `skills/` directory for subdirectories containing `USAGE.md` files:
-
-```bash
-ls -d skills/*/
-```
-
-**To learn when to use a skill**, read its `USAGE.md`:
-
-```bash
-# Example: Learn about the whatwg skill
-cat skills/whatwg/USAGE.md
-
-# Example: Learn about the zig skill
-cat skills/zig/USAGE.md
-```
-
-### Skill Loading
-
-Skills are **automatically loaded** based on:
-- **File path context** (e.g., working in `src/url/` loads `whatwg` skill)
-- **Task type** (e.g., writing tests loads `zig` skill)
-- **Explicit need** (e.g., cross-spec dependencies load `monorepo_navigation` skill)
-
-**You should proactively scan `skills/` to understand available skills and when to use each one.**
-
-### Skill Structure
-
-Each skill directory contains:
-- `USAGE.md` - **Concise** guide on when to use the skill (read this first)
-- `SKILL.md` - **Comprehensive** documentation with patterns and examples (read when using the skill)
-
-### How to Use Skills
-
-1. **Scan `skills/` directory** - See all available skills
-2. **Read `USAGE.md` files** - Understand when each skill applies
-3. **Load relevant skill** - Read full `SKILL.md` when you need detailed guidance
-4. **Apply patterns** - Use skill-specific patterns and examples
-
 
 ## Issue Tracking with bd (beads)
 
