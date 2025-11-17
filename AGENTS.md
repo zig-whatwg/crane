@@ -138,7 +138,229 @@ test "Encoding - UTF-8 decode" {
 
 ---
 
-This project uses **Agent Skills** for specialized knowledge areas. Skills are automatically loaded when relevant to your task.
+## Skill Catalog
+
+This project uses **Agent Skills** for specialized knowledge areas. Each skill provides deep expertise for specific tasks.
+
+### How Skills Work
+
+1. **Reference this catalog** to identify which skill(s) you need
+2. **Load the skill** by reading its `skills/<skill-name>/SKILL.md` file into context
+3. **Apply the skill's guidance** to your current task
+4. **Unload the skill** when done (clear from context to save tokens)
+
+### Available Skills
+
+#### 🔧 **WHATWG Spec Implementation** (`whatwg`)
+**Load when:** Implementing any WHATWG specification
+
+**Use for:**
+- Working in `src/url/`, `src/encoding/`, `src/streams/`, `src/infra/`, etc.
+- Reading and implementing WHATWG spec algorithms
+- Mapping spec concepts to Zig implementations
+- Understanding spec state machines and parsers
+
+**Provides:** Complete workflow from WHATWG spec to Zig - spec navigation, context detection, type mapping, implementation patterns, documentation format
+
+**Load:** `skills/whatwg/SKILL.md`
+
+---
+
+#### 🦎 **Zig Best Practices** (`zig`)
+**Load when:** Writing any Zig code
+
+**Use for:**
+- Writing or refactoring Zig code (any domain)
+- Memory management and performance
+- Testing and documentation
+- Algorithm implementation
+
+**Provides:** Universal Zig best practices - code quality (naming, errors, memory, types), performance (inline, preallocation, fast paths), testing (coverage, leak detection, TDD), documentation (public APIs)
+
+**Critical philosophy:** Public APIs MUST be documented and tested. Always use `std.testing.allocator` to detect leaks.
+
+**Load:** `skills/zig/SKILL.md`
+
+---
+
+#### 💬 **Communication Protocol** (`communication_protocol`)
+**Load when:** Requirements are ambiguous or unclear
+
+**Use for:**
+- Ambiguous requests with multiple interpretations
+- Missing key implementation details
+- Unclear scope or expected behavior
+- Any situation where you're unsure
+
+**Provides:** Protocol for asking clarifying questions - ask ONE question at a time, wait for answer, never assume, keep questions concise
+
+**Critical rule:** When in doubt, ask. It's better to get it right than implement the wrong thing quickly.
+
+**Load:** `skills/communication_protocol/SKILL.md`
+
+---
+
+#### 📋 **Task Tracking with Beads** (`beads_workflow`)
+**Load when:** Managing tasks and issues
+
+**Use for:**
+- ALL task tracking (checking what to work on, creating issues, updating status)
+- Tracking work progress
+- Creating dependency relationships (`discovered-from`)
+- Closing completed work
+
+**Provides:** Complete bd (beads) workflow - create, claim, update, close; dependency tracking; auto-sync with git; JSON output
+
+**Core commands:**
+```bash
+bd ready --json                     # Check ready work
+bd create "Title" -t bug -p 1       # Create issue
+bd update bd-N --status in_progress # Claim issue
+bd close bd-N --reason "Done"       # Complete work
+```
+
+**Critical rules:** Use bd for ALL task tracking. Always use `--json` flag. Link discovered work with `discovered-from`. NEVER use markdown TODO lists.
+
+**Load:** `skills/beads_workflow/SKILL.md`
+
+---
+
+#### 🗺️ **Monorepo Navigation** (`monorepo_navigation`)
+**Load when:** Working with cross-spec dependencies
+
+**Use for:**
+- Looking for implementations of other WHATWG specs
+- Importing functionality from another spec (Infra, WebIDL, etc.)
+- Checking if a dependency is implemented
+- Understanding monorepo structure (`src/` directory)
+- Spec algorithm references another spec
+
+**Provides:** Monorepo structure, finding implementations (e.g., "Infra" → `src/infra/`), import patterns, implementation status checking, common dependencies
+
+**Quick reference:** Infra → `src/infra/` (used by nearly all specs), WebIDL → `src/webidl/` (type system)
+
+**Load:** `skills/monorepo_navigation/SKILL.md`
+
+---
+
+#### 🎭 **Dependency Mocking** (`dependency_mocking`)
+**Load when:** A required dependency isn't implemented yet
+
+**Use for:**
+- Spec algorithm references unimplemented spec
+- `@import("spec-name")` fails (spec not in `src/`)
+- Unblocking development while waiting for dependency
+- Prototyping cross-spec interactions
+
+**Provides:** Mock creation patterns (minimal, stub, pass-through, simplified), clear markers (TEMPORARY MOCK + TODO), documentation template, tracking (bd issues), replacement workflow
+
+**Critical rule:** ALL mocks MUST be clearly marked as temporary with "TEMPORARY MOCK" in documentation, TODO with replacement instructions, and bd issue tracking real implementation.
+
+**Load:** `skills/dependency_mocking/SKILL.md`
+
+---
+
+#### 🏗️ **WebIDL Code Generation** (`webidl_codegen`)
+**Load when:** Working with WebIDL code generation or `webidl/src/` files
+
+**Use for:**
+- Running `zig build codegen`
+- Modifying files in `webidl/src/`
+- Adding/updating WebIDL interfaces
+- Writing property getters/setters or spec methods
+
+**MANDATORY naming rules (ALWAYS enforced):**
+- Property getters → `get_` prefix (with underscore): `get_fatal()` NOT `getFatal()`
+- Property setters → `set_` prefix (with underscore): `set_encoding()` NOT `setEncoding()`
+- Spec public methods → `call_` prefix: `call_decode()` NOT `decode()`
+- init/deinit/internal → NO prefix: `init()` NOT `call_init()`
+
+**Pre-commit checklist:** All getters have `get_`, all setters have `set_`, all spec methods have `call_`, init/deinit have NO prefix, run `zig build codegen`
+
+**Load:** `skills/webidl_codegen/SKILL.md`
+
+---
+
+#### ✅ **Pre-Commit Checks** (`pre_commit_checks`)
+**Load when:** Preparing to commit code
+
+**Use for:**
+- Ready to commit code
+- Running pre-commit hooks
+- Ensuring code quality before push
+- Handling pre-commit failures
+
+**Provides:** Pre-commit workflow (format → build → test), handling failures, tool integration (VS Code, Vim, Emacs), performance considerations
+
+**Core checks:** ✅ Code formatting (`zig fmt --check`), ✅ Build success (`zig build`), ✅ Test success (`zig build test`)
+
+**Critical rule:** Never commit unformatted, broken, or untested code.
+
+**Load:** `skills/pre_commit_checks/SKILL.md`
+
+---
+
+#### 📝 **Commit Workflow** (`commit_workflow`)
+**Load when:** Doing any coding work
+
+**Use for:**
+- ALL coding work (ensures proper git workflow)
+- After completing features, bugfixes, or milestones
+- Writing commit messages
+
+**Core rule:** ALWAYS commit after completing a feature, bugfix, or milestone.
+
+**When to commit:** After each console method, abstract operation, TODO resolved, documentation pass, refactoring, or test suite addition
+
+**Commit format:**
+```
+<type>: <short description>
+
+<optional longer description>
+<optional spec reference>
+```
+
+**Types:** `feat`, `fix`, `refactor`, `docs`, `test`, `perf`, `chore`
+
+**Critical rules:** ❌ NEVER make giant commits. ✅ ALWAYS commit incrementally. ✅ ALWAYS run tests. ✅ ALWAYS format code. ✅ ALWAYS write meaningful messages.
+
+**Load:** `skills/commit_workflow/SKILL.md`
+
+---
+
+#### ⚡ **Browser Benchmarking** (`browser_benchmarking`)
+**Load when:** Benchmarking implementation performance
+
+**Use for:**
+- Benchmarking against browser implementations
+- Comparing performance (Chrome, Firefox, Safari)
+- Identifying optimization opportunities
+- Measuring performance regressions
+- Setting performance targets
+
+**Provides:** Context-aware benchmarking (adapts to spec), browser comparison strategies, performance targets (realistic goals), optimization patterns (spec-specific), benchmark tools (Zig Timer, browser DevTools)
+
+**Key principle:** Measure before optimizing. Always benchmark current implementation before optimization.
+
+**Load:** `skills/browser_benchmarking/SKILL.md`
+
+---
+
+### Skill Loading Workflow
+
+**Example workflow:**
+
+1. **Identify task:** "Implement URL parser algorithm"
+2. **Check catalog:** Need `whatwg` (spec implementation) and `zig` (Zig code)
+3. **Load skills:** Read `skills/whatwg/SKILL.md` and `skills/zig/SKILL.md`
+4. **Work on task:** Apply patterns from both skills
+5. **Ready to commit:** Load `skills/commit_workflow/SKILL.md`
+6. **Unload skills:** Clear loaded SKILL.md files from context to save tokens
+7. **Next task:** Repeat process
+
+**Remember:** Only keep skills in context while actively using them. Load and unload as needed to conserve tokens.
+
+---
 
 ## WHATWG Specifications
 
@@ -175,7 +397,7 @@ WHATWG specifications frequently reference each other:
 - **Fetch** depends on: URL, Streams, Infra, WebIDL, MIME Sniff
 - **Console** depends on: WebIDL
 
-**Finding Dependencies**: Use the `monorepo_navigation` skill to locate implementations in `src/` or create temporary mocks for unimplemented specs.
+**Finding Dependencies**: Load the `monorepo_navigation` skill (`skills/monorepo_navigation/SKILL.md`) to locate implementations in `src/` or load `dependency_mocking` skill (`skills/dependency_mocking/SKILL.md`) to create temporary mocks for unimplemented specs.
 
 ## Memory Management
 
@@ -390,7 +612,7 @@ history/
 - ❌ Do NOT duplicate tracking systems
 - ❌ Do NOT clutter repo root with planning documents
 
-For complete details, see `skills/beads_workflow/SKILL.md`.
+For complete details, load `skills/beads_workflow/SKILL.md` into context.
 
 ---
 
@@ -476,20 +698,22 @@ When a spec depends on another spec, check `src/` for implementation. If not imp
 1. **Check bd for issue** - `bd ready --json` or create new issue if needed
 2. **Claim the issue** - `bd update bd-N --status in_progress --json`
 3. **Identify context** - Determine which spec you're implementing (from file path or issue description)
-4. **Read spec** - Load complete spec from `specs/[spec-name].md`
-5. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
-6. **Check dependencies** - Use `monorepo_navigation` skill to find required specs in `src/`
-7. **Handle missing dependencies** - Create temporary mocks if needed using `dependency_mocking` skill
-8. **Write tests first** - Test all algorithm steps and edge cases
-9. **Implement precisely** - Follow spec steps exactly, numbered comments
-10. **Verify** - No leaks, all tests pass, pre-commit checks pass
-11. **✅ COMMIT** - `git add -A && git commit` with descriptive message (see Golden Rule #7)
-12. **Document** - Inline docs with spec references
-13. **Update CHANGELOG.md** - Document what was added
-14. **✅ COMMIT** - Commit documentation changes
-15. **Update FEATURE_CATALOG.md** if user-facing API
-16. **✅ COMMIT** - Commit catalog update
-17. **Close issue** - `bd close bd-N --reason "Implemented" --json`
+4. **Load skills** - Load `skills/whatwg/SKILL.md` and `skills/zig/SKILL.md` into context
+5. **Read spec** - Load complete spec from `specs/[spec-name].md`
+6. **Understand full algorithm** - Read all steps with context, dependencies, and edge cases
+7. **Check dependencies** - Load `skills/monorepo_navigation/SKILL.md` to find required specs in `src/`
+8. **Handle missing dependencies** - Load `skills/dependency_mocking/SKILL.md` to create temporary mocks if needed
+9. **Write tests first** - Test all algorithm steps and edge cases
+10. **Implement precisely** - Follow spec steps exactly, numbered comments
+11. **Verify** - No leaks, all tests pass, load `skills/pre_commit_checks/SKILL.md` if needed
+12. **✅ COMMIT** - Load `skills/commit_workflow/SKILL.md`, then `git add -A && git commit` with descriptive message
+13. **Document** - Inline docs with spec references
+14. **Update CHANGELOG.md** - Document what was added
+15. **✅ COMMIT** - Commit documentation changes
+16. **Update FEATURE_CATALOG.md** if user-facing API
+17. **✅ COMMIT** - Commit catalog update
+18. **Unload skills** - Clear SKILL.md files from context to save tokens
+19. **Close issue** - `bd close bd-N --reason "Implemented" --json`
 
 **Remember:** Commit after EACH working step. Don't accumulate changes.
 
@@ -607,32 +831,25 @@ pub const SpecError = error{
 ```
 skills/
 ├── whatwg/                  # ⭐ WHATWG spec reading + Zig implementation
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when implementing WHATWG specs
 ├── zig/                     # ⭐ Modern Zig: quality, performance, testing, docs
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when writing Zig code
 ├── communication_protocol/  # ⭐ Ask clarifying questions when unclear
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when requirements unclear
 ├── browser_benchmarking/    # Benchmarking strategies
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when benchmarking performance
 ├── pre_commit_checks/       # Automated quality checks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when preparing to commit
 ├── beads_workflow/          # ⭐ Task tracking with bd (beads)
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when managing tasks/issues
 ├── monorepo_navigation/     # ⭐ Finding dependencies in monorepo
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when working with cross-spec deps
 ├── dependency_mocking/      # ⭐ Creating temporary mocks
-│   ├── USAGE.md             # When to use (autodiscovery)
-│   └── SKILL.md             # Complete documentation
-└── webidl_codegen/          # ⭐ WebIDL code generation
-    ├── USAGE.md             # When to use (autodiscovery)
-    └── SKILL.md             # Complete documentation
+│   └── SKILL.md             # Load when dependency not implemented
+├── webidl_codegen/          # ⭐ WebIDL code generation
+│   └── SKILL.md             # Load when working with webidl/src/
+└── commit_workflow/         # ⭐ Git commit workflow
+    └── SKILL.md             # Load when doing coding work
 
 specs/                       # Complete WHATWG specification files
 ├── url.md                   # URL Standard
@@ -786,7 +1003,7 @@ Before creating any markdown or script file:
 Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 
 **Finding Internal Dependencies:**
-1. **Use `monorepo_navigation` skill** - Automatically detects and locates dependencies
+1. **Load `skills/monorepo_navigation/SKILL.md`** - Learn how to detect and locate dependencies
 2. **Check `src/` directory** - Each spec has its own subdirectory
 3. **Import patterns** - `@import("url")`, `@import("infra")`, etc.
 
@@ -796,7 +1013,7 @@ Most WHATWG specs depend on other WHATWG specs implemented in this monorepo:
 - URL, Fetch, and others depend on each other
 
 **If Dependency Not Implemented:**
-1. **Use `dependency_mocking` skill** - Create temporary mock with clear markers
+1. **Load `skills/dependency_mocking/SKILL.md`** - Learn how to create temporary mock with clear markers
 2. **Mark as TODO** - Indicate this must be replaced with real implementation
 3. **Track in bd** - Create issue to implement the dependency
 
@@ -815,21 +1032,21 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 - `webidl.namespace(struct { ... })` - WebIDL namespace (static-only operations)
 - `webidl.mixin(struct { ... })` - WebIDL interface mixin (reusable member bundles)
 
-**See:** `skills/webidl_codegen/SKILL.md` for complete documentation
+**See:** Load `skills/webidl_codegen/SKILL.md` into context for complete documentation
 
 ---
 
 ## When in Doubt
 
-1. **ASK A CLARIFYING QUESTION** ⭐ - Don't assume, just ask (one question at a time)
+1. **ASK A CLARIFYING QUESTION** ⭐ - Load `skills/communication_protocol/SKILL.md` if needed. Don't assume, just ask (one question at a time)
 2. **Check bd for existing issues** - `bd ready --json` - See if work is already tracked
 3. **Have you committed recently?** ⭐⭐⭐ - If you have working changes, commit them NOW
 4. **Creating files?** - Put generated docs/scripts in `tmp/` unless explicitly requested otherwise
 5. **Identify context** - Which spec are you working on? (file path, imports)
 6. **Read the WHATWG spec** - Load complete spec from `specs/[spec-name].md`
 7. **Read the complete section** - Context matters, never rely on fragments
-8. **Check dependencies** - Use `monorepo_navigation` to find implementations
-9. **Load relevant skills** - Get specialized, context-aware guidance
+8. **Check dependencies** - Load `skills/monorepo_navigation/SKILL.md` to find implementations
+9. **Load relevant skills** - Check the Skill Catalog and load the SKILL.md files you need
 10. **Look at existing tests** - See patterns in similar specs
 11. **Check FEATURE_CATALOG.md** - See existing API patterns
 12. **Follow the Golden Rules** - Especially algorithm precision, committing, and dependency handling
@@ -862,18 +1079,18 @@ The WebIDL code generation system is built-in to this monorepo at `src/webidl/co
 5. **Test against browsers** - Verify behavior matches Chrome, Firefox, Safari
 
 **Context Detection**:
-- The skills will automatically detect which spec you're working on from file paths
-- Use `whatwg_spec` skill for spec-specific guidance
-- Use `monorepo_navigation` skill to find related implementations
+- Identify which spec you're working on from file paths and imports
+- Load `skills/whatwg/SKILL.md` for spec-specific implementation guidance
+- Load `skills/monorepo_navigation/SKILL.md` to find related implementations
 
 ---
 
 **Quality over speed.** Take time to do it right. The codebase is production-ready and must stay that way.
 
-**Skills are context-aware.** They adapt to the spec you're working on. Load skills for deep expertise.
+**Skills provide deep expertise.** Check the Skill Catalog, load the SKILL.md files you need, apply their guidance, then unload to save tokens.
 
 **WHATWG specs define the web.** Browser compatibility depends on correct implementations. Precision matters.
 
-**Cross-spec dependencies matter.** Use `monorepo_navigation` and `dependency_mocking` skills to handle them correctly.
+**Cross-spec dependencies matter.** Load `skills/monorepo_navigation/SKILL.md` and `skills/dependency_mocking/SKILL.md` to handle them correctly.
 
 **Thank you for maintaining the high quality standards of this project!** 🎉
