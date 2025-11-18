@@ -1,0 +1,34 @@
+//! Implementation for WindowSessionStorage interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const WindowSessionStorage = @import("interfaces").WindowSessionStorage;
+
+pub const State = WindowSessionStorage.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance
+pub fn init(instance: *runtime.Instance) void {
+    _ = instance;
+    // TODO: Initialize your instance state here
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    _ = instance;
+    // TODO: Clean up your instance resources here
+}
+
+/// Getter for sessionStorage
+pub fn get_sessionStorage(instance: *runtime.Instance) ImplError!anyopaque {
+    _ = instance;
+    // TODO: Implement getter
+    return error.NotImplemented;
+}
+

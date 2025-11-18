@@ -43,8 +43,9 @@ comptime {
     _ = webidl.TypedArray;
 
     // Encoding - ALL generated interfaces
-    _ = encoding.TextEncoder;
-    _ = encoding.TextDecoder;
+    // TODO: Re-enable when TextEncoder/TextDecoder are re-implemented with runtime
+    // _ = encoding.TextEncoder;
+    // _ = encoding.TextDecoder;
     _ = encoding.Encoding;
     _ = encoding.utf8Encode;
     _ = encoding.utf8Decode;
@@ -69,10 +70,11 @@ comptime {
     _ = url.equivalence;
 
     // Console
-    _ = console.console;
-    _ = console.types;
+    // TODO: Re-enable when console interfaces are re-implemented with runtime
+    // _ = console.console;
+    // _ = console.types;
 
-    // Streams - ALL generated interfaces (15 total)
+    // Streams - ALL generated interfaces (using runtime system)
     _ = streams.ReadableStream;
     _ = streams.ReadableStreamDefaultReader;
     _ = streams.ReadableStreamBYOBReader;
@@ -86,9 +88,8 @@ comptime {
     _ = streams.TransformStreamDefaultController;
     _ = streams.ByteLengthQueuingStrategy;
     _ = streams.CountQueuingStrategy;
-    _ = streams.ReadableStreamIterator;
 
-    // DOM - ALL generated interfaces (13 currently exported)
+    // DOM - ALL generated interfaces (using runtime system)
     _ = dom.AbortController;
     _ = dom.AbortSignal;
     _ = dom.EventTarget;

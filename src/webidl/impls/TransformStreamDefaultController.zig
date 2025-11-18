@@ -1,0 +1,57 @@
+//! Implementation for TransformStreamDefaultController interface
+//!
+//! This file is AUTO-GENERATED on first creation.
+//! Add your custom implementation here.
+
+const std = @import("std");
+const runtime = @import("runtime");
+const TransformStreamDefaultController = @import("interfaces").TransformStreamDefaultController;
+
+pub const State = TransformStreamDefaultController.State;
+
+pub const ImplError = error{
+    NotImplemented,
+};
+
+/// Initialize instance
+pub fn init(instance: *runtime.Instance) void {
+    _ = instance;
+    // TODO: Initialize your instance state here
+}
+
+/// Deinitialize instance
+pub fn deinit(instance: *runtime.Instance) void {
+    _ = instance;
+    // TODO: Clean up your instance resources here
+}
+
+/// Getter for desiredSize
+pub fn get_desiredSize(instance: *runtime.Instance) ImplError!anyopaque {
+    _ = instance;
+    // TODO: Implement getter
+    return error.NotImplemented;
+}
+
+/// Operation: enqueue
+pub fn call_enqueue(instance: *runtime.Instance, chunk: anyopaque) ImplError!void {
+    _ = instance;
+    _ = chunk;
+    // TODO: Implement operation
+    return error.NotImplemented;
+}
+
+/// Operation: error
+pub fn call_error(instance: *runtime.Instance, reason: anyopaque) ImplError!void {
+    _ = instance;
+    _ = reason;
+    // TODO: Implement operation
+    return error.NotImplemented;
+}
+
+/// Operation: terminate
+pub fn call_terminate(instance: *runtime.Instance) ImplError!void {
+    _ = instance;
+    // TODO: Implement operation
+    return error.NotImplemented;
+}
+

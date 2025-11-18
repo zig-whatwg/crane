@@ -1,0 +1,47 @@
+//! WebIDL dictionary: AuctionAdConfig
+//!
+//! This file is AUTO-GENERATED. Do not edit manually.
+
+const runtime = @import("runtime");
+
+pub const AuctionAdConfig = struct {
+    seller: runtime.DOMString,
+    decisionLogicURL: runtime.DOMString,
+    trustedScoringSignalsURL: ?runtime.DOMString = null,
+    maxTrustedScoringSignalsURLLength: ?i32 = null,
+    trustedScoringSignalsCoordinator: ?runtime.DOMString = null,
+    sendCreativeScanningMetadata: ?bool = null,
+    interestGroupBuyers: ?anyopaque = null,
+    auctionSignals: ?anyopaque = null,
+    sellerSignals: ?anyopaque = null,
+    directFromSellerSignalsHeaderAdSlot: ?anyopaque = null,
+    deprecatedRenderURLReplacements: ?anyopaque = null,
+    sellerTimeout: ?u64 = null,
+    sellerExperimentGroupId: ?u16 = null,
+    perBuyerSignals: ?anyopaque = null,
+    perBuyerTimeouts: ?anyopaque = null,
+    perBuyerCumulativeTimeouts: ?anyopaque = null,
+    reportingTimeout: ?u64 = null,
+    sellerCurrency: ?runtime.DOMString = null,
+    perBuyerCurrencies: ?anyopaque = null,
+    perBuyerMultiBidLimits: ?anyopaque = null,
+    perBuyerGroupLimits: ?anyopaque = null,
+    perBuyerExperimentGroupIds: ?anyopaque = null,
+    perBuyerPrioritySignals: ?anyopaque = null,
+    auctionReportBuyerKeys: ?anyopaque = null,
+    auctionReportBuyers: ?anyopaque = null,
+    auctionReportBuyerDebugModeConfig: ?anyopaque = null,
+    requiredSellerCapabilities: ?anyopaque = null,
+    privateAggregationConfig: ?anyopaque = null,
+    requestedSize: ?anyopaque = null,
+    allSlotsRequestedSizes: ?anyopaque = null,
+    additionalBids: ?anyopaque = null,
+    auctionNonce: ?runtime.DOMString = null,
+    sellerRealTimeReportingConfig: ?anyopaque = null,
+    perBuyerRealTimeReportingConfig: ?anyopaque = null,
+    componentAuctions: ?anyopaque = null,
+    signal: ?anyopaque = null,
+    resolveToConfig: ?anyopaque = null,
+    serverResponse: ?anyopaque = null,
+    requestId: ?runtime.DOMString = null,
+};

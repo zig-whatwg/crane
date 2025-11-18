@@ -90,18 +90,16 @@ test {
     std.testing.refAllDecls(@This());
 }
 
-
 // WebIDL API exports (§7) - from interfaces/
-// Note: Dictionary types (TextEncoderEncodeIntoResult, TextDecoderOptions, TextDecodeOptions)
-// are now exported from their parent modules since they're not separate modules
-const text_encoder_mod = @import("text_encoder");
-pub const TextEncoder = text_encoder_mod.TextEncoder;
-pub const TextEncoderEncodeIntoResult = text_encoder_mod.TextEncoderEncodeIntoResult;
-
-const text_decoder_mod = @import("text_decoder");
-pub const TextDecoder = text_decoder_mod.TextDecoder;
-pub const TextDecoderOptions = text_decoder_mod.TextDecoderOptions;
-pub const TextDecodeOptions = text_decoder_mod.TextDecodeOptions;
+// TODO: Re-implement TextEncoder and TextDecoder using the runtime system
+// These were previously in webidl/generated/ but have been removed during cleanup
+// const text_encoder_mod = @import("text_encoder");
+// pub const TextEncoder = text_encoder_mod.TextEncoder;
+// pub const TextEncoderEncodeIntoResult = text_encoder_mod.TextEncoderEncodeIntoResult;
+//
+// const text_decoder_mod = @import("text_decoder");
+// pub const TextDecoder = text_decoder_mod.TextDecoder;
+// pub const TextDecoderOptions = text_decoder_mod.TextDecoderOptions;
+// pub const TextDecodeOptions = text_decoder_mod.TextDecodeOptions;
 
 // Test generated interfaces with mixin composition
-

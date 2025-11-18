@@ -1,20 +1,42 @@
-//! By convention, root.zig is the root source file when making a library.
+//! WHATWG Standards Implementation in Zig
+//!
+//! This library provides Zig implementations of WHATWG specifications:
+//! - Infra (common primitives)
+//! - WebIDL (type system)
+//! - Runtime (WebIDL runtime infrastructure)
+//! - DOM (Document Object Model)
+//! - Encoding (text encoding/decoding)
+//! - URL (URL parsing and manipulation)
+//! - Console (console APIs)
+//! - Streams (streaming data)
+//! - MIME Sniff (MIME type detection)
+
 const std = @import("std");
 
-pub fn bufferedPrint() !void {
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
+// Export all spec modules
+pub const infra = @import("infra");
+pub const webidl = @import("webidl");
+pub const runtime = @import("runtime");
+pub const dom = @import("dom");
+pub const encoding = @import("encoding");
+pub const url = @import("url");
+pub const console = @import("console");
+pub const streams = @import("streams");
+pub const mimesniff = @import("mimesniff");
+pub const interfaces = @import("interfaces");
+pub const impls = @import("impls");
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    try stdout.flush(); // Don't forget to flush!
+test {
+    // Import all submodule tests
+    _ = infra;
+    _ = webidl;
+    _ = runtime;
+    _ = dom;
+    _ = encoding;
+    _ = url;
+    _ = console;
+    _ = streams;
+    _ = mimesniff;
+    _ = interfaces;
+    _ = impls;
 }
-
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-

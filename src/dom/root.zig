@@ -8,47 +8,44 @@ const std = @import("std");
 pub const infra = @import("infra");
 pub const webidl = @import("webidl");
 
-// WebIDL generated interfaces
-pub const AbortSignal = @import("abort_signal").AbortSignal;
-pub const AbortController = @import("abort_controller").AbortController;
-pub const EventTarget = @import("event_target").EventTarget;
-pub const Event = @import("event").Event;
-pub const Node = @import("node").Node;
-pub const NodeList = @import("node_list").NodeList;
-pub const NamedNodeMap = @import("named_node_map").NamedNodeMap;
-pub const Element = @import("element").Element;
-pub const CharacterData = @import("character_data").CharacterData;
-pub const Text = @import("text").Text;
-pub const Comment = @import("comment").Comment;
-pub const ProcessingInstruction = @import("processing_instruction").ProcessingInstruction;
-pub const CDATASection = @import("cdata_section").CDATASection;
-pub const DocumentType = @import("document_type").DocumentType;
-pub const DocumentFragment = @import("document_fragment").DocumentFragment;
-pub const ShadowRoot = @import("shadow_root").ShadowRoot;
-pub const ShadowRootMode = @import("shadow_root").ShadowRootMode;
-pub const SlotAssignmentMode = @import("shadow_root").SlotAssignmentMode;
-pub const ShadowRootInit = @import("shadow_root_init").ShadowRootInit;
-pub const HTMLSlotElement = @import("html_slot_element").HTMLSlotElement;
-pub const DOMTokenList = @import("dom_token_list").DOMTokenList;
-pub const Attr = @import("attr").Attr;
-pub const DOMImplementation = @import("dom_implementation").DOMImplementation;
-pub const Document = @import("document").Document;
-pub const AbstractRange = @import("abstract_range").AbstractRange;
-pub const StaticRange = @import("static_range").StaticRange;
-pub const Range = @import("range").Range;
-pub const NodeFilter = @import("node_filter").NodeFilter;
-pub const NodeIterator = @import("node_iterator").NodeIterator;
-pub const TreeWalker = @import("tree_walker").TreeWalker;
-pub const MutationRecord = @import("mutation_record").MutationRecord;
-pub const MutationObserver = @import("mutation_observer").MutationObserver;
-pub const MutationObserverInit = @import("mutation_observer_init").MutationObserverInit;
-pub const RegisteredObserver = @import("registered_observer").RegisteredObserver;
-pub const TransientRegisteredObserver = @import("registered_observer").TransientRegisteredObserver;
+// WebIDL interface definitions (from src/interfaces/)
+// These use the runtime system for VTable dispatch and memory management
+const interfaces = @import("interfaces");
+
+pub const AbortSignal = interfaces.AbortSignal;
+pub const AbortController = interfaces.AbortController;
+pub const EventTarget = interfaces.EventTarget;
+pub const Event = interfaces.Event;
+pub const Node = interfaces.Node;
+pub const NodeList = interfaces.NodeList;
+pub const NamedNodeMap = interfaces.NamedNodeMap;
+pub const Element = interfaces.Element;
+pub const CharacterData = interfaces.CharacterData;
+pub const Text = interfaces.Text;
+pub const Comment = interfaces.Comment;
+pub const ProcessingInstruction = interfaces.ProcessingInstruction;
+pub const CDATASection = interfaces.CDATASection;
+pub const DocumentType = interfaces.DocumentType;
+pub const DocumentFragment = interfaces.DocumentFragment;
+pub const ShadowRoot = interfaces.ShadowRoot;
+pub const HTMLSlotElement = interfaces.HTMLSlotElement;
+pub const DOMTokenList = interfaces.DOMTokenList;
+pub const Attr = interfaces.Attr;
+pub const DOMImplementation = interfaces.DOMImplementation;
+pub const Document = interfaces.Document;
+pub const AbstractRange = interfaces.AbstractRange;
+pub const StaticRange = interfaces.StaticRange;
+pub const Range = interfaces.Range;
+pub const NodeFilter = interfaces.NodeFilter;
+pub const NodeIterator = interfaces.NodeIterator;
+pub const TreeWalker = interfaces.TreeWalker;
+pub const MutationRecord = interfaces.MutationRecord;
+pub const MutationObserver = interfaces.MutationObserver;
 
 // XPath interfaces
-pub const XPathResult = @import("xpath_result").XPathResult;
-pub const XPathExpression = @import("xpath_expression").XPathExpression;
-pub const XPathEvaluator = @import("xpath_evaluator").XPathEvaluator;
+pub const XPathResult = interfaces.XPathResult;
+pub const XPathExpression = interfaces.XPathExpression;
+pub const XPathEvaluator = interfaces.XPathEvaluator;
 
 // DOM implementation algorithms
 pub const tree = @import("tree.zig");

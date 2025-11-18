@@ -78,26 +78,29 @@ pub const internal = struct {
     };
 };
 
-// Queuing strategy classes (from interfaces/)
-pub const ByteLengthQueuingStrategy = @import("byte_length_queuing_strategy").ByteLengthQueuingStrategy;
-pub const CountQueuingStrategy = @import("count_queuing_strategy").CountQueuingStrategy;
+// WebIDL interface definitions (from src/interfaces/)
+// These use the runtime system for VTable dispatch and memory management
+const interfaces = @import("interfaces");
 
-// Controller classes (from interfaces/)
-pub const ReadableStreamDefaultController = @import("readable_stream_default_controller").ReadableStreamDefaultController;
-pub const WritableStreamDefaultController = @import("writable_stream_default_controller").WritableStreamDefaultController;
-pub const TransformStreamDefaultController = @import("transform_stream_default_controller").TransformStreamDefaultController;
-pub const ReadableStreamBYOBRequest = @import("readable_stream_byob_request").ReadableStreamBYOBRequest;
-pub const ReadableByteStreamController = @import("readable_byte_stream_controller").ReadableByteStreamController;
+// Queuing strategy classes
+pub const ByteLengthQueuingStrategy = interfaces.ByteLengthQueuingStrategy;
+pub const CountQueuingStrategy = interfaces.CountQueuingStrategy;
 
-// Stream classes (from interfaces/)
-pub const ReadableStream = @import("readable_stream").ReadableStream;
+// Controller classes
+pub const ReadableStreamDefaultController = interfaces.ReadableStreamDefaultController;
+pub const WritableStreamDefaultController = interfaces.WritableStreamDefaultController;
+pub const TransformStreamDefaultController = interfaces.TransformStreamDefaultController;
+pub const ReadableStreamBYOBRequest = interfaces.ReadableStreamBYOBRequest;
+pub const ReadableByteStreamController = interfaces.ReadableByteStreamController;
+
+// Stream classes
+pub const ReadableStream = interfaces.ReadableStream;
 // Note: ReadableStreamGenericReader is a mixin, not a public interface - used internally
-pub const ReadableStreamDefaultReader = @import("readable_stream_default_reader").ReadableStreamDefaultReader;
-pub const ReadableStreamBYOBReader = @import("readable_stream_byob_reader").ReadableStreamBYOBReader;
-pub const ReadableStreamIterator = @import("readable_stream").ReadableStreamIterator;
-pub const WritableStream = @import("writable_stream").WritableStream;
-pub const WritableStreamDefaultWriter = @import("writable_stream_default_writer").WritableStreamDefaultWriter;
-pub const TransformStream = @import("transform_stream").TransformStream;
+pub const ReadableStreamDefaultReader = interfaces.ReadableStreamDefaultReader;
+pub const ReadableStreamBYOBReader = interfaces.ReadableStreamBYOBReader;
+pub const WritableStream = interfaces.WritableStream;
+pub const WritableStreamDefaultWriter = interfaces.WritableStreamDefaultWriter;
+pub const TransformStream = interfaces.TransformStream;
 // Note: GenericTransformStream is a mixin, not a public interface - used by other specs
 
 // Re-export commonly used types

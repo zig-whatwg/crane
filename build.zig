@@ -1,109 +1,5 @@
 const std = @import("std");
 
-/// Auto-discover and create modules for all .zig files in a directory
-fn autoDiscoverModules(
-    b: *std.Build,
-    allocator: std.mem.Allocator,
-    target: std.Build.ResolvedTarget,
-    base_dir: []const u8,
-    dependencies: []const std.Build.Module.Import,
-) !std.StringHashMap(*std.Build.Module) {
-    var modules = std.StringHashMap(*std.Build.Module).init(allocator);
-
-    var dir = try std.fs.cwd().openDir(base_dir, .{ .iterate = true });
-    defer dir.close();
-
-    var walker = try dir.walk(allocator);
-    defer walker.deinit();
-
-    while (try walker.next()) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.endsWith(u8, entry.path, ".zig")) continue;
-
-        // Skip root.zig files (these are usually parent module roots)
-        if (std.mem.endsWith(u8, entry.path, "root.zig")) continue;
-
-        // Build full path
-        const full_path = try std.fmt.allocPrint(allocator, "{s}/{s}", .{ base_dir, entry.path });
-        defer allocator.free(full_path);
-
-        // Create module name from file path
-        const module_name = try filePathToModuleName(allocator, entry.path);
-
-        // Create module with provided dependencies
-        const mod = b.createModule(.{
-            .root_source_file = b.path(full_path),
-            .target = target,
-            .imports = dependencies,
-        });
-
-        try modules.put(module_name, mod);
-    }
-
-    return modules;
-}
-
-/// Auto-discover and create modules for all .zig files in webidl/generated/
-fn createWebIDLModules(
-    b: *std.Build,
-    allocator: std.mem.Allocator,
-    target: std.Build.ResolvedTarget,
-    infra_mod: *std.Build.Module,
-    webidl_mod: *std.Build.Module,
-) !std.StringHashMap(*std.Build.Module) {
-    const deps = &[_]std.Build.Module.Import{
-        .{ .name = "infra", .module = infra_mod },
-        .{ .name = "webidl", .module = webidl_mod },
-    };
-    return autoDiscoverModules(b, allocator, target, "webidl/generated", deps);
-}
-
-/// Helper to get a module from the hashmap or exit with error
-fn getWebIDLModule(modules: std.StringHashMap(*std.Build.Module), name: []const u8) *std.Build.Module {
-    return modules.get(name) orelse {
-        std.debug.print("FATAL: WebIDL module '{s}' not found in auto-discovered modules\n", .{name});
-        std.debug.print("Available modules:\n", .{});
-        var it = modules.iterator();
-        while (it.next()) |entry| {
-            std.debug.print("  - {s}\n", .{entry.key_ptr.*});
-        }
-        std.process.exit(1);
-    };
-}
-
-/// Convert file path to module name: encoding/TextEncoder.zig -> encoding_text_encoder
-fn filePathToModuleName(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
-    // Remove .zig extension
-    const without_ext = if (std.mem.endsWith(u8, path, ".zig"))
-        path[0 .. path.len - 4]
-    else
-        path;
-
-    // Replace / and convert PascalCase to snake_case
-    var result = std.ArrayList(u8){};
-    defer result.deinit(allocator);
-
-    var prev_was_upper = false;
-    for (without_ext, 0..) |c, i| {
-        if (c == '/' or c == '\\') {
-            try result.append(allocator, '_');
-            prev_was_upper = false;
-        } else if (std.ascii.isUpper(c)) {
-            // Add underscore before uppercase if previous wasn't uppercase (except at start or after separator)
-            if (i > 0 and result.items.len > 0 and result.items[result.items.len - 1] != '_' and !prev_was_upper) {
-                try result.append(allocator, '_');
-            }
-            try result.append(allocator, std.ascii.toLower(c));
-            prev_was_upper = true;
-        } else {
-            try result.append(allocator, c);
-            prev_was_upper = false;
-        }
-    }
-
-    return result.toOwnedSlice(allocator);
-}
-
 /// Helper function to add all .zig test files from a directory
 fn addTestFilesFromDir(
     builder: *std.Build,
@@ -185,48 +81,6 @@ pub fn build(b: *std.Build) void {
     }
 
     // ========================================================================
-    // WEBIDL CODEGEN STEP
-    // ========================================================================
-    //
-    // Build webidl-codegen executable from our internal codegen implementation.
-    // This scans webidl/src/ for webidl.interface() and webidl.namespace()
-    // declarations and generates enhanced code in webidl/generated/.
-
-    // Build webidl-codegen executable
-    // Note: Codegen needs infra module for List type used in AST/IR pipeline
-    const codegen_infra_mod = b.addModule("infra", .{
-        .root_source_file = b.path("src/infra/root.zig"),
-        .target = target,
-    });
-
-    const webidl_codegen_exe = b.addExecutable(.{
-        .name = "webidl-codegen",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/webidl/codegen/codegen_main.zig"),
-            .target = target,
-            .optimize = optimize,
-        }),
-    });
-    webidl_codegen_exe.root_module.addImport("infra", codegen_infra_mod);
-    b.installArtifact(webidl_codegen_exe);
-
-    // Run codegen: scan webidl/src/, output to webidl/generated/
-    const webidl_codegen = b.addRunArtifact(webidl_codegen_exe);
-    webidl_codegen.addArgs(&.{
-        "--source-dir",
-        "webidl/src",
-        "--output-dir",
-        "webidl/generated",
-        "--getter-prefix",
-        "get_",
-        "--setter-prefix",
-        "set_",
-    });
-
-    const codegen_step = b.step("codegen", "Run WebIDL code generation for all specs");
-    codegen_step.dependOn(&webidl_codegen.step);
-
-    // ========================================================================
     // LIBRARY MODULE
     // ========================================================================
 
@@ -234,13 +88,6 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/root.zig"),
         .target = target,
     });
-
-    // ========================================================================
-    // GENERATED INTERFACE MODULES
-    // ========================================================================
-    //
-    // NOTE: Generated interfaces are imported directly by spec modules.
-    // Legacy standalone interface modules removed.
 
     // ========================================================================
     // INDIVIDUAL SPEC MODULES
@@ -257,434 +104,42 @@ pub fn build(b: *std.Build) void {
     });
     webidl_mod.addImport("infra", infra_mod);
 
+    // Runtime module (WebIDL runtime infrastructure)
+    const runtime_mod = b.addModule("runtime", .{
+        .root_source_file = b.path("src/runtime/root.zig"),
+        .target = target,
+    });
+    runtime_mod.addImport("webidl", webidl_mod);
+
     // ========================================================================
-    // AUTO-DISCOVER WEBIDL GENERATED MODULES
+    // INTERFACES MODULE (WebIDL interface definitions)
+    // All interfaces in one module so they can import each other with relative paths
     // ========================================================================
-    // Automatically create modules for all .zig files in webidl/generated/
-    // This eliminates the need to manually register each generated interface.
-    const webidl_modules = createWebIDLModules(
-        b,
-        b.allocator,
-        target,
-        infra_mod,
-        webidl_mod,
-    ) catch |err| {
-        std.debug.print("Failed to create WebIDL modules: {}\n", .{err});
-        std.process.exit(1);
-    };
+
+    const interfaces_mod = b.addModule("interfaces", .{
+        .root_source_file = b.path("src/interfaces/root.zig"),
+        .target = target,
+    });
+    interfaces_mod.addImport("runtime", runtime_mod);
+
     // ========================================================================
-    // DOM MODULE SETUP
+    // IMPLEMENTATIONS MODULE (WebIDL interface implementations)
     // ========================================================================
-    // DOM interfaces are now auto-discovered. Extract commonly-used ones for
-    // convenience and add cross-module references.
 
-    // Get auto-discovered modules
-    const event_target_mod = getWebIDLModule(webidl_modules, "dom_event_target");
-    const event_mod = getWebIDLModule(webidl_modules, "dom_event");
-    const abort_signal_mod = getWebIDLModule(webidl_modules, "dom_abort_signal");
-    const abort_controller_mod = getWebIDLModule(webidl_modules, "dom_abort_controller");
-    const node_list_mod = getWebIDLModule(webidl_modules, "dom_node_list");
-    const named_node_map_mod = getWebIDLModule(webidl_modules, "dom_named_node_map");
-    const html_collection_mod = getWebIDLModule(webidl_modules, "dom_htmlcollection");
-    html_collection_mod.addImport("infra", infra_mod);
-    html_collection_mod.addImport("webidl", webidl_mod);
-    const node_mod = getWebIDLModule(webidl_modules, "dom_node");
-    const element_mod = getWebIDLModule(webidl_modules, "dom_element");
-    const character_data_mod = getWebIDLModule(webidl_modules, "dom_character_data");
-    const text_mod = getWebIDLModule(webidl_modules, "dom_text");
-    const comment_mod = getWebIDLModule(webidl_modules, "dom_comment");
-    const processing_instruction_mod = getWebIDLModule(webidl_modules, "dom_processing_instruction");
-    const cdata_section_mod = getWebIDLModule(webidl_modules, "dom_cdatasection");
-    const document_type_mod = getWebIDLModule(webidl_modules, "dom_document_type");
-    const document_fragment_mod = getWebIDLModule(webidl_modules, "dom_document_fragment");
-    const document_mod = getWebIDLModule(webidl_modules, "dom_document");
-    const dom_token_list_mod = getWebIDLModule(webidl_modules, "dom_domtoken_list");
-    const attr_mod = getWebIDLModule(webidl_modules, "dom_attr");
-    const abstract_range_mod = getWebIDLModule(webidl_modules, "dom_abstract_range");
-    const static_range_mod = getWebIDLModule(webidl_modules, "dom_static_range");
-    const range_mod = getWebIDLModule(webidl_modules, "dom_range");
-
-    // Add Node import to AbstractRange
-    abstract_range_mod.addImport("node", node_mod);
-
-    // Add dependencies for Range hierarchy
-    range_mod.addImport("abstract_range", abstract_range_mod);
-    range_mod.addImport("document_fragment", document_fragment_mod);
-    static_range_mod.addImport("abstract_range", abstract_range_mod);
-    static_range_mod.addImport("node", node_mod);
-
-    // DOMImplementation is manually created (not generated by codegen)
-    const dom_implementation_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/DOMImplementation.zig"),
+    const impls_mod = b.addModule("impls", .{
+        .root_source_file = b.path("src/impls/root.zig"),
         .target = target,
     });
-    dom_implementation_mod.addImport("infra", infra_mod);
-    dom_implementation_mod.addImport("webidl", webidl_mod);
+    impls_mod.addImport("runtime", runtime_mod);
 
-    // Create dom_types module (not a WebIDL class, just helper types)
-    const dom_types_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/dom_types.zig"),
-        .target = target,
-    });
-    dom_types_mod.addImport("infra", infra_mod);
-    dom_types_mod.addImport("webidl", webidl_mod);
-    dom_types_mod.addImport("node", node_mod);
-
-    // Create NodeFilter module (callback interface with constants)
-    const node_filter_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/NodeFilter.zig"),
-        .target = target,
-    });
-    node_filter_mod.addImport("node", node_mod);
-
-    // Create NodeIterator module (generated by codegen)
-    const node_iterator_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/NodeIterator.zig"),
-        .target = target,
-    });
-    node_iterator_mod.addImport("infra", infra_mod);
-    node_iterator_mod.addImport("webidl", webidl_mod);
-    node_iterator_mod.addImport("node", node_mod);
-    node_iterator_mod.addImport("node_filter", node_filter_mod);
-
-    // Create TreeWalker module (generated by codegen)
-    const tree_walker_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/TreeWalker.zig"),
-        .target = target,
-    });
-    tree_walker_mod.addImport("infra", infra_mod);
-    tree_walker_mod.addImport("webidl", webidl_mod);
-    tree_walker_mod.addImport("node", node_mod);
-    tree_walker_mod.addImport("node_filter", node_filter_mod);
-
-    // Create MutationRecord module (generated by codegen)
-    const mutation_record_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/MutationRecord.zig"),
-        .target = target,
-    });
-    mutation_record_mod.addImport("infra", infra_mod);
-    mutation_record_mod.addImport("webidl", webidl_mod);
-    mutation_record_mod.addImport("node", node_mod);
-    mutation_record_mod.addImport("node_list", node_list_mod);
-
-    // Create MutationObserverInit module (plain dictionary, no codegen)
-    const mutation_observer_init_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/mutation_observer_init.zig"),
-        .target = target,
-    });
-
-    // Create RegisteredObserver module (plain types, no codegen)
-    const registered_observer_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/registered_observer.zig"),
-        .target = target,
-    });
-    registered_observer_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
-
-    // Create MutationObserver module (generated by codegen)
-    const mutation_observer_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/MutationObserver.zig"),
-        .target = target,
-    });
-    mutation_observer_mod.addImport("infra", infra_mod);
-    mutation_observer_mod.addImport("webidl", webidl_mod);
-    mutation_observer_mod.addImport("node", node_mod);
-    mutation_observer_mod.addImport("mutation_record", mutation_record_mod);
-    mutation_observer_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
-    mutation_observer_mod.addImport("registered_observer", registered_observer_mod);
-
-    // Create mutation_observer_algorithms module (implementation algorithms)
-    const mutation_observer_algorithms_mod = b.createModule(.{
-        .root_source_file = b.path("src/dom/mutation_observer_algorithms.zig"),
-        .target = target,
-    });
-    mutation_observer_algorithms_mod.addImport("infra", infra_mod);
-    mutation_observer_algorithms_mod.addImport("webidl", webidl_mod);
-    mutation_observer_algorithms_mod.addImport("node", node_mod);
-    mutation_observer_algorithms_mod.addImport("node_list", node_list_mod);
-    mutation_observer_algorithms_mod.addImport("mutation_observer", mutation_observer_mod);
-    mutation_observer_algorithms_mod.addImport("mutation_record", mutation_record_mod);
-    mutation_observer_algorithms_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
-
-    // Create XPath modules (WebIDL interfaces in src, not generated)
-    const xpath_result_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/XPathResult.zig"),
-        .target = target,
-    });
-    xpath_result_mod.addImport("infra", infra_mod);
-    xpath_result_mod.addImport("webidl", webidl_mod);
-    xpath_result_mod.addImport("node", node_mod);
-
-    const xpath_expression_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/XPathExpression.zig"),
-        .target = target,
-    });
-    xpath_expression_mod.addImport("infra", infra_mod);
-    xpath_expression_mod.addImport("webidl", webidl_mod);
-    xpath_expression_mod.addImport("node", node_mod);
-    xpath_expression_mod.addImport("xpath_result", xpath_result_mod);
-
-    const xpath_evaluator_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/XPathEvaluator.zig"),
-        .target = target,
-    });
-    xpath_evaluator_mod.addImport("infra", infra_mod);
-    xpath_evaluator_mod.addImport("webidl", webidl_mod);
-    xpath_evaluator_mod.addImport("node", node_mod);
-    xpath_evaluator_mod.addImport("xpath_result", xpath_result_mod);
-    xpath_evaluator_mod.addImport("xpath_expression", xpath_expression_mod);
-
-    // Create ShadowRoot module (generated by codegen)
-    const shadow_root_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/dom/ShadowRoot.zig"),
-        .target = target,
-    });
-    shadow_root_mod.addImport("infra", infra_mod);
-    shadow_root_mod.addImport("webidl", webidl_mod);
-    shadow_root_mod.addImport("document_fragment", document_fragment_mod);
-    shadow_root_mod.addImport("element", element_mod);
-    shadow_root_mod.addImport("event_target", event_target_mod);
-    shadow_root_mod.addImport("node", node_mod);
-    shadow_root_mod.addImport("document", document_mod);
-    shadow_root_mod.addImport("registered_observer", registered_observer_mod);
-    shadow_root_mod.addImport("node_list", node_list_mod);
-
-    // Create ShadowRootInit module (plain dictionary, no codegen)
-    const shadow_root_init_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/dom/ShadowRootInit.zig"),
-        .target = target,
-    });
-    shadow_root_init_mod.addImport("shadow_root", shadow_root_mod);
-
-    // Create shadow_dom_algorithms module (implementation algorithms)
-    const shadow_dom_algorithms_mod = b.createModule(.{
-        .root_source_file = b.path("src/dom/shadow_dom_algorithms.zig"),
-        .target = target,
-    });
-    shadow_dom_algorithms_mod.addImport("infra", infra_mod);
-    shadow_dom_algorithms_mod.addImport("webidl", webidl_mod);
-    shadow_dom_algorithms_mod.addImport("element", element_mod);
-    shadow_dom_algorithms_mod.addImport("shadow_root", shadow_root_mod);
-
-    // Create HTMLSlotElement module (temporary HTML mock for shadow DOM)
-    // Located in webidl/src/html/ to separate HTML mocks from DOM implementation
-    // TODO: Replace with full HTML spec implementation
-    const html_slot_element_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/html/HTMLSlotElement.zig"),
-        .target = target,
-    });
-    html_slot_element_mod.addImport("infra", infra_mod);
-    html_slot_element_mod.addImport("webidl", webidl_mod);
-
-    // Add HTMLSlotElement to shadow_dom_algorithms
-    shadow_dom_algorithms_mod.addImport("html_slot_element", html_slot_element_mod);
-
-    // Create slot_helpers module (type-safe utilities for slot algorithms)
-    const slot_helpers_mod = b.createModule(.{
-        .root_source_file = b.path("src/dom/slot_helpers.zig"),
-        .target = target,
-    });
-    slot_helpers_mod.addImport("infra", infra_mod);
-    slot_helpers_mod.addImport("node", node_mod);
-    slot_helpers_mod.addImport("element", element_mod);
-    slot_helpers_mod.addImport("shadow_root", shadow_root_mod);
-    slot_helpers_mod.addImport("html_slot_element", html_slot_element_mod);
-
-    // Add slot_helpers to shadow_dom_algorithms
-    shadow_dom_algorithms_mod.addImport("slot_helpers", slot_helpers_mod);
-    shadow_dom_algorithms_mod.addImport("node", node_mod);
-
-    // Add cross-module imports (these aren't in the base auto-discovery)
-    event_mod.addImport("event_target", event_target_mod);
-    event_target_mod.addImport("abort_signal", abort_signal_mod);
-    abort_signal_mod.addImport("event_target", event_target_mod);
-    abort_controller_mod.addImport("abort_signal", abort_signal_mod);
-    node_mod.addImport("event_target", event_target_mod);
-    node_mod.addImport("node_list", node_list_mod);
-    node_mod.addImport("registered_observer", registered_observer_mod);
-    node_mod.addImport("mutation_observer", mutation_observer_mod);
-    node_mod.addImport("character_data", character_data_mod);
-    node_mod.addImport("text", text_mod);
-    node_mod.addImport("attr", attr_mod);
-    node_mod.addImport("element", element_mod);
-    node_mod.addImport("shadow_root", shadow_root_mod);
-    node_mod.addImport("abort_signal", abort_signal_mod);
-    node_mod.addImport("document_fragment", document_fragment_mod);
-    node_mod.addImport("processing_instruction", processing_instruction_mod);
-    node_list_mod.addImport("node", node_mod); // Circular dependency
-    element_mod.addImport("node", node_mod);
-    element_mod.addImport("event_target", event_target_mod);
-    element_mod.addImport("dom_types", dom_types_mod);
-    element_mod.addImport("shadow_root", shadow_root_mod);
-    element_mod.addImport("shadow_root_init", shadow_root_init_mod);
-    element_mod.addImport("node_list", node_list_mod);
-    element_mod.addImport("dom_token_list", dom_token_list_mod);
-    element_mod.addImport("named_node_map", named_node_map_mod);
-    element_mod.addImport("document", document_mod);
-    element_mod.addImport("registered_observer", registered_observer_mod);
-    element_mod.addImport("html_collection", html_collection_mod);
-    html_collection_mod.addImport("node", node_mod);
-    html_collection_mod.addImport("element", element_mod);
-    character_data_mod.addImport("node", node_mod);
-    character_data_mod.addImport("event_target", event_target_mod);
-    character_data_mod.addImport("dom_types", dom_types_mod);
-    character_data_mod.addImport("element", element_mod);
-    character_data_mod.addImport("node_list", node_list_mod);
-    character_data_mod.addImport("registered_observer", registered_observer_mod);
-    character_data_mod.addImport("document", document_mod);
-    text_mod.addImport("character_data", character_data_mod);
-    text_mod.addImport("dom_types", dom_types_mod);
-    text_mod.addImport("element", element_mod);
-    text_mod.addImport("event_target", event_target_mod);
-    text_mod.addImport("node_list", node_list_mod);
-    text_mod.addImport("node", node_mod);
-    text_mod.addImport("registered_observer", registered_observer_mod);
-    text_mod.addImport("document", document_mod);
-    comment_mod.addImport("character_data", character_data_mod);
-    comment_mod.addImport("dom_types", dom_types_mod);
-    comment_mod.addImport("element", element_mod);
-    comment_mod.addImport("event_target", event_target_mod);
-    comment_mod.addImport("node", node_mod);
-    comment_mod.addImport("document", document_mod);
-    comment_mod.addImport("registered_observer", registered_observer_mod);
-    comment_mod.addImport("node_list", node_list_mod);
-    processing_instruction_mod.addImport("character_data", character_data_mod);
-    processing_instruction_mod.addImport("dom_types", dom_types_mod);
-    processing_instruction_mod.addImport("element", element_mod);
-    processing_instruction_mod.addImport("event_target", event_target_mod);
-    processing_instruction_mod.addImport("node", node_mod);
-    processing_instruction_mod.addImport("document", document_mod);
-    processing_instruction_mod.addImport("registered_observer", registered_observer_mod);
-    processing_instruction_mod.addImport("node_list", node_list_mod);
-    cdata_section_mod.addImport("text", text_mod);
-    cdata_section_mod.addImport("character_data", character_data_mod);
-    cdata_section_mod.addImport("event_target", event_target_mod);
-    cdata_section_mod.addImport("node", node_mod);
-    cdata_section_mod.addImport("document", document_mod);
-    cdata_section_mod.addImport("registered_observer", registered_observer_mod);
-    cdata_section_mod.addImport("node_list", node_list_mod);
-    document_type_mod.addImport("node", node_mod);
-    document_type_mod.addImport("dom_types", dom_types_mod);
-    document_type_mod.addImport("event_target", event_target_mod);
-    document_type_mod.addImport("document", document_mod);
-    document_type_mod.addImport("registered_observer", registered_observer_mod);
-    document_type_mod.addImport("node_list", node_list_mod);
-    document_fragment_mod.addImport("node", node_mod);
-    document_fragment_mod.addImport("element", element_mod);
-    document_fragment_mod.addImport("event_target", event_target_mod);
-    document_fragment_mod.addImport("document", document_mod);
-    document_fragment_mod.addImport("registered_observer", registered_observer_mod);
-    document_fragment_mod.addImport("node_list", node_list_mod);
-    document_fragment_mod.addImport("html_collection", html_collection_mod);
-    document_fragment_mod.addImport("dom_types", dom_types_mod);
-    document_mod.addImport("node", node_mod);
-    document_mod.addImport("element", element_mod);
-    document_mod.addImport("node_list", node_list_mod);
-    document_mod.addImport("html_collection", html_collection_mod);
-    document_mod.addImport("dom_types", dom_types_mod);
-    document_mod.addImport("processing_instruction", processing_instruction_mod);
-    document_mod.addImport("cdata_section", cdata_section_mod);
-    document_mod.addImport("document_type", document_type_mod);
-    document_mod.addImport("dom_implementation", dom_implementation_mod);
-    document_mod.addImport("character_data", character_data_mod);
-    document_mod.addImport("text", text_mod);
-    document_mod.addImport("comment", comment_mod);
-    document_mod.addImport("attr", attr_mod);
-    document_mod.addImport("document_fragment", document_fragment_mod);
-    document_mod.addImport("range", range_mod);
-    document_mod.addImport("node_iterator", node_iterator_mod);
-    document_mod.addImport("event_target", event_target_mod);
-    document_mod.addImport("registered_observer", registered_observer_mod);
-    dom_token_list_mod.addImport("element", element_mod);
-    dom_token_list_mod.addImport("node", node_mod);
-    dom_token_list_mod.addImport("event_target", event_target_mod);
-    attr_mod.addImport("node", node_mod);
-    attr_mod.addImport("element", element_mod);
-    attr_mod.addImport("event_target", event_target_mod);
-    attr_mod.addImport("document", document_mod);
-    attr_mod.addImport("registered_observer", registered_observer_mod);
-    attr_mod.addImport("node_list", node_list_mod);
-    named_node_map_mod.addImport("attr", attr_mod);
-    named_node_map_mod.addImport("element", element_mod);
-    dom_implementation_mod.addImport("document", document_mod);
-    dom_implementation_mod.addImport("document_type", document_type_mod);
-    dom_implementation_mod.addImport("element", element_mod);
-    dom_implementation_mod.addImport("text", text_mod);
-
-    // DOM module (AbortSignal, EventTarget, Node, NodeList, Element, CharacterData, Text, Comment, DocumentFragment, DOMTokenList, Attr, NamedNodeMap, etc.)
+    // DOM module
     const dom_mod = b.addModule("dom", .{
         .root_source_file = b.path("src/dom/root.zig"),
         .target = target,
     });
     dom_mod.addImport("infra", infra_mod);
     dom_mod.addImport("webidl", webidl_mod);
-    dom_mod.addImport("abort_signal", abort_signal_mod);
-    dom_mod.addImport("abort_controller", abort_controller_mod);
-    dom_mod.addImport("event_target", event_target_mod);
-    dom_mod.addImport("event", event_mod);
-    dom_mod.addImport("node", node_mod);
-    dom_mod.addImport("node_list", node_list_mod);
-    dom_mod.addImport("named_node_map", named_node_map_mod);
-    dom_mod.addImport("element", element_mod);
-    dom_mod.addImport("character_data", character_data_mod);
-    dom_mod.addImport("text", text_mod);
-    dom_mod.addImport("comment", comment_mod);
-    dom_mod.addImport("processing_instruction", processing_instruction_mod);
-    dom_mod.addImport("cdata_section", cdata_section_mod);
-    dom_mod.addImport("document_type", document_type_mod);
-    dom_mod.addImport("document_fragment", document_fragment_mod);
-    dom_mod.addImport("shadow_root", shadow_root_mod);
-    dom_mod.addImport("shadow_root_init", shadow_root_init_mod);
-    dom_mod.addImport("shadow_dom_algorithms", shadow_dom_algorithms_mod);
-    dom_mod.addImport("html_slot_element", html_slot_element_mod);
-    dom_mod.addImport("document", document_mod);
-    dom_mod.addImport("dom_token_list", dom_token_list_mod);
-    dom_mod.addImport("attr", attr_mod);
-    dom_mod.addImport("dom_implementation", dom_implementation_mod);
-    dom_mod.addImport("abstract_range", abstract_range_mod);
-    dom_mod.addImport("static_range", static_range_mod);
-    dom_mod.addImport("range", range_mod);
-    dom_mod.addImport("node_filter", node_filter_mod);
-    dom_mod.addImport("node_iterator", node_iterator_mod);
-    dom_mod.addImport("tree_walker", tree_walker_mod);
-    dom_mod.addImport("mutation_record", mutation_record_mod);
-    dom_mod.addImport("mutation_observer", mutation_observer_mod);
-    dom_mod.addImport("mutation_observer_init", mutation_observer_init_mod);
-    dom_mod.addImport("registered_observer", registered_observer_mod);
-    dom_mod.addImport("mutation_observer_algorithms", mutation_observer_algorithms_mod);
-    dom_mod.addImport("xpath_result", xpath_result_mod);
-    dom_mod.addImport("xpath_expression", xpath_expression_mod);
-    dom_mod.addImport("xpath_evaluator", xpath_evaluator_mod);
-
-    // Handle circular dependencies by adding imports after all modules are created
-    node_iterator_mod.addImport("dom", dom_mod); // Circular: dom -> node_iterator, node_iterator -> dom
-    tree_walker_mod.addImport("dom", dom_mod); // Circular: dom -> tree_walker, tree_walker -> dom
-    xpath_result_mod.addImport("dom", dom_mod); // XPath modules need dom for xpath namespace
-    xpath_expression_mod.addImport("dom", dom_mod);
-    xpath_evaluator_mod.addImport("dom", dom_mod);
-    element_mod.addImport("text", text_mod);
-    element_mod.addImport("d_o_m_token_list", dom_token_list_mod);
-    element_mod.addImport("attr", attr_mod);
-    element_mod.addImport("dom", dom_mod); // Circular: dom -> element, element -> dom
-    attr_mod.addImport("dom", dom_mod); // attr needs dom for mutation operations
-    character_data_mod.addImport("dom", dom_mod); // character_data needs dom for mutation observer
-    text_mod.addImport("dom", dom_mod); // Circular: dom -> text, text -> dom
-    comment_mod.addImport("dom", dom_mod); // comment needs dom (inherits from CharacterData)
-    cdata_section_mod.addImport("dom", dom_mod); // cdata_section needs dom (inherits from Text)
-    processing_instruction_mod.addImport("dom", dom_mod); // processing_instruction needs dom for mutation operations
-    processing_instruction_mod.addImport("abort_signal", abort_signal_mod);
-    processing_instruction_mod.addImport("attr", attr_mod);
-    document_mod.addImport("dom", dom_mod); // Circular: dom -> document, document -> dom
-    document_fragment_mod.addImport("dom", dom_mod); // Circular: dom -> document_fragment, document_fragment -> dom
-    dom_implementation_mod.addImport("dom", dom_mod); // dom_implementation needs dom module
-    dom_implementation_mod.addImport("node", node_mod);
-    node_mod.addImport("document", document_mod);
-    node_mod.addImport("dom", dom_mod); // node needs dom for mutation operations
-    range_mod.addImport("node", node_mod);
-    range_mod.addImport("document_fragment", document_fragment_mod);
-    range_mod.addImport("document", document_mod);
-    range_mod.addImport("dom", dom_mod);
-    range_mod.addImport("character_data", character_data_mod);
-    range_mod.addImport("text", text_mod);
+    dom_mod.addImport("runtime", runtime_mod);
 
     // Selector module (CSS Selectors Level 4 implementation)
     const selector_mod = b.addModule("selector", .{
@@ -696,6 +151,8 @@ pub fn build(b: *std.Build) void {
 
     // Add selector to dom (after selector_mod is defined to avoid undefined reference)
     dom_mod.addImport("selector", selector_mod);
+    // Add unified interfaces module
+    dom_mod.addImport("interfaces", interfaces_mod);
 
     const encoding_mod = b.addModule("encoding", .{
         .root_source_file = b.path("src/encoding/root.zig"),
@@ -703,36 +160,6 @@ pub fn build(b: *std.Build) void {
     });
     encoding_mod.addImport("infra", infra_mod);
     encoding_mod.addImport("webidl", webidl_mod);
-
-    // Create interface modules with proper dependencies
-    // Note: TextEncoderEncodeIntoResult.zig is a dictionary used by TextEncoder
-    // and should be imported as a regular file, not registered as a separate module
-    const text_encoder_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/TextEncoder.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    // Note: TextDecoderOptions and TextDecodeOptions are dictionaries used by TextDecoder
-    // and should be imported as regular files, not registered as separate modules
-    const text_decoder_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/encoding/TextDecoder.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "encoding", .module = encoding_mod },
-        },
-    });
-
-    // Add anonymous imports for generated files
-    // Note: Dictionary types (TextEncoderEncodeIntoResult, TextDecoderOptions, TextDecodeOptions)
-    // are NOT added as modules - they're regular file imports within their parent files
-    encoding_mod.addImport("text_encoder", text_encoder_mod);
-    encoding_mod.addImport("text_decoder", text_decoder_mod);
 
     // URL internal modules that generated interfaces need
     // URL internal modules need to be created first for cross-dependencies
@@ -766,11 +193,6 @@ pub fn build(b: *std.Build) void {
 
     const url_parser_api_mod = b.createModule(.{
         .root_source_file = b.path("src/url/parser/api_url_parser.zig"),
-        .target = target,
-    });
-
-    const url_origin_mod = b.createModule(.{
-        .root_source_file = b.path("src/url/origin.zig"),
         .target = target,
     });
 
@@ -967,55 +389,6 @@ pub fn build(b: *std.Build) void {
     url_percent_encoding_mod.addImport("encode_sets", url_encode_sets_mod);
     url_blob_url_mod.addImport("origin", url_origin_mod_internal);
 
-    // Common imports for URL interface modules
-    const url_iface_imports = [_]std.Build.Module.Import{
-        .{ .name = "infra", .module = infra_mod },
-        .{ .name = "webidl", .module = webidl_mod },
-        .{ .name = "url_record", .module = url_internal_url_record_mod },
-        .{ .name = "host", .module = url_internal_host_mod },
-        .{ .name = "path", .module = url_internal_path_mod },
-        .{ .name = "blob_url", .module = url_blob_url_mod },
-        .{ .name = "api_parser", .module = url_parser_api_mod },
-        .{ .name = "url_serializer", .module = url_serializer_mod },
-        .{ .name = "origin", .module = url_origin_mod },
-        .{ .name = "host_serializer", .module = url_host_serializer_mod },
-        .{ .name = "path_serializer", .module = url_path_serializer_mod },
-        .{ .name = "basic_parser", .module = url_basic_parser_mod },
-        .{ .name = "parser_state", .module = url_parser_state_mod },
-        .{ .name = "helpers", .module = url_helpers_mod },
-        .{ .name = "percent_encoding", .module = url_percent_encoding_mod },
-        .{ .name = "encode_sets", .module = url_encode_sets_mod },
-        .{ .name = "url_search_params_impl", .module = url_search_params_impl_mod },
-        .{ .name = "form_parser", .module = url_form_parser_mod },
-        .{ .name = "form_serializer", .module = url_form_serializer_mod },
-        .{ .name = "validation", .module = url_validation_mod },
-        .{ .name = "ipv4_serializer", .module = url_ipv4_serializer_mod },
-        .{ .name = "ipv6_serializer", .module = url_ipv6_serializer_mod },
-        .{ .name = "ipv4_parser", .module = url_ipv4_parser_mod },
-        .{ .name = "ipv6_parser", .module = url_ipv6_parser_mod },
-        .{ .name = "host_parser", .module = url_host_parser_mod },
-        .{ .name = "windows_drive", .module = url_windows_drive_mod },
-        .{ .name = "special_schemes", .module = url_special_schemes_mod },
-        .{ .name = "origin", .module = url_origin_mod_internal },
-    };
-
-    // URL interface modules
-    const url_url_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/url/URL.zig"),
-        .target = target,
-        .imports = &url_iface_imports,
-    });
-
-    const url_search_params_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/url/URLSearchParams.zig"),
-        .target = target,
-        .imports = &url_iface_imports,
-    });
-
-    // Add cross-references between URL interfaces
-    url_url_mod.addImport("url_search_params", url_search_params_mod);
-    url_search_params_mod.addImport("url", url_url_mod);
-
     // Main url module
     const url_mod = b.addModule("url", .{
         .root_source_file = b.path("src/url/root.zig"),
@@ -1024,8 +397,6 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("infra", infra_mod);
     url_mod.addImport("webidl", webidl_mod);
     url_mod.addImport("encoding", encoding_mod);
-    url_mod.addImport("url", url_url_mod);
-    url_mod.addImport("url_search_params", url_search_params_mod);
     url_mod.addImport("url_search_params_impl", url_search_params_impl_mod);
     url_mod.addImport("url_record", url_internal_url_record_mod);
     url_mod.addImport("host_serializer", url_host_serializer_mod);
@@ -1049,44 +420,11 @@ pub fn build(b: *std.Build) void {
     url_mod.addImport("equivalence", url_equivalence_mod);
     url_mod.addImport("path_serializer", url_path_serializer_mod);
 
-    // Console supporting modules
-    const console_types_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/console/types.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const console_format_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/src/console/format.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-        },
-    });
-
-    const console_console_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/console/console.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "types", .module = console_types_mod },
-            .{ .name = "format", .module = console_format_mod },
-        },
-    });
-
     const console_mod = b.addModule("console", .{
         .root_source_file = b.path("src/console/root.zig"),
         .target = target,
     });
     console_mod.addImport("webidl", webidl_mod);
-    // Add imports for generated files
-    console_mod.addImport("console", console_console_mod);
-    console_mod.addImport("types", console_types_mod);
 
     // Streams internal modules (used by both root.zig and generated interfaces)
     // All internal files need to import each other via modules to avoid circular file ownership
@@ -1137,32 +475,6 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    const streams_event_loop_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/event_loop.zig"),
-        .target = target,
-    });
-
-    const streams_test_event_loop_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/test_event_loop.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-        },
-    });
-
-    const streams_async_promise_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/async_promise.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "infra", .module = infra_mod },
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "event_loop", .module = streams_event_loop_mod },
-            .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },
-        },
-    });
-
     const streams_async_iterator_mod = b.createModule(.{
         .root_source_file = b.path("src/streams/internal/async_iterator.zig"),
         .target = target,
@@ -1186,29 +498,6 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "common", .module = streams_common_mod },
             .{ .name = "message_port", .module = streams_message_port_mod },
-        },
-    });
-
-    const streams_dict_types_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/dictionary_types.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "common", .module = streams_common_mod },
-        },
-    });
-
-    // Note: dict_parsing needs readable_stream and writable_stream added later
-    // after those modules are created (see below where we add them)
-    const streams_dict_parsing_mod = b.createModule(.{
-        .root_source_file = b.path("src/streams/internal/dictionary_parsing.zig"),
-        .target = target,
-        .imports = &.{
-            .{ .name = "webidl", .module = webidl_mod },
-            .{ .name = "dom", .module = dom_mod },
-            .{ .name = "common", .module = streams_common_mod },
-            .{ .name = "dict_types", .module = streams_dict_types_mod },
         },
     });
 
@@ -1239,6 +528,7 @@ pub fn build(b: *std.Build) void {
     });
     streams_mod.addImport("infra", infra_mod);
     streams_mod.addImport("webidl", webidl_mod);
+    streams_mod.addImport("runtime", runtime_mod);
     streams_mod.addImport("dom", dom_mod);
     // Add internal modules so root.zig can access them
     streams_mod.addImport("common", streams_common_mod);
@@ -1252,185 +542,8 @@ pub fn build(b: *std.Build) void {
     streams_mod.addImport("async_iterator", streams_async_iterator_mod);
     streams_mod.addImport("message_port", streams_message_port_mod);
     streams_mod.addImport("cross_realm_transform", streams_cross_realm_transform_mod);
-
-    // Create interface modules that reference the main streams module for internals
-    // This avoids the module collision by sharing the same internal file instances
-    const streams_iface_imports = [_]std.Build.Module.Import{
-        .{ .name = "infra", .module = infra_mod },
-        .{ .name = "webidl", .module = webidl_mod },
-        .{ .name = "dom", .module = dom_mod },
-        .{ .name = "common", .module = streams_common_mod },
-        .{ .name = "queue_with_sizes", .module = streams_queue_mod },
-        .{ .name = "read_request", .module = streams_read_request_mod },
-        .{ .name = "read_into_request", .module = streams_read_into_request_mod },
-        .{ .name = "pull_into_descriptor", .module = streams_pull_into_descriptor_mod },
-        .{ .name = "dict_parsing", .module = streams_dict_parsing_mod },
-        .{ .name = "event_loop", .module = streams_event_loop_mod },
-        .{ .name = "async_promise", .module = streams_async_promise_mod },
-        .{ .name = "async_iterator", .module = streams_async_iterator_mod },
-        .{ .name = "message_port", .module = streams_message_port_mod },
-        .{ .name = "cross_realm_transform", .module = streams_cross_realm_transform_mod },
-        .{ .name = "test_event_loop", .module = streams_test_event_loop_mod },
-        .{ .name = "view_construction", .module = streams_view_construction_mod },
-        .{ .name = "structured_clone", .module = streams_structured_clone_mod },
-    };
-
-    const byte_length_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ByteLengthQueuingStrategy.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const count_queuing_strategy_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/CountQueuingStrategy.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStreamDefaultController.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const writable_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/WritableStreamDefaultController.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const transform_stream_default_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/TransformStreamDefaultController.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_byob_request_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStreamBYOBRequest.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_byte_stream_controller_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableByteStreamController.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStream.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_default_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStreamDefaultReader.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_generic_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStreamGenericReader.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const readable_stream_byob_reader_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/ReadableStreamBYOBReader.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const writable_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/WritableStream.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const writable_stream_default_writer_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/WritableStreamDefaultWriter.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    const transform_stream_mod = b.createModule(.{
-        .root_source_file = b.path("webidl/generated/streams/TransformStream.zig"),
-        .target = target,
-        .imports = &streams_iface_imports,
-    });
-
-    // Add interface modules to streams
-    streams_mod.addImport("byte_length_queuing_strategy", byte_length_queuing_strategy_mod);
-    streams_mod.addImport("count_queuing_strategy", count_queuing_strategy_mod);
-    streams_mod.addImport("readable_stream_default_controller", readable_stream_default_controller_mod);
-    streams_mod.addImport("writable_stream_default_controller", writable_stream_default_controller_mod);
-    streams_mod.addImport("transform_stream_default_controller", transform_stream_default_controller_mod);
-    streams_mod.addImport("readable_stream_byob_request", readable_stream_byob_request_mod);
-    streams_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
-    streams_mod.addImport("readable_stream", readable_stream_mod);
-    streams_mod.addImport("readable_stream_default_reader", readable_stream_default_reader_mod);
-    streams_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
-    streams_mod.addImport("readable_stream_byob_reader", readable_stream_byob_reader_mod);
-    streams_mod.addImport("writable_stream", writable_stream_mod);
-    streams_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
-    streams_mod.addImport("transform_stream", transform_stream_mod);
-
-    // Add cross-module imports to resolve circular dependencies
-    // All interface modules need access to each other for proper operation
-
-    // dict_parsing needs the stream types
-    streams_dict_parsing_mod.addImport("readable_stream", readable_stream_mod);
-    streams_dict_parsing_mod.addImport("writable_stream", writable_stream_mod);
-
-    // cross_realm_transform needs stream types and controllers
-    streams_cross_realm_transform_mod.addImport("readable_stream", readable_stream_mod);
-    streams_cross_realm_transform_mod.addImport("writable_stream", writable_stream_mod);
-    streams_cross_realm_transform_mod.addImport("readable_stream_default_controller", readable_stream_default_controller_mod);
-    streams_cross_realm_transform_mod.addImport("writable_stream_default_controller", writable_stream_default_controller_mod);
-
-    // readable_stream needs its controllers and readers, plus writable components for pipeTo
-    readable_stream_mod.addImport("readable_stream_default_controller", readable_stream_default_controller_mod);
-    readable_stream_mod.addImport("readable_stream_default_reader", readable_stream_default_reader_mod);
-    readable_stream_mod.addImport("readable_stream_byob_reader", readable_stream_byob_reader_mod);
-    readable_stream_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
-    readable_stream_mod.addImport("writable_stream", writable_stream_mod);
-    readable_stream_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
-
-    // writable_stream needs its controller and writer
-    writable_stream_mod.addImport("readable_stream", readable_stream_mod);
-    writable_stream_mod.addImport("writable_stream_default_controller", writable_stream_default_controller_mod);
-    writable_stream_mod.addImport("writable_stream_default_writer", writable_stream_default_writer_mod);
-
-    // transform_stream needs readable and writable streams
-    transform_stream_mod.addImport("readable_stream", readable_stream_mod);
-    transform_stream_mod.addImport("writable_stream", writable_stream_mod);
-    transform_stream_mod.addImport("transform_stream_default_controller", transform_stream_default_controller_mod);
-
-    // Controllers need their parent streams
-    readable_stream_default_controller_mod.addImport("readable_stream", readable_stream_mod);
-    readable_stream_default_controller_mod.addImport("readable_stream_default_reader", readable_stream_default_reader_mod);
-    writable_stream_default_controller_mod.addImport("writable_stream", writable_stream_mod);
-    writable_stream_default_controller_mod.addImport("transform_stream_default_controller", transform_stream_default_controller_mod);
-    transform_stream_default_controller_mod.addImport("transform_stream", transform_stream_mod);
-    transform_stream_default_controller_mod.addImport("readable_stream", readable_stream_mod);
-
-    // Readers/writers need their parent streams
-    readable_stream_default_reader_mod.addImport("readable_stream", readable_stream_mod);
-    readable_stream_default_reader_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
-    readable_stream_byob_reader_mod.addImport("readable_stream", readable_stream_mod);
-    readable_stream_byob_reader_mod.addImport("readable_stream_generic_reader", readable_stream_generic_reader_mod);
-    readable_stream_byob_reader_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
-    writable_stream_default_writer_mod.addImport("writable_stream", writable_stream_mod);
-
-    // Generic reader needs readable stream
-    readable_stream_generic_reader_mod.addImport("readable_stream", readable_stream_mod);
-
-    // Byte stream controller needs BYOB request and readable stream
-    readable_byte_stream_controller_mod.addImport("readable_stream", readable_stream_mod);
-    readable_byte_stream_controller_mod.addImport("readable_stream_byob_request", readable_stream_byob_request_mod);
-
-    // BYOB request needs byte stream controller (circular dependency)
-    readable_stream_byob_request_mod.addImport("readable_byte_stream_controller", readable_byte_stream_controller_mod);
+    // Add unified interfaces module
+    streams_mod.addImport("interfaces", interfaces_mod);
 
     const mimesniff_mod = b.addModule("mimesniff", .{
         .root_source_file = b.path("src/mimesniff/root.zig"),
@@ -1441,12 +554,15 @@ pub fn build(b: *std.Build) void {
     // Wire spec modules into whatwg module
     whatwg_mod.addImport("infra", infra_mod);
     whatwg_mod.addImport("webidl", webidl_mod);
+    whatwg_mod.addImport("runtime", runtime_mod);
     whatwg_mod.addImport("dom", dom_mod);
     whatwg_mod.addImport("encoding", encoding_mod);
     whatwg_mod.addImport("url", url_mod);
     whatwg_mod.addImport("console", console_mod);
     whatwg_mod.addImport("streams", streams_mod);
     whatwg_mod.addImport("mimesniff", mimesniff_mod);
+    whatwg_mod.addImport("interfaces", interfaces_mod);
+    whatwg_mod.addImport("impls", impls_mod);
 
     // ========================================================================
     // TESTS - GENERIC SPEC FILTERING
@@ -1549,8 +665,6 @@ pub fn build(b: *std.Build) void {
             .{ .name = "webidl", .module = webidl_mod },
             .{ .name = "encoding", .module = encoding_mod },
             .{ .name = "url", .module = url_mod },
-            .{ .name = "url0", .module = url_url_mod },
-            .{ .name = "url_search_params", .module = url_search_params_mod },
         };
         addTestFilesFromDir(b, test_step, "tests/url", target, &url_imports) catch |err| {
             std.debug.print("Warning: Failed to add url test files: {}\n", .{err});
@@ -1684,4 +798,17 @@ pub fn build(b: *std.Build) void {
 
     const comprehensive_step = b.step("comprehensive", "Build comprehensive binary with all WHATWG specs");
     comprehensive_step.dependOn(&comprehensive_run.step);
+
+    // ========================================================================
+    // INTERFACES BUILD STEP - Check that all interfaces compile
+    // ========================================================================
+
+    const interfaces_check = b.addTest(.{
+        .root_module = interfaces_mod,
+    });
+
+    const run_interfaces_check = b.addRunArtifact(interfaces_check);
+
+    const interfaces_step = b.step("interfaces", "Check that all interfaces compile");
+    interfaces_step.dependOn(&run_interfaces_check.step);
 }
